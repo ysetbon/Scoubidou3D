@@ -3,7 +3,7 @@
 // StrandScene. Reordering a layer here restacks it in Z — the direct 3D analogue
 // of moving a layer in OpenStrand's layer panel.
 
-import { StrandScene } from '../scene/StrandScene';
+import { StrandScene, EditMode } from '../scene/StrandScene';
 import { Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, makeSample } from '../model/samples';
 import { sceneFromJsonText } from '../model/importOss';
@@ -39,6 +39,8 @@ export class Panel {
 
   constructor(private root: HTMLElement, private view: StrandScene) {
     this.scene = view.getScene();
+    // Attach/finalize adds a layer in the scene; keep the layer list in sync.
+    this.view.onSceneChanged = () => this.renderLayers();
     this.render();
   }
 
@@ -61,6 +63,7 @@ export class Panel {
     brand.appendChild(el('div', 'brand-sub', 'strands with real depth · orbit to explore'));
     this.root.appendChild(brand);
 
+    this.root.appendChild(this.toolSection());
     this.root.appendChild(this.viewSection());
     this.root.appendChild(this.ribbonSection());
     this.root.appendChild(this.sceneSection());
@@ -69,6 +72,54 @@ export class Panel {
     const hint = el('div', 'hint');
     hint.innerHTML = 'Drag to orbit · scroll to zoom · right-drag to pan';
     this.root.appendChild(hint);
+  }
+
+  // ---- Tool (Orbit / Move / Attach) ---------------------------------------
+  // The 3D analogue of OpenStrand Studio's toolbar. Orbit is pure camera; Move
+  // drags endpoints & control points (connected strands follow); Attach pulls a
+  // new strand out of a free endpoint.
+  private toolHost: HTMLElement | null = null;
+
+  private toolSection(): HTMLElement {
+    const sec = section('Tool');
+    this.toolHost = el('div');
+    sec.appendChild(this.toolHost);
+    this.renderTools();
+    return sec;
+  }
+
+  private renderTools(): void {
+    if (!this.toolHost) return;
+    this.toolHost.innerHTML = '';
+    const mode = this.view.getMode();
+
+    const row = el('div', 'btn-row');
+    const tools: Array<{ key: EditMode; label: string }> = [
+      { key: 'orbit', label: 'Orbit' },
+      { key: 'move', label: 'Move' },
+      { key: 'attach', label: 'Attach' },
+    ];
+    for (const t of tools) {
+      const b = el('button', 'btn tool-btn' + (mode === t.key ? ' active' : ''), t.label);
+      b.addEventListener('click', () => {
+        this.view.setMode(t.key);
+        this.renderTools();
+      });
+      row.appendChild(b);
+    }
+    this.toolHost.appendChild(row);
+
+    const note = el('div', 'note');
+    if (mode === 'attach') {
+      note.innerHTML =
+        'Pull from a <b style="color:#2fb862">green</b> endpoint to grow a new attached strand (it joins the same set and stacks on top). Gray endpoints are already joined.';
+    } else if (mode === 'move') {
+      note.innerHTML =
+        'Drag a <b style="color:#2f7bd6">blue</b> endpoint — connected strands follow. Drag an <b style="color:#e0872a">orange</b> dot to bend the strand.';
+    } else {
+      note.textContent = 'Orbit the camera freely. Switch to Move or Attach to edit strands in place.';
+    }
+    this.toolHost.appendChild(note);
   }
 
   // ---- View ----------------------------------------------------------------
@@ -170,8 +221,14 @@ export class Panel {
     const cx = 400;
     const cy = 250;
     const len = 220;
+    // Start a new set (OSS-style `N_1`) so a later Attach grows it into `N_2`…
+    let maxSet = 0;
+    for (const st of this.scene.strands) {
+      const m = /^(\d+)_/.exec(st.id);
+      if (m) maxSet = Math.max(maxSet, parseInt(m[1], 10));
+    }
     const s: Strand3D = {
-      id: `new_${n + 1}`,
+      id: `${maxSet + 1}_1`,
       start: { x: cx - Math.cos(rad) * len, y: cy - Math.sin(rad) * len },
       end: { x: cx + Math.cos(rad) * len, y: cy + Math.sin(rad) * len },
       control_points: [{ x: cx, y: cy }, { x: cx, y: cy }],
@@ -184,6 +241,9 @@ export class Panel {
       thickness: null,
       visible: true,
       isMask: false,
+      hasCircles: [false, false],
+      parentId: null,
+      parentSide: null,
     };
     // New strand goes on top of the stack (highest layer).
     this.scene.strands.push(s);
@@ -227,6 +287,8 @@ export class Panel {
     const nameWrap = el('div', 'layer-name');
     nameWrap.appendChild(el('span', 'layer-id', strand.id));
     if (strand.isMask) nameWrap.appendChild(el('span', 'layer-tag', 'mask'));
+    // Show attach lineage — the OSS "this strand hangs off <parent>" relationship.
+    if (strand.parentId) nameWrap.appendChild(el('span', 'layer-tag', `↳ ${strand.parentId}`));
     row.appendChild(nameWrap);
 
     const controls = el('div', 'layer-controls');

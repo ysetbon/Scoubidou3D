@@ -31,6 +31,16 @@ ribbon sits directly over *X*'s — everywhere they cross.
 - 🎚️ **Live controls** for thickness, layer gap, width scale, outline, rounded
   ends, and a reference grid.
 - 🗂️ **Layer panel** to recolor, hide, reorder, delete, and add strands.
+- 🔗 **Attach & Move — OpenStrand's editing, in 3D.** A **Tool** switcher (Orbit
+  / Move / Attach) turns the strand endpoints into grab handles:
+  - **Attach**: pull from a *free* (green) endpoint and a new strand is born
+    there — glued to the parent, inheriting its look, joining the same layer
+    *set* (`1_1` → `1_2`), and stacked on top. Chain them to weave families.
+    Occupied junctions show gray and refuse new attachments, exactly like OSS's
+    `has_circles` rule.
+  - **Move**: drag a (blue) endpoint and every strand glued to that point moves
+    with it, so attachments stay connected; drag an (orange) dot to bend a
+    strand. Layer order still *is* the Z order.
 - 📥 **Import real files.** Load an OpenStrand Studio / OpenStrandJS `.json`
   save and see it in 3D. The strand geometry uses a faithful port of OSS's
   curve math (`strand.py::_build_curve_profile`), so curves match the original.
@@ -71,13 +81,14 @@ src/
     bezier.ts     # port of OpenStrand's eased curve profile -> sampled centerline
     ribbon.ts     # sweep a (width x thickness) cross-section along the centerline
   model/
-    types.ts      # Strand3D / Scene3D
-    importOss.ts  # read OpenStrand Studio / OpenStrandJS .json
-    samples.ts    # built-in demo scenes
+    types.ts       # Strand3D / Scene3D
+    connections.ts # attach + "connected strands move together" (ports OSS attach/move)
+    importOss.ts   # read OpenStrand Studio / OpenStrandJS .json
+    samples.ts     # built-in demo scenes
   scene/
-    StrandScene.ts# Three.js scene: build meshes, stack in Z, lights, orbit camera
+    StrandScene.ts # Three.js scene: meshes, Z stack, lights, orbit camera, edit handles
   ui/
-    panel.ts      # control panel + layer stack
+    panel.ts       # control panel + tool switcher + layer stack
   main.ts
 ```
 
@@ -95,8 +106,9 @@ steps:
 - **Per-crossing undulation** — displace a strand's centerline in Z as it
   crosses others, so a single strand can weave over-and-under (true baskets,
   braids, knots).
-- **Direct 3D editing** — drag endpoints/control points in the scene, not just
-  in an imported file.
+- ✅ **Direct 3D editing** — drag endpoints/control points in the scene (Move),
+  and grow attached strands from free endpoints (Attach). *Done* — see the Tool
+  switcher above. Next: snap-to-grid and dragging in a tilted view.
 - **Honor masks** from imported files to drive the undulation automatically.
 - **Round-trip** back to OpenStrand `.json`, and PNG/GLTF export.
 - **Materials** — glossy plastic vs. matte cord, per-strand.

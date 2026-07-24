@@ -8,6 +8,7 @@
 // and in 3D that job is done for real by the Z stack.
 
 import { Point, RGBA, Scene3D, Strand3D } from './types';
+import { recomputeOccupancy } from './connections';
 
 interface RawColor {
   r?: number;
@@ -103,10 +104,20 @@ export function sceneFromOss(data: unknown, name = 'imported'): Scene3D {
       thickness: null,
       visible: !s.is_hidden && !isMask,
       isMask,
+      // Occupancy is derived from the geometry below, so the junctions of an
+      // imported weave reconnect (attached strands share endpoints in OSS).
+      hasCircles: [false, false],
+      // OSS attached-strand records carry the parent relation in their layer
+      // name/set; we don't need it for movement (that follows coincident points)
+      // and imported files may omit it, so leave lineage unset.
+      parentId: null,
+      parentSide: null,
     });
   });
 
-  return { strands, name };
+  const scene: Scene3D = { strands, name };
+  recomputeOccupancy(scene);
+  return scene;
 }
 
 /** Parse a JSON string. Throws on malformed JSON. */

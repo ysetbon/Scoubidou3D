@@ -104,6 +104,13 @@ body {
   background: #e9eef5;
 }
 
+.tool-btn.active,
+.tool-btn.active:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
 .field {
   margin-bottom: 10px;
 }
