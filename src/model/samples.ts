@@ -36,6 +36,10 @@ function mk(id: string, start: Point, end: Point, color: RGBA, opts: StrandOpts 
     thickness: null,
     visible: true,
     isMask: false,
+    // Every seed strand is a free base strand: both endpoints open for attaching.
+    hasCircles: [false, false],
+    parentId: null,
+    parentSide: null,
   };
 }
 
@@ -45,8 +49,8 @@ function twoCrossing(): Scene3D {
   return {
     name: 'Two crossing strands',
     strands: [
-      mk('orange_h', { x: 120, y: 250 }, { x: 680, y: 250 }, ORANGE, { width: 54 }),
-      mk('yellow_v', { x: 400, y: 90 }, { x: 400, y: 410 }, YELLOW, { width: 54 }),
+      mk('1_1', { x: 120, y: 250 }, { x: 680, y: 250 }, ORANGE, { width: 54 }),
+      mk('2_1', { x: 400, y: 90 }, { x: 400, y: 410 }, YELLOW, { width: 54 }),
     ],
   };
 }
@@ -61,8 +65,8 @@ function wovenMat(): Scene3D {
   const xs = [200, 330, 460, 590];
   const w = 46;
   for (let i = 0; i < 4; i++) {
-    strands.push(mk(`h${i}`, { x: 140, y: ys[i] }, { x: 660, y: ys[i] }, i % 2 ? ORANGE : YELLOW, { width: w }));
-    strands.push(mk(`v${i}`, { x: xs[i], y: 110 }, { x: xs[i], y: 390 }, i % 2 ? WHITE : TEAL, { width: w }));
+    strands.push(mk(`${i + 1}_1`, { x: 140, y: ys[i] }, { x: 660, y: ys[i] }, i % 2 ? ORANGE : YELLOW, { width: w }));
+    strands.push(mk(`${i + 5}_1`, { x: xs[i], y: 110 }, { x: xs[i], y: 390 }, i % 2 ? WHITE : TEAL, { width: w }));
   }
   return { name: 'Woven mat', strands };
 }
@@ -75,7 +79,7 @@ function curvedStack(): Scene3D {
   for (let i = 0; i < 3; i++) {
     const y = 200 + i * 20;
     strands.push(
-      mk(`curve${i}`, { x: 130, y }, { x: 670, y }, cols[i], {
+      mk(`${i + 1}_1`, { x: 130, y }, { x: 670, y }, cols[i], {
         width: 50,
         cp1: { x: 300, y: y - 110 + i * 30 },
         cp2: { x: 500, y: y + 110 - i * 30 },

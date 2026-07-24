@@ -40,6 +40,25 @@ export interface Strand3D {
   visible: boolean;
   /** True for OSS MaskedStrand records — skipped in 3D (masks become real Z). */
   isMask: boolean;
+
+  /**
+   * Endpoint occupancy [start, end] — OpenStrand Studio's `has_circles`. An
+   * endpoint is "occupied" when another strand's endpoint is glued to the same
+   * point (i.e. it's an attachment junction). Occupied endpoints can't receive a
+   * NEW attachment; only free endpoints can. This is DERIVED from coincident
+   * endpoints (see connections.recomputeOccupancy), keeping attach/move/import
+   * all consistent, exactly like the desktop app.
+   */
+  hasCircles: [boolean, boolean];
+  /**
+   * The strand this one was attached to (its `start` is glued to the parent's
+   * endpoint), or null for a base strand. Used for the layer naming/lineage that
+   * mirrors OSS's `set_count` families — not for movement (movement follows the
+   * coincident-point graph, so imported files reconnect too).
+   */
+  parentId: string | null;
+  /** Which side of the parent (0=start, 1=end) this strand's start is glued to. */
+  parentSide: 0 | 1 | null;
 }
 
 export interface Scene3D {

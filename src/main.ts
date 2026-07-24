@@ -12,4 +12,9 @@ const panelRoot = document.getElementById('panel') as HTMLElement;
 const view = new StrandScene(canvas);
 view.setScene(makeSample('two-crossing'));
 
-new Panel(panelRoot, view);
+const panel = new Panel(panelRoot, view);
+
+// Dev-only handle for automated UI tests (stripped from production builds).
+if (import.meta.env.DEV) {
+  (window as unknown as { __scoubidou?: unknown }).__scoubidou = { view, panel };
+}
