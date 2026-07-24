@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 300" font-family="-apple-system, Segoe UI, Roboto, sans-serif">
+  <rect width="820" height="300" fill="#f4f6f9"/>
+
+  <!-- 2D (top-down) -->
+  <text x="170" y="34" text-anchor="middle" font-size="15" font-weight="700" fill="#46505f">OpenStrand — top-down</text>
+  <g stroke="#1e1e1e" stroke-width="1.5">
+    <rect x="60" y="120" width="220" height="42" rx="8" fill="#e27a26"/>
+    <rect x="149" y="70" width="42" height="150" rx="8" fill="#f5c837"/>
+  </g>
+  <text x="170" y="256" text-anchor="middle" font-size="12" fill="#6a7686">yellow "over" orange — faked by masking</text>
+
+  <!-- arrow -->
+  <g stroke="#9aa5b3" stroke-width="2" fill="none">
+    <path d="M320 150 h70" marker-end="url(#a)"/>
+  </g>
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
+      <path d="M0 0 L7 3 L0 6 z" fill="#9aa5b3"/>
+    </marker>
+  </defs>
+
+  <!-- 3D (stacked) -->
+  <text x="600" y="34" text-anchor="middle" font-size="15" font-weight="700" fill="#46505f">Scoubidou3D — real depth</text>
+  <!-- orange ribbon (lower), simple isometric box -->
+  <g stroke="#1e1e1e" stroke-width="1.2">
+    <!-- orange horizontal, lower layer -->
+    <polygon points="470,205 690,205 720,185 500,185" fill="#e27a26"/>
+    <polygon points="690,205 720,185 720,205 690,225" fill="#b5611b"/>
+    <polygon points="470,205 690,205 690,225 470,225" fill="#c96a1f"/>
+    <!-- yellow vertical, upper layer, sits on top -->
+    <polygon points="560,140 602,140 632,120 590,120" fill="#f5c837"/>
+    <polygon points="602,140 632,120 632,215 602,235" fill="#cba21f"/>
+    <polygon points="560,140 602,140 602,235 560,235" fill="#e3ba2c"/>
+  </g>
+  <text x="600" y="278" text-anchor="middle" font-size="12" fill="#6a7686">yellow physically sits on orange · tilt to see it</text>
+</svg>
