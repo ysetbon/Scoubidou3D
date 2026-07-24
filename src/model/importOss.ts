@@ -7,7 +7,7 @@
 // records are flagged and skipped: masking is how the 2D app fakes over/under,
 // and in 3D that job is done for real by the Z stack.
 
-import { Point, RGBA, Scene3D, Strand3D } from './types';
+import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
 import { recomputeOccupancy } from './connections';
 
 interface RawColor {
@@ -77,19 +77,46 @@ function extractStrands(obj: RawFile): RawStrand[] {
   return [];
 }
 
+/**
+ * Split a MaskedStrand's layer_name into its two component ids. OSS names a mask
+ * `{first.layer_name}_{second.layer_name}` (masked_strand.py) — e.g. `1_2_3_4`
+ * means strand `1_2` rides over `3_4`. Both halves normally look like `N_M`, so
+ * we pick the split where BOTH halves are real strands, falling back to OSS's
+ * fixed 2+2 split (save_load_manager.py) when the ids are unusual.
+ */
+function parseMaskLink(layerName: string, ids: Set<string>): MaskLink | null {
+  const parts = layerName.split('_');
+  for (let k = 1; k < parts.length; k++) {
+    const over = parts.slice(0, k).join('_');
+    const under = parts.slice(k).join('_');
+    if (ids.has(over) && ids.has(under)) return { overId: over, underId: under };
+  }
+  if (parts.length >= 4) {
+    return { overId: `${parts[0]}_${parts[1]}`, underId: `${parts.slice(2).join('_')}` };
+  }
+  return null;
+}
+
 /** Parse a raw parsed-JSON object (OSS/OpenStrandJS format) into a Scene3D. */
 export function sceneFromOss(data: unknown, name = 'imported'): Scene3D {
   const obj = (data ?? {}) as RawFile;
   const raw = extractStrands(obj);
   const strands: Strand3D[] = [];
+  const maskRecords: string[] = []; // layer_names of MaskedStrand records
 
   raw.forEach((s, i) => {
+    const isMask = (s.type ?? 'Strand') === 'MaskedStrand';
+    if (isMask) {
+      // A mask isn't a ribbon in 3D — it's an over/under relationship. Keep its
+      // name and resolve it to a MaskLink once every strand id is known.
+      if (s.layer_name) maskRecords.push(s.layer_name);
+      return;
+    }
     const start = point(s.start, { x: 0, y: 0 });
     const end = point(s.end, { x: 100, y: 0 });
     const cps = (s.control_points ?? []) as Point[];
     const cp1 = point(cps[0], start);
     const cp2 = point(cps[1], end);
-    const isMask = (s.type ?? 'Strand') === 'MaskedStrand';
     strands.push({
       id: s.layer_name ?? `strand_${i}`,
       start,
@@ -102,8 +129,8 @@ export function sceneFromOss(data: unknown, name = 'imported'): Scene3D {
       color: color(s.color, DEFAULT_COLOR),
       stroke_color: color(s.stroke_color, DEFAULT_STROKE),
       thickness: null,
-      visible: !s.is_hidden && !isMask,
-      isMask,
+      visible: !s.is_hidden,
+      isMask: false,
       // Occupancy is derived from the geometry below, so the junctions of an
       // imported weave reconnect (attached strands share endpoints in OSS).
       hasCircles: [false, false],
@@ -115,7 +142,19 @@ export function sceneFromOss(data: unknown, name = 'imported'): Scene3D {
     });
   });
 
-  const scene: Scene3D = { strands, name };
+  const ids = new Set(strands.map((s) => s.id));
+  const masks: MaskLink[] = [];
+  const seen = new Set<string>();
+  for (const layerName of maskRecords) {
+    const link = parseMaskLink(layerName, ids);
+    if (!link || !ids.has(link.overId) || !ids.has(link.underId)) continue;
+    const key = `${link.overId}>${link.underId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    masks.push(link);
+  }
+
+  const scene: Scene3D = { strands, masks, name };
   recomputeOccupancy(scene);
   return scene;
 }

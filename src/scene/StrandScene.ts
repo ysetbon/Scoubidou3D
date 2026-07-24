@@ -17,8 +17,9 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { Scene3D, Strand3D, RGBA, Point } from '../model/types';
+import { MaskLink, Scene3D, Strand3D, RGBA, Point } from '../model/types';
 import {
+  collectJunctions,
   connectedEndpoints,
   endpoint,
   makeAttachedStrand,
@@ -28,7 +29,9 @@ import {
 } from '../model/connections';
 import { sampleCenterline } from '../geometry/bezier';
 import { buildRibbonGeometry } from '../geometry/ribbon';
-import { Vec2 } from '../geometry/vec';
+import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
+import { arcLengths, Bump, heightField, polylineCrossings } from '../geometry/weave';
+import { Vec2, Vec3 } from '../geometry/vec';
 
 // Source (pixel) units -> world units. Keeps camera distances comfortable.
 const SCALE = 0.02;
@@ -47,7 +50,7 @@ const COLOR_OCC = 0x9099a6; // attach-mode occupied endpoint (gray — junction)
 // the just-created strand is discarded — the analogue of OSS's min_length guard.
 const MIN_ATTACH_LEN = 4;
 
-export type EditMode = 'orbit' | 'move' | 'attach';
+export type EditMode = 'orbit' | 'move' | 'attach' | 'weave';
 
 interface MoveTarget {
   strand: Strand3D;
@@ -64,20 +67,30 @@ type DragState =
 
 export interface RenderParams {
   thickness: number; // default ribbon depth, source units
-  layerGap: number; // Z distance between consecutive layers, source units
+  layerGap: number; // base lift between consecutive layers, source units (small)
   widthScale: number; // multiplier applied to every strand width
   outline: boolean; // draw the stroke-colored outline shell
   roundCaps: boolean; // rounded strand ends
   showGrid: boolean;
+  weave: boolean; // realise over/under as real depth at crossings
+  weaveDepth: number; // weave amplitude — how far a lace lifts/dips, source units
+  weaveSpan: number; // crossing pulse width, as a multiple of the crossing widths
 }
 
 export const DEFAULT_PARAMS: RenderParams = {
   thickness: 26,
-  layerGap: 30,
+  // Base lift between layers. The weave picks over/under at every CROSSING on its
+  // own (adaptive amplitude), so this only needs to separate strands that overlap
+  // WITHOUT crossing (a plain parallel stack) — and it's what gives the ordered
+  // stack when the weave is switched off.
+  layerGap: 10,
   widthScale: 1,
   outline: true,
   roundCaps: true,
   showGrid: true,
+  weave: true,
+  weaveDepth: 26,
+  weaveSpan: 1.3,
 };
 
 function threeColor(c: RGBA): THREE.Color {
@@ -98,7 +111,7 @@ export class StrandScene {
   private strandGroup = new THREE.Group();
   private handleGroup = new THREE.Group();
   private grid: THREE.GridHelper | null = null;
-  private current: Scene3D = { strands: [], name: 'empty' };
+  private current: Scene3D = { strands: [], masks: [], name: 'empty' };
   private params: RenderParams = { ...DEFAULT_PARAMS };
   private center: Vec2 = { x: 0, y: 0 };
   private contentRadius = 10;
@@ -109,6 +122,13 @@ export class StrandScene {
   private handleGeo = new THREE.SphereGeometry(1, 18, 12);
   private dragState: DragState | null = null;
   private hovered: THREE.Mesh | null = null;
+
+  // The woven world-space centerline of each strand (indexed like scene.strands;
+  // null for hidden strands), rebuilt every frame the scene changes. Handles and
+  // connectors read endpoint heights from here so they follow the weave.
+  private world3D: Array<Vec3[] | null> = [];
+  // Weave (mask) tool: the strand picked as "over"; the next pick becomes "under".
+  private weavePendingOverId: string | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -205,8 +225,14 @@ export class StrandScene {
     }
     this.mode = mode;
     this.hovered = null;
+    this.weavePendingOverId = null;
     this.rebuild();
     this.setCursor(mode === 'orbit' ? '' : 'crosshair');
+  }
+
+  /** The strand picked as "over" in the weave tool (null when nothing pending). */
+  getWeavePending(): string | null {
+    return this.weavePendingOverId;
   }
 
   /** Abandon an in-flight drag without committing it. An attach in progress is
@@ -224,41 +250,176 @@ export class StrandScene {
     }
   }
 
-  /** Rebuild all ribbon meshes (and edit handles) from the current scene + params. */
+  /** Rebuild all ribbon meshes, connectors and edit handles from the current
+   *  scene + params. This is where masks become real depth: we find every
+   *  crossing, decide who rides over, and weave the centerlines in Z. */
   rebuild(): void {
     this.disposeGroup();
 
-    const n = this.current.strands.length;
-    const gap = this.params.layerGap * SCALE;
-    // Center the stack in Z around 0.
-    const zBase = -((n - 1) * gap) / 2;
+    // 1) The flat world-space centerline of every strand (null = skip).
+    const worldLines = this.current.strands.map((s) =>
+      s.visible && !s.isMask ? densify(this.strandCenterlineWorld(s), 0.2) : null,
+    );
 
-    this.current.strands.forEach((strand, layerIndex) => {
-      if (!strand.visible || strand.isMask) return;
-      const mesh = this.buildStrandMesh(strand);
-      if (!mesh) return;
-      mesh.position.z = zBase + layerIndex * gap;
-      this.strandGroup.add(mesh);
+    // 2) Weave: turn crossings into per-strand Z height fields, then bake Z into
+    //    each centerline. world3D[i] is the woven centerline used everywhere.
+    this.world3D = this.weaveCenterlines(worldLines);
+
+    // 3) One ribbon per strand, along its woven centerline.
+    this.current.strands.forEach((strand, i) => {
+      const line = this.world3D[i];
+      if (!line) return;
+      const mesh = this.buildStrandMesh(strand, line);
+      if (mesh) this.strandGroup.add(mesh);
     });
+
+    // 4) Bridge every attach junction so parents and children are really joined.
+    this.buildConnectors();
 
     this.updateGrid();
     this.buildHandles();
   }
 
-  private buildStrandMesh(strand: Strand3D): THREE.Object3D | null {
-    // Sample the OSS-faithful centerline, then map source -> world XY.
-    const srcCenter = sampleCenterline({
+  // Sample a strand's OSS-faithful centerline and map it to world XY (y flipped).
+  private strandCenterlineWorld(strand: Strand3D): Vec2[] {
+    const src = sampleCenterline({
       start: strand.start,
       end: strand.end,
       control_points: strand.control_points,
       control_point_center: strand.control_point_center,
       control_point_center_locked: strand.control_point_center_locked,
     });
-    const worldLine: Vec2[] = srcCenter.map((p) => ({
-      x: (p.x - this.center.x) * SCALE,
-      y: -(p.y - this.center.y) * SCALE, // flip: OSS y is down, world y is up
-    }));
-    if (worldLine.length < 2) return null;
+    return src.map((p) => ({ x: (p.x - this.center.x) * SCALE, y: -(p.y - this.center.y) * SCALE }));
+  }
+
+  // Does a mask fix the order for this pair? Returns the index (i or j) that
+  // rides over, or null if no mask covers them (caller falls back to layer order).
+  private maskOver(i: number, j: number): number | null {
+    const idI = this.current.strands[i].id;
+    const idJ = this.current.strands[j].id;
+    for (const m of this.current.masks) {
+      if (m.overId === idI && m.underId === idJ) return i;
+      if (m.overId === idJ && m.underId === idI) return j;
+    }
+    return null;
+  }
+
+  private strandThicknessWorld(strand: Strand3D): number {
+    return (strand.thickness ?? this.params.thickness) * SCALE;
+  }
+
+  /** Build every strand's woven centerline (world XY + Z from the weave).
+   *
+   *  Amplitude is chosen PER CROSSING so the over strand clears the under
+   *  strand no matter their base heights: the extra lift/dip we add closes the
+   *  gap the base stack leaves (or reverses it, when a mask puts a lower layer
+   *  on top), plus a small pop so every crossing reads. That decoupling lets the
+   *  base "layer lift" stay large enough to separate a plain stack while masks
+   *  still always win at a crossing. */
+  private weaveCenterlines(worldLines: Array<Vec2[] | null>): Array<Vec3[] | null> {
+    const strands = this.current.strands;
+    const span = this.params.weaveSpan;
+    const pop = this.params.weaveDepth * SCALE; // minimum lift/dip each side gets
+    const bumps: Bump[][] = strands.map(() => []);
+
+    if (this.params.weave) {
+      const boxes = worldLines.map((l) => (l ? bbox(l) : null));
+      for (let i = 0; i < strands.length; i++) {
+        const a = worldLines[i];
+        if (!a) continue;
+        for (let j = i + 1; j < strands.length; j++) {
+          const b = worldLines[j];
+          if (!b) continue;
+          if (!boxesOverlap(boxes[i]!, boxes[j]!)) continue; // cheap reject
+          const crossings = polylineCrossings(a, b);
+          if (crossings.length === 0) continue;
+
+          // Who's over here: a mask if one covers the pair, else higher layer.
+          const over = this.maskOver(i, j) ?? j;
+          const under = over === i ? j : i;
+          // Required centre separation so the two ribbons don't interpenetrate.
+          const clearance =
+            ((this.strandThicknessWorld(strands[over]) + this.strandThicknessWorld(strands[under])) / 2) * 1.15;
+          const baseDiff = this.layerZ(over) - this.layerZ(under);
+          // Move each side by delta: base + 2*delta must reach the clearance, and
+          // delta is at least `pop` so the weave is always visible.
+          const delta = Math.max(pop, (clearance - baseDiff) / 2);
+
+          const wi = strands[i].width * this.params.widthScale * SCALE;
+          const wj = strands[j].width * this.params.widthScale * SCALE;
+          const radius = (wi / 2 + wj / 2) * span;
+          for (const c of crossings) {
+            const sOver = over === i ? c.sA : c.sB;
+            const sUnder = under === i ? c.sA : c.sB;
+            bumps[over].push({ s: sOver, radius, height: delta });
+            bumps[under].push({ s: sUnder, radius, height: -delta });
+          }
+        }
+      }
+    }
+
+    return strands.map((_, i) => {
+      const line = worldLines[i];
+      if (!line) return null;
+      const base = this.layerZ(i);
+      const { cum } = arcLengths(line);
+      const z = heightField(cum, bumps[i]);
+      return line.map((p, k) => ({ x: p.x, y: p.y, z: base + z[k] }));
+    });
+  }
+
+  /** Bridge each attach junction with a lofted connector so the joined ribbons
+   *  read as one continuous lace stepping between layers. */
+  private buildConnectors(): void {
+    for (const j of collectJunctions(this.current)) {
+      const parent = this.endAt(j.parentIndex, j.parentSide);
+      const child = this.endAt(j.childIndex, j.childSide);
+      if (!parent || !child) continue;
+      const strand = this.current.strands[j.childIndex];
+      const width = strand.width * this.params.widthScale * SCALE;
+      const thickness = (strand.thickness ?? this.params.thickness) * SCALE;
+      const geom = buildConnectorGeometry(parent, child, {
+        width,
+        thickness,
+        cornerRadius: thickness * 0.48,
+        cornerSteps: 3,
+      });
+      if (!geom) continue;
+      const mat = new THREE.MeshStandardMaterial({
+        color: threeColor(strand.color),
+        roughness: 0.5,
+        metalness: 0.04,
+        side: THREE.DoubleSide,
+      });
+      if (strand.color.a < 255) {
+        mat.transparent = true;
+        mat.opacity = strand.color.a / 255;
+      }
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.strandGroup.add(mesh);
+    }
+  }
+
+  // The woven world endpoint of a strand, as a connector end (position + the
+  // in-plane heading along the strand at that end). null if the strand is hidden.
+  private endAt(index: number, side: 0 | 1): ConnectorEnd | null {
+    const line = this.world3D[index];
+    if (!line || line.length < 2) return null;
+    if (side === 0) {
+      const p = line[0];
+      const q = line[1];
+      return { center: { ...p }, tangent: { x: q.x - p.x, y: q.y - p.y } };
+    }
+    const p = line[line.length - 1];
+    const q = line[line.length - 2];
+    // Heading in the start->end sense (points outward past the end).
+    return { center: { ...p }, tangent: { x: p.x - q.x, y: p.y - q.y } };
+  }
+
+  private buildStrandMesh(strand: Strand3D, centerline: Vec3[]): THREE.Object3D | null {
+    if (centerline.length < 2) return null;
 
     const width = strand.width * this.params.widthScale * SCALE;
     const thickness = (strand.thickness ?? this.params.thickness) * SCALE;
@@ -266,7 +427,7 @@ export class StrandScene {
 
     const group = new THREE.Group();
 
-    const fillGeom = buildRibbonGeometry(worldLine, {
+    const fillGeom = buildRibbonGeometry(centerline, {
       width,
       thickness,
       cornerRadius: thickness * 0.48,
@@ -286,6 +447,11 @@ export class StrandScene {
       fillMat.transparent = true;
       fillMat.opacity = strand.color.a / 255;
     }
+    // Weave tool: glow the strand picked as "over" while waiting for the "under".
+    if (this.mode === 'weave' && strand.id === this.weavePendingOverId) {
+      fillMat.emissive = new THREE.Color(0x2fb862);
+      fillMat.emissiveIntensity = 0.6;
+    }
     const fillMesh = new THREE.Mesh(fillGeom, fillMat);
     fillMesh.castShadow = true;
     fillMesh.receiveShadow = true;
@@ -294,7 +460,7 @@ export class StrandScene {
 
     if (this.params.outline && strand.stroke_width > 0) {
       const ow = strand.stroke_width * SCALE;
-      const outlineGeom = buildRibbonGeometry(worldLine, {
+      const outlineGeom = buildRibbonGeometry(centerline, {
         width: width + ow * 2,
         thickness: thickness + ow * 2,
         cornerRadius: (thickness + ow * 2) * 0.48,
@@ -348,18 +514,24 @@ export class StrandScene {
 
   private buildHandles(): void {
     this.disposeHandles();
-    if (this.mode === 'orbit') return;
+    // Orbit has no handles; the weave tool picks strand bodies, not endpoints.
+    if (this.mode === 'orbit' || this.mode === 'weave') return;
 
     this.current.strands.forEach((strand, layerIndex) => {
       if (!strand.visible || strand.isMask) return;
+      const line = this.world3D[layerIndex];
       const z = this.layerZ(layerIndex);
+      // Endpoint handles sit at the strand's woven height so they track the lace
+      // as it rises and dips; control points use the base layer height.
+      const endZ = (side: 0 | 1): number =>
+        line && line.length >= 2 ? (side === 0 ? line[0].z : line[line.length - 1].z) : z;
 
       ([0, 1] as const).forEach((side) => {
         const occupied = strand.hasCircles[side];
         if (this.mode === 'attach') {
           const attachable = !occupied;
           const mesh = this.makeHandle(attachable ? END_R : OCC_R, attachable ? COLOR_FREE : COLOR_OCC);
-          mesh.position.copy(this.srcToWorld(endpoint(strand, side), z));
+          mesh.position.copy(this.srcToWorld(endpoint(strand, side), endZ(side)));
           mesh.userData.kind = 'endpoint';
           mesh.userData.index = layerIndex;
           mesh.userData.side = side;
@@ -368,7 +540,7 @@ export class StrandScene {
         } else {
           // move mode: every endpoint is draggable
           const mesh = this.makeHandle(END_R, COLOR_END);
-          mesh.position.copy(this.srcToWorld(endpoint(strand, side), z));
+          mesh.position.copy(this.srcToWorld(endpoint(strand, side), endZ(side)));
           mesh.userData.kind = 'endpoint';
           mesh.userData.index = layerIndex;
           mesh.userData.side = side;
@@ -417,6 +589,66 @@ export class StrandScene {
     return hits.length ? hits[0] : null;
   }
 
+  // Topmost strand id under the pointer (skips outline shells and connectors,
+  // which carry no strandId). Used by the weave tool.
+  private pickStrand(e: PointerEvent): string | null {
+    if (!this.ndc(e)) return null;
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const hits = this.raycaster.intersectObjects(this.strandGroup.children, true);
+    for (const h of hits) {
+      const id = h.object.userData?.strandId;
+      if (typeof id === 'string') return id;
+    }
+    return null;
+  }
+
+  // Weave tool click: first pick is the OVER strand, second is the UNDER strand.
+  private handleWeavePick(id: string): void {
+    if (this.weavePendingOverId === null) {
+      this.weavePendingOverId = id; // arm: this strand rides over
+    } else if (id === this.weavePendingOverId) {
+      this.weavePendingOverId = null; // re-clicking the armed strand cancels
+    } else {
+      this.setMask(this.weavePendingOverId, id); // second pick goes under
+      this.weavePendingOverId = null;
+    }
+    this.rebuild();
+    this.onSceneChanged?.();
+  }
+
+  // ---- masks (over/under) --------------------------------------------------
+  getMasks(): MaskLink[] {
+    return this.current.masks;
+  }
+
+  /** Set `overId` to ride over `underId`, replacing any existing relationship for
+   *  the pair (so a repeat pick in the other order simply flips it). */
+  setMask(overId: string, underId: string): void {
+    if (overId === underId) return;
+    this.current.masks = this.current.masks.filter(
+      (m) =>
+        !((m.overId === overId && m.underId === underId) || (m.overId === underId && m.underId === overId)),
+    );
+    this.current.masks.push({ overId, underId });
+    this.rebuild();
+    this.onSceneChanged?.();
+  }
+
+  flipMask(index: number): void {
+    const m = this.current.masks[index];
+    if (!m) return;
+    this.current.masks[index] = { overId: m.underId, underId: m.overId };
+    this.rebuild();
+    this.onSceneChanged?.();
+  }
+
+  removeMask(index: number): void {
+    if (index < 0 || index >= this.current.masks.length) return;
+    this.current.masks.splice(index, 1);
+    this.rebuild();
+    this.onSceneChanged?.();
+  }
+
   private rayToSrc(e: PointerEvent, plane: THREE.Plane): Point | null {
     if (!this.ndc(e)) return null;
     this.raycaster.setFromCamera(this.pointer, this.camera);
@@ -427,6 +659,18 @@ export class StrandScene {
 
   private onPointerDown = (e: PointerEvent): void => {
     if (this.mode === 'orbit' || e.button !== 0) return;
+
+    // Weave tool: click the OVER strand, then the UNDER strand — pick bodies,
+    // not endpoint handles. Clicking empty space still orbits.
+    if (this.mode === 'weave') {
+      const id = this.pickStrand(e);
+      if (!id) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      this.handleWeavePick(id);
+      return;
+    }
+
     const hit = this.pickHandle(e);
     if (!hit) return; // missed every handle -> let OrbitControls orbit
 
@@ -714,4 +958,50 @@ export class StrandScene {
 // Linear interpolation between two source-space points.
 function lerp(a: Point, b: Point, t: number): Point {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+
+// Subdivide a polyline so no segment is longer than maxSeg. Straight strands are
+// sampled as just two points; the weave needs intermediate samples to lift and
+// dip smoothly through a crossing, so we densify before building the height
+// field. Capped so a pathological input can't blow up.
+function densify(poly: Vec2[], maxSeg: number): Vec2[] {
+  if (poly.length < 2) return poly;
+  const cap = 600;
+  const out: Vec2[] = [poly[0]];
+  for (let i = 1; i < poly.length && out.length < cap; i++) {
+    const a = poly[i - 1];
+    const b = poly[i];
+    const d = Math.hypot(b.x - a.x, b.y - a.y);
+    const n = Math.max(1, Math.ceil(d / maxSeg));
+    for (let k = 1; k <= n && out.length < cap; k++) {
+      const t = k / n;
+      out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    }
+  }
+  return out;
+}
+
+interface Box {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+function bbox(poly: Vec2[]): Box {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of poly) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+function boxesOverlap(a: Box, b: Box): boolean {
+  return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
 }

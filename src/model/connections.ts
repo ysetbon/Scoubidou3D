@@ -88,6 +88,56 @@ function isJunction(strands: Strand3D[], index: number, side: 0 | 1): boolean {
 }
 
 /**
+ * A glued endpoint pair to bridge in 3D. Each strand's START that sits on
+ * another strand's endpoint (the OSS "child.start glued to parent" attach shape)
+ * yields one junction, pairing the child start with the parent endpoint it hangs
+ * off. Derived purely from coincident points, so it reconnects imported files as
+ * well as in-app attaches — and a parent carrying several children yields one
+ * junction per child (never child-to-child).
+ */
+export interface Junction {
+  childIndex: number;
+  childSide: 0 | 1;
+  parentIndex: number;
+  parentSide: 0 | 1;
+}
+
+export function collectJunctions(scene: Scene3D): Junction[] {
+  const strands = scene.strands;
+  const out: Junction[] = [];
+  const seen = new Set<string>();
+
+  for (let ci = 0; ci < strands.length; ci++) {
+    const child = strands[ci];
+    if (child.isMask) continue;
+    const anchor = child.start; // only a strand's START hangs off a parent
+    // Find coincident endpoints on other strands; prefer a parent END (a real
+    // chain) over a parent START (two strands sharing a head).
+    let best: { index: number; side: 0 | 1 } | null = null;
+    for (let pi = 0; pi < strands.length; pi++) {
+      if (pi === ci) continue;
+      const p = strands[pi];
+      if (p.isMask) continue;
+      ([1, 0] as const).forEach((side) => {
+        if (!pointsClose(endpoint(p, side), anchor)) return;
+        if (!best || (side === 1 && best.side === 0)) best = { index: pi, side };
+      });
+    }
+    if (!best) continue;
+    const parent = best as { index: number; side: 0 | 1 };
+    // One bridge per unordered strand pair at this point.
+    const key =
+      ci < parent.index
+        ? `${ci}:${parent.index}:${Math.round(anchor.x)}:${Math.round(anchor.y)}`
+        : `${parent.index}:${ci}:${Math.round(anchor.x)}:${Math.round(anchor.y)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ childIndex: ci, childSide: 0, parentIndex: parent.index, parentSide: parent.side });
+  }
+  return out;
+}
+
+/**
  * Next layer name for a strand attached to `parent`, following OSS's family
  * convention: members of a set share the number N and count up — `1_1`, `1_2`,
  * `1_3`. If the parent's id isn't `N_M` (e.g. a hand-named sample), fall back to
