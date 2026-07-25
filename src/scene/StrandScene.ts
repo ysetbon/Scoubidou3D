@@ -30,7 +30,7 @@ import {
 import { sampleCenterline } from '../geometry/bezier';
 import { buildRibbonGeometry } from '../geometry/ribbon';
 import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
-import { roundCorners } from '../geometry/polyline';
+import { roundCorners, splitAtFolds } from '../geometry/polyline';
 import { Anchor, arcLengths, heightField, polylineCrossings } from '../geometry/weave';
 import { Vec2, Vec3 } from '../geometry/vec';
 
@@ -384,29 +384,52 @@ export class StrandScene {
         continue;
       }
 
-      // Concatenate into one centerline, dropping the duplicated joint vertex.
+      // Concatenate into one centerline. The joint vertex arrives twice — once
+      // from each strand, each with its own weave height — so collapse the pair
+      // and split the difference, otherwise the joint carries a step with no
+      // length in the plane and the heading there reads as neither run's.
       const line: Vec3[] = [];
       for (const m of chain) {
         const part = this.world3D[m.index]!;
         const walk = m.reversed ? [...part].reverse() : part;
         for (const p of walk) {
           const last = line[line.length - 1];
-          if (last && Math.hypot(last.x - p.x, last.y - p.y) < 1e-6 && Math.abs(last.z - p.z) < 1e-6) continue;
-          line.push(p);
+          if (last && Math.hypot(last.x - p.x, last.y - p.y) < 1e-6) {
+            last.z = (last.z + p.z) / 2;
+            continue;
+          }
+          line.push({ ...p });
         }
       }
-      // Round the joins before sweeping. Glued strands meet at whatever angle they
-      // were drawn at, and a folded arm turns far enough to be a near-reversal;
-      // swept raw, the cross-section would pivot in a single step and wring the
-      // ribbon. The bight is sized from the lace's own width.
+
+      // Sweeping the whole lace as one ribbon works right up until it folds. A
+      // fold is not a corner the sweep can carry a cross-section round — it is a
+      // crease, where the lace is cut clean and comes away flat on the other
+      // side. So the lace is cut into runs at its folds and each run swept on its
+      // own, ending on the shared crease. Gentler joins stay inside a run and are
+      // rounded into a bight sized from the lace's own width.
       const width = first.width * this.params.widthScale * SCALE;
-      const rounded = roundCorners(line, width * 0.5);
-      const mesh = this.buildStrandMesh(first, rounded, [true, true]);
-      if (!mesh) {
+      const pieces = splitAtFolds(line);
+      let built = 0;
+      for (const piece of pieces) {
+        const rounded = roundCorners(piece.pts, width * 0.5);
+        // A cut end is not a free end: no dome (it would bulge through the
+        // crease) and no outline plate across the cut (the two runs' sleeves
+        // meet there and should read as one).
+        const mesh = this.buildStrandMesh(
+          first,
+          rounded,
+          [!piece.startCut, !piece.endCut],
+          [piece.startShear, piece.endShear],
+        );
+        if (!mesh) continue;
+        this.strandGroup.add(mesh);
+        built++;
+      }
+      if (built === 0) {
         for (const m of chain) visited.delete(m.index);
         continue;
       }
-      this.strandGroup.add(mesh);
       for (const m of chain) absorbed.add(m.index);
     }
     return absorbed;
@@ -578,6 +601,8 @@ export class StrandScene {
     strand: Strand3D,
     centerline: Vec3[],
     freeEnds: [boolean, boolean] = [true, true],
+    /** Tips the end faces over onto a fold's crease line — see ribbon.ts. */
+    shear: [number, number] = [0, 0],
   ): THREE.Object3D | null {
     if (centerline.length < 2) return null;
 
@@ -598,6 +623,8 @@ export class StrandScene {
       roundCaps: this.params.roundCaps,
       capStart,
       capEnd,
+      startShear: shear[0],
+      endShear: shear[1],
     });
     const fillMat = new THREE.MeshStandardMaterial({
       color: threeColor(strand.color),
@@ -637,6 +664,8 @@ export class StrandScene {
         // into one sleeve instead of showing a black plate at the seam.
         openStart: !freeEnds[0],
         openEnd: !freeEnds[1],
+        startShear: shear[0],
+        endShear: shear[1],
       });
       const outlineMat = new THREE.MeshBasicMaterial({
         color: threeColor(strand.stroke_color),

@@ -38,6 +38,17 @@ export interface RibbonOptions {
    */
   openStart?: boolean;
   openEnd?: boolean;
+  /**
+   * Tip the end cross-section over instead of leaving it square to the run, so
+   * the ribbon finishes on an oblique flat face. A vertex sitting `u` across the
+   * width is slid `shear * u` along the heading.
+   *
+   * This is how a FOLD is built (polyline.ts): the two runs meeting at a fold are
+   * cut along one shared crease line, so their end faces coincide and the lace
+   * reads as one strap creased flat — no corner to mitre, notch or pinch.
+   */
+  startShear?: number;
+  endShear?: number;
 }
 
 // A cross-section is a closed loop of {u, v} points in the local (side, up)
@@ -98,6 +109,30 @@ function tangentsOf(points: Vec3[]): Vec2[] {
       ty /= len;
     }
     out.push({ x: tx, y: ty });
+  }
+  return out;
+}
+
+// How steeply the centerline climbs at each sample: rise over in-plane run.
+//
+// The sweep keeps "across" horizontal, so the lace never rolls about its own
+// axis — that is what makes it read like the flat 2D drawing from above. But a
+// lace ducking under a crossing can climb steeply over a short run, and a
+// cross-section held dead level on a steep climb stands the ribbon on edge: the
+// strip between two rings comes out a near-vertical wall, and the top face
+// creases where the slope turns over.
+//
+// Tilting the section with the slope — pitch only, still no roll — lays the flat
+// face along the ramp, the way a real lace lies over the strand it is climbing.
+// Level stretches are unaffected: the pitch is zero and "up" is +Z as before.
+function slopesOf(points: Vec3[]): number[] {
+  const n = points.length;
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = points[Math.max(0, i - 1)];
+    const b = points[Math.min(n - 1, i + 1)];
+    const run = Math.hypot(b.x - a.x, b.y - a.y);
+    out.push(run < 1e-9 ? 0 : (b.z - a.z) / run);
   }
   return out;
 }
@@ -170,6 +205,7 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   const section = crossSection(opts.width, opts.thickness, opts.cornerRadius, opts.cornerSteps);
   const m = section.length; // vertices per ring
   const tangents = tangentsOf(pts);
+  const slopes = slopesOf(pts);
 
   const positions: number[] = [];
   const rings: number[][] = []; // index bookkeeping per ring
@@ -194,20 +230,31 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   }
 
   // One ring of vertices per centerline sample.
+  const lastIdx = pts.length - 1;
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i];
     const t = tangents[i];
     // In-plane side normal (perpendicular to tangent, in XY): (-ty, tx).
     const sx = -t.y;
     const sy = t.x;
+    // Pitch the section with the climb so the flat face lies along the ramp.
+    // "Up" leans back over the heading; the side axis stays level, so the lace
+    // never rolls.
+    const k = 1 / Math.hypot(1, slopes[i]);
+    const ux = -t.x * slopes[i] * k;
+    const uy = -t.y * slopes[i] * k;
+    const uz = k;
+    // Only the two end rings can be tipped over onto a crease.
+    const shear = i === 0 ? (opts.startShear ?? 0) : i === lastIdx ? (opts.endShear ?? 0) : 0;
     const ringIdx: number[] = [];
     for (let j = 0; j < m; j++) {
       const s = section[mirrored[i] ? m - 1 - j : j];
       const u = s.x; // across width -> along side
-      const v = s.y; // through thickness -> along +Z
-      const x = p.x + sx * u;
-      const y = p.y + sy * u;
-      const z = p.z + v;
+      const v = s.y; // through thickness -> along the (pitched) up axis
+      const d = shear * u; // slide along the heading to reach the crease line
+      const x = p.x + sx * u + t.x * d + ux * v;
+      const y = p.y + sy * u + t.y * d + uy * v;
+      const z = p.z + uz * v;
       ringIdx.push(positions.length / 3);
       positions.push(x, y, z);
     }

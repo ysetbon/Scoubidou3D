@@ -24,6 +24,10 @@ import { Vec3 } from './vec';
  *  very slight corners, and rounding those would soften the curve itself. */
 const MIN_TURN = 0.35; // radians, ~20°
 
+/** Sharper than this and the lace is not bending, it is FOLDING — see
+ *  `splitAtFolds`. Well above anything a sampled curve produces. */
+const FOLD_TURN = (60 * Math.PI) / 180;
+
 // The corner is swept as a circular arc sampled at EQUAL ANGLES, so the heading
 // advances by the same small amount at every step. Sampling by parameter instead
 // (a Bezier, say) piles nearly all the rotation into one step at the apex of a
@@ -163,4 +167,101 @@ export function roundCorners(pts: Vec3[], targetRadius: number): Vec3[] {
     if (cum[i] > cursor) push(pts[i]);
   }
   return out.length >= 2 ? out : pts;
+}
+
+// ---------------------------------------------------------------------------
+// Folds
+// ---------------------------------------------------------------------------
+//
+// A flat lace cannot turn a sharp corner the way a rope can. Bending 155° in its
+// own plane would need the inner edge to shrink to nothing, and every attempt to
+// draw it that way shows the strain: mitred to a point it throws a spike, cut off
+// square it leaves a notch, swept round it pinches shut.
+//
+// A real lace does something else entirely — it FOLDS. Lay a paper strip down,
+// bring it back on itself, and the strip creases along a straight line and comes
+// away flat, full width, on the other side. Nothing bends and nothing narrows.
+//
+// So a fold is not a corner to be finished, it is a straight cut shared by two
+// runs. The crease line bisects the two headings (reflecting one onto the other),
+// and each run is cut off along it. The cuts are the same line, so the two runs
+// mate exactly: no gap to notch, no overlap to spike, and the lace keeps its full
+// width straight through the fold.
+
+/** One run between folds, plus the oblique end cuts that make its folds mate.
+ *  A shear of `d` slides the end cross-section along the heading by `d * u`,
+ *  where `u` is the vertex's offset across the width — so the flat end face
+ *  tips over onto the crease line. Zero means a square end. */
+export interface FoldPiece {
+  pts: Vec3[];
+  startShear: number;
+  endShear: number;
+  /** True where the run was cut at a fold rather than reaching the lace's own
+   *  end. A cut end is butted against its neighbour, not left in the open — and
+   *  a straight-back fold creases square, so a zero shear does not mean free. */
+  startCut: boolean;
+  endCut: boolean;
+}
+
+/** How far the end face must tip to lie along the crease `m`. */
+function creaseShear(t: { x: number; y: number }, m: { x: number; y: number }): number {
+  const den = t.x * m.y - t.y * m.x;
+  if (Math.abs(den) < 1e-6) return 0; // crease along the run — no fold after all
+  const num = -t.y * m.y - t.x * m.x; // perpendicular of t, crossed with m
+  // A shallow crease would reach a long way back along the run; cap it at a 63°
+  // cut, past which the two runs are far enough apart to mitre normally anyway.
+  return Math.max(-2, Math.min(2, -num / den));
+}
+
+/**
+ * Cut a centreline into runs at its folds, reporting the crease at each cut.
+ *
+ * Returns a single unshorn piece when there is nothing sharp enough to fold, so
+ * callers can treat the result uniformly.
+ */
+export function splitAtFolds(pts: Vec3[], minTurn = FOLD_TURN): FoldPiece[] {
+  const folds: number[] = [];
+  for (let i = 1; i < pts.length - 1; i++) {
+    if (turnAt(pts, i) >= minTurn) folds.push(i);
+  }
+  if (folds.length === 0) return [{ pts, startShear: 0, endShear: 0, startCut: false, endCut: false }];
+
+  const pieces: FoldPiece[] = [];
+  let from = 0;
+  let carriedShear = 0;
+  for (const k of [...folds, pts.length - 1]) {
+    const isFold = k !== pts.length - 1;
+    let endShear = 0;
+    let nextStart = 0;
+    if (isFold) {
+      const din = unit(pts[k].x - pts[k - 1].x, pts[k].y - pts[k - 1].y);
+      const dout = unit(pts[k + 1].x - pts[k].x, pts[k + 1].y - pts[k].y);
+      // The crease bisects the two headings: reflecting the incoming run about it
+      // gives the outgoing one. Half the signed turn, so it stays well defined
+      // right through a full reversal (where the crease squares up to both runs).
+      const a0 = Math.atan2(din.y, din.x);
+      let d = Math.atan2(dout.y, dout.x) - a0;
+      while (d > Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      const phi = a0 + d / 2;
+      const m = { x: Math.cos(phi), y: Math.sin(phi) };
+      endShear = creaseShear(din, m);
+      nextStart = creaseShear(dout, m);
+    }
+    const slice = pts.slice(from, k + 1);
+    if (slice.length >= 2) {
+      pieces.push({
+        pts: slice,
+        startShear: carriedShear,
+        endShear,
+        startCut: from > 0,
+        endCut: isFold,
+      });
+    }
+    from = k;
+    carriedShear = nextStart;
+  }
+  return pieces.length > 0
+    ? pieces
+    : [{ pts, startShear: 0, endShear: 0, startCut: false, endCut: false }];
 }
