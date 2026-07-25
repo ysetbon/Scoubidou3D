@@ -102,12 +102,22 @@ function tangentsOf(points: Vec3[]): Vec2[] {
  * its own z (the weave height), so the ribbon can rise and dip along its length.
  */
 export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): THREE.BufferGeometry {
-  // Drop consecutive duplicates (in XY — a pure-Z step is still a real step) so
-  // tangents are well-defined.
+  // Collapse consecutive points that share a position in the drawing plane, taking
+  // the average of their heights.
+  //
+  // A joint produces exactly such a pair: the two strands meeting there were woven
+  // separately, so each brings its own height to the shared point. Keeping both
+  // leaves a step with no length in the plane, and the heading is read from
+  // differences in the plane — so the heading at a joint came out as neither run's,
+  // and a fold never registered as a reversal at all.
   const pts: Vec3[] = [];
   for (const p of centerline) {
     const last = pts[pts.length - 1];
-    if (!last || Math.hypot(last.x - p.x, last.y - p.y) > 1e-6 || Math.abs(last.z - p.z) > 1e-6) pts.push(p);
+    if (last && Math.hypot(last.x - p.x, last.y - p.y) <= 1e-6) {
+      last.z = (last.z + p.z) / 2;
+      continue;
+    }
+    pts.push({ ...p });
   }
   if (pts.length < 2) {
     return new THREE.BufferGeometry();
@@ -120,6 +130,25 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   const positions: number[] = [];
   const rings: number[][] = []; // index bookkeeping per ring
 
+  // Which way round each ring is walked.
+  //
+  // "Across" is taken as the perpendicular of the heading, so it reverses the
+  // moment the heading does — and at a fold the heading reverses. Ring vertex j
+  // then lands on the opposite edge of the lace from the one it was on, and the
+  // strip between the two rings joins near edge to far edge: it crosses over, which
+  // is the X. The cross-section has not really turned over, only its numbering.
+  //
+  // So once the perpendicular flips, keep walking the section the other way round.
+  // Vertex j goes on pointing at the same physical edge, the strip stays flat
+  // through the fold, and the lace comes away parallel.
+  const mirrored: boolean[] = [false];
+  for (let i = 1; i < pts.length; i++) {
+    const prev = tangents[i - 1];
+    const t = tangents[i];
+    const flipped = -t.y * -prev.y + t.x * prev.x < 0; // the perpendiculars oppose
+    mirrored.push(flipped ? !mirrored[i - 1] : mirrored[i - 1]);
+  }
+
   // One ring of vertices per centerline sample.
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i];
@@ -129,8 +158,9 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     const sy = t.x;
     const ringIdx: number[] = [];
     for (let j = 0; j < m; j++) {
-      const u = section[j].x; // across width -> along side
-      const v = section[j].y; // through thickness -> along +Z
+      const s = section[mirrored[i] ? m - 1 - j : j];
+      const u = s.x; // across width -> along side
+      const v = s.y; // through thickness -> along +Z
       const x = p.x + sx * u;
       const y = p.y + sy * u;
       const z = p.z + v;
@@ -153,9 +183,16 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
       const v11 = b[j2];
       // Wound so face normals point OUTWARD (radially away from the centerline).
       // This matches Three's front-face convention, so MeshStandard lights the
-      // outside and the BackSide outline shell reads as a silhouette rim.
-      indices.push(v00, v11, v10);
-      indices.push(v00, v01, v11);
+      // outside and the BackSide outline shell reads as a silhouette rim. Where the
+      // section is walked backwards (past a fold) the loop runs the other way, so
+      // the winding is reversed to match and the normals still face out.
+      if (mirrored[i]) {
+        indices.push(v00, v10, v11);
+        indices.push(v00, v11, v01);
+      } else {
+        indices.push(v00, v11, v10);
+        indices.push(v00, v01, v11);
+      }
     }
   }
 
@@ -168,8 +205,9 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
       else indices.push(c, ring[j], ring[j + 1]);
     }
   };
-  if (!opts.openStart) capFan(rings[0], false); // start cap faces back (-tangent)
-  if (!opts.openEnd) capFan(rings[rings.length - 1], true); // end cap faces forward
+  const lastRing = rings.length - 1;
+  if (!opts.openStart) capFan(rings[0], mirrored[0]); // start cap faces back (-tangent)
+  if (!opts.openEnd) capFan(rings[lastRing], !mirrored[lastRing]); // end cap faces forward
 
   if (!opts.openStart && (opts.capStart ?? opts.roundCaps)) {
     addDomeCap(positions, indices, pts[0], tangents[0], section, opts, true);
