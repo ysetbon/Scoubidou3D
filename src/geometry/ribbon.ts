@@ -74,6 +74,11 @@ export function crossSection(width: number, thickness: number, radius: number, c
   return pts;
 }
 
+// Corners turning at least this much are cut square rather than mitred to a point.
+// Well below the ~155 degrees a folded lace makes, well above anything a sampled
+// curve produces between neighbouring points.
+const BEVEL_TURN = (60 * Math.PI) / 180;
+
 // Central-difference tangents along the polyline (world XY, z ignored — the
 // flat face stays pointed at +Z, so only the in-plane heading matters).
 function tangentsOf(points: Vec3[]): Vec2[] {
@@ -122,6 +127,45 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   if (pts.length < 2) {
     return new THREE.BufferGeometry();
   }
+
+  // Cut sharp corners square instead of letting them run to a point.
+  //
+  // A corner gets one cross-section, laid across the bisector of the two runs. The
+  // sharper the corner the further that cross-section has to reach to meet both
+  // runs, and at a fold — where the bisector is almost square to both — it reaches
+  // out into a long spike. (It is the mitre join of any stroked line, and it blows
+  // up the same way as the turn approaches a reversal.)
+  //
+  // Giving the corner TWO cross-sections instead, one square to each run, ends both
+  // runs cleanly and joins them with a flat face across the tip. Nothing reaches
+  // past the corner, so there is nothing to spike.
+  const beveled: Vec3[] = [];
+  for (let i = 0; i < pts.length; i++) {
+    if (i === 0 || i === pts.length - 1) {
+      beveled.push(pts[i]);
+      continue;
+    }
+    const ax = pts[i].x - pts[i - 1].x;
+    const ay = pts[i].y - pts[i - 1].y;
+    const bx = pts[i + 1].x - pts[i].x;
+    const by = pts[i + 1].y - pts[i].y;
+    const la = Math.hypot(ax, ay);
+    const lb = Math.hypot(bx, by);
+    if (la < 1e-9 || lb < 1e-9) {
+      beveled.push(pts[i]);
+      continue;
+    }
+    const turn = Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by) / (la * lb))));
+    if (turn < BEVEL_TURN) {
+      beveled.push(pts[i]);
+      continue;
+    }
+    const step = Math.min(0.02 * Math.min(la, lb), 0.004);
+    beveled.push({ x: pts[i].x - (ax / la) * step, y: pts[i].y - (ay / la) * step, z: pts[i].z });
+    beveled.push({ x: pts[i].x + (bx / lb) * step, y: pts[i].y + (by / lb) * step, z: pts[i].z });
+  }
+  pts.length = 0;
+  pts.push(...beveled);
 
   const section = crossSection(opts.width, opts.thickness, opts.cornerRadius, opts.cornerSteps);
   const m = section.length; // vertices per ring
