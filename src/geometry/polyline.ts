@@ -78,6 +78,7 @@ interface CornerPlan {
   turn: number; // deviation from straight, radians
   trim: number; // how far back along each run the arc starts
   radius: number;
+  fold: boolean; // too sharp to bend in-plane — turn it in depth instead
 }
 
 /**
@@ -95,7 +96,7 @@ interface CornerPlan {
  * riding over itself, which is exactly what a real one does at a fold. What must
  * NOT happen is the heading jumping in one step, and that is what this prevents.
  */
-export function roundCorners(pts: Vec3[], targetRadius: number): Vec3[] {
+export function roundCorners(pts: Vec3[], targetRadius: number, halfThickness = 0): Vec3[] {
   if (pts.length < 3 || targetRadius <= 0) return pts;
   const cum = arcOf(pts);
   const total = cum[cum.length - 1];
@@ -104,9 +105,12 @@ export function roundCorners(pts: Vec3[], targetRadius: number): Vec3[] {
   const corners: CornerPlan[] = [];
   for (let i = 1; i < pts.length - 1; i++) {
     const turn = turnAt(pts, i);
-    if (turn >= MIN_TURN) corners.push({ index: i, s: cum[i], turn, trim: 0, radius: 0 });
+    if (turn >= MIN_TURN) corners.push({ index: i, s: cum[i], turn, trim: 0, radius: 0, fold: false });
   }
   if (corners.length === 0) return pts;
+
+  // Clearance the lace needs to pass over its own outgoing run.
+  const lift = Math.max(halfThickness * 2.1, targetRadius * 0.35);
 
   for (let c = 0; c < corners.length; c++) {
     const k = corners[c];
@@ -117,6 +121,17 @@ export function roundCorners(pts: Vec3[], targetRadius: number): Vec3[] {
     const wanted = targetRadius / Math.max(halfAngle, 1e-4);
     k.trim = Math.max(0, Math.min(wanted, before * 0.9, after * 0.9));
     k.radius = k.trim * halfAngle;
+    // A bend tighter than the lace is half wide sweeps its inner edge past the
+    // centreline and out the far side — the surface turns through itself and reads
+    // as a bowtie. No radius fixes that; the lace simply cannot make the turn in
+    // the plane. Such a corner becomes a FOLD, turned in DEPTH instead: the lace
+    // rides up over its own outgoing run and comes back down. In the vertical
+    // plane the turn only has to clear the lace's THICKNESS, not its width, which
+    // is why there is room for it where an in-plane bend has none.
+    if (halfThickness > 0 && k.radius < targetRadius * 0.85) {
+      k.fold = true;
+      k.trim = Math.max(0, Math.min(lift * 1.1, before * 0.9, after * 0.9));
+    }
   }
 
   const out: Vec3[] = [];
@@ -126,41 +141,89 @@ export function roundCorners(pts: Vec3[], targetRadius: number): Vec3[] {
     out.push(p);
   };
 
+  // Height the lace is currently carrying because of a fold, and how far it still
+  // has to settle back down. A fold leaves the lace on top of itself; it relaxes
+  // back to its woven height once the two runs have drawn apart, which keeps a
+  // fold from shifting the over/unders further along.
+  let carry = 0;
+  let carryFrom = 0;
+  const settle = targetRadius * 4;
+  const heightAt = (s: number): number => {
+    if (carry === 0) return 0;
+    const f = Math.min(1, Math.max(0, (s - carryFrom) / settle));
+    return carry * (1 - f * f * (3 - 2 * f)); // smoothstep back to the base height
+  };
+
   let cursor = 0; // arc position already emitted
-  for (const k of corners) {
+  for (let c = 0; c < corners.length; c++) {
+    const k = corners[c];
     if (k.trim <= 1e-6) continue;
     const sa = k.s - k.trim;
     const sb = k.s + k.trim;
     for (let i = 0; i < pts.length; i++) {
-      if (cum[i] > cursor && cum[i] < sa) push(pts[i]);
+      if (cum[i] > cursor && cum[i] < sa) push({ ...pts[i], z: pts[i].z + heightAt(cum[i]) });
     }
-    const pa = at(pts, cum, sa);
-    const pb = at(pts, cum, sb);
+    const pa0 = at(pts, cum, sa);
+    const pb0 = at(pts, cum, sb);
+    const pa = { ...pa0, z: pa0.z + heightAt(sa) };
     push(pa);
 
     const din = unit(pts[k.index].x - pts[k.index - 1].x, pts[k.index].y - pts[k.index - 1].y);
     const dout = unit(pts[k.index + 1].x - pts[k.index].x, pts[k.index + 1].y - pts[k.index].y);
-    const side = Math.sign(din.x * dout.y - din.y * dout.x) || 1; // which way it bends
-    // Centre sits perpendicular to the incoming run, on the inside of the bend.
-    const cx = pa.x + -din.y * side * k.radius;
-    const cy = pa.y + din.x * side * k.radius;
-    const a0 = Math.atan2(pa.y - cy, pa.x - cx);
-    const sweep = k.turn * side;
-    const steps = Math.max(MIN_ARC_STEPS, Math.ceil(k.turn / STEP_ANGLE));
-    for (let n = 1; n < steps; n++) {
-      const f = n / steps;
-      const ang = a0 + sweep * f;
-      push({
-        x: cx + Math.cos(ang) * k.radius,
-        y: cy + Math.sin(ang) * k.radius,
-        z: pa.z + (pb.z - pa.z) * f,
-      });
+
+    if (k.fold) {
+      // Alternate which way successive folds go, so a lace that folds twice — both
+      // arms of a stitch hanging off one middle run — comes back to where it began
+      // instead of climbing away.
+      const dir = c % 2 === 0 ? -1 : 1;
+      const pb = { ...pb0, z: pb0.z + heightAt(sb) + dir * lift };
+      // Cubic through the fold: leaves along the incoming run, arrives along the
+      // outgoing one, and because the two ends are separated in depth it loops over
+      // rather than pinching in the plane.
+      const reach = Math.max(k.trim, lift) * 1.25;
+      const c1 = { x: pa.x + din.x * reach, y: pa.y + din.y * reach, z: pa.z + dir * lift * 0.55 };
+      const c2 = { x: pb.x - dout.x * reach, y: pb.y - dout.y * reach, z: pb.z + dir * lift * 0.05 };
+      const steps = 22;
+      for (let n = 1; n < steps; n++) {
+        const t = n / steps;
+        const mt = 1 - t;
+        const w0 = mt * mt * mt;
+        const w1 = 3 * mt * mt * t;
+        const w2 = 3 * mt * t * t;
+        const w3 = t * t * t;
+        push({
+          x: w0 * pa.x + w1 * c1.x + w2 * c2.x + w3 * pb.x,
+          y: w0 * pa.y + w1 * c1.y + w2 * c2.y + w3 * pb.y,
+          z: w0 * pa.z + w1 * c1.z + w2 * c2.z + w3 * pb.z,
+        });
+      }
+      push(pb);
+      carry = heightAt(sb) + dir * lift;
+      carryFrom = sb;
+    } else {
+      const pb = { ...pb0, z: pb0.z + heightAt(sb) };
+      const side = Math.sign(din.x * dout.y - din.y * dout.x) || 1; // which way it bends
+      // Centre sits perpendicular to the incoming run, on the inside of the bend.
+      const cx = pa.x + -din.y * side * k.radius;
+      const cy = pa.y + din.x * side * k.radius;
+      const a0 = Math.atan2(pa.y - cy, pa.x - cx);
+      const sweep = k.turn * side;
+      const steps = Math.max(MIN_ARC_STEPS, Math.ceil(k.turn / STEP_ANGLE));
+      for (let n = 1; n < steps; n++) {
+        const f = n / steps;
+        const ang = a0 + sweep * f;
+        push({
+          x: cx + Math.cos(ang) * k.radius,
+          y: cy + Math.sin(ang) * k.radius,
+          z: pa.z + (pb.z - pa.z) * f,
+        });
+      }
+      push(pb);
     }
-    push(pb);
     cursor = sb;
   }
   for (let i = 0; i < pts.length; i++) {
-    if (cum[i] > cursor) push(pts[i]);
+    if (cum[i] > cursor) push({ ...pts[i], z: pts[i].z + heightAt(cum[i]) });
   }
   return out.length >= 2 ? out : pts;
 }

@@ -74,27 +74,84 @@ export function crossSection(width: number, thickness: number, radius: number, c
   return pts;
 }
 
-// Central-difference tangents along the polyline (world XY, z ignored — the
-// flat face stays pointed at +Z, so only the in-plane heading matters).
-function tangentsOf(points: Vec3[]): Vec2[] {
+// ---- 3D frame ---------------------------------------------------------------
+// A lace mostly lies flat, and while it does, "up" is world +Z and "across" is the
+// in-plane perpendicular. But a lace folding back on itself turns in DEPTH — it
+// rides up over its own outgoing run — and there the centreline briefly points at
+// the sky, where a fixed +Z gives no usable frame at all.
+//
+// So the frame is carried along the curve instead of recomputed from scratch:
+// each step reflects the previous frame onto the new tangent (the double
+// reflection method), which rotates it as little as the curve demands. On a flat
+// centreline that reproduces up = +Z exactly, so ordinary strands are unchanged.
+
+const dot3 = (a: Vec3, b: Vec3): number => a.x * b.x + a.y * b.y + a.z * b.z;
+const sub3 = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
+const cross3 = (a: Vec3, b: Vec3): Vec3 => ({
+  x: a.y * b.z - a.z * b.y,
+  y: a.z * b.x - a.x * b.z,
+  z: a.x * b.y - a.y * b.x,
+});
+function norm3(v: Vec3): Vec3 {
+  const l = Math.hypot(v.x, v.y, v.z);
+  return l < 1e-12 ? { x: 1, y: 0, z: 0 } : { x: v.x / l, y: v.y / l, z: v.z / l };
+}
+
+function tangentsOf(points: Vec3[]): Vec3[] {
   const n = points.length;
-  const out: Vec2[] = [];
+  const out: Vec3[] = [];
   for (let i = 0; i < n; i++) {
     const a = points[Math.max(0, i - 1)];
     const b = points[Math.min(n - 1, i + 1)];
-    let tx = b.x - a.x;
-    let ty = b.y - a.y;
-    const len = Math.hypot(tx, ty);
-    if (len < 1e-9) {
-      tx = 1;
-      ty = 0;
-    } else {
-      tx /= len;
-      ty /= len;
+    let d = sub3(b, a);
+    if (Math.hypot(d.x, d.y, d.z) < 1e-9 && i > 0) d = sub3(points[i], points[i - 1]);
+    if (Math.hypot(d.x, d.y, d.z) < 1e-9) {
+      out.push(out.length ? { ...out[out.length - 1] } : { x: 1, y: 0, z: 0 });
+      continue;
     }
-    out.push({ x: tx, y: ty });
+    out.push(norm3(d));
   }
   return out;
+}
+
+export interface Frame {
+  side: Vec3; // across the ribbon's width
+  up: Vec3; // through its thickness
+}
+
+function framesOf(points: Vec3[], tangents: Vec3[]): Frame[] {
+  const n = points.length;
+  // Seed with world +Z made perpendicular to the first tangent, so a flat strand
+  // comes out exactly as before. If it starts vertical, any perpendicular will do.
+  const t0 = tangents[0];
+  let up: Vec3 = { x: -t0.z * t0.x, y: -t0.z * t0.y, z: 1 - t0.z * t0.z };
+  if (Math.hypot(up.x, up.y, up.z) < 1e-6) up = norm3(cross3(t0, { x: 0, y: 1, z: 0 }));
+  else up = norm3(up);
+
+  const frames: Frame[] = [{ side: norm3(cross3(up, t0)), up }];
+  for (let i = 0; i < n - 1; i++) {
+    const v1 = sub3(points[i + 1], points[i]);
+    const c1 = dot3(v1, v1);
+    let u = frames[i].up;
+    let tL = tangents[i];
+    if (c1 > 1e-18) {
+      const k1 = (2 / c1) * dot3(v1, u);
+      u = { x: u.x - k1 * v1.x, y: u.y - k1 * v1.y, z: u.z - k1 * v1.z };
+      const k2 = (2 / c1) * dot3(v1, tL);
+      tL = { x: tL.x - k2 * v1.x, y: tL.y - k2 * v1.y, z: tL.z - k2 * v1.z };
+    }
+    const v2 = sub3(tangents[i + 1], tL);
+    const c2 = dot3(v2, v2);
+    if (c2 > 1e-18) {
+      const k3 = (2 / c2) * dot3(v2, u);
+      u = { x: u.x - k3 * v2.x, y: u.y - k3 * v2.y, z: u.z - k3 * v2.z };
+    }
+    const t = tangents[i + 1];
+    // Re-orthogonalise so rounding can't let the frame drift off the tangent.
+    const uu = norm3(sub3(u, { x: t.x * dot3(u, t), y: t.y * dot3(u, t), z: t.z * dot3(u, t) }));
+    frames.push({ side: norm3(cross3(uu, t)), up: uu });
+  }
+  return frames;
 }
 
 /**
@@ -116,6 +173,7 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   const section = crossSection(opts.width, opts.thickness, opts.cornerRadius, opts.cornerSteps);
   const m = section.length; // vertices per ring
   const tangents = tangentsOf(pts);
+  const frames = framesOf(pts, tangents);
 
   const positions: number[] = [];
   const rings: number[][] = []; // index bookkeeping per ring
@@ -123,19 +181,13 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   // One ring of vertices per centerline sample.
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i];
-    const t = tangents[i];
-    // In-plane side normal (perpendicular to tangent, in XY): (-ty, tx).
-    const sx = -t.y;
-    const sy = t.x;
+    const { side, up } = frames[i];
     const ringIdx: number[] = [];
     for (let j = 0; j < m; j++) {
       const u = section[j].x; // across width -> along side
-      const v = section[j].y; // through thickness -> along +Z
-      const x = p.x + sx * u;
-      const y = p.y + sy * u;
-      const z = p.z + v;
+      const v = section[j].y; // through thickness -> along up
       ringIdx.push(positions.length / 3);
-      positions.push(x, y, z);
+      positions.push(p.x + side.x * u + up.x * v, p.y + side.y * u + up.y * v, p.z + side.z * u + up.z * v);
     }
     rings.push(ringIdx);
   }
@@ -172,10 +224,11 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   if (!opts.openEnd) capFan(rings[rings.length - 1], true); // end cap faces forward
 
   if (!opts.openStart && (opts.capStart ?? opts.roundCaps)) {
-    addDomeCap(positions, indices, pts[0], tangents[0], section, opts, true);
+    addDomeCap(positions, indices, pts[0], tangents[0], frames[0], section, opts, true);
   }
   if (!opts.openEnd && (opts.capEnd ?? opts.roundCaps)) {
-    addDomeCap(positions, indices, pts[pts.length - 1], tangents[pts.length - 1], section, opts, false);
+    const last = pts.length - 1;
+    addDomeCap(positions, indices, pts[last], tangents[last], frames[last], section, opts, false);
   }
 
   const geom = new THREE.BufferGeometry();
@@ -192,17 +245,18 @@ function addDomeCap(
   positions: number[],
   indices: number[],
   center: Vec3,
-  tangent: Vec2,
+  tangent: Vec3,
+  frame: Frame,
   section: Vec2[],
   opts: RibbonOptions,
   atStart: boolean,
 ): void {
   const m = section.length;
   const dir = atStart ? -1 : 1; // push outward from the strand body
-  const sx = -tangent.y;
-  const sy = tangent.x;
+  const { side, up } = frame;
   const tx = tangent.x * dir;
   const ty = tangent.y * dir;
+  const tz = tangent.z * dir;
   const reach = opts.width / 2;
   const domeRings = 4;
 
@@ -217,11 +271,12 @@ function addDomeCap(
     for (let j = 0; j < m; j++) {
       const u = section[j].x * scale;
       const v = section[j].y * scale;
-      const x = center.x + sx * u + tx * push;
-      const y = center.y + sy * u + ty * push;
-      const z = center.z + v;
       ring.push(positions.length / 3);
-      positions.push(x, y, z);
+      positions.push(
+        center.x + side.x * u + up.x * v + tx * push,
+        center.y + side.y * u + up.y * v + ty * push,
+        center.z + side.z * u + up.z * v + tz * push,
+      );
     }
     if (lastRing) {
       for (let j = 0; j < m; j++) {

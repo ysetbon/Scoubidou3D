@@ -400,7 +400,8 @@ export class StrandScene {
       // swept raw, the cross-section would pivot in a single step and wring the
       // ribbon. The bight is sized from the lace's own width.
       const width = first.width * this.params.widthScale * SCALE;
-      const rounded = roundCorners(line, width * 0.5);
+      const thickness = (first.thickness ?? this.params.thickness) * SCALE;
+      const rounded = roundCorners(line, width * 0.5, thickness * 0.5);
       const mesh = this.buildStrandMesh(first, rounded, [true, true]);
       if (!mesh) {
         for (const m of chain) visited.delete(m.index);
