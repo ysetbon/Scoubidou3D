@@ -30,7 +30,7 @@ import {
 import { sampleCenterline } from '../geometry/bezier';
 import { buildRibbonGeometry } from '../geometry/ribbon';
 import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
-import { arcLengths, Bump, heightField, polylineCrossings } from '../geometry/weave';
+import { Anchor, arcLengths, heightField, polylineCrossings } from '../geometry/weave';
 import { Vec2, Vec3 } from '../geometry/vec';
 
 // Source (pixel) units -> world units. Keeps camera distances comfortable.
@@ -310,17 +310,21 @@ export class StrandScene {
 
   /** Build every strand's woven centerline (world XY + Z from the weave).
    *
-   *  Amplitude is chosen PER CROSSING so the over strand clears the under
-   *  strand no matter their base heights: the extra lift/dip we add closes the
-   *  gap the base stack leaves (or reverses it, when a mask puts a lower layer
-   *  on top), plus a small pop so every crossing reads. That decoupling lets the
-   *  base "layer lift" stay large enough to separate a plain stack while masks
-   *  still always win at a crossing. */
+   *  Each crossing is resolved to ABSOLUTE heights about the weave plane (z = 0):
+   *  the over lace goes to +h, the under lace to -h. That's what makes a mask a
+   *  purely LOCAL statement — "this strand crosses over that one, here" — with no
+   *  dependence on how far apart the two sit in the layer panel. Masking a
+   *  bottom-of-the-stack strand over a top-of-the-stack one costs exactly the same
+   *  displacement as masking two neighbours, so a lace masked over several strands
+   *  rides flat instead of ramping, and no other layer is disturbed.
+   *
+   *  The base layer height still governs stretches with NO crossing, which is what
+   *  keeps overlapping-but-never-crossing strands apart and gives the plain
+   *  ordered stack when the weave is switched off. */
   private weaveCenterlines(worldLines: Array<Vec2[] | null>): Array<Vec3[] | null> {
     const strands = this.current.strands;
     const span = this.params.weaveSpan;
-    const pop = this.params.weaveDepth * SCALE; // minimum lift/dip each side gets
-    const bumps: Bump[][] = strands.map(() => []);
+    const anchors: Anchor[][] = strands.map(() => []);
 
     if (this.params.weave) {
       const boxes = worldLines.map((l) => (l ? bbox(l) : null));
@@ -334,16 +338,14 @@ export class StrandScene {
           const crossings = polylineCrossings(a, b);
           if (crossings.length === 0) continue;
 
-          // Who's over here: a mask if one covers the pair, else higher layer.
+          // Who's over here: a mask if one covers the pair, else the higher layer.
           const over = this.maskOver(i, j) ?? j;
           const under = over === i ? j : i;
-          // Required centre separation so the two ribbons don't interpenetrate.
+          // Half-separation. At minimum the two ribbons must not interpenetrate;
+          // the Depth control can open the weave up beyond that.
           const clearance =
             ((this.strandThicknessWorld(strands[over]) + this.strandThicknessWorld(strands[under])) / 2) * 1.15;
-          const baseDiff = this.layerZ(over) - this.layerZ(under);
-          // Move each side by delta: base + 2*delta must reach the clearance, and
-          // delta is at least `pop` so the weave is always visible.
-          const delta = Math.max(pop, (clearance - baseDiff) / 2);
+          const h = Math.max(this.params.weaveDepth * SCALE, clearance / 2);
 
           const wi = strands[i].width * this.params.widthScale * SCALE;
           const wj = strands[j].width * this.params.widthScale * SCALE;
@@ -351,8 +353,8 @@ export class StrandScene {
           for (const c of crossings) {
             const sOver = over === i ? c.sA : c.sB;
             const sUnder = under === i ? c.sA : c.sB;
-            bumps[over].push({ s: sOver, radius, height: delta });
-            bumps[under].push({ s: sUnder, radius, height: -delta });
+            anchors[over].push({ s: sOver, radius, z: h });
+            anchors[under].push({ s: sUnder, radius, z: -h });
           }
         }
       }
@@ -361,10 +363,9 @@ export class StrandScene {
     return strands.map((_, i) => {
       const line = worldLines[i];
       if (!line) return null;
-      const base = this.layerZ(i);
       const { cum } = arcLengths(line);
-      const z = heightField(cum, bumps[i]);
-      return line.map((p, k) => ({ x: p.x, y: p.y, z: base + z[k] }));
+      const z = heightField(cum, anchors[i], this.layerZ(i));
+      return line.map((p, k) => ({ x: p.x, y: p.y, z: z[k] }));
     });
   }
 

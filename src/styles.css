@@ -196,8 +196,10 @@ body {
   background: #fbfcfe;
 }
 
+/* Masks are real layers now (they drive the weave), so they read as a distinct
+   kind of row rather than a dimmed one. */
 .layer-mask {
-  opacity: 0.55;
+  border-style: dashed;
 }
 
 .swatch {
@@ -270,30 +272,15 @@ body {
   color: var(--danger);
 }
 
-.masks {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 6px;
-}
-
-.mask-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 4px 3px 8px;
+/* A mask layer: the two-tone badge shows the over strand's color above the
+   under strand's, so the row states the relationship without being read. */
+.mask-badge {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #fbfcfe;
-}
-
-.mask-text {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  background: var(--line);
 }
 
 .hint {
@@ -318,8 +305,7 @@ body {
     background: #2b323d;
   }
   .select,
-  .layer,
-  .mask-row {
+  .layer {
     background: #20252e;
   }
   .icon-btn:hover {

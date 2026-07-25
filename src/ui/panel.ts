@@ -4,7 +4,7 @@
 // of moving a layer in OpenStrand's layer panel.
 
 import { StrandScene, EditMode } from '../scene/StrandScene';
-import { Scene3D, Strand3D, RGBA } from '../model/types';
+import { MaskLink, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, makeSample } from '../model/samples';
 import { sceneFromJsonText } from '../model/importOss';
 
@@ -39,12 +39,11 @@ export class Panel {
 
   constructor(private root: HTMLElement, private view: StrandScene) {
     this.scene = view.getScene();
-    // Attach/finalize adds a layer; weave picks change the tool note and masks.
-    // Keep all three in sync after any in-scene edit.
+    // Attach/finalize adds a strand layer, a weave pick adds a mask layer — both
+    // land in the layer stack, and the tool note tracks the pending weave pick.
     this.view.onSceneChanged = () => {
       this.scene = this.view.getScene();
       this.renderLayers();
-      this.renderMasks();
       this.renderTools();
     };
     this.render();
@@ -112,7 +111,6 @@ export class Panel {
       b.addEventListener('click', () => {
         this.view.setMode(t.key);
         this.renderTools();
-        this.renderMasks();
       });
       row.appendChild(b);
     }
@@ -170,10 +168,8 @@ export class Panel {
   }
 
   // ---- Weave (over / under) ------------------------------------------------
-  // The 3D home of OpenStrand Studio's masks. Depth controls how far a lace
-  // lifts over / dips under; the mask list shows every over/under override.
-  private weaveHost: HTMLElement | null = null;
-
+  // The 3D home of OpenStrand Studio's masks. Depth/Span control the shape of a
+  // crossing; the masks themselves live in the layer stack, as in OSS.
   private weaveSection(): HTMLElement {
     const sec = section('Weave  (over / under)');
     const p = this.view.getParams();
@@ -190,38 +186,10 @@ export class Panel {
       el(
         'div',
         'note',
-        'Depth is how far a lace lifts over / dips under a crossing. Use the Weave tool to set which strand is on top; with no mask, the higher layer wins.',
+        'Depth is how far a lace lifts over / dips under a crossing — the same either way, however far apart the two layers are. Each mask appears as its own layer below; with no mask on a crossing, the higher layer wins.',
       ),
     );
-
-    this.weaveHost = el('div', 'masks');
-    sec.appendChild(this.weaveHost);
-    this.renderMasks();
     return sec;
-  }
-
-  private renderMasks(): void {
-    if (!this.weaveHost) return;
-    this.weaveHost.innerHTML = '';
-    const masks = this.scene.masks;
-    if (!masks.length) return;
-    this.weaveHost.appendChild(
-      el('div', 'note', `${masks.length} over/under mask${masks.length > 1 ? 's' : ''}:`),
-    );
-    masks.forEach((m, i) => {
-      const row = el('div', 'mask-row');
-      const text = el('span', 'mask-text');
-      text.innerHTML = `<b>${m.overId}</b> over <b>${m.underId}</b>`;
-      row.appendChild(text);
-      const flip = el('button', 'icon-btn', '⇅');
-      flip.title = 'Flip over / under';
-      flip.addEventListener('click', () => this.view.flipMask(i));
-      const del = el('button', 'icon-btn danger', '✕');
-      del.title = 'Remove mask';
-      del.addEventListener('click', () => this.view.removeMask(i));
-      row.append(flip, del);
-      this.weaveHost!.appendChild(row);
-    });
   }
 
   // ---- Scene loaders -------------------------------------------------------
@@ -330,10 +298,49 @@ export class Panel {
   private renderLayers(): void {
     if (!this.layersHost) return;
     this.layersHost.innerHTML = '';
-    // Show topmost layer first (last in the array is highest Z).
+    // Mask layers first: OSS appends a MaskedStrand to the end of the strand list,
+    // which is the top of the layer panel. A mask is named `over_under` there
+    // (`first_second`), so `1_2_1_3` reads "1_2 crosses over 1_3".
+    this.scene.masks.forEach((m, i) => this.layersHost!.appendChild(this.maskRow(m, i)));
+    // Then the strands, topmost first (last in the array is highest Z).
     for (let i = this.scene.strands.length - 1; i >= 0; i--) {
       this.layersHost.appendChild(this.layerRow(i));
     }
+  }
+
+  /** A mask layer row. The badge shows the two strands' own colors, over on top
+   *  of under, so the row states the relationship at a glance. */
+  private maskRow(mask: MaskLink, index: number): HTMLElement {
+    const row = el('div', 'layer layer-mask');
+
+    const over = this.scene.strands.find((s) => s.id === mask.overId);
+    const under = this.scene.strands.find((s) => s.id === mask.underId);
+    const badge = el('div', 'mask-badge');
+    if (over && under) {
+      badge.style.background = `linear-gradient(180deg, ${hex(over.color)} 50%, ${hex(under.color)} 50%)`;
+    }
+    badge.title = `${mask.overId} over ${mask.underId}`;
+    row.appendChild(badge);
+
+    const nameWrap = el('div', 'layer-name');
+    nameWrap.appendChild(el('span', 'layer-id', `${mask.overId}_${mask.underId}`));
+    nameWrap.appendChild(el('span', 'layer-tag', 'mask'));
+    row.appendChild(nameWrap);
+
+    const controls = el('div', 'layer-controls');
+
+    const flip = el('button', 'icon-btn', '⇅');
+    flip.title = `${mask.overId} rides over ${mask.underId} — click to swap`;
+    flip.addEventListener('click', () => this.view.flipMask(index));
+    controls.appendChild(flip);
+
+    const del = el('button', 'icon-btn danger', '✕');
+    del.title = 'Delete mask layer';
+    del.addEventListener('click', () => this.view.removeMask(index));
+    controls.appendChild(del);
+
+    row.appendChild(controls);
+    return row;
   }
 
   private layerRow(index: number): HTMLElement {
