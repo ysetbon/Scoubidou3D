@@ -106,45 +106,98 @@ function curvedStack(): Scene3D {
   return { name: 'Curved ribbon weave', masks: [], strands };
 }
 
-// 4) The box stitch (square stitch) — the first stitch of the classic two-colour
-//    lanyard, i.e. the tutorial worked through to "pull all lanyards evenly to
-//    create your first stitch".
+// 4) The box stitch (square stitch) — the classic two-colour lanyard tutorial
+//    worked through step 7, "pull all lanyards evenly to create your first
+//    stitch".
 //
-//    Two cords are crossed and their four arms lettered A/B/C/D, with A-C one cord
-//    and B-D the other. The stitch is: fold A over B-D, fold B over A, fold C over
-//    B-D, then fold D over C AND UNDER A, and pull tight. Each folded arm crosses
-//    the centre and exits the far side, so the four returns form a woven square.
+//    Setup (figs. 1-2): two cords are crossed and pinned, and their four arms are
+//    lettered A/B/C/D. A and C are the two ends of ONE cord, B and D the two ends
+//    of the other — which is why the instructions talk about folding an arm over
+//    "lanyard B-D", naming the whole cord.
 //
-//    That last move is the whole point of the knot, and it is CYCLIC: A over D,
-//    D over C, C over B, B over A. Every arm rides over one neighbour and dives
-//    under the other, so no layer order can express it — a rigid stack always has
-//    a topmost strand, and this square has none. It only holds together because
-//    each crossing is decided on its own, which is exactly what mask layers do.
+//    The stitch (figs. 3-6): fold A over B-D, fold B over A, fold C over B-D, then
+//    fold D over C AND UNDER A. Every arm folds 180° across the centre, and each
+//    fold leaves a BIGHT — a U-turn — behind it. So each cord runs:
+//
+//        tip -> its folded return -> bight -> the original pinned centre run
+//            -> bight -> the other folded return -> other tip
+//
+//    Three parallel runs per cord, joined end to end into one continuous lace (the
+//    app glues them at their shared endpoints, as with any attached strand). The
+//    two cords' runs cross nine times, and the four folded returns form the woven
+//    square you can see in the middle of fig. 7, with both centre runs buried
+//    underneath it.
+//
+//    "Fold D over C and under A" is the move that locks the stitch, and it makes
+//    the four returns CYCLIC: A over D, D over C, C over B, B over A. Every arm
+//    rides over one neighbour and dives under the other, so the square has no
+//    topmost strand and no layer ordering can express it. It holds together only
+//    because each crossing is decided on its own — which is what mask layers do.
 function boxStitch(): Scene3D {
   const cx = 400;
   const cy = 300;
-  const w = 44; // lace width
-  const d = 24; // half-offset of each return leg from centre -> a tight square
-  const reach = 175; // how far the arms stick out
+  const w = 34; // lace width
+  // Spacing between one cord's three parallel runs. It has to clear the width
+  // comfortably: each bight turns a full 180° across this gap, so a spacing near
+  // the width would fold the ribbon back through itself.
+  const d = 72;
+  const b = 145; // how far the bights sit from the centre
+  const t = 215; // how far the free tips stick out
+  // How far a bight bulges past its turn. Counter-intuitively this wants to stay
+  // SMALLER than the gap it spans: the turn is roughly elliptical, so its apex
+  // radius is about (d/2)^2 / bow, and pushing the bulge further out makes the
+  // apex sharper until the ribbon folds back through itself.
+  const bow = 30;
 
   const strands: Strand3D[] = [
-    // Cord 1 (green): A folded west->east along the top, C folded east->west along
-    // the bottom.
-    mk('A', { x: cx - reach, y: cy - d }, { x: cx + reach, y: cy - d }, GREEN, { width: w }),
-    mk('C', { x: cx + reach, y: cy + d }, { x: cx - reach, y: cy + d }, GREEN, { width: w }),
-    // Cord 2 (gold): B folded north->south down the right, D folded south->north
-    // up the left.
-    mk('B', { x: cx + d, y: cy - reach }, { x: cx + d, y: cy + reach }, GOLD, { width: w }),
-    mk('D', { x: cx - d, y: cy + reach }, { x: cx - d, y: cy - reach }, GOLD, { width: w }),
+    // --- Cord 1 (green): tip A, round the west bight, through the centre, round
+    //     the east bight, out to tip C.
+    mk('A', { x: cx + t, y: cy - d }, { x: cx - b, y: cy - d }, GREEN, { width: w }),
+    mk('A_bight', { x: cx - b, y: cy - d }, { x: cx - b, y: cy }, GREEN, {
+      width: w,
+      cp1: { x: cx - b - bow, y: cy - d },
+      cp2: { x: cx - b - bow, y: cy },
+    }),
+    mk('AC_mid', { x: cx - b, y: cy }, { x: cx + b, y: cy }, GREEN, { width: w }),
+    mk('C_bight', { x: cx + b, y: cy }, { x: cx + b, y: cy + d }, GREEN, {
+      width: w,
+      cp1: { x: cx + b + bow, y: cy },
+      cp2: { x: cx + b + bow, y: cy + d },
+    }),
+    mk('C', { x: cx + b, y: cy + d }, { x: cx - t, y: cy + d }, GREEN, { width: w }),
+
+    // --- Cord 2 (gold): the same lace shape, turned a quarter turn.
+    mk('B', { x: cx + d, y: cy + t }, { x: cx + d, y: cy - b }, GOLD, { width: w }),
+    mk('B_bight', { x: cx + d, y: cy - b }, { x: cx, y: cy - b }, GOLD, {
+      width: w,
+      cp1: { x: cx + d, y: cy - b - bow },
+      cp2: { x: cx, y: cy - b - bow },
+    }),
+    mk('BD_mid', { x: cx, y: cy - b }, { x: cx, y: cy + b }, GOLD, { width: w }),
+    mk('D_bight', { x: cx, y: cy + b }, { x: cx - d, y: cy + b }, GOLD, {
+      width: w,
+      cp1: { x: cx, y: cy + b + bow },
+      cp2: { x: cx - d, y: cy + b + bow },
+    }),
+    mk('D', { x: cx - d, y: cy + b }, { x: cx - d, y: cy - t }, GOLD, { width: w }),
   ];
 
-  // One mask per corner of the square, walked around the pinwheel. Each arm is
-  // named first (over) exactly once and second (under) exactly once.
+  // One mask per crossing — nine in all, straight off the instructions.
   const masks: MaskLink[] = [
-    { overId: 'A', underId: 'D' }, // top-left
-    { overId: 'B', underId: 'A' }, // top-right
-    { overId: 'C', underId: 'B' }, // bottom-right
-    { overId: 'D', underId: 'C' }, // bottom-left — "fold D over C and under A"
+    // "Fold A over lanyard B-D."
+    { overId: 'A', underId: 'BD_mid' },
+    // "Fold B over A" — and B crosses the A-C cord on its way.
+    { overId: 'B', underId: 'A' },
+    { overId: 'B', underId: 'AC_mid' },
+    // "Fold C over B-D" — over B's return and over the centre run.
+    { overId: 'C', underId: 'B' },
+    { overId: 'C', underId: 'BD_mid' },
+    // "Fold D over C and under A" — the lock.
+    { overId: 'D', underId: 'C' },
+    { overId: 'D', underId: 'AC_mid' },
+    { overId: 'A', underId: 'D' },
+    // Fig. 1: the original pinned crossing, green laid across gold.
+    { overId: 'AC_mid', underId: 'BD_mid' },
   ];
 
   return { name: 'Box stitch — first stitch', strands, masks };

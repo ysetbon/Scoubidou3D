@@ -22,6 +22,22 @@ export interface RibbonOptions {
   cornerRadius: number; // rounds the long edges of the cross-section
   cornerSteps: number; // segments used to round each corner
   roundCaps: boolean; // add rounded end caps (like the circular strand ends in OSS)
+  /**
+   * Per-end override of `roundCaps`. An end that is GLUED to another strand must
+   * not grow a dome: the dome bulges out past the joint and reads as a lump
+   * sticking through the lace. The flat cap still seals the tube, hidden inside
+   * the connector that bridges the joint (connector.ts).
+   */
+  capStart?: boolean;
+  capEnd?: boolean;
+  /**
+   * Leave an end completely open — no dome and no flat cap. Used for the OUTLINE
+   * shell at a glued end: two laces meeting end to end would otherwise present
+   * two coincident outline caps to each other, which read as a black plate across
+   * the joint. Left open, the outline shells form one continuous sleeve.
+   */
+  openStart?: boolean;
+  openEnd?: boolean;
 }
 
 // A cross-section is a closed loop of {u, v} points in the local (side, up)
@@ -152,11 +168,13 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
       else indices.push(c, ring[j], ring[j + 1]);
     }
   };
-  capFan(rings[0], false); // start cap faces back (-tangent)
-  capFan(rings[rings.length - 1], true); // end cap faces forward (+tangent)
+  if (!opts.openStart) capFan(rings[0], false); // start cap faces back (-tangent)
+  if (!opts.openEnd) capFan(rings[rings.length - 1], true); // end cap faces forward
 
-  if (opts.roundCaps) {
+  if (!opts.openStart && (opts.capStart ?? opts.roundCaps)) {
     addDomeCap(positions, indices, pts[0], tangents[0], section, opts, true);
+  }
+  if (!opts.openEnd && (opts.capEnd ?? opts.roundCaps)) {
     addDomeCap(positions, indices, pts[pts.length - 1], tangents[pts.length - 1], section, opts, false);
   }
 

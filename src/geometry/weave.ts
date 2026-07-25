@@ -120,34 +120,46 @@ function pulse(d: number): number {
   return 0.5 * (1 + Math.cos(Math.PI * a));
 }
 
+// How sharply the NEAREST crossing dominates the blend. A plain pulse-weighted
+// average is fine when crossings are far apart, but in a tight knot several
+// crossings sit inside one pulse radius, and averaging them equally drags every
+// strand toward the same middle height — the over/under of each individual
+// crossing dissolves. Raising the averaging weights to a power keeps the crossing
+// you are actually passing through in charge, while the envelope below stays on
+// the un-sharpened pulse so the ribbon still rises and falls smoothly.
+const SHARPNESS = 3;
+
 /**
  * The height at each polyline vertex: `base` away from every crossing, easing to
  * the anchored heights across each crossing. `cum` is the cumulative arc-length
  * of the SAME polyline the heights will be applied to (from arcLengths).
  *
- * Overlapping anchors BLEND (pulse-weighted average) rather than add. Adding is
- * what breaks a dense weave: two neighbouring crossings that pull opposite ways
- * would cancel or double instead of resolving. Blending also gives the right
- * answer for free where several strands cross at one point — the top lace lands
- * at +h, the bottom at -h, and one caught between them settles in the middle.
+ * Overlapping anchors BLEND rather than add. Adding is what breaks a dense weave:
+ * two neighbouring crossings that pull opposite ways would cancel or double
+ * instead of resolving. Blending also gives the right answer for free where
+ * several strands cross at one point — the top lace lands at +h, the bottom at
+ * -h, and one caught between them settles in the middle.
  */
 export function heightField(cum: number[], anchors: Anchor[], base: number): number[] {
   const z = new Array<number>(cum.length).fill(base);
   if (anchors.length === 0) return z;
   for (let k = 0; k < cum.length; k++) {
-    let weight = 0;
+    let envelope = 0; // how far off the base plane we are (un-sharpened)
+    let weight = 0; // sharpened weights, so the nearest crossing wins
     let target = 0;
     for (const a of anchors) {
       if (a.radius <= 0) continue;
-      const w = pulse((cum[k] - a.s) / a.radius);
-      if (w <= 0) continue;
-      weight += w;
-      target += a.z * w;
+      const p = pulse((cum[k] - a.s) / a.radius);
+      if (p <= 0) continue;
+      envelope += p;
+      const q = Math.pow(p, SHARPNESS);
+      weight += q;
+      target += a.z * q;
     }
     if (weight <= 0) continue; // no crossing nearby — stay on the base plane
     // Commit fully to the crossing height once the pulses reach full strength;
     // ease out of the base plane on the way in.
-    const t = Math.min(1, weight);
+    const t = Math.min(1, envelope);
     z[k] = base * (1 - t) + (target / weight) * t;
   }
   return z;
