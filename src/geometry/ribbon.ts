@@ -6,15 +6,18 @@
 // centerline. The result is a flat plastic-lacing-style ribbon (think the gimp
 // lanyards) that we can then stack in Z and view from any angle.
 //
-// The sweep uses a FIXED frame: "side" is the in-plane normal of the centerline
-// and "up" is world +Z. Because the flat face always points toward +Z, the
-// ribbon reads exactly like the original top-down editor when viewed straight
-// down — even once the WEAVE lifts and drops the centerline in Z at crossings
-// (weave.ts). The centerline is a Vec3 polyline: (x, y) is the drawing-plane
-// position and z is the height the weave gives that point.
+// The sweep uses a ROLL-FREE frame: "side" is the in-plane normal of the
+// centerline and always stays level, so the lace never turns over about its own
+// axis. Its flat face therefore goes on pointing broadly at +Z, and the ribbon
+// reads exactly like the original top-down editor when viewed straight down —
+// even once the WEAVE lifts and drops the centerline in Z at crossings
+// (weave.ts). "Up" pitches with the climb, so a lace riding over another lies
+// along the ramp instead of standing on edge. The centerline is a Vec3 polyline:
+// (x, y) is the drawing-plane position and z is the height the weave gives it.
 
 import * as THREE from 'three';
 import { Vec2, Vec3 } from './vec';
+import { Fold, foldsOf } from './polyline';
 
 export interface RibbonOptions {
   width: number; // across the ribbon (the OSS strand width), world units
@@ -38,17 +41,6 @@ export interface RibbonOptions {
    */
   openStart?: boolean;
   openEnd?: boolean;
-  /**
-   * Tip the end cross-section over instead of leaving it square to the run, so
-   * the ribbon finishes on an oblique flat face. A vertex sitting `u` across the
-   * width is slid `shear * u` along the heading.
-   *
-   * This is how a FOLD is built (polyline.ts): the two runs meeting at a fold are
-   * cut along one shared crease line, so their end faces coincide and the lace
-   * reads as one strap creased flat — no corner to mitre, notch or pinch.
-   */
-  startShear?: number;
-  endShear?: number;
 }
 
 // A cross-section is a closed loop of {u, v} points in the local (side, up)
@@ -84,11 +76,6 @@ export function crossSection(width: number, thickness: number, radius: number, c
   }
   return pts;
 }
-
-// Corners turning at least this much are cut square rather than mitred to a point.
-// Well below the ~155 degrees a folded lace makes, well above anything a sampled
-// curve produces between neighbouring points.
-const BEVEL_TURN = (60 * Math.PI) / 180;
 
 // Central-difference tangents along the polyline (world XY, z ignored — the
 // flat face stays pointed at +Z, so only the in-plane heading matters).
@@ -163,49 +150,74 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     return new THREE.BufferGeometry();
   }
 
-  // Cut sharp corners square instead of letting them run to a point.
-  //
-  // A corner gets one cross-section, laid across the bisector of the two runs. The
-  // sharper the corner the further that cross-section has to reach to meet both
-  // runs, and at a fold — where the bisector is almost square to both — it reaches
-  // out into a long spike. (It is the mitre join of any stroked line, and it blows
-  // up the same way as the turn approaches a reversal.)
-  //
-  // Giving the corner TWO cross-sections instead, one square to each run, ends both
-  // runs cleanly and joins them with a flat face across the tip. Nothing reaches
-  // past the corner, so there is nothing to spike.
-  const beveled: Vec3[] = [];
-  for (let i = 0; i < pts.length; i++) {
-    if (i === 0 || i === pts.length - 1) {
-      beveled.push(pts[i]);
-      continue;
-    }
-    const ax = pts[i].x - pts[i - 1].x;
-    const ay = pts[i].y - pts[i - 1].y;
-    const bx = pts[i + 1].x - pts[i].x;
-    const by = pts[i + 1].y - pts[i].y;
-    const la = Math.hypot(ax, ay);
-    const lb = Math.hypot(bx, by);
-    if (la < 1e-9 || lb < 1e-9) {
-      beveled.push(pts[i]);
-      continue;
-    }
-    const turn = Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by) / (la * lb))));
-    if (turn < BEVEL_TURN) {
-      beveled.push(pts[i]);
-      continue;
-    }
-    const step = Math.min(0.02 * Math.min(la, lb), 0.004);
-    beveled.push({ x: pts[i].x - (ax / la) * step, y: pts[i].y - (ay / la) * step, z: pts[i].z });
-    beveled.push({ x: pts[i].x + (bx / lb) * step, y: pts[i].y + (by / lb) * step, z: pts[i].z });
-  }
-  pts.length = 0;
-  pts.push(...beveled);
-
   const section = crossSection(opts.width, opts.thickness, opts.cornerRadius, opts.cornerSteps);
   const m = section.length; // vertices per ring
   const tangents = tangentsOf(pts);
   const slopes = slopesOf(pts);
+
+  // Plan the cross-sections. Normally one per centerline sample — but a FOLD gets
+  // two, at the same point: one squared to the run arriving, one to the run
+  // leaving, each tipped over onto the crease they share (polyline.ts).
+  //
+  // Because both faces lie on that one line, and the section is walked the other
+  // way round after the fold, the two cross-sections come out vertex for vertex
+  // IDENTICAL. The strip the sweep lays between them therefore has no area at all:
+  // the surface passes straight through the fold as one continuous skin. Nothing
+  // is cut, nothing is capped, and there is no seam to see — just a crease, which
+  // is exactly what a folded lace has.
+  //
+  // Sweeping the fold instead of splitting it is what keeps the mitre out. Neither
+  // face reaches past the crease, so there is no spike; the faces coincide, so
+  // there is no notch.
+  const folds = new Map<number, Fold>();
+  for (const f of foldsOf(pts)) folds.set(f.index, f);
+
+  interface Section {
+    p: Vec3;
+    t: Vec2;
+    up: Vec3; // thickness axis, pitched with the climb
+    shear: number; // tips the face over onto the crease
+    crease: boolean; // second face of a fold: the section turns over here
+  }
+  // The thickness axis for a run heading `t` at gradient `slope`: leant back over
+  // the heading just enough to stand square to the climb.
+  const upOf = (t: Vec2, slope: number): Vec3 => {
+    const k = 1 / Math.hypot(1, slope);
+    return { x: -t.x * slope * k, y: -t.y * slope * k, z: k };
+  };
+  const runSlope = (a: Vec3, b: Vec3) => {
+    const run = Math.hypot(b.x - a.x, b.y - a.y);
+    return run < 1e-9 ? 0 : (b.z - a.z) / run;
+  };
+
+  const plan: Section[] = [];
+  for (let i = 0; i < pts.length; i++) {
+    const f = folds.get(i);
+    if (!f) {
+      plan.push({ p: pts[i], t: tangents[i], up: upOf(tangents[i], slopes[i]), shear: 0, crease: false });
+      continue;
+    }
+    // A central-difference heading spans the fold and so belongs to neither run;
+    // each face takes its own run's heading instead.
+    //
+    // The two faces must also share ONE thickness axis. Each run would otherwise
+    // pitch its own way — a lace cresting a crossing arrives climbing and leaves
+    // descending — and the faces would tip apart and open the very seam the crease
+    // exists to close. A crease is a single plane through the material, so the two
+    // runs' axes are averaged and squared up to the crease line.
+    const a = upOf(f.din, runSlope(pts[i - 1], pts[i]));
+    const b = upOf(f.dout, runSlope(pts[i], pts[i + 1]));
+    let ux = a.x + b.x;
+    let uy = a.y + b.y;
+    const uz = a.z + b.z; // both lean up, so this can never cancel
+    const along = ux * f.crease.x + uy * f.crease.y;
+    ux -= along * f.crease.x;
+    uy -= along * f.crease.y;
+    const len = Math.hypot(ux, uy, uz) || 1;
+    const up = { x: ux / len, y: uy / len, z: uz / len };
+    plan.push({ p: pts[i], t: f.din, up, shear: f.shearIn, crease: false });
+    plan.push({ p: pts[i], t: f.dout, up, shear: f.shearOut, crease: true });
+  }
 
   const positions: number[] = [];
   const rings: number[][] = []; // index bookkeeping per ring
@@ -220,41 +232,32 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   //
   // So once the perpendicular flips, keep walking the section the other way round.
   // Vertex j goes on pointing at the same physical edge, the strip stays flat
-  // through the fold, and the lace comes away parallel.
+  // through the fold, and the lace comes away parallel. A fold's second face
+  // always turns over, even where the runs part by less than a right angle and the
+  // perpendiculars have not yet opposed — that is what makes the pair coincide.
   const mirrored: boolean[] = [false];
-  for (let i = 1; i < pts.length; i++) {
-    const prev = tangents[i - 1];
-    const t = tangents[i];
-    const flipped = -t.y * -prev.y + t.x * prev.x < 0; // the perpendiculars oppose
+  for (let i = 1; i < plan.length; i++) {
+    const prev = plan[i - 1].t;
+    const t = plan[i].t;
+    const flipped = plan[i].crease || -t.y * -prev.y + t.x * prev.x < 0;
     mirrored.push(flipped ? !mirrored[i - 1] : mirrored[i - 1]);
   }
 
-  // One ring of vertices per centerline sample.
-  const lastIdx = pts.length - 1;
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i];
-    const t = tangents[i];
-    // In-plane side normal (perpendicular to tangent, in XY): (-ty, tx).
+  for (let i = 0; i < plan.length; i++) {
+    const { p, t, up, shear } = plan[i];
+    // In-plane side normal (perpendicular to tangent, in XY): (-ty, tx). It stays
+    // level whatever the climb, so the lace never rolls about its own axis.
     const sx = -t.y;
     const sy = t.x;
-    // Pitch the section with the climb so the flat face lies along the ramp.
-    // "Up" leans back over the heading; the side axis stays level, so the lace
-    // never rolls.
-    const k = 1 / Math.hypot(1, slopes[i]);
-    const ux = -t.x * slopes[i] * k;
-    const uy = -t.y * slopes[i] * k;
-    const uz = k;
-    // Only the two end rings can be tipped over onto a crease.
-    const shear = i === 0 ? (opts.startShear ?? 0) : i === lastIdx ? (opts.endShear ?? 0) : 0;
     const ringIdx: number[] = [];
     for (let j = 0; j < m; j++) {
       const s = section[mirrored[i] ? m - 1 - j : j];
       const u = s.x; // across width -> along side
       const v = s.y; // through thickness -> along the (pitched) up axis
       const d = shear * u; // slide along the heading to reach the crease line
-      const x = p.x + sx * u + t.x * d + ux * v;
-      const y = p.y + sy * u + t.y * d + uy * v;
-      const z = p.z + uz * v;
+      const x = p.x + sx * u + t.x * d + up.x * v;
+      const y = p.y + sy * u + t.y * d + up.y * v;
+      const z = p.z + up.z * v;
       ringIdx.push(positions.length / 3);
       positions.push(x, y, z);
     }
@@ -301,10 +304,10 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   if (!opts.openEnd) capFan(rings[lastRing], !mirrored[lastRing]); // end cap faces forward
 
   if (!opts.openStart && (opts.capStart ?? opts.roundCaps)) {
-    addDomeCap(positions, indices, pts[0], tangents[0], section, opts, true);
+    addDomeCap(positions, indices, plan[0].p, plan[0].t, section, opts, true);
   }
   if (!opts.openEnd && (opts.capEnd ?? opts.roundCaps)) {
-    addDomeCap(positions, indices, pts[pts.length - 1], tangents[pts.length - 1], section, opts, false);
+    addDomeCap(positions, indices, plan[lastRing].p, plan[lastRing].t, section, opts, false);
   }
 
   const geom = new THREE.BufferGeometry();

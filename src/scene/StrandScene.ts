@@ -30,7 +30,7 @@ import {
 import { sampleCenterline } from '../geometry/bezier';
 import { buildRibbonGeometry } from '../geometry/ribbon';
 import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
-import { roundCorners, splitAtFolds } from '../geometry/polyline';
+import { roundCorners } from '../geometry/polyline';
 import { Anchor, arcLengths, heightField, polylineCrossings } from '../geometry/weave';
 import { Vec2, Vec3 } from '../geometry/vec';
 
@@ -402,34 +402,19 @@ export class StrandScene {
         }
       }
 
-      // Sweeping the whole lace as one ribbon works right up until it folds. A
-      // fold is not a corner the sweep can carry a cross-section round — it is a
-      // crease, where the lace is cut clean and comes away flat on the other
-      // side. So the lace is cut into runs at its folds and each run swept on its
-      // own, ending on the shared crease. Gentler joins stay inside a run and are
-      // rounded into a bight sized from the lace's own width.
+      // Round the gentle joins before sweeping — glued strands meet at whatever
+      // angle they were drawn at, and anything from about 20 degrees up wants a
+      // bight rather than a kink. The bight is sized from the lace's own width.
+      // Folds are deliberately left sharp: the sweep creases them (ribbon.ts),
+      // which is the only way a flat lace can turn that far.
       const width = first.width * this.params.widthScale * SCALE;
-      const pieces = splitAtFolds(line);
-      let built = 0;
-      for (const piece of pieces) {
-        const rounded = roundCorners(piece.pts, width * 0.5);
-        // A cut end is not a free end: no dome (it would bulge through the
-        // crease) and no outline plate across the cut (the two runs' sleeves
-        // meet there and should read as one).
-        const mesh = this.buildStrandMesh(
-          first,
-          rounded,
-          [!piece.startCut, !piece.endCut],
-          [piece.startShear, piece.endShear],
-        );
-        if (!mesh) continue;
-        this.strandGroup.add(mesh);
-        built++;
-      }
-      if (built === 0) {
+      const rounded = roundCorners(line, width * 0.5);
+      const mesh = this.buildStrandMesh(first, rounded, [true, true]);
+      if (!mesh) {
         for (const m of chain) visited.delete(m.index);
         continue;
       }
+      this.strandGroup.add(mesh);
       for (const m of chain) absorbed.add(m.index);
     }
     return absorbed;
@@ -601,8 +586,6 @@ export class StrandScene {
     strand: Strand3D,
     centerline: Vec3[],
     freeEnds: [boolean, boolean] = [true, true],
-    /** Tips the end faces over onto a fold's crease line — see ribbon.ts. */
-    shear: [number, number] = [0, 0],
   ): THREE.Object3D | null {
     if (centerline.length < 2) return null;
 
@@ -623,8 +606,6 @@ export class StrandScene {
       roundCaps: this.params.roundCaps,
       capStart,
       capEnd,
-      startShear: shear[0],
-      endShear: shear[1],
     });
     const fillMat = new THREE.MeshStandardMaterial({
       color: threeColor(strand.color),
@@ -664,8 +645,6 @@ export class StrandScene {
         // into one sleeve instead of showing a black plate at the seam.
         openStart: !freeEnds[0],
         openEnd: !freeEnds[1],
-        startShear: shear[0],
-        endShear: shear[1],
       });
       const outlineMat = new THREE.MeshBasicMaterial({
         color: threeColor(strand.stroke_color),

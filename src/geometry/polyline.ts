@@ -8,15 +8,14 @@
 // through most of a half-turn between one ring and the next and the ribbon comes
 // out wrung — the flat face twisting edge-on and back.
 //
-// It gets worse the sharper the corner, and a folded lace is the sharp case: an
-// arm folded back across the middle of a stitch turns about 155°, near enough to
-// a full reversal that the heading is briefly undefined.
-//
 // The fix is geometric rather than cosmetic. A real lace cannot turn a corner with
 // no radius either — it bends through a bight. So we replace each corner with a
 // short curve tangent to the runs on both sides. The heading then rotates over
-// many samples instead of one, the cross-section follows it round, and the sweep
-// stays flat all the way through the fold.
+// many samples instead of one and the cross-section follows it round.
+//
+// That works while the lace is BENDING. Past about 60° it is no longer bending but
+// FOLDING, and a fold is a different thing entirely — see `foldsOf` at the foot of
+// this file, and the sweep that builds it in ribbon.ts.
 
 import { Vec3 } from './vec';
 
@@ -25,7 +24,7 @@ import { Vec3 } from './vec';
 const MIN_TURN = 0.35; // radians, ~20°
 
 /** Sharper than this and the lace is not bending, it is FOLDING — see
- *  `splitAtFolds`. Well above anything a sampled curve produces. */
+ *  `foldsOf`. Well above anything a sampled curve produces. */
 const FOLD_TURN = (60 * Math.PI) / 180;
 
 // The corner is swept as a circular arc sampled at EQUAL ANGLES, so the heading
@@ -108,7 +107,12 @@ export function roundCorners(pts: Vec3[], targetRadius: number): Vec3[] {
   const corners: CornerPlan[] = [];
   for (let i = 1; i < pts.length - 1; i++) {
     const turn = turnAt(pts, i);
-    if (turn >= MIN_TURN) corners.push({ index: i, s: cum[i], turn, trim: 0, radius: 0 });
+    // Folds are left alone: they are creased, not bent (see `foldsOf`). Rounding
+    // one would smear the crease into an arc the lace cannot physically make, and
+    // would hide the fold from the sweep that knows how to build it.
+    if (turn >= MIN_TURN && turn < FOLD_TURN) {
+      corners.push({ index: i, s: cum[i], turn, trim: 0, radius: 0 });
+    }
   }
   if (corners.length === 0) return pts;
 
@@ -184,84 +188,65 @@ export function roundCorners(pts: Vec3[], targetRadius: number): Vec3[] {
 //
 // So a fold is not a corner to be finished, it is a straight cut shared by two
 // runs. The crease line bisects the two headings (reflecting one onto the other),
-// and each run is cut off along it. The cuts are the same line, so the two runs
-// mate exactly: no gap to notch, no overlap to spike, and the lace keeps its full
+// and each run is cut off along it — one line, both cuts, so the two runs mate
+// exactly. No gap to notch, no overlap to spike, and the lace keeps its full
 // width straight through the fold.
+//
+// Crucially the lace is NOT severed there. The two cuts are described as a pair
+// of cross-sections at the same point, and the sweep carries the surface across
+// them (ribbon.ts) — so the fold is a crease in one continuous skin, not a butt
+// joint between two pieces with a visible cut between them.
 
-/** One run between folds, plus the oblique end cuts that make its folds mate.
- *  A shear of `d` slides the end cross-section along the heading by `d * u`,
- *  where `u` is the vertex's offset across the width — so the flat end face
- *  tips over onto the crease line. Zero means a square end. */
-export interface FoldPiece {
-  pts: Vec3[];
-  startShear: number;
-  endShear: number;
-  /** True where the run was cut at a fold rather than reaching the lace's own
-   *  end. A cut end is butted against its neighbour, not left in the open — and
-   *  a straight-back fold creases square, so a zero shear does not mean free. */
-  startCut: boolean;
-  endCut: boolean;
+/** The two end faces meeting at a fold. A shear of `d` slides a cross-section
+ *  along its run by `d * u`, where `u` is the vertex's offset across the width,
+ *  tipping the flat face over onto the crease. Zero is a square face — which is
+ *  what a straight-back fold gives, the crease being square to both runs. */
+export interface Fold {
+  /** Index into the centreline of the vertex the lace folds at. */
+  index: number;
+  /** Unit headings of the runs arriving at and leaving the fold. */
+  din: { x: number; y: number };
+  dout: { x: number; y: number };
+  /** Unit direction of the crease line itself, in the drawing plane. */
+  crease: { x: number; y: number };
+  shearIn: number;
+  shearOut: number;
 }
 
-/** How far the end face must tip to lie along the crease `m`. */
+/** How far a face must tip to lie along the crease `m`. */
 function creaseShear(t: { x: number; y: number }, m: { x: number; y: number }): number {
   const den = t.x * m.y - t.y * m.x;
   if (Math.abs(den) < 1e-6) return 0; // crease along the run — no fold after all
-  const num = -t.y * m.y - t.x * m.x; // perpendicular of t, crossed with m
+  const num = -t.y * m.y - t.x * m.x; // the perpendicular of t, crossed with m
   // A shallow crease would reach a long way back along the run; cap it at a 63°
   // cut, past which the two runs are far enough apart to mitre normally anyway.
   return Math.max(-2, Math.min(2, -num / den));
 }
 
-/**
- * Cut a centreline into runs at its folds, reporting the crease at each cut.
- *
- * Returns a single unshorn piece when there is nothing sharp enough to fold, so
- * callers can treat the result uniformly.
- */
-export function splitAtFolds(pts: Vec3[], minTurn = FOLD_TURN): FoldPiece[] {
-  const folds: number[] = [];
+/** Find every fold in a centreline and work out the crease cut at each. */
+export function foldsOf(pts: Vec3[], minTurn = FOLD_TURN): Fold[] {
+  const out: Fold[] = [];
   for (let i = 1; i < pts.length - 1; i++) {
-    if (turnAt(pts, i) >= minTurn) folds.push(i);
+    if (turnAt(pts, i) < minTurn) continue;
+    const din = unit(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    const dout = unit(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+    // The crease bisects the two headings: reflecting the incoming run about it
+    // gives the outgoing one. Half the signed turn, so it stays well defined right
+    // through a full reversal, where the crease squares up to both runs.
+    const a0 = Math.atan2(din.y, din.x);
+    let d = Math.atan2(dout.y, dout.x) - a0;
+    while (d > Math.PI) d -= 2 * Math.PI;
+    while (d < -Math.PI) d += 2 * Math.PI;
+    const phi = a0 + d / 2;
+    const m = { x: Math.cos(phi), y: Math.sin(phi) };
+    out.push({
+      index: i,
+      din,
+      dout,
+      crease: m,
+      shearIn: creaseShear(din, m),
+      shearOut: creaseShear(dout, m),
+    });
   }
-  if (folds.length === 0) return [{ pts, startShear: 0, endShear: 0, startCut: false, endCut: false }];
-
-  const pieces: FoldPiece[] = [];
-  let from = 0;
-  let carriedShear = 0;
-  for (const k of [...folds, pts.length - 1]) {
-    const isFold = k !== pts.length - 1;
-    let endShear = 0;
-    let nextStart = 0;
-    if (isFold) {
-      const din = unit(pts[k].x - pts[k - 1].x, pts[k].y - pts[k - 1].y);
-      const dout = unit(pts[k + 1].x - pts[k].x, pts[k + 1].y - pts[k].y);
-      // The crease bisects the two headings: reflecting the incoming run about it
-      // gives the outgoing one. Half the signed turn, so it stays well defined
-      // right through a full reversal (where the crease squares up to both runs).
-      const a0 = Math.atan2(din.y, din.x);
-      let d = Math.atan2(dout.y, dout.x) - a0;
-      while (d > Math.PI) d -= 2 * Math.PI;
-      while (d < -Math.PI) d += 2 * Math.PI;
-      const phi = a0 + d / 2;
-      const m = { x: Math.cos(phi), y: Math.sin(phi) };
-      endShear = creaseShear(din, m);
-      nextStart = creaseShear(dout, m);
-    }
-    const slice = pts.slice(from, k + 1);
-    if (slice.length >= 2) {
-      pieces.push({
-        pts: slice,
-        startShear: carriedShear,
-        endShear,
-        startCut: from > 0,
-        endCut: isFold,
-      });
-    }
-    from = k;
-    carriedShear = nextStart;
-  }
-  return pieces.length > 0
-    ? pieces
-    : [{ pts, startShear: 0, endShear: 0, startCut: false, endCut: false }];
+  return out;
 }
