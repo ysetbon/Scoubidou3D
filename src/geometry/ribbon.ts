@@ -38,6 +38,16 @@ export interface RibbonOptions {
    */
   openStart?: boolean;
   openEnd?: boolean;
+  /**
+   * Sweep sharp corners round instead of cutting them square.
+   *
+   * On for the lace body, where it gives a smooth bend through a fold. Off for the
+   * OUTLINE shell: the shell is the same sweep run wider, and swinging it round a
+   * corner drags its inner half back through the corner point, where the
+   * self-crossing faces show as a black starburst. A squared corner on the shell
+   * still sits behind the rounded body it is outlining.
+   */
+  roundJoins?: boolean;
 }
 
 // A cross-section is a closed loop of {u, v} points in the local (side, up)
@@ -74,33 +84,11 @@ export function crossSection(width: number, thickness: number, radius: number, c
   return pts;
 }
 
-// Corners turning at least this much are cut square rather than mitred to a point.
-// Well below the ~155 degrees a folded lace makes, well above anything a sampled
-// curve produces between neighbouring points.
-const BEVEL_TURN = (60 * Math.PI) / 180;
+// Corners turning at least this much get join treatment rather than a single
+// bisecting cross-section. Well below the ~155 degrees a folded lace makes, well
+// above anything a sampled curve produces between neighbouring points.
+const JOIN_TURN = (60 * Math.PI) / 180;
 
-// Central-difference tangents along the polyline (world XY, z ignored — the
-// flat face stays pointed at +Z, so only the in-plane heading matters).
-function tangentsOf(points: Vec3[]): Vec2[] {
-  const n = points.length;
-  const out: Vec2[] = [];
-  for (let i = 0; i < n; i++) {
-    const a = points[Math.max(0, i - 1)];
-    const b = points[Math.min(n - 1, i + 1)];
-    let tx = b.x - a.x;
-    let ty = b.y - a.y;
-    const len = Math.hypot(tx, ty);
-    if (len < 1e-9) {
-      tx = 1;
-      ty = 0;
-    } else {
-      tx /= len;
-      ty /= len;
-    }
-    out.push({ x: tx, y: ty });
-  }
-  return out;
-}
 
 /**
  * Build a ribbon BufferGeometry from a centerline polyline. Each point carries
@@ -128,88 +116,79 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     return new THREE.BufferGeometry();
   }
 
-  // Cut sharp corners square instead of letting them run to a point.
-  //
-  // A corner gets one cross-section, laid across the bisector of the two runs. The
-  // sharper the corner the further that cross-section has to reach to meet both
-  // runs, and at a fold — where the bisector is almost square to both — it reaches
-  // out into a long spike. (It is the mitre join of any stroked line, and it blows
-  // up the same way as the turn approaches a reversal.)
-  //
-  // Giving the corner TWO cross-sections instead, one square to each run, ends both
-  // runs cleanly and joins them with a flat face across the tip. Nothing reaches
-  // past the corner, so there is nothing to spike.
-  const beveled: Vec3[] = [];
-  for (let i = 0; i < pts.length; i++) {
-    if (i === 0 || i === pts.length - 1) {
-      beveled.push(pts[i]);
-      continue;
-    }
-    const ax = pts[i].x - pts[i - 1].x;
-    const ay = pts[i].y - pts[i - 1].y;
-    const bx = pts[i + 1].x - pts[i].x;
-    const by = pts[i + 1].y - pts[i].y;
-    const la = Math.hypot(ax, ay);
-    const lb = Math.hypot(bx, by);
-    if (la < 1e-9 || lb < 1e-9) {
-      beveled.push(pts[i]);
-      continue;
-    }
-    const turn = Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by) / (la * lb))));
-    if (turn < BEVEL_TURN) {
-      beveled.push(pts[i]);
-      continue;
-    }
-    const step = Math.min(0.02 * Math.min(la, lb), 0.004);
-    beveled.push({ x: pts[i].x - (ax / la) * step, y: pts[i].y - (ay / la) * step, z: pts[i].z });
-    beveled.push({ x: pts[i].x + (bx / lb) * step, y: pts[i].y + (by / lb) * step, z: pts[i].z });
-  }
-  pts.length = 0;
-  pts.push(...beveled);
-
   const section = crossSection(opts.width, opts.thickness, opts.cornerRadius, opts.cornerSteps);
   const m = section.length; // vertices per ring
-  const tangents = tangentsOf(pts);
+
+  // Direction of each segment.
+  const seg: Vec2[] = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const dx = pts[i + 1].x - pts[i].x;
+    const dy = pts[i + 1].y - pts[i].y;
+    const l = Math.hypot(dx, dy);
+    seg.push(l < 1e-12 ? { x: 1, y: 0 } : { x: dx / l, y: dy / l });
+  }
+
+  // Where each cross-section sits, and which way it faces.
+  //
+  // Along a run the cross-section lies across the perpendicular of the heading, and
+  // that is all it takes. A corner has TWO headings though, and one cross-section
+  // cannot serve both: laid across their bisector it has to reach further and
+  // further to meet both runs as the corner sharpens, until at a fold it runs out
+  // into a spike.
+  //
+  // A corner instead gets several cross-sections at the corner point, the facing
+  // swinging from one run's perpendicular round to the other's. The outer edge then
+  // sweeps a smooth arc around the corner and the two runs' sides meet without a
+  // step. It also spares the sweep the reversal it cannot represent: the facing
+  // never jumps, it turns.
+  // `inner` marks a corner sweep, and which side of the cross-section is on the
+  // inside of the turn. That half is folded onto the centreline rather than swung
+  // round: swung, it travels backwards through the corner and its faces cross the
+  // ones coming the other way, showing as dark slivers. Folded flat it becomes the
+  // straight inner edge the outer sweep turns about — the corner is a wedge, not a
+  // full cross-section pivoting on its middle.
+  const frames: Array<{ p: Vec3; sx: number; sy: number; inner: number }> = [];
+  for (let i = 0; i < pts.length; i++) {
+    const dPrev = seg[Math.max(0, i - 1)];
+    const dNext = seg[Math.min(seg.length - 1, i)];
+    const turn =
+      i > 0 && i < pts.length - 1
+        ? Math.acos(Math.max(-1, Math.min(1, dPrev.x * dNext.x + dPrev.y * dNext.y)))
+        : 0;
+    if (turn >= JOIN_TURN && (opts.roundJoins ?? true)) {
+      const way = Math.sign(dPrev.x * dNext.y - dPrev.y * dNext.x) || 1; // which way it turns
+      const steps = Math.max(2, Math.ceil(turn / ((8 * Math.PI) / 180)));
+      const a0 = Math.atan2(dPrev.x, -dPrev.y); // angle of perp(dPrev)
+      for (let k = 0; k <= steps; k++) {
+        const a = a0 + way * turn * (k / steps);
+        frames.push({ p: pts[i], sx: Math.cos(a), sy: Math.sin(a), inner: way });
+      }
+    } else if (turn >= JOIN_TURN) {
+      // Squared corner: one cross-section square to each run, nothing reaching past.
+      const a0 = Math.atan2(dPrev.x, -dPrev.y);
+      const a1 = Math.atan2(dNext.x, -dNext.y);
+      frames.push({ p: pts[i], sx: Math.cos(a0), sy: Math.sin(a0), inner: 0 });
+      frames.push({ p: pts[i], sx: Math.cos(a1), sy: Math.sin(a1), inner: 0 });
+    } else {
+      const tx = dPrev.x + dNext.x;
+      const ty = dPrev.y + dNext.y;
+      const l = Math.hypot(tx, ty) || 1;
+      frames.push({ p: pts[i], sx: -ty / l, sy: tx / l, inner: 0 });
+    }
+  }
 
   const positions: number[] = [];
   const rings: number[][] = []; // index bookkeeping per ring
 
-  // Which way round each ring is walked.
-  //
-  // "Across" is taken as the perpendicular of the heading, so it reverses the
-  // moment the heading does — and at a fold the heading reverses. Ring vertex j
-  // then lands on the opposite edge of the lace from the one it was on, and the
-  // strip between the two rings joins near edge to far edge: it crosses over, which
-  // is the X. The cross-section has not really turned over, only its numbering.
-  //
-  // So once the perpendicular flips, keep walking the section the other way round.
-  // Vertex j goes on pointing at the same physical edge, the strip stays flat
-  // through the fold, and the lace comes away parallel.
-  const mirrored: boolean[] = [false];
-  for (let i = 1; i < pts.length; i++) {
-    const prev = tangents[i - 1];
-    const t = tangents[i];
-    const flipped = -t.y * -prev.y + t.x * prev.x < 0; // the perpendiculars oppose
-    mirrored.push(flipped ? !mirrored[i - 1] : mirrored[i - 1]);
-  }
-
-  // One ring of vertices per centerline sample.
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i];
-    const t = tangents[i];
-    // In-plane side normal (perpendicular to tangent, in XY): (-ty, tx).
-    const sx = -t.y;
-    const sy = t.x;
+  // One ring of vertices per frame.
+  for (const f of frames) {
     const ringIdx: number[] = [];
     for (let j = 0; j < m; j++) {
-      const s = section[mirrored[i] ? m - 1 - j : j];
-      const u = s.x; // across width -> along side
-      const v = s.y; // through thickness -> along +Z
-      const x = p.x + sx * u;
-      const y = p.y + sy * u;
-      const z = p.z + v;
+      let u = section[j].x; // across width -> along the facing
+      const v = section[j].y; // through thickness -> along +Z
+      if (f.inner !== 0 && u * f.inner > 0) u = 0; // inner half folded to the edge
       ringIdx.push(positions.length / 3);
-      positions.push(x, y, z);
+      positions.push(f.p.x + f.sx * u, f.p.y + f.sy * u, f.p.z + v);
     }
     rings.push(ringIdx);
   }
@@ -230,13 +209,8 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
       // outside and the BackSide outline shell reads as a silhouette rim. Where the
       // section is walked backwards (past a fold) the loop runs the other way, so
       // the winding is reversed to match and the normals still face out.
-      if (mirrored[i]) {
-        indices.push(v00, v10, v11);
-        indices.push(v00, v11, v01);
-      } else {
-        indices.push(v00, v11, v10);
-        indices.push(v00, v01, v11);
-      }
+      indices.push(v00, v11, v10);
+      indices.push(v00, v01, v11);
     }
   }
 
@@ -249,15 +223,14 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
       else indices.push(c, ring[j], ring[j + 1]);
     }
   };
-  const lastRing = rings.length - 1;
-  if (!opts.openStart) capFan(rings[0], mirrored[0]); // start cap faces back (-tangent)
-  if (!opts.openEnd) capFan(rings[lastRing], !mirrored[lastRing]); // end cap faces forward
+  if (!opts.openStart) capFan(rings[0], false); // start cap faces back (-tangent)
+  if (!opts.openEnd) capFan(rings[rings.length - 1], true); // end cap faces forward
 
   if (!opts.openStart && (opts.capStart ?? opts.roundCaps)) {
-    addDomeCap(positions, indices, pts[0], tangents[0], section, opts, true);
+    addDomeCap(positions, indices, pts[0], seg[0], section, opts, true);
   }
   if (!opts.openEnd && (opts.capEnd ?? opts.roundCaps)) {
-    addDomeCap(positions, indices, pts[pts.length - 1], tangents[pts.length - 1], section, opts, false);
+    addDomeCap(positions, indices, pts[pts.length - 1], seg[seg.length - 1], section, opts, false);
   }
 
   const geom = new THREE.BufferGeometry();
