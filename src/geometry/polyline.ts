@@ -95,24 +95,8 @@ interface CornerPlan {
  * riding over itself, which is exactly what a real one does at a fold. What must
  * NOT happen is the heading jumping in one step, and that is what this prevents.
  */
-export function roundCorners(input: Vec3[], targetRadius: number): Vec3[] {
-  if (input.length < 3 || targetRadius <= 0) return input;
-  // Collapse points that share a position in the drawing plane but sit at
-  // different heights. A joint produces exactly that: the two strands meeting
-  // there were woven separately, so each brings its own z to the shared point. Left
-  // in, the pair makes a zero-length step, every measure of "which way is the lace
-  // heading" divides by it, and the corner becomes invisible — which is why sharp
-  // joints were being swept raw no matter how the rounding was tuned.
-  const pts: Vec3[] = [];
-  for (const p of input) {
-    const last = pts[pts.length - 1];
-    if (last && Math.hypot(last.x - p.x, last.y - p.y) < 1e-6) {
-      last.z = (last.z + p.z) / 2;
-      continue;
-    }
-    pts.push({ ...p });
-  }
-  if (pts.length < 3) return input;
+export function roundCorners(pts: Vec3[], targetRadius: number): Vec3[] {
+  if (pts.length < 3 || targetRadius <= 0) return pts;
   const cum = arcOf(pts);
   const total = cum[cum.length - 1];
   if (total <= 0) return pts;

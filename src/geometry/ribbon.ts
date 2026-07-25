@@ -98,45 +98,6 @@ function tangentsOf(points: Vec3[]): Vec2[] {
 }
 
 /**
- * How much of its width the lace may keep at each sample.
- *
- * A swept ribbon has its inner edge at (bend radius − half width) from the centre
- * of the bend. Bend tighter than the lace is half wide and that goes negative: the
- * inner edge crosses the centreline and comes out the far side, the width pinches
- * to nothing and the two edges swap over. That is the X.
- *
- * Where a bend is that tight, the lace is simply gathered — it cannot hold its
- * full width round the turn, so it narrows to what the bend allows and opens back
- * out afterwards. Nothing else about the sweep changes: no rotation, no reframing,
- * the edges never cross.
- */
-function widthScaleOf(points: Vec3[], halfWidth: number): number[] {
-  const n = points.length;
-  const scale = new Array<number>(n).fill(1);
-  if (halfWidth <= 0) return scale;
-  for (let i = 1; i < n - 1; i++) {
-    const ax = points[i].x - points[i - 1].x;
-    const ay = points[i].y - points[i - 1].y;
-    const bx = points[i + 1].x - points[i].x;
-    const by = points[i + 1].y - points[i].y;
-    const la = Math.hypot(ax, ay);
-    const lb = Math.hypot(bx, by);
-    if (la < 1e-9 || lb < 1e-9) continue;
-    const turn = Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by) / (la * lb))));
-    if (turn < 1e-6) continue;
-    const radius = ((la + lb) / 2) / turn; // arc radius implied by this corner
-    // Keep a sliver so the lace never vanishes entirely at a very tight fold.
-    scale[i] = Math.max(0.3, Math.min(1, radius / halfWidth));
-  }
-  // Ease the transition so the lace tapers into the bend rather than stepping.
-  for (let pass = 0; pass < 3; pass++) {
-    const prev = scale.slice();
-    for (let i = 1; i < n - 1; i++) scale[i] = (prev[i - 1] + 2 * prev[i] + prev[i + 1]) / 4;
-  }
-  return scale;
-}
-
-/**
  * Build a ribbon BufferGeometry from a centerline polyline. Each point carries
  * its own z (the weave height), so the ribbon can rise and dip along its length.
  */
@@ -155,7 +116,6 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   const section = crossSection(opts.width, opts.thickness, opts.cornerRadius, opts.cornerSteps);
   const m = section.length; // vertices per ring
   const tangents = tangentsOf(pts);
-  const narrow = widthScaleOf(pts, opts.width / 2);
 
   const positions: number[] = [];
   const rings: number[][] = []; // index bookkeeping per ring
@@ -169,7 +129,7 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     const sy = t.x;
     const ringIdx: number[] = [];
     for (let j = 0; j < m; j++) {
-      const u = section[j].x * narrow[i]; // across width -> along side
+      const u = section[j].x; // across width -> along side
       const v = section[j].y; // through thickness -> along +Z
       const x = p.x + sx * u;
       const y = p.y + sy * u;
