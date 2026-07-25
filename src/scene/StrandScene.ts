@@ -637,9 +637,6 @@ export class StrandScene {
         // into one sleeve instead of showing a black plate at the seam.
         openStart: !freeEnds[0],
         openEnd: !freeEnds[1],
-        // Square the shell's corners — swung round, its inner half crosses back
-        // through the corner and shows as a black starburst.
-        roundJoins: false,
       });
       const outlineMat = new THREE.MeshBasicMaterial({
         color: threeColor(strand.stroke_color),
