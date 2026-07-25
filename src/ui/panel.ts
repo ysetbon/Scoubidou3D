@@ -195,6 +195,10 @@ export class Panel {
 
   // ---- Scene loaders -------------------------------------------------------
   private sceneHost: HTMLElement | null = null;
+  // Whether the JSON box, the paste box and the name field are showing.
+  private dataOpen = false;
+  private pasteOpen = false;
+  private namingOpen = false;
 
   private sceneSection(): HTMLElement {
     const sec = section('Scene');
@@ -257,10 +261,105 @@ export class Panel {
     // into samples.ts to become a built-in.
     const saveRow = el('div', 'btn-row');
     saveRow.append(
-      button('Save sample', () => this.saveSample()),
-      button('Copy JSON', () => this.copyJson()),
+      button('Save sample', () => {
+        this.namingOpen = !this.namingOpen;
+        this.renderSceneControls();
+      }),
+      button(this.dataOpen ? 'Hide JSON' : 'Show JSON', () => {
+        this.dataOpen = !this.dataOpen;
+        this.renderSceneControls();
+      }),
     );
     host.appendChild(saveRow);
+
+    // Naming uses an inline field rather than window.prompt: modal dialogs are
+    // blocked inside a sandboxed frame, which is exactly where this page runs when
+    // it is published.
+    if (this.namingOpen) {
+      const wrap = el('div', 'field');
+      wrap.appendChild(el('label', 'field-label', 'Save this scene as'));
+      const input = el('input', 'text-input') as HTMLInputElement;
+      input.type = 'text';
+      input.value = this.scene.name;
+      wrap.appendChild(input);
+      const go = el('div', 'btn-row');
+      go.append(
+        button('Save', () => this.saveSample(input.value)),
+        button('Cancel', () => {
+          this.namingOpen = false;
+          this.renderSceneControls();
+        }),
+      );
+      wrap.appendChild(go);
+      if (!storageAvailable()) {
+        wrap.appendChild(
+          el('div', 'note', 'This view blocks local storage, so this will not persist — use Show JSON to keep a copy.'),
+        );
+      }
+      host.appendChild(wrap);
+      window.setTimeout(() => input.select(), 0);
+    }
+
+    // The scene as text, right there in the panel. Clipboard writes and modal
+    // prompts can both be refused in a sandboxed frame, so the reliable route is a
+    // textarea you can select from by hand.
+    if (this.dataOpen) {
+      const json = sceneToJson(this.scene);
+      const area = el('textarea', 'json-box') as HTMLTextAreaElement;
+      area.value = json;
+      area.readOnly = true;
+      area.spellcheck = false;
+      host.appendChild(area);
+
+      const tools = el('div', 'btn-row');
+      tools.appendChild(
+        button('Select all', () => {
+          area.focus();
+          area.select();
+        }),
+      );
+      tools.appendChild(button('Copy', () => this.copyJson(json, area)));
+      if (window.claude?.downloads) {
+        tools.appendChild(button('Download', () => this.downloadJson(json)));
+      }
+      host.appendChild(tools);
+      host.appendChild(
+        el('div', 'note', `${this.scene.strands.length} strands · ${this.scene.masks.length} masks · ${json.length} characters`),
+      );
+    }
+
+    // Loading by paste, for the same reason: a file picker is not always usable.
+    const pasteRow = el('div', 'btn-row');
+    pasteRow.appendChild(
+      button(this.pasteOpen ? 'Cancel paste' : 'Paste a scene', () => {
+        this.pasteOpen = !this.pasteOpen;
+        this.renderSceneControls();
+      }),
+    );
+    host.appendChild(pasteRow);
+
+    if (this.pasteOpen) {
+      const area = el('textarea', 'json-box') as HTMLTextAreaElement;
+      area.placeholder = 'Paste scene JSON (or an OpenStrand .json) here, then press Load.';
+      area.spellcheck = false;
+      host.appendChild(area);
+      const go = el('div', 'btn-row');
+      go.appendChild(
+        button('Load', () => {
+          const text = area.value.trim();
+          if (!text) return;
+          try {
+            const scene = parseSceneText(text, 'pasted scene');
+            this.pasteOpen = false;
+            this.sceneSource = 'imported';
+            this.setScene(scene);
+          } catch (e) {
+            alert('Could not read that: ' + (e as Error).message);
+          }
+        }),
+      );
+      host.appendChild(go);
+    }
 
     const current = saved.find((c) => c.id === this.sceneSource);
     if (current) {
@@ -314,31 +413,49 @@ export class Panel {
     this.setScene(makeSample(key));
   }
 
-  private saveSample(): void {
-    const suggested = this.scene.name.startsWith('Box stitch') ? 'My box stitch' : `${this.scene.name} (edited)`;
-    const name = window.prompt('Save this scene as:', suggested);
-    if (name == null) return;
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    const entry = saveCustom(this.scene, trimmed);
+  private saveSample(rawName: string): void {
+    const name = rawName.trim();
+    if (!name) return;
+    const entry = saveCustom(this.scene, name);
+    this.scene.name = name;
+    this.namingOpen = false;
     if (!entry) {
-      alert('Could not save — this browser is blocking local storage, or it is full. Use Copy JSON instead.');
+      // Storage refused (sandboxed or private-mode view, or a full quota). Don't
+      // pretend it saved — open the JSON so the work can still be kept.
+      this.dataOpen = true;
+      this.renderSceneControls();
+      this.flashNote('Could not save here — local storage is blocked. The JSON below is your copy.');
       return;
     }
-    this.scene.name = trimmed;
     this.sceneSource = entry.id;
     this.renderSceneControls();
+    this.flashNote(`Saved as “${name}”. It will still be here after a refresh.`);
   }
 
-  private async copyJson(): Promise<void> {
-    const text = sceneToJson(this.scene);
+  private async copyJson(text: string, area: HTMLTextAreaElement): Promise<void> {
     try {
       await navigator.clipboard.writeText(text);
-      this.flashNote('Scene JSON copied to the clipboard.');
+      this.flashNote('Copied.');
     } catch {
-      // Clipboard access needs permission and a secure context; when it is refused
-      // put the text on screen so it can still be selected and copied by hand.
-      window.prompt('Copy this scene JSON:', text);
+      // A sandboxed frame can refuse clipboard writes outright; fall back to
+      // selecting the text so the keyboard shortcut works.
+      area.focus();
+      area.select();
+      this.flashNote('Clipboard blocked here — the text is selected, press Ctrl/Cmd+C.');
+    }
+  }
+
+  private async downloadJson(text: string): Promise<void> {
+    const api = window.claude?.downloads;
+    if (!api) return;
+    const filename = `${this.scene.name.replace(/[^\w.-]+/g, '-').toLowerCase() || 'scene'}.json`;
+    try {
+      await api.save({ filename, data: text });
+      this.flashNote(`Saved ${filename}.`);
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === 'declined') return; // viewer said no; never auto-retry
+      this.flashNote('Download unavailable here — copy the text instead.');
     }
   }
 

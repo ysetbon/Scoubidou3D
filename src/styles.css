@@ -278,6 +278,29 @@ body {
   font-weight: 600;
 }
 
+.text-input,
+.json-box {
+  width: 100%;
+  padding: 8px;
+  font-size: 12px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+/* The scene-as-text box. Monospace and scrollable: it is meant to be selected and
+   copied, which is the one export route a sandboxed frame can never refuse. */
+.json-box {
+  height: 150px;
+  margin: 6px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1.35;
+  resize: vertical;
+  white-space: pre;
+  overflow: auto;
+}
+
 /* A mask layer: the two-tone badge shows the over strand's color above the
    under strand's, so the row states the relationship without being read. */
 .mask-badge {
@@ -311,7 +334,9 @@ body {
     background: #2b323d;
   }
   .select,
-  .layer {
+  .layer,
+  .text-input,
+  .json-box {
     background: #20252e;
   }
   .icon-btn:hover {
