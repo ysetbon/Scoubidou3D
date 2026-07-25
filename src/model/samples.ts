@@ -9,6 +9,9 @@ const YELLOW: RGBA = { r: 245, g: 200, b: 55, a: 255 };
 const ORANGE: RGBA = { r: 226, g: 122, b: 38, a: 255 };
 const WHITE: RGBA = { r: 240, g: 240, b: 240, a: 255 };
 const TEAL: RGBA = { r: 60, g: 170, b: 175, a: 255 };
+// The green/gold pairing of the classic two-colour lanyard tutorials.
+const GREEN: RGBA = { r: 46, g: 158, b: 107, a: 255 };
+const GOLD: RGBA = { r: 240, g: 196, b: 52, a: 255 };
 const STROKE: RGBA = { r: 30, g: 30, b: 30, a: 255 };
 
 let uid = 0;
@@ -103,14 +106,60 @@ function curvedStack(): Scene3D {
   return { name: 'Curved ribbon weave', masks: [], strands };
 }
 
+// 4) The box stitch (square stitch) — the first stitch of the classic two-colour
+//    lanyard, i.e. the tutorial worked through to "pull all lanyards evenly to
+//    create your first stitch".
+//
+//    Two cords are crossed and their four arms lettered A/B/C/D, with A-C one cord
+//    and B-D the other. The stitch is: fold A over B-D, fold B over A, fold C over
+//    B-D, then fold D over C AND UNDER A, and pull tight. Each folded arm crosses
+//    the centre and exits the far side, so the four returns form a woven square.
+//
+//    That last move is the whole point of the knot, and it is CYCLIC: A over D,
+//    D over C, C over B, B over A. Every arm rides over one neighbour and dives
+//    under the other, so no layer order can express it — a rigid stack always has
+//    a topmost strand, and this square has none. It only holds together because
+//    each crossing is decided on its own, which is exactly what mask layers do.
+function boxStitch(): Scene3D {
+  const cx = 400;
+  const cy = 300;
+  const w = 44; // lace width
+  const d = 24; // half-offset of each return leg from centre -> a tight square
+  const reach = 175; // how far the arms stick out
+
+  const strands: Strand3D[] = [
+    // Cord 1 (green): A folded west->east along the top, C folded east->west along
+    // the bottom.
+    mk('A', { x: cx - reach, y: cy - d }, { x: cx + reach, y: cy - d }, GREEN, { width: w }),
+    mk('C', { x: cx + reach, y: cy + d }, { x: cx - reach, y: cy + d }, GREEN, { width: w }),
+    // Cord 2 (gold): B folded north->south down the right, D folded south->north
+    // up the left.
+    mk('B', { x: cx + d, y: cy - reach }, { x: cx + d, y: cy + reach }, GOLD, { width: w }),
+    mk('D', { x: cx - d, y: cy + reach }, { x: cx - d, y: cy - reach }, GOLD, { width: w }),
+  ];
+
+  // One mask per corner of the square, walked around the pinwheel. Each arm is
+  // named first (over) exactly once and second (under) exactly once.
+  const masks: MaskLink[] = [
+    { overId: 'A', underId: 'D' }, // top-left
+    { overId: 'B', underId: 'A' }, // top-right
+    { overId: 'C', underId: 'B' }, // bottom-right
+    { overId: 'D', underId: 'C' }, // bottom-left — "fold D over C and under A"
+  ];
+
+  return { name: 'Box stitch — first stitch', strands, masks };
+}
+
 export const SAMPLES: Record<string, () => Scene3D> = {
   'two-crossing': twoCrossing,
+  'box-stitch': boxStitch,
   'woven-mat': wovenMat,
   'curved-stack': curvedStack,
 };
 
 export const SAMPLE_LABELS: Array<{ key: string; label: string }> = [
   { key: 'two-crossing', label: 'Two crossing strands' },
+  { key: 'box-stitch', label: 'Box stitch — first stitch' },
   { key: 'woven-mat', label: 'Woven mat' },
   { key: 'curved-stack', label: 'Curved ribbon weave' },
 ];

@@ -70,8 +70,22 @@ crossing, so one lace weaves over-and-under just like a real basket.
 - 📥 **Import real files.** Load an OpenStrand Studio / OpenStrandJS `.json`
   save and see it in 3D. The strand geometry uses a faithful port of OSS's
   curve math (`strand.py::_build_curve_profile`), so curves match the original.
-- 🧩 **Sample scenes:** two crossing strands, a truly-woven mat (a checkerboard
-  of masks), and a curved ribbon stack.
+- 🧩 **Sample scenes:** two crossing strands, the **box stitch** (below), a
+  truly-woven mat (a checkerboard of masks), and a curved ribbon weave.
+
+### The box stitch
+
+The built-in **Box stitch — first stitch** scene is the classic two-colour lanyard
+tutorial worked through to *"pull all lanyards evenly to create your first
+stitch"*. Two cords are crossed and their four arms lettered A/B/C/D (A–C one
+cord, B–D the other); the stitch folds A over B‑D, B over A, C over B‑D, then
+**D over C and under A**.
+
+That last move is the knot, and it's *cyclic*: A over D, D over C, C over B,
+B over A. Every arm rides over one neighbour and dives under the other, so the
+square has no topmost strand and **no layer ordering can express it** — it only
+holds together because each crossing is decided on its own. It's the scene that
+shows why mask layers exist.
 
 ## The 3D translation, in one picture
 
