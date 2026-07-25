@@ -30,6 +30,7 @@ import {
 import { sampleCenterline } from '../geometry/bezier';
 import { buildRibbonGeometry } from '../geometry/ribbon';
 import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
+import { roundCorners } from '../geometry/polyline';
 import { Anchor, arcLengths, heightField, polylineCrossings } from '../geometry/weave';
 import { Vec2, Vec3 } from '../geometry/vec';
 
@@ -394,7 +395,13 @@ export class StrandScene {
           line.push(p);
         }
       }
-      const mesh = this.buildStrandMesh(first, line, [true, true]);
+      // Round the joins before sweeping. Glued strands meet at whatever angle they
+      // were drawn at, and a folded arm turns far enough to be a near-reversal;
+      // swept raw, the cross-section would pivot in a single step and wring the
+      // ribbon. The bight is sized from the lace's own width.
+      const width = first.width * this.params.widthScale * SCALE;
+      const rounded = roundCorners(line, width * 0.5);
+      const mesh = this.buildStrandMesh(first, rounded, [true, true]);
       if (!mesh) {
         for (const m of chain) visited.delete(m.index);
         continue;
