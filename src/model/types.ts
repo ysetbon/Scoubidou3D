@@ -75,6 +75,31 @@ export interface MaskLink {
   underId: string;
 }
 
+/** A point in the 3D view's world space (the drawing plane is XY, up is +Z). */
+export interface Point3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+/**
+ * Where the camera stood, so a scene can be re-opened looking exactly as it did.
+ *
+ * Without this a saved scene only says WHAT was built, and the viewer has to
+ * guess how to look at it — it gets framed by fitting the content, which lands
+ * somewhere reasonable but never at the angle that made a particular fold or
+ * crossing worth showing. With it, a scene handed to someone else reproduces the
+ * picture as well as the geometry.
+ */
+export interface CameraView {
+  /** Eye position, world units. */
+  position: Point3;
+  /** The point the camera orbits and looks at. */
+  target: Point3;
+  /** Vertical field of view, degrees. */
+  fov: number;
+}
+
 export interface Scene3D {
   /**
    * Strands in stacking order: index 0 is the BOTTOM layer, the last index is
@@ -89,6 +114,9 @@ export interface Scene3D {
   /** Over/under overrides — the weave's masks. Empty means "stack order decides". */
   masks: MaskLink[];
   name: string;
+  /** The viewpoint this scene was saved with. Absent (an OpenStrand import, a
+   *  built-in sample) means "frame it by fitting the content". */
+  camera?: CameraView;
 }
 
 export function cssColor(c: RGBA): string {

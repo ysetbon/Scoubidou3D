@@ -17,7 +17,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { MaskLink, Scene3D, Strand3D, RGBA, Point } from '../model/types';
+import { CameraView, MaskLink, Scene3D, Strand3D, RGBA, Point } from '../model/types';
 import {
   collectJunctions,
   connectedEndpoints,
@@ -202,7 +202,39 @@ export class StrandScene {
     recomputeOccupancy(scene); // keep endpoint occupancy in sync with the geometry
     this.computeCenter();
     this.rebuild();
-    if (refit) this.fitView();
+    // A scene that remembers where it was looked at is restored to that view;
+    // anything else (a sample, an OpenStrand import) gets framed by fitting.
+    if (refit) {
+      if (scene.camera) this.applyCameraView(scene.camera);
+      else this.fitView();
+    }
+  }
+
+  /** Where the camera is right now, in the form a scene file stores. */
+  getCameraView(): CameraView {
+    const p = this.camera.position;
+    const t = this.controls.target;
+    const round = (n: number) => Math.round(n * 1e4) / 1e4; // keep the JSON readable
+    return {
+      position: { x: round(p.x), y: round(p.y), z: round(p.z) },
+      target: { x: round(t.x), y: round(t.y), z: round(t.z) },
+      fov: round(this.camera.fov),
+    };
+  }
+
+  /** Put the camera back where a scene file says it stood. */
+  applyCameraView(view: CameraView): void {
+    this.camera.position.set(view.position.x, view.position.y, view.position.z);
+    this.controls.target.set(view.target.x, view.target.y, view.target.z);
+    if (view.fov > 0) this.camera.fov = view.fov;
+    // Clip planes are derived, not stored: they depend only on how far the eye
+    // ended up from what it is looking at, and a stored pair could easily be
+    // wrong for a scene that has since been edited.
+    const dist = Math.max(0.01, this.camera.position.distanceTo(this.controls.target));
+    this.camera.near = Math.max(0.01, dist / 100);
+    this.camera.far = dist * 20;
+    this.camera.updateProjectionMatrix();
+    this.controls.update();
   }
 
   setParams(patch: Partial<RenderParams>): void {

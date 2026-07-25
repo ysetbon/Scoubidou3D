@@ -9,7 +9,7 @@
 // That makes a saved scene readable, diffable, and easy to paste into samples.ts
 // as a new built-in.
 
-import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
+import { CameraView, MaskLink, Point, Point3, RGBA, Scene3D, Strand3D } from './types';
 import { recomputeOccupancy } from './connections';
 import { sceneFromOss } from './importOss';
 
@@ -22,10 +22,13 @@ export interface SceneFile {
   name: string;
   strands: Strand3D[];
   masks: MaskLink[];
+  /** Where the camera stood — see CameraView. Optional so an older file, or one
+   *  written by hand, still loads and simply gets framed by fitting. */
+  camera?: CameraView;
 }
 
 export function sceneToFile(scene: Scene3D): SceneFile {
-  return {
+  const file: SceneFile = {
     format: SCENE_FORMAT,
     version: SCENE_VERSION,
     name: scene.name,
@@ -33,6 +36,14 @@ export function sceneToFile(scene: Scene3D): SceneFile {
     strands: scene.strands.map(cloneStrand),
     masks: scene.masks.map((m) => ({ overId: m.overId, underId: m.underId })),
   };
+  if (scene.camera) {
+    file.camera = {
+      position: { ...scene.camera.position },
+      target: { ...scene.camera.target },
+      fov: scene.camera.fov,
+    };
+  }
+  return file;
 }
 
 export function sceneToJson(scene: Scene3D): string {
@@ -64,6 +75,25 @@ function pt(v: unknown, fallback: Point): Point {
   const o = v as Point | undefined;
   if (!o || typeof o.x !== 'number' || typeof o.y !== 'number') return { ...fallback };
   return { x: o.x, y: o.y };
+}
+
+function pt3(v: unknown): Point3 | null {
+  const o = v as Partial<Point3> | undefined;
+  if (!o) return null;
+  const ok = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+  if (!ok(o.x) || !ok(o.y) || !ok(o.z)) return null;
+  return { x: o.x, y: o.y, z: o.z };
+}
+
+/** A camera block is all-or-nothing: a half-written one would aim the view
+ *  somewhere arbitrary, which is worse than falling back to fitting. */
+function parseCamera(v: unknown): CameraView | undefined {
+  const o = (v ?? {}) as Record<string, unknown>;
+  const position = pt3(o.position);
+  const target = pt3(o.target);
+  if (!position || !target) return undefined;
+  const fov = num(o.fov, 45);
+  return { position, target, fov: fov > 0 && fov < 180 ? fov : 45 };
 }
 
 function byte(v: unknown, fallback: number): number {
@@ -136,6 +166,8 @@ export function sceneFromFile(data: unknown, fallbackName = 'saved scene'): Scen
     masks,
     name: typeof obj.name === 'string' && obj.name ? obj.name : fallbackName,
   };
+  const camera = parseCamera(obj.camera);
+  if (camera) scene.camera = camera;
   recomputeOccupancy(scene);
   return scene;
 }

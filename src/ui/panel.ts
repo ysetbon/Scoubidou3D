@@ -37,9 +37,18 @@ export class Panel {
   // Which entry the Sample dropdown should show: a sample key, or 'imported'
   // for a loaded file (the file name is shown as an extra option).
   private sceneSource = 'two-crossing';
+  // The open JSON box, so an orbit can refresh the camera it shows without
+  // rebuilding the panel underneath the reader.
+  private jsonArea: HTMLTextAreaElement | null = null;
 
   constructor(private root: HTMLElement, private view: StrandScene) {
     this.scene = view.getScene();
+    // The JSON records where the camera stands, so it goes stale the moment the
+    // view is orbited. Refresh it when a drag settles — otherwise someone copies
+    // a viewpoint they have already moved away from.
+    this.view.controls.addEventListener('end', () => {
+      if (this.jsonArea) this.jsonArea.value = sceneToJson(this.sceneWithView());
+    });
     // Attach/finalize adds a strand layer, a weave pick adds a mask layer — both
     // land in the layer stack, and the tool note tracks the pending weave pick.
     this.view.onSceneChanged = () => {
@@ -54,6 +63,13 @@ export class Panel {
     this.scene = scene;
     this.view.setScene(scene, true);
     this.render();
+  }
+
+  /** The scene plus the viewpoint it is being looked at from right now. Saving
+   *  and exporting both go through this, so a scene always travels with the view
+   *  that framed it. */
+  private sceneWithView(): Scene3D {
+    return { ...this.scene, camera: this.view.getCameraView() };
   }
 
   private apply(refit = false): void {
@@ -212,6 +228,7 @@ export class Panel {
     const host = this.sceneHost;
     if (!host) return;
     host.innerHTML = '';
+    this.jsonArea = null; // the old box is about to be detached
 
     const saved = listCustom();
 
@@ -304,11 +321,12 @@ export class Panel {
     // prompts can both be refused in a sandboxed frame, so the reliable route is a
     // textarea you can select from by hand.
     if (this.dataOpen) {
-      const json = sceneToJson(this.scene);
+      const json = sceneToJson(this.sceneWithView());
       const area = el('textarea', 'json-box') as HTMLTextAreaElement;
       area.value = json;
       area.readOnly = true;
       area.spellcheck = false;
+      this.jsonArea = area;
       host.appendChild(area);
 
       const tools = el('div', 'btn-row');
@@ -318,9 +336,9 @@ export class Panel {
           area.select();
         }),
       );
-      tools.appendChild(button('Copy', () => this.copyJson(json, area)));
+      tools.appendChild(button('Copy', () => this.copyJson(area.value, area)));
       if (window.claude?.downloads) {
-        tools.appendChild(button('Download', () => this.downloadJson(json)));
+        tools.appendChild(button('Download', () => this.downloadJson(area.value)));
       }
       host.appendChild(tools);
       host.appendChild(
@@ -416,7 +434,7 @@ export class Panel {
   private saveSample(rawName: string): void {
     const name = rawName.trim();
     if (!name) return;
-    const entry = saveCustom(this.scene, name);
+    const entry = saveCustom(this.sceneWithView(), name);
     this.scene.name = name;
     this.namingOpen = false;
     if (!entry) {
