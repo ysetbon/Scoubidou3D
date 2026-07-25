@@ -92,14 +92,23 @@ export function polylineCrossings(a: Vec2[], b: Vec2[]): PolyCross[] {
   return merged;
 }
 
-/** A bump on a strand: at arc-length `s` the strand rises (or dips, if `height`
- *  is negative) by `height` world units at the peak, over a region of the given
- *  `radius` (world units). The amount is chosen per crossing so the over strand
- *  clears the under strand regardless of their base heights (see StrandScene). */
-export interface Bump {
+/**
+ * An ABSOLUTE height the strand must reach at one crossing: at arc-length `s` the
+ * strand should sit at height `z`, over a region of the given `radius` (world
+ * units).
+ *
+ * Absolute — not a nudge — is the important part. A mask can put a bottom-of-the-
+ * stack strand over a top-of-the-stack one, and the resolved height must be the
+ * same whether the two strands are neighbours in the layer panel or ten layers
+ * apart. A relative correction ("lift by however much closes the gap") makes the
+ * displacement depend on the stack distance, so the same mask reads differently
+ * at every crossing and a lace masked over several strands ramps instead of
+ * riding flat.
+ */
+export interface Anchor {
   s: number;
   radius: number;
-  height: number;
+  z: number;
 }
 
 // Raised-cosine pulse with finite support: 1 at d=0, smoothly 0 at |d|>=1.
@@ -111,21 +120,47 @@ function pulse(d: number): number {
   return 0.5 * (1 + Math.cos(Math.PI * a));
 }
 
+// How sharply the NEAREST crossing dominates the blend. A plain pulse-weighted
+// average is fine when crossings are far apart, but in a tight knot several
+// crossings sit inside one pulse radius, and averaging them equally drags every
+// strand toward the same middle height — the over/under of each individual
+// crossing dissolves. Raising the averaging weights to a power keeps the crossing
+// you are actually passing through in charge, while the envelope below stays on
+// the un-sharpened pulse so the ribbon still rises and falls smoothly.
+const SHARPNESS = 3;
+
 /**
- * The Z offset at each polyline vertex, given the strand's bumps. `cum` is the
- * cumulative arc-length of the SAME polyline the offsets will be applied to
- * (from arcLengths). Where bumps overlap, their heights add.
+ * The height at each polyline vertex: `base` away from every crossing, easing to
+ * the anchored heights across each crossing. `cum` is the cumulative arc-length
+ * of the SAME polyline the heights will be applied to (from arcLengths).
+ *
+ * Overlapping anchors BLEND rather than add. Adding is what breaks a dense weave:
+ * two neighbouring crossings that pull opposite ways would cancel or double
+ * instead of resolving. Blending also gives the right answer for free where
+ * several strands cross at one point — the top lace lands at +h, the bottom at
+ * -h, and one caught between them settles in the middle.
  */
-export function heightField(cum: number[], bumps: Bump[]): number[] {
-  const z = new Array<number>(cum.length).fill(0);
-  if (bumps.length === 0) return z;
+export function heightField(cum: number[], anchors: Anchor[], base: number): number[] {
+  const z = new Array<number>(cum.length).fill(base);
+  if (anchors.length === 0) return z;
   for (let k = 0; k < cum.length; k++) {
-    let h = 0;
-    for (const b of bumps) {
-      if (b.radius <= 0) continue;
-      h += b.height * pulse((cum[k] - b.s) / b.radius);
+    let envelope = 0; // how far off the base plane we are (un-sharpened)
+    let weight = 0; // sharpened weights, so the nearest crossing wins
+    let target = 0;
+    for (const a of anchors) {
+      if (a.radius <= 0) continue;
+      const p = pulse((cum[k] - a.s) / a.radius);
+      if (p <= 0) continue;
+      envelope += p;
+      const q = Math.pow(p, SHARPNESS);
+      weight += q;
+      target += a.z * q;
     }
-    z[k] = h;
+    if (weight <= 0) continue; // no crossing nearby — stay on the base plane
+    // Commit fully to the crossing height once the pulses reach full strength;
+    // ease out of the base plane on the way in.
+    const t = Math.min(1, envelope);
+    z[k] = base * (1 - t) + (target / weight) * t;
   }
   return z;
 }

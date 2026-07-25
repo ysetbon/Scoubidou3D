@@ -30,7 +30,8 @@ import {
 import { sampleCenterline } from '../geometry/bezier';
 import { buildRibbonGeometry } from '../geometry/ribbon';
 import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
-import { arcLengths, Bump, heightField, polylineCrossings } from '../geometry/weave';
+import { easeFolds, roundCorners } from '../geometry/polyline';
+import { Anchor, arcLengths, heightField, polylineCrossings } from '../geometry/weave';
 import { Vec2, Vec3 } from '../geometry/vec';
 
 // Source (pixel) units -> world units. Keeps camera distances comfortable.
@@ -127,6 +128,10 @@ export class StrandScene {
   // null for hidden strands), rebuilt every frame the scene changes. Handles and
   // connectors read endpoint heights from here so they follow the weave.
   private world3D: Array<Vec3[] | null> = [];
+  // Resting height per strand (see computeBaseZ) and the lowest of them, which the
+  // grid sits below.
+  private baseZ: number[] = [];
+  private lowestZ = 0;
   // Weave (mask) tool: the strand picked as "over"; the next pick becomes "under".
   private weavePendingOverId: string | null = null;
 
@@ -256,6 +261,9 @@ export class StrandScene {
   rebuild(): void {
     this.disposeGroup();
 
+    // 0) Resting height per strand, shared by every strand in one lace.
+    this.computeBaseZ();
+
     // 1) The flat world-space centerline of every strand (null = skip).
     const worldLines = this.current.strands.map((s) =>
       s.visible && !s.isMask ? densify(this.strandCenterlineWorld(s), 0.2) : null,
@@ -265,19 +273,157 @@ export class StrandScene {
     //    each centerline. world3D[i] is the woven centerline used everywhere.
     this.world3D = this.weaveCenterlines(worldLines);
 
-    // 3) One ribbon per strand, along its woven centerline.
+    // 3) Build the ribbons. Strands glued into one lace become ONE mesh along a
+    //    single centerline, so the lace has no internal seams at all.
+    const merged = this.buildLaceMeshes();
+
+    // 4) Anything not absorbed into a lace gets its own ribbon...
+    const glued = new Set<string>();
+    for (const j of collectJunctions(this.current)) {
+      glued.add(`${j.childIndex}:${j.childSide}`);
+      glued.add(`${j.parentIndex}:${j.parentSide}`);
+    }
     this.current.strands.forEach((strand, i) => {
+      if (merged.has(i)) return;
       const line = this.world3D[i];
       if (!line) return;
-      const mesh = this.buildStrandMesh(strand, line);
+      const mesh = this.buildStrandMesh(strand, line, [
+        !glued.has(`${i}:0`),
+        !glued.has(`${i}:1`),
+      ]);
       if (mesh) this.strandGroup.add(mesh);
     });
 
-    // 4) Bridge every attach junction so parents and children are really joined.
-    this.buildConnectors();
+    // 5) ...and any joint still spanning two separate meshes gets a connector.
+    this.buildConnectors(merged);
 
     this.updateGrid();
     this.buildHandles();
+  }
+
+  /**
+   * Draw each continuous LACE as a single ribbon and report which strands were
+   * absorbed.
+   *
+   * Strands glued end to end are one physical lace — the arms of a stitch, an OSS
+   * attached-strand family. Meshing them separately leaves an internal seam at
+   * every joint: two end caps meeting face to face, plus an outline shell that
+   * closes across the ribbon and reads as a black band. Sweeping one ribbon along
+   * the whole concatenated centerline removes the joints instead of patching them.
+   *
+   * Only laces whose members look identical are merged (one ribbon carries one
+   * width and one colour); anything else falls back to per-strand meshes bridged
+   * by connectors.
+   */
+  private buildLaceMeshes(): Set<number> {
+    const strands = this.current.strands;
+    const absorbed = new Set<number>();
+
+    // Which end is glued to which. An end shared by more than two strands is a
+    // fork, not a chain, so it is left unlinked and handled by a connector.
+    const partner = new Map<string, { index: number; side: 0 | 1 }>();
+    const degree = new Map<string, number>();
+    const bump = (k: string) => degree.set(k, (degree.get(k) ?? 0) + 1);
+    const junctions = collectJunctions(this.current);
+    for (const j of junctions) {
+      bump(`${j.childIndex}:${j.childSide}`);
+      bump(`${j.parentIndex}:${j.parentSide}`);
+    }
+    for (const j of junctions) {
+      const a = `${j.childIndex}:${j.childSide}`;
+      const b = `${j.parentIndex}:${j.parentSide}`;
+      if ((degree.get(a) ?? 0) > 1 || (degree.get(b) ?? 0) > 1) continue;
+      partner.set(a, { index: j.parentIndex, side: j.parentSide });
+      partner.set(b, { index: j.childIndex, side: j.childSide });
+    }
+    if (partner.size === 0) return absorbed;
+
+    const sameLook = (a: Strand3D, b: Strand3D): boolean =>
+      a.width === b.width &&
+      a.thickness === b.thickness &&
+      a.stroke_width === b.stroke_width &&
+      sameColor(a.color, b.color) &&
+      sameColor(a.stroke_color, b.stroke_color);
+
+    const visited = new Set<number>();
+    for (let seed = 0; seed < strands.length; seed++) {
+      if (visited.has(seed) || !this.world3D[seed]) continue;
+
+      // Walk back from the seed to the head of its chain.
+      let head = seed;
+      let headIn: 0 | 1 = 0;
+      const back = new Set<number>([seed]);
+      for (;;) {
+        const p = partner.get(`${head}:${headIn}`);
+        if (!p || back.has(p.index)) break;
+        back.add(p.index);
+        head = p.index;
+        headIn = (1 - p.side) as 0 | 1;
+      }
+
+      // Then walk forward, recording each member and whether it is traversed
+      // against its own start->end direction.
+      const chain: Array<{ index: number; reversed: boolean }> = [];
+      let cur = head;
+      let inSide = headIn;
+      for (;;) {
+        if (visited.has(cur)) break;
+        visited.add(cur);
+        chain.push({ index: cur, reversed: inSide === 1 });
+        const p = partner.get(`${cur}:${(1 - inSide) as 0 | 1}`);
+        if (!p) break;
+        cur = p.index;
+        inSide = p.side;
+      }
+
+      if (chain.length < 2) continue;
+      const first = strands[chain[0].index];
+      const ok = chain.every((m) => this.world3D[m.index] && sameLook(strands[m.index], first));
+      if (!ok) {
+        for (const m of chain) visited.delete(m.index); // let them mesh individually
+        continue;
+      }
+
+      // Concatenate into one centerline. The joint vertex arrives twice — once
+      // from each strand, each with its own weave height — so collapse the pair
+      // and split the difference, otherwise the joint carries a step with no
+      // length in the plane and the heading there reads as neither run's.
+      const line: Vec3[] = [];
+      for (const m of chain) {
+        const part = this.world3D[m.index]!;
+        const walk = m.reversed ? [...part].reverse() : part;
+        for (const p of walk) {
+          const last = line[line.length - 1];
+          if (last && Math.hypot(last.x - p.x, last.y - p.y) < 1e-6) {
+            last.zIn = last.zIn ?? last.z;
+            last.zOut = p.z;
+            last.z = (last.zIn + last.zOut) / 2;
+            continue;
+          }
+          line.push({ ...p });
+        }
+      }
+
+      // Round the gentle joins before sweeping — glued strands meet at whatever
+      // angle they were drawn at, and anything from about 20 degrees up wants a
+      // bight rather than a kink. The bight is sized from the lace's own width.
+      // Folds are deliberately left sharp: the sweep creases them (ribbon.ts),
+      // which is the only way a flat lace can turn that far.
+      const width = first.width * this.params.widthScale * SCALE;
+      // Settle each fold before sweeping: the lace stacks on itself there, one
+      // thickness apart, with the change eased into the runs on either side.
+      const thickness = (first.thickness ?? this.params.thickness) * SCALE;
+      easeFolds(line, thickness, thickness * 2);
+      const rounded = roundCorners(line, width * 0.5);
+      const mesh = this.buildStrandMesh(first, rounded, [true, true]);
+      if (!mesh) {
+        for (const m of chain) visited.delete(m.index);
+        continue;
+      }
+      this.strandGroup.add(mesh);
+      for (const m of chain) absorbed.add(m.index);
+    }
+    return absorbed;
   }
 
   // Sample a strand's OSS-faithful centerline and map it to world XY (y flipped).
@@ -310,17 +456,21 @@ export class StrandScene {
 
   /** Build every strand's woven centerline (world XY + Z from the weave).
    *
-   *  Amplitude is chosen PER CROSSING so the over strand clears the under
-   *  strand no matter their base heights: the extra lift/dip we add closes the
-   *  gap the base stack leaves (or reverses it, when a mask puts a lower layer
-   *  on top), plus a small pop so every crossing reads. That decoupling lets the
-   *  base "layer lift" stay large enough to separate a plain stack while masks
-   *  still always win at a crossing. */
+   *  Each crossing is resolved to ABSOLUTE heights about the weave plane (z = 0):
+   *  the over lace goes to +h, the under lace to -h. That's what makes a mask a
+   *  purely LOCAL statement — "this strand crosses over that one, here" — with no
+   *  dependence on how far apart the two sit in the layer panel. Masking a
+   *  bottom-of-the-stack strand over a top-of-the-stack one costs exactly the same
+   *  displacement as masking two neighbours, so a lace masked over several strands
+   *  rides flat instead of ramping, and no other layer is disturbed.
+   *
+   *  The base layer height still governs stretches with NO crossing, which is what
+   *  keeps overlapping-but-never-crossing strands apart and gives the plain
+   *  ordered stack when the weave is switched off. */
   private weaveCenterlines(worldLines: Array<Vec2[] | null>): Array<Vec3[] | null> {
     const strands = this.current.strands;
     const span = this.params.weaveSpan;
-    const pop = this.params.weaveDepth * SCALE; // minimum lift/dip each side gets
-    const bumps: Bump[][] = strands.map(() => []);
+    const anchors: Anchor[][] = strands.map(() => []);
 
     if (this.params.weave) {
       const boxes = worldLines.map((l) => (l ? bbox(l) : null));
@@ -334,16 +484,14 @@ export class StrandScene {
           const crossings = polylineCrossings(a, b);
           if (crossings.length === 0) continue;
 
-          // Who's over here: a mask if one covers the pair, else higher layer.
+          // Who's over here: a mask if one covers the pair, else the higher layer.
           const over = this.maskOver(i, j) ?? j;
           const under = over === i ? j : i;
-          // Required centre separation so the two ribbons don't interpenetrate.
+          // Half-separation. At minimum the two ribbons must not interpenetrate;
+          // the Depth control can open the weave up beyond that.
           const clearance =
             ((this.strandThicknessWorld(strands[over]) + this.strandThicknessWorld(strands[under])) / 2) * 1.15;
-          const baseDiff = this.layerZ(over) - this.layerZ(under);
-          // Move each side by delta: base + 2*delta must reach the clearance, and
-          // delta is at least `pop` so the weave is always visible.
-          const delta = Math.max(pop, (clearance - baseDiff) / 2);
+          const h = Math.max(this.params.weaveDepth * SCALE, clearance / 2);
 
           const wi = strands[i].width * this.params.widthScale * SCALE;
           const wj = strands[j].width * this.params.widthScale * SCALE;
@@ -351,8 +499,8 @@ export class StrandScene {
           for (const c of crossings) {
             const sOver = over === i ? c.sA : c.sB;
             const sUnder = under === i ? c.sA : c.sB;
-            bumps[over].push({ s: sOver, radius, height: delta });
-            bumps[under].push({ s: sUnder, radius, height: -delta });
+            anchors[over].push({ s: sOver, radius, z: h });
+            anchors[under].push({ s: sUnder, radius, z: -h });
           }
         }
       }
@@ -361,17 +509,18 @@ export class StrandScene {
     return strands.map((_, i) => {
       const line = worldLines[i];
       if (!line) return null;
-      const base = this.layerZ(i);
       const { cum } = arcLengths(line);
-      const z = heightField(cum, bumps[i]);
-      return line.map((p, k) => ({ x: p.x, y: p.y, z: base + z[k] }));
+      const z = heightField(cum, anchors[i], this.layerZ(i));
+      return line.map((p, k) => ({ x: p.x, y: p.y, z: z[k] }));
     });
   }
 
   /** Bridge each attach junction with a lofted connector so the joined ribbons
-   *  read as one continuous lace stepping between layers. */
-  private buildConnectors(): void {
+   *  read as one continuous lace stepping between layers. Joints inside a merged
+   *  lace need nothing — that ribbon is already one piece. */
+  private buildConnectors(merged: Set<number>): void {
     for (const j of collectJunctions(this.current)) {
+      if (merged.has(j.childIndex) && merged.has(j.parentIndex)) continue;
       const parent = this.endAt(j.parentIndex, j.parentSide);
       const child = this.endAt(j.childIndex, j.childSide);
       if (!parent || !child) continue;
@@ -399,6 +548,27 @@ export class StrandScene {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       this.strandGroup.add(mesh);
+
+      // Match the ribbons' outline shell so the dark rim runs unbroken through
+      // the joint instead of stopping at it.
+      if (this.params.outline && strand.stroke_width > 0) {
+        const ow = strand.stroke_width * SCALE;
+        const outlineGeom = buildConnectorGeometry(parent, child, {
+          width: width + ow * 2,
+          thickness: thickness + ow * 2,
+          cornerRadius: (thickness + ow * 2) * 0.48,
+          cornerSteps: 3,
+        });
+        if (outlineGeom) {
+          const outlineMat = new THREE.MeshBasicMaterial({
+            color: threeColor(strand.stroke_color),
+            side: THREE.BackSide,
+          });
+          const outlineMesh = new THREE.Mesh(outlineGeom, outlineMat);
+          outlineMesh.renderOrder = -1;
+          this.strandGroup.add(outlineMesh);
+        }
+      }
     }
   }
 
@@ -418,7 +588,11 @@ export class StrandScene {
     return { center: { ...p }, tangent: { x: p.x - q.x, y: p.y - q.y } };
   }
 
-  private buildStrandMesh(strand: Strand3D, centerline: Vec3[]): THREE.Object3D | null {
+  private buildStrandMesh(
+    strand: Strand3D,
+    centerline: Vec3[],
+    freeEnds: [boolean, boolean] = [true, true],
+  ): THREE.Object3D | null {
     if (centerline.length < 2) return null;
 
     const width = strand.width * this.params.widthScale * SCALE;
@@ -426,6 +600,9 @@ export class StrandScene {
     if (width <= 0 || thickness <= 0) return null;
 
     const group = new THREE.Group();
+    // Only a FREE end gets a rounded tip; a glued end would bulge through the joint.
+    const capStart = this.params.roundCaps && freeEnds[0];
+    const capEnd = this.params.roundCaps && freeEnds[1];
 
     const fillGeom = buildRibbonGeometry(centerline, {
       width,
@@ -433,6 +610,8 @@ export class StrandScene {
       cornerRadius: thickness * 0.48,
       cornerSteps: 3,
       roundCaps: this.params.roundCaps,
+      capStart,
+      capEnd,
     });
     const fillMat = new THREE.MeshStandardMaterial({
       color: threeColor(strand.color),
@@ -466,10 +645,24 @@ export class StrandScene {
         cornerRadius: (thickness + ow * 2) * 0.48,
         cornerSteps: 3,
         roundCaps: this.params.roundCaps,
+        capStart,
+        capEnd,
+        // A glued end leaves the shell open so the outlines of the two laces join
+        // into one sleeve instead of showing a black plate at the seam.
+        openStart: !freeEnds[0],
+        openEnd: !freeEnds[1],
+        openFolds: true,
       });
       const outlineMat = new THREE.MeshBasicMaterial({
         color: threeColor(strand.stroke_color),
         side: THREE.BackSide, // show only the shell's far faces => a rim outline
+        // Bias the shell away from the camera. Where a lace bends hard — the
+        // bights of a stitch — or meets another lace end to end, a far face of the
+        // shell can otherwise land in front of the body it is meant to sit behind,
+        // and the rim floods across the ribbon as a black band.
+        polygonOffset: true,
+        polygonOffsetFactor: 4,
+        polygonOffsetUnits: 4,
       });
       const outlineMesh = new THREE.Mesh(outlineGeom, outlineMat);
       outlineMesh.renderOrder = -1;
@@ -490,10 +683,55 @@ export class StrandScene {
     return { x: x / SCALE + this.center.x, y: -(y / SCALE) + this.center.y };
   }
 
-  private layerZ(layerIndex: number): number {
+  /**
+   * The resting height of a strand — where it sits away from any crossing.
+   *
+   * Shared by every strand in one LACE. A cord built from several strands glued
+   * end to end (an OSS attached-strand family, or the folded arms of a stitch) is
+   * one physical object, so giving each member its own layer height would make the
+   * cord climb a staircase along its own length. Instead each connected group gets
+   * one height, and groups are stacked in layer-panel order. Nothing is lost:
+   * masks decide what happens at crossings, and this only sets the resting plane.
+   */
+  private computeBaseZ(): void {
     const n = this.current.strands.length;
+    const root = Array.from({ length: n }, (_, i) => i);
+    const find = (a: number): number => {
+      while (root[a] !== a) {
+        root[a] = root[root[a]];
+        a = root[a];
+      }
+      return a;
+    };
+    for (const j of collectJunctions(this.current)) {
+      const ra = find(j.childIndex);
+      const rb = find(j.parentIndex);
+      if (ra !== rb) root[rb] = ra;
+    }
+
+    // Rank each lace by its lowest member index, so the stacking still follows the
+    // layer panel.
+    const lowest = new Map<number, number>();
+    for (let i = 0; i < n; i++) {
+      const r = find(i);
+      const cur = lowest.get(r);
+      if (cur === undefined || i < cur) lowest.set(r, i);
+    }
+    const rank = new Map<number, number>();
+    [...lowest.entries()]
+      .sort((a, b) => a[1] - b[1])
+      .forEach(([r], k) => rank.set(r, k));
+
     const gap = this.params.layerGap * SCALE;
-    return -((n - 1) * gap) / 2 + layerIndex * gap;
+    const levels = rank.size;
+    const z0 = -((levels - 1) * gap) / 2;
+    this.baseZ = new Array<number>(n);
+    for (let i = 0; i < n; i++) this.baseZ[i] = z0 + (rank.get(find(i)) ?? 0) * gap;
+    this.lowestZ = levels > 0 ? z0 : 0;
+  }
+
+  private layerZ(layerIndex: number): number {
+    return this.baseZ[layerIndex] ?? 0;
   }
 
   // ---- edit handles --------------------------------------------------------
@@ -890,9 +1128,9 @@ export class StrandScene {
     const size = Math.ceil(this.contentRadius * 2.6);
     const grid = new THREE.GridHelper(size * 2, size * 2, 0xb8c0cc, 0xd4dae2);
     grid.rotation.x = Math.PI / 2; // lie in the XY (drawing) plane
-    const n = this.current.strands.length;
-    const gap = this.params.layerGap * SCALE;
-    grid.position.z = -((n - 1) * gap) / 2 - this.params.thickness * SCALE * 1.5;
+    // Sit clear below the lowest resting plane AND below anything the weave dips.
+    const drop = Math.max(this.params.thickness, this.params.weaveDepth) * SCALE * 1.6;
+    grid.position.z = this.lowestZ - drop;
     this.grid = grid;
     this.scene.add(grid);
   }
@@ -1004,4 +1242,9 @@ function bbox(poly: Vec2[]): Box {
 
 function boxesOverlap(a: Box, b: Box): boolean {
   return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+}
+
+// Exact RGBA equality — used to decide whether glued strands can share one mesh.
+function sameColor(a: RGBA, b: RGBA): boolean {
+  return a.r === b.r && a.g === b.g && a.b === b.b && a.a === b.a;
 }

@@ -32,7 +32,12 @@ crossing, so one lace weaves over-and-under just like a real basket.
   neighbour and under the next — a true basket weave, not a flat stack.
   - The **Weave** tool: click the strand that goes over, then the strand it
     crosses over — the 3D version of picking two strands for an OSS mask (first
-    selected = over). Every override is listed with flip / remove controls.
+    selected = over).
+  - **Masks are layers.** Each one appears in the layer stack named
+    `over_under` (OSS's `first_second`, e.g. `1_2_1_3`), tagged `mask`, with a
+    two-tone badge showing the over strand's colour above the under strand's, and
+    flip / delete controls. A mask changes only its own crossing — the rest of the
+    stack is untouched.
   - **Imported masks weave automatically.** `MaskedStrand` records from a `.json`
     become over/under relationships, so an imported basket interlaces the way it
     was drawn. With no mask on a crossing, the **higher layer** rides over.
@@ -65,8 +70,38 @@ crossing, so one lace weaves over-and-under just like a real basket.
 - 📥 **Import real files.** Load an OpenStrand Studio / OpenStrandJS `.json`
   save and see it in 3D. The strand geometry uses a faithful port of OSS's
   curve math (`strand.py::_build_curve_profile`), so curves match the original.
-- 🧩 **Sample scenes:** two crossing strands, a truly-woven mat (a checkerboard
-  of masks), and a curved ribbon stack.
+- 💾 **Save your own samples.** Arrange strands, pick the over/unders, then
+  **Save sample** — it's kept in your browser, so it's still in the Sample
+  dropdown after a refresh (grouped under *Saved by you*). **Copy JSON** gives
+  you the scene as text to send on or paste back in, and that same text can be
+  dropped into `samples.ts` to become a permanent built-in. Nothing is uploaded.
+- 🧩 **Sample scenes:** two crossing strands, the **box stitch** (below), a
+  truly-woven mat (a checkerboard of masks), and a curved ribbon weave.
+
+### The box stitch
+
+The built-in **Box stitch — starting stitch** is the classic two-colour lanyard,
+at the point where the first stitch closes. Two laces are crossed and pinned and
+their four arms lettered A/B/C/D — A–C one lace, B–D the other, which is why the
+instructions say to fold an arm over *"lanyard B‑D"*, naming a whole lace. Then
+each arm folds back across the middle in turn, the last tucking under the first.
+
+Every fold turns one arm into its own strand hanging off the middle, so each lace
+ends up as **three runs**: the short original pinned segment, plus an arm attached
+at each of its two ends. That middle segment sits at an angle, and the angle is
+what offsets the two arms — no U‑turn is involved; the fold is just the arm
+leaving the middle in a new direction. It is the OpenStrand shape exactly:
+`1_1` with `1_2` and `1_3` grown off it.
+
+The two laces cross **nine** times, and it needs exactly **one** mask. The arms
+were folded in layer order, so the stacking already tells the truth at eight of
+the nine crossings; the ninth is the move that locks the stitch, where the last
+arm dives back *under* the first one folded. That one contradicts the stacking, so
+it gets a mask — which is precisely how you'd do it in OpenStrand Studio: mask a
+crossing only where the natural order is wrong.
+
+The geometry comes from a scene built by hand in the app, so the proportions are a
+real stitch rather than an idealised diagram.
 
 ## The 3D translation, in one picture
 
@@ -122,15 +157,35 @@ points toward the camera in top view — exactly like the original editor.
 
 ## How the weave works
 
-At every place two centerlines cross we know who is over (a mask if one covers
-the pair, otherwise the higher layer). Each strand collects its crossings and
-turns them into a smooth **Z height field**: a raised-cosine bump of `+depth`
-where it goes over and `-depth` where it goes under, easing back to the base
-height in between (`geometry/weave.ts`). The ribbon is then swept along that
-undulating 3D centerline, so the laces physically interlock. Base layer-lift is
-kept small on purpose — the *weave*, not the stack, decides over/under at a
-crossing, so a lower-layer strand can still poke over a higher one where a mask
-says so.
+At every place two centerlines cross we know who is over: a **mask** if one covers
+the pair, otherwise the higher layer. Each strand collects its crossings and turns
+them into a smooth **Z height field** (`geometry/weave.ts`), then the ribbon is
+swept along that undulating 3D centerline so the laces physically interlock.
+
+Two properties make masks behave the way they do in OpenStrand:
+
+**A crossing sets an absolute height, not a nudge.** The over lace goes to `+h`
+and the under lace to `−h` about the weave plane. So a mask means one purely local
+thing — *this strand crosses over that one, here* — and costs the same whether the
+two strands are neighbours in the layer panel or ten layers apart. Masking the
+bottom strand over the top one leaves every other layer untouched. (Sizing the
+correction *relative* to the layer distance instead is what makes a lace masked
+over several strands ramp upward rather than ride flat.)
+
+**Overlapping crossings blend, they don't add.** Where two crossings fall close
+together the heights are pulse-weighted-averaged, so neighbouring crossings that
+pull opposite ways resolve instead of cancelling or doubling. This also gets the
+three-way case right for free: where several laces meet at one point, the top one
+lands at `+h`, the bottom at `−h`, and one caught between them settles in the
+middle.
+
+Because each crossing is resolved independently, **cyclic weaves work** — `x` over
+`y`, `y` over `z`, and `z` over `x` is impossible for a rigid stack but is exactly
+what a real woven knot does.
+
+The base layer height still governs stretches with no crossing at all, which keeps
+overlapping-but-never-crossing strands apart and gives the plain ordered stack when
+the weave is switched off.
 
 ## Roadmap / ideas
 

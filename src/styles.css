@@ -196,8 +196,10 @@ body {
   background: #fbfcfe;
 }
 
+/* Masks are real layers now (they drive the weave), so they read as a distinct
+   kind of row rather than a dimmed one. */
 .layer-mask {
-  opacity: 0.55;
+  border-style: dashed;
 }
 
 .swatch {
@@ -270,30 +272,44 @@ body {
   color: var(--danger);
 }
 
-.masks {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 6px;
+/* Transient confirmation under the Scene controls (e.g. "JSON copied"). */
+.flash {
+  color: var(--accent);
+  font-weight: 600;
 }
 
-.mask-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 4px 3px 8px;
+.text-input,
+.json-box {
+  width: 100%;
+  padding: 8px;
+  font-size: 12px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+/* The scene-as-text box. Monospace and scrollable: it is meant to be selected and
+   copied, which is the one export route a sandboxed frame can never refuse. */
+.json-box {
+  height: 150px;
+  margin: 6px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1.35;
+  resize: vertical;
+  white-space: pre;
+  overflow: auto;
+}
+
+/* A mask layer: the two-tone badge shows the over strand's color above the
+   under strand's, so the row states the relationship without being read. */
+.mask-badge {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #fbfcfe;
-}
-
-.mask-text {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  background: var(--line);
 }
 
 .hint {
@@ -319,7 +335,8 @@ body {
   }
   .select,
   .layer,
-  .mask-row {
+  .text-input,
+  .json-box {
     background: #20252e;
   }
   .icon-btn:hover {
