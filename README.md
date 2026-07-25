@@ -80,17 +80,28 @@ crossing, so one lace weaves over-and-under just like a real basket.
 
 ### The box stitch
 
-The built-in **Box stitch — first stitch** scene is the classic two-colour lanyard
-tutorial worked through to *"pull all lanyards evenly to create your first
-stitch"*. Two cords are crossed and their four arms lettered A/B/C/D (A–C one
-cord, B–D the other); the stitch folds A over B‑D, B over A, C over B‑D, then
-**D over C and under A**.
+The built-in **Box stitch — starting stitch** is the classic two-colour lanyard,
+at the point where the first stitch closes. Two laces are crossed and pinned and
+their four arms lettered A/B/C/D — A–C one lace, B–D the other, which is why the
+instructions say to fold an arm over *"lanyard B‑D"*, naming a whole lace. Then
+each arm folds back across the middle in turn, the last tucking under the first.
 
-That last move is the knot, and it's *cyclic*: A over D, D over C, C over B,
-B over A. Every arm rides over one neighbour and dives under the other, so the
-square has no topmost strand and **no layer ordering can express it** — it only
-holds together because each crossing is decided on its own. It's the scene that
-shows why mask layers exist.
+Every fold turns one arm into its own strand hanging off the middle, so each lace
+ends up as **three runs**: the short original pinned segment, plus an arm attached
+at each of its two ends. That middle segment sits at an angle, and the angle is
+what offsets the two arms — no U‑turn is involved; the fold is just the arm
+leaving the middle in a new direction. It is the OpenStrand shape exactly:
+`1_1` with `1_2` and `1_3` grown off it.
+
+The two laces cross **nine** times, and it needs exactly **one** mask. The arms
+were folded in layer order, so the stacking already tells the truth at eight of
+the nine crossings; the ninth is the move that locks the stitch, where the last
+arm dives back *under* the first one folded. That one contradicts the stacking, so
+it gets a mask — which is precisely how you'd do it in OpenStrand Studio: mask a
+crossing only where the natural order is wrong.
+
+The geometry comes from a scene built by hand in the app, so the proportions are a
+real stitch rather than an idealised diagram.
 
 ## The 3D translation, in one picture
 
