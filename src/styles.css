@@ -272,6 +272,12 @@ body {
   color: var(--danger);
 }
 
+/* Transient confirmation under the Scene controls (e.g. "JSON copied"). */
+.flash {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* A mask layer: the two-tone badge shows the over strand's color above the
    under strand's, so the row states the relationship without being read. */
 .mask-badge {

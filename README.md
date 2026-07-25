@@ -70,6 +70,11 @@ crossing, so one lace weaves over-and-under just like a real basket.
 - 📥 **Import real files.** Load an OpenStrand Studio / OpenStrandJS `.json`
   save and see it in 3D. The strand geometry uses a faithful port of OSS's
   curve math (`strand.py::_build_curve_profile`), so curves match the original.
+- 💾 **Save your own samples.** Arrange strands, pick the over/unders, then
+  **Save sample** — it's kept in your browser, so it's still in the Sample
+  dropdown after a refresh (grouped under *Saved by you*). **Copy JSON** gives
+  you the scene as text to send on or paste back in, and that same text can be
+  dropped into `samples.ts` to become a permanent built-in. Nothing is uploaded.
 - 🧩 **Sample scenes:** two crossing strands, the **box stitch** (below), a
   truly-woven mat (a checkerboard of masks), and a curved ribbon weave.
 

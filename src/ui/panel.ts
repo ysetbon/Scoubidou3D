@@ -6,7 +6,8 @@
 import { StrandScene, EditMode } from '../scene/StrandScene';
 import { MaskLink, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, makeSample } from '../model/samples';
-import { sceneFromJsonText } from '../model/importOss';
+import { parseSceneText, sceneFromFile, sceneToJson } from '../model/sceneIO';
+import { deleteCustom, getCustom, listCustom, saveCustom, storageAvailable } from '../model/customSamples';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -193,8 +194,22 @@ export class Panel {
   }
 
   // ---- Scene loaders -------------------------------------------------------
+  private sceneHost: HTMLElement | null = null;
+
   private sceneSection(): HTMLElement {
     const sec = section('Scene');
+    this.sceneHost = el('div');
+    sec.appendChild(this.sceneHost);
+    this.renderSceneControls();
+    return sec;
+  }
+
+  private renderSceneControls(): void {
+    const host = this.sceneHost;
+    if (!host) return;
+    host.innerHTML = '';
+
+    const saved = listCustom();
 
     const sampleRow = el('div', 'field');
     sampleRow.appendChild(el('label', 'field-label', 'Sample'));
@@ -205,25 +220,60 @@ export class Panel {
       opt.textContent = `↳ ${this.scene.name}`;
       select.appendChild(opt);
     }
+    const builtIn = el('optgroup') as HTMLOptGroupElement;
+    builtIn.label = 'Built-in';
     for (const s of SAMPLE_LABELS) {
       const opt = el('option');
       opt.value = s.key;
       opt.textContent = s.label;
-      select.appendChild(opt);
+      builtIn.appendChild(opt);
+    }
+    select.appendChild(builtIn);
+    if (saved.length) {
+      const mine = el('optgroup') as HTMLOptGroupElement;
+      mine.label = 'Saved by you';
+      for (const c of saved) {
+        const opt = el('option');
+        opt.value = c.id;
+        opt.textContent = c.scene.name;
+        mine.appendChild(opt);
+      }
+      select.appendChild(mine);
     }
     select.value = this.sceneSource;
-    select.addEventListener('change', () => {
-      this.sceneSource = select.value;
-      this.setScene(makeSample(select.value));
-    });
+    select.addEventListener('change', () => this.loadSource(select.value));
     sampleRow.appendChild(select);
-    sec.appendChild(sampleRow);
+    host.appendChild(sampleRow);
 
     const row = el('div', 'btn-row');
-    const importBtn = button('Import .json', () => fileInput.click());
-    const addBtn = button('Add strand', () => this.addStrand());
-    row.append(importBtn, addBtn);
-    sec.appendChild(row);
+    row.append(
+      button('Import .json', () => fileInput.click()),
+      button('Add strand', () => this.addStrand()),
+    );
+    host.appendChild(row);
+
+    // Saving keeps the scene exactly as it stands — strands, masks and all — so a
+    // layout worked out by hand can be reloaded, handed to someone else, or pasted
+    // into samples.ts to become a built-in.
+    const saveRow = el('div', 'btn-row');
+    saveRow.append(
+      button('Save sample', () => this.saveSample()),
+      button('Copy JSON', () => this.copyJson()),
+    );
+    host.appendChild(saveRow);
+
+    const current = saved.find((c) => c.id === this.sceneSource);
+    if (current) {
+      const delRow = el('div', 'btn-row');
+      delRow.appendChild(
+        button(`Delete “${current.scene.name}”`, () => {
+          deleteCustom(current.id);
+          this.sceneSource = 'two-crossing';
+          this.setScene(makeSample('two-crossing'));
+        }),
+      );
+      host.appendChild(delRow);
+    }
 
     const fileInput = el('input');
     fileInput.type = 'file';
@@ -235,17 +285,68 @@ export class Panel {
       try {
         const text = await f.text();
         this.sceneSource = 'imported';
-        this.setScene(sceneFromJsonText(text, f.name.replace(/\.json$/i, '')));
+        this.setScene(parseSceneText(text, f.name.replace(/\.json$/i, '')));
       } catch (e) {
-        alert('Could not read that file as an OpenStrand .json: ' + (e as Error).message);
+        alert('Could not read that file: ' + (e as Error).message);
       }
       fileInput.value = '';
     });
-    sec.appendChild(fileInput);
+    host.appendChild(fileInput);
 
-    const note = el('div', 'note', 'Loads OpenStrand Studio / OpenStrandJS save files. Masks become a real over/under weave.');
-    sec.appendChild(note);
-    return sec;
+    const note = el('div', 'note');
+    note.innerHTML = storageAvailable()
+      ? 'Opens OpenStrand Studio / OpenStrandJS saves and scenes saved here. <b>Save sample</b> keeps the current scene in this browser, so it survives a refresh; <b>Copy JSON</b> gives you the text to share.'
+      : 'Opens OpenStrand Studio / OpenStrandJS saves. This browser is blocking local storage, so samples cannot be saved — use <b>Copy JSON</b> instead.';
+    host.appendChild(note);
+  }
+
+  private loadSource(key: string): void {
+    this.sceneSource = key;
+    const custom = getCustom(key);
+    if (custom) {
+      try {
+        this.setScene(sceneFromFile(custom.scene, custom.scene.name));
+        return;
+      } catch (e) {
+        alert('That saved sample could not be opened: ' + (e as Error).message);
+      }
+    }
+    this.setScene(makeSample(key));
+  }
+
+  private saveSample(): void {
+    const suggested = this.scene.name.startsWith('Box stitch') ? 'My box stitch' : `${this.scene.name} (edited)`;
+    const name = window.prompt('Save this scene as:', suggested);
+    if (name == null) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const entry = saveCustom(this.scene, trimmed);
+    if (!entry) {
+      alert('Could not save — this browser is blocking local storage, or it is full. Use Copy JSON instead.');
+      return;
+    }
+    this.scene.name = trimmed;
+    this.sceneSource = entry.id;
+    this.renderSceneControls();
+  }
+
+  private async copyJson(): Promise<void> {
+    const text = sceneToJson(this.scene);
+    try {
+      await navigator.clipboard.writeText(text);
+      this.flashNote('Scene JSON copied to the clipboard.');
+    } catch {
+      // Clipboard access needs permission and a secure context; when it is refused
+      // put the text on screen so it can still be selected and copied by hand.
+      window.prompt('Copy this scene JSON:', text);
+    }
+  }
+
+  private flashNote(message: string): void {
+    if (!this.sceneHost) return;
+    const flash = el('div', 'note flash', message);
+    this.sceneHost.appendChild(flash);
+    window.setTimeout(() => flash.remove(), 2600);
   }
 
   private addStrand(): void {
