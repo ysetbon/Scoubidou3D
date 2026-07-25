@@ -30,7 +30,7 @@ import {
 import { sampleCenterline } from '../geometry/bezier';
 import { buildRibbonGeometry } from '../geometry/ribbon';
 import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
-import { roundCorners } from '../geometry/polyline';
+import { easeFolds, roundCorners } from '../geometry/polyline';
 import { Anchor, arcLengths, heightField, polylineCrossings } from '../geometry/weave';
 import { Vec2, Vec3 } from '../geometry/vec';
 
@@ -395,7 +395,9 @@ export class StrandScene {
         for (const p of walk) {
           const last = line[line.length - 1];
           if (last && Math.hypot(last.x - p.x, last.y - p.y) < 1e-6) {
-            last.z = (last.z + p.z) / 2;
+            last.zIn = last.zIn ?? last.z;
+            last.zOut = p.z;
+            last.z = (last.zIn + last.zOut) / 2;
             continue;
           }
           line.push({ ...p });
@@ -408,6 +410,10 @@ export class StrandScene {
       // Folds are deliberately left sharp: the sweep creases them (ribbon.ts),
       // which is the only way a flat lace can turn that far.
       const width = first.width * this.params.widthScale * SCALE;
+      // Settle each fold before sweeping: the lace stacks on itself there, one
+      // thickness apart, with the change eased into the runs on either side.
+      const thickness = (first.thickness ?? this.params.thickness) * SCALE;
+      easeFolds(line, thickness, thickness * 2);
       const rounded = roundCorners(line, width * 0.5);
       const mesh = this.buildStrandMesh(first, rounded, [true, true]);
       if (!mesh) {
@@ -645,6 +651,7 @@ export class StrandScene {
         // into one sleeve instead of showing a black plate at the seam.
         openStart: !freeEnds[0],
         openEnd: !freeEnds[1],
+        openFolds: true,
       });
       const outlineMat = new THREE.MeshBasicMaterial({
         color: threeColor(strand.stroke_color),

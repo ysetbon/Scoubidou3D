@@ -41,6 +41,13 @@ export interface RibbonOptions {
    */
   openStart?: boolean;
   openEnd?: boolean;
+  /**
+   * Leave the band across a fold's outer face out of the surface. The OUTLINE
+   * shell needs this: grown outward, its band sits in FRONT of the body's own and
+   * floods the fold black. Left out, the shell has a hole exactly there, the
+   * body's face shows through it, and the rim still runs round the edges.
+   */
+  openFolds?: boolean;
 }
 
 // A cross-section is a closed loop of {u, v} points in the local (side, up)
@@ -141,7 +148,9 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   for (const p of centerline) {
     const last = pts[pts.length - 1];
     if (last && Math.hypot(last.x - p.x, last.y - p.y) <= 1e-6) {
-      last.z = (last.z + p.z) / 2;
+      last.zIn = last.zIn ?? last.z;
+      last.zOut = p.zOut ?? p.z;
+      last.z = (last.zIn + last.zOut) / 2;
       continue;
     }
     pts.push({ ...p });
@@ -205,8 +214,15 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     // descending — and the faces would tip apart and open the very seam the crease
     // exists to close. A crease is a single plane through the material, so the two
     // runs' axes are averaged and squared up to the crease line.
-    const a = upOf(f.din, runSlope(pts[i - 1], pts[i]));
-    const b = upOf(f.dout, runSlope(pts[i], pts[i + 1]));
+    // The lace doubles back over itself here, so the two runs must not share a
+    // height — held level they would pass through each other. Each face sits at
+    // the height its own run brought to the joint (already stacked one thickness
+    // apart by `easeFolds`), and the band the sweep lays between them becomes the
+    // outside of the fold.
+    const pIn = { x: pts[i].x, y: pts[i].y, z: pts[i].zIn ?? pts[i].z };
+    const pOut = { x: pts[i].x, y: pts[i].y, z: pts[i].zOut ?? pts[i].z };
+    const a = upOf(f.din, runSlope(pts[i - 1], pIn));
+    const b = upOf(f.dout, runSlope(pOut, pts[i + 1]));
     let ux = a.x + b.x;
     let uy = a.y + b.y;
     const uz = a.z + b.z; // both lean up, so this can never cancel
@@ -215,8 +231,8 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     uy -= along * f.crease.y;
     const len = Math.hypot(ux, uy, uz) || 1;
     const up = { x: ux / len, y: uy / len, z: uz / len };
-    plan.push({ p: pts[i], t: f.din, up, shear: f.shearIn, crease: false });
-    plan.push({ p: pts[i], t: f.dout, up, shear: f.shearOut, crease: true });
+    plan.push({ p: pIn, t: f.din, up, shear: f.shearIn, crease: false });
+    plan.push({ p: pOut, t: f.dout, up, shear: f.shearOut, crease: true });
   }
 
   const positions: number[] = [];
@@ -267,6 +283,7 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   const indices: number[] = [];
   // Stitch consecutive rings into a tube.
   for (let i = 0; i < rings.length - 1; i++) {
+    if (opts.openFolds && plan[i + 1].crease) continue; // skip the fold's outer face
     const a = rings[i];
     const b = rings[i + 1];
     for (let j = 0; j < m; j++) {

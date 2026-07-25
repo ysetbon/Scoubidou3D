@@ -223,6 +223,56 @@ function creaseShear(t: { x: number; y: number }, m: { x: number; y: number }): 
   return Math.max(-2, Math.min(2, -num / den));
 }
 
+/**
+ * Settle the height a lace steps through at each of its folds.
+ *
+ * A fold doubles the lace back over itself, so the two runs OVERLAP in the
+ * drawing plane for a good way past the crease — a strip brought back on itself
+ * at 155° covers the run it came off. Held at one height the two bodies pass
+ * straight through each other, and the edge of one surfaces through the face of
+ * the other as a lump. They have to be STACKED: exactly one thickness apart, the
+ * returning run lying on the run it folded off.
+ *
+ * The weave, which knows nothing of folds, will often want much more than that —
+ * the arm of a stitch can come in riding over everything and leave ducking under
+ * everything, a drop of two thicknesses. Taking that literally turns the crease
+ * into a cliff. So the step is capped at one thickness and the difference is eased
+ * back into the runs on either side, over `reach` of in-plane length: the lace
+ * ramps to the fold and ramps away from it, which is what it does in the hand.
+ */
+export function easeFolds(pts: Vec3[], thickness: number, reach: number): void {
+  const folds = foldsOf(pts);
+  if (folds.length === 0 || reach <= 0) return;
+  const was = pts.map((p) => p.z); // read heights from before any easing
+
+  for (const f of folds) {
+    const i = f.index;
+    const zIn = pts[i].zIn ?? was[i];
+    const zOut = pts[i].zOut ?? was[i];
+    const mid = (zIn + zOut) / 2;
+    const half = Math.max(-thickness, Math.min(thickness, zOut - zIn)) / 2;
+    const toIn = mid - half;
+    const toOut = mid + half;
+
+    // Ease each side away from the fold, the correction fading out over `reach`.
+    const ramp = (dir: -1 | 1, delta: number) => {
+      if (Math.abs(delta) < 1e-9) return;
+      let travelled = 0;
+      for (let k = i + dir; k >= 0 && k < pts.length; k += dir) {
+        travelled += Math.hypot(pts[k].x - pts[k - dir].x, pts[k].y - pts[k - dir].y);
+        if (travelled >= reach) break;
+        pts[k].z = was[k] + delta * (1 - travelled / reach);
+      }
+    };
+    ramp(-1, toIn - zIn);
+    ramp(1, toOut - zOut);
+
+    pts[i].zIn = toIn;
+    pts[i].zOut = toOut;
+    pts[i].z = mid;
+  }
+}
+
 /** Find every fold in a centreline and work out the crease cut at each. */
 export function foldsOf(pts: Vec3[], minTurn = FOLD_TURN): Fold[] {
   const out: Fold[] = [];

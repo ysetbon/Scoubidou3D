@@ -15,6 +15,14 @@ export interface Vec3 {
   x: number;
   y: number;
   z: number;
+  /**
+   * Where two strands are glued they share a point in the drawing plane, but each
+   * was woven separately and so arrives with its own height. Collapsing the pair
+   * leaves the mean in `z`, and keeps the two originals here — a FOLD needs to
+   * know which way the lace steps as it doubles back (ribbon.ts).
+   */
+  zIn?: number;
+  zOut?: number;
 }
 
 export const vadd = (a: Vec2, b: Vec2): Vec2 => ({ x: a.x + b.x, y: a.y + b.y });
