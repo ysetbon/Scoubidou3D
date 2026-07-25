@@ -7,12 +7,14 @@
 // lanyards) that we can then stack in Z and view from any angle.
 //
 // The sweep uses a FIXED frame: "side" is the in-plane normal of the centerline
-// and "up" is world +Z. Because every strand's centerline lives in the drawing
-// plane (XY), this frame never twists — the flat face always points toward the
-// camera when you look straight down, exactly like the original top-down editor.
+// and "up" is world +Z. Because the flat face always points toward +Z, the
+// ribbon reads exactly like the original top-down editor when viewed straight
+// down — even once the WEAVE lifts and drops the centerline in Z at crossings
+// (weave.ts). The centerline is a Vec3 polyline: (x, y) is the drawing-plane
+// position and z is the height the weave gives that point.
 
 import * as THREE from 'three';
-import { Vec2 } from './vec';
+import { Vec2, Vec3 } from './vec';
 
 export interface RibbonOptions {
   width: number; // across the ribbon (the OSS strand width), world units
@@ -23,8 +25,9 @@ export interface RibbonOptions {
 }
 
 // A cross-section is a closed loop of {u, v} points in the local (side, up)
-// frame. u runs across the width, v runs through the thickness.
-function crossSection(width: number, thickness: number, radius: number, cornerSteps: number): Vec2[] {
+// frame. u runs across the width, v runs through the thickness. Shared with the
+// attach connector (connector.ts) so a bridge's rings match the ribbon's.
+export function crossSection(width: number, thickness: number, radius: number, cornerSteps: number): Vec2[] {
   const hw = width / 2;
   const ht = thickness / 2;
   const r = Math.max(0, Math.min(radius, hw, ht));
@@ -55,8 +58,9 @@ function crossSection(width: number, thickness: number, radius: number, cornerSt
   return pts;
 }
 
-// Central-difference tangents along the polyline (world XY, z ignored).
-function tangentsOf(points: Vec2[]): Vec2[] {
+// Central-difference tangents along the polyline (world XY, z ignored — the
+// flat face stays pointed at +Z, so only the in-plane heading matters).
+function tangentsOf(points: Vec3[]): Vec2[] {
   const n = points.length;
   const out: Vec2[] = [];
   for (let i = 0; i < n; i++) {
@@ -78,15 +82,16 @@ function tangentsOf(points: Vec2[]): Vec2[] {
 }
 
 /**
- * Build a ribbon BufferGeometry from a centerline polyline.
- * The geometry is centered on z=0; the caller positions it in Z per layer.
+ * Build a ribbon BufferGeometry from a centerline polyline. Each point carries
+ * its own z (the weave height), so the ribbon can rise and dip along its length.
  */
-export function buildRibbonGeometry(centerline: Vec2[], opts: RibbonOptions): THREE.BufferGeometry {
-  // Drop consecutive duplicates so tangents are well-defined.
-  const pts: Vec2[] = [];
+export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): THREE.BufferGeometry {
+  // Drop consecutive duplicates (in XY — a pure-Z step is still a real step) so
+  // tangents are well-defined.
+  const pts: Vec3[] = [];
   for (const p of centerline) {
     const last = pts[pts.length - 1];
-    if (!last || Math.hypot(last.x - p.x, last.y - p.y) > 1e-6) pts.push(p);
+    if (!last || Math.hypot(last.x - p.x, last.y - p.y) > 1e-6 || Math.abs(last.z - p.z) > 1e-6) pts.push(p);
   }
   if (pts.length < 2) {
     return new THREE.BufferGeometry();
@@ -112,7 +117,7 @@ export function buildRibbonGeometry(centerline: Vec2[], opts: RibbonOptions): TH
       const v = section[j].y; // through thickness -> along +Z
       const x = p.x + sx * u;
       const y = p.y + sy * u;
-      const z = v;
+      const z = p.z + v;
       ringIdx.push(positions.length / 3);
       positions.push(x, y, z);
     }
@@ -168,7 +173,7 @@ export function buildRibbonGeometry(centerline: Vec2[], opts: RibbonOptions): TH
 function addDomeCap(
   positions: number[],
   indices: number[],
-  center: Vec2,
+  center: Vec3,
   tangent: Vec2,
   section: Vec2[],
   opts: RibbonOptions,
@@ -196,7 +201,7 @@ function addDomeCap(
       const v = section[j].y * scale;
       const x = center.x + sx * u + tx * push;
       const y = center.y + sy * u + ty * push;
-      const z = v;
+      const z = center.z + v;
       ring.push(positions.length / 3);
       positions.push(x, y, z);
     }

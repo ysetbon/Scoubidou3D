@@ -270,6 +270,32 @@ body {
   color: var(--danger);
 }
 
+.masks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.mask-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfe;
+}
+
+.mask-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .hint {
   margin-top: 18px;
   font-size: 11px;
@@ -292,7 +318,8 @@ body {
     background: #2b323d;
   }
   .select,
-  .layer {
+  .layer,
+  .mask-row {
     background: #20252e;
   }
   .icon-btn:hover {

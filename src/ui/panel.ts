@@ -39,8 +39,14 @@ export class Panel {
 
   constructor(private root: HTMLElement, private view: StrandScene) {
     this.scene = view.getScene();
-    // Attach/finalize adds a layer in the scene; keep the layer list in sync.
-    this.view.onSceneChanged = () => this.renderLayers();
+    // Attach/finalize adds a layer; weave picks change the tool note and masks.
+    // Keep all three in sync after any in-scene edit.
+    this.view.onSceneChanged = () => {
+      this.scene = this.view.getScene();
+      this.renderLayers();
+      this.renderMasks();
+      this.renderTools();
+    };
     this.render();
   }
 
@@ -66,6 +72,7 @@ export class Panel {
     this.root.appendChild(this.toolSection());
     this.root.appendChild(this.viewSection());
     this.root.appendChild(this.ribbonSection());
+    this.root.appendChild(this.weaveSection());
     this.root.appendChild(this.sceneSection());
     this.root.appendChild(this.layersSection());
 
@@ -98,12 +105,14 @@ export class Panel {
       { key: 'orbit', label: 'Orbit' },
       { key: 'move', label: 'Move' },
       { key: 'attach', label: 'Attach' },
+      { key: 'weave', label: 'Weave' },
     ];
     for (const t of tools) {
       const b = el('button', 'btn tool-btn' + (mode === t.key ? ' active' : ''), t.label);
       b.addEventListener('click', () => {
         this.view.setMode(t.key);
         this.renderTools();
+        this.renderMasks();
       });
       row.appendChild(b);
     }
@@ -116,8 +125,13 @@ export class Panel {
     } else if (mode === 'move') {
       note.innerHTML =
         'Drag a <b style="color:#2f7bd6">blue</b> endpoint — connected strands follow. Drag an <b style="color:#e0872a">orange</b> dot to bend the strand.';
+    } else if (mode === 'weave') {
+      const pending = this.view.getWeavePending();
+      note.innerHTML = pending
+        ? `<b style="color:#2fb862">${pending}</b> rides over — now click the strand it should cross <b>over</b> (click it again to cancel).`
+        : 'Click the strand that goes <b>over</b>, then the one it goes <b>under</b>. They interlock at their crossing — the 3D version of an OpenStrand mask.';
     } else {
-      note.textContent = 'Orbit the camera freely. Switch to Move or Attach to edit strands in place.';
+      note.textContent = 'Orbit the camera freely. Switch to Move, Attach or Weave to edit strands in place.';
     }
     this.toolHost.appendChild(note);
   }
@@ -142,9 +156,6 @@ export class Panel {
       slider('Thickness', p.thickness, 2, 120, 1, (v) => this.view.setParams({ thickness: v })),
     );
     sec.appendChild(
-      slider('Layer gap', p.layerGap, 0, 160, 1, (v) => this.view.setParams({ layerGap: v })),
-    );
-    sec.appendChild(
       slider('Width scale', p.widthScale, 0.2, 3, 0.05, (v) => this.view.setParams({ widthScale: v })),
     );
 
@@ -156,6 +167,61 @@ export class Panel {
     );
     sec.appendChild(toggles);
     return sec;
+  }
+
+  // ---- Weave (over / under) ------------------------------------------------
+  // The 3D home of OpenStrand Studio's masks. Depth controls how far a lace
+  // lifts over / dips under; the mask list shows every over/under override.
+  private weaveHost: HTMLElement | null = null;
+
+  private weaveSection(): HTMLElement {
+    const sec = section('Weave  (over / under)');
+    const p = this.view.getParams();
+
+    const toggles = el('div', 'toggle-row');
+    toggles.append(toggle('Weave', p.weave, (v) => this.view.setParams({ weave: v })));
+    sec.appendChild(toggles);
+
+    sec.appendChild(slider('Depth', p.weaveDepth, 0, 120, 1, (v) => this.view.setParams({ weaveDepth: v })));
+    sec.appendChild(slider('Span', p.weaveSpan, 0.4, 3, 0.05, (v) => this.view.setParams({ weaveSpan: v })));
+    sec.appendChild(slider('Layer lift', p.layerGap, 0, 80, 1, (v) => this.view.setParams({ layerGap: v })));
+
+    sec.appendChild(
+      el(
+        'div',
+        'note',
+        'Depth is how far a lace lifts over / dips under a crossing. Use the Weave tool to set which strand is on top; with no mask, the higher layer wins.',
+      ),
+    );
+
+    this.weaveHost = el('div', 'masks');
+    sec.appendChild(this.weaveHost);
+    this.renderMasks();
+    return sec;
+  }
+
+  private renderMasks(): void {
+    if (!this.weaveHost) return;
+    this.weaveHost.innerHTML = '';
+    const masks = this.scene.masks;
+    if (!masks.length) return;
+    this.weaveHost.appendChild(
+      el('div', 'note', `${masks.length} over/under mask${masks.length > 1 ? 's' : ''}:`),
+    );
+    masks.forEach((m, i) => {
+      const row = el('div', 'mask-row');
+      const text = el('span', 'mask-text');
+      text.innerHTML = `<b>${m.overId}</b> over <b>${m.underId}</b>`;
+      row.appendChild(text);
+      const flip = el('button', 'icon-btn', '⇅');
+      flip.title = 'Flip over / under';
+      flip.addEventListener('click', () => this.view.flipMask(i));
+      const del = el('button', 'icon-btn danger', '✕');
+      del.title = 'Remove mask';
+      del.addEventListener('click', () => this.view.removeMask(i));
+      row.append(flip, del);
+      this.weaveHost!.appendChild(row);
+    });
   }
 
   // ---- Scene loaders -------------------------------------------------------
@@ -209,7 +275,7 @@ export class Panel {
     });
     sec.appendChild(fileInput);
 
-    const note = el('div', 'note', 'Loads OpenStrand Studio / OpenStrandJS save files. Masks become real layer depth.');
+    const note = el('div', 'note', 'Loads OpenStrand Studio / OpenStrandJS save files. Masks become a real over/under weave.');
     sec.appendChild(note);
     return sec;
   }

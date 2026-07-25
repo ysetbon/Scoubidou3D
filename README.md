@@ -15,37 +15,58 @@ That's the whole idea. Each strand becomes a **ribbon** (like the plastic-lacing
 / gimp lanyards this was inspired by): its OpenStrand *width* runs across the
 ribbon, a new *thickness* runs through it, and its **layer index becomes its
 height (Z)**. When strand *Y* is above strand *X* in the layer panel, *Y*'s
-ribbon sits directly over *X*'s — everywhere they cross.
+ribbon sits over *X*'s by default — and a **mask** can flip that at any single
+crossing, so one lace weaves over-and-under just like a real basket.
 
 ![concept](docs/concept.svg)
 
-## What works today (initial implementation)
+## What works today
 
 - 🧵 **Strands → 3D ribbons.** Every strand is extruded into a solid ribbon
   with configurable **thickness**, rounded edges, rounded ends, and a
   stroke-colored outline.
-- 📚 **Layer stacking = real depth.** The layer order *is* the Z order. Reorder
-  a layer and it moves up/down the stack live.
+- 🧶 **Masks → a real over/under weave.** This is the headline. In OpenStrand a
+  *MaskedStrand* fakes over/under by painting one strand on top of another where
+  they cross. Scoubidou3D makes it physical: at every crossing the **over** lace
+  lifts and the **under** lace dips, so a *single* strand can go over one
+  neighbour and under the next — a true basket weave, not a flat stack.
+  - The **Weave** tool: click the strand that goes over, then the strand it
+    crosses over — the 3D version of picking two strands for an OSS mask (first
+    selected = over). Every override is listed with flip / remove controls.
+  - **Imported masks weave automatically.** `MaskedStrand` records from a `.json`
+    become over/under relationships, so an imported basket interlaces the way it
+    was drawn. With no mask on a crossing, the **higher layer** rides over.
+  - **Depth / Span / Layer-lift** sliders tune how far laces rise and dip and how
+    wide the bump around each crossing is.
+- 🪢 **Attached strands are really connected.** When you attach a strand it lives
+  on a different layer than its parent, so the join used to float with a Z gap.
+  Now a **lofted bridge** ("a Z vector, meshed nicely") morphs the parent's end
+  cross-section into the child's start across the gap, banking gently — the join
+  reads as one continuous lace stepping between layers. Derived from coincident
+  endpoints, so imported files reconnect too.
+- 📚 **Layer stacking = default depth.** The layer order sets the *default*
+  over/under (higher layer rides over); masks override specific crossings, just
+  like in OSS. Reorder a layer and it restacks live.
 - 🎥 **Full 3D camera.** Orbit, pan, zoom (Three.js `OrbitControls`). One click
   snaps back to the familiar top-down OpenStrand view.
-- 🎚️ **Live controls** for thickness, layer gap, width scale, outline, rounded
-  ends, and a reference grid.
+- 🎚️ **Live controls** for thickness, width scale, weave depth/span, layer lift,
+  outline, rounded ends, and a reference grid.
 - 🗂️ **Layer panel** to recolor, hide, reorder, delete, and add strands.
 - 🔗 **Attach & Move — OpenStrand's editing, in 3D.** A **Tool** switcher (Orbit
-  / Move / Attach) turns the strand endpoints into grab handles:
+  / Move / Attach / Weave) turns the strand endpoints into grab handles:
   - **Attach**: pull from a *free* (green) endpoint and a new strand is born
     there — glued to the parent, inheriting its look, joining the same layer
-    *set* (`1_1` → `1_2`), and stacked on top. Chain them to weave families.
-    Occupied junctions show gray and refuse new attachments, exactly like OSS's
+    *set* (`1_1` → `1_2`), stacked on top, and bridged by a connector. Occupied
+    junctions show gray and refuse new attachments, exactly like OSS's
     `has_circles` rule.
   - **Move**: drag a (blue) endpoint and every strand glued to that point moves
     with it, so attachments stay connected; drag an (orange) dot to bend a
-    strand. Layer order still *is* the Z order.
+    strand. The weave re-solves as you drag.
 - 📥 **Import real files.** Load an OpenStrand Studio / OpenStrandJS `.json`
   save and see it in 3D. The strand geometry uses a faithful port of OSS's
   curve math (`strand.py::_build_curve_profile`), so curves match the original.
-- 🧩 **Sample scenes:** two crossing strands, a woven mat, and a curved ribbon
-  stack.
+- 🧩 **Sample scenes:** two crossing strands, a truly-woven mat (a checkerboard
+  of masks), and a curved ribbon stack.
 
 ## The 3D translation, in one picture
 
@@ -53,8 +74,9 @@ ribbon sits directly over *X*'s — everywhere they cross.
 | --- | --- |
 | strand `width` | ribbon width (across) |
 | — | ribbon **thickness** (through) — *new* |
-| layer order in the panel | **height in Z** (top layer = front) |
-| over/under via masking | real occlusion from the Z stack |
+| layer order in the panel | **default** height in Z (top layer rides over) |
+| `MaskedStrand` (first over second) | a real **over/under weave** — over lifts, under dips |
+| attached strand (glued endpoint) | a lofted **connector** bridging the layer gap |
 | top-down canvas | orbit camera (drops to top view on demand) |
 
 ## Run it
@@ -79,16 +101,18 @@ npm run preview
 src/
   geometry/
     bezier.ts     # port of OpenStrand's eased curve profile -> sampled centerline
-    ribbon.ts     # sweep a (width x thickness) cross-section along the centerline
+    ribbon.ts     # sweep a (width x thickness) cross-section along a 3D centerline
+    weave.ts      # crossing detection + the Z height field that makes over/under real
+    connector.ts  # lofted bridge that joins an attached strand across the layer gap
   model/
-    types.ts       # Strand3D / Scene3D
-    connections.ts # attach + "connected strands move together" (ports OSS attach/move)
-    importOss.ts   # read OpenStrand Studio / OpenStrandJS .json
+    types.ts       # Strand3D / Scene3D / MaskLink (over/under)
+    connections.ts # attach, "connected strands move together", junction detection
+    importOss.ts   # read OpenStrand Studio / OpenStrandJS .json (masks -> MaskLinks)
     samples.ts     # built-in demo scenes
   scene/
-    StrandScene.ts # Three.js scene: meshes, Z stack, lights, orbit camera, edit handles
+    StrandScene.ts # Three.js scene: weave, connectors, lights, orbit camera, handles
   ui/
-    panel.ts       # control panel + tool switcher + layer stack
+    panel.ts       # control panel + tool switcher + weave/mask list + layer stack
   main.ts
 ```
 
@@ -96,21 +120,32 @@ The ribbon sweep uses a **fixed frame** (side = in-plane normal, up = world +Z)
 instead of Frenet frames, so a flat ribbon never twists and its face always
 points toward the camera in top view — exactly like the original editor.
 
+## How the weave works
+
+At every place two centerlines cross we know who is over (a mask if one covers
+the pair, otherwise the higher layer). Each strand collects its crossings and
+turns them into a smooth **Z height field**: a raised-cosine bump of `+depth`
+where it goes over and `-depth` where it goes under, easing back to the base
+height in between (`geometry/weave.ts`). The ribbon is then swept along that
+undulating 3D centerline, so the laces physically interlock. Base layer-lift is
+kept small on purpose — the *weave*, not the stack, decides over/under at a
+crossing, so a lower-layer strand can still poke over a higher one where a mask
+says so.
+
 ## Roadmap / ideas
 
-The v1 model is **global Z per layer**: a strand is entirely above or below its
-neighbours. That already matches "Y over X in the layer panel," but real
-basket-weaves need a strand to go *over one and under the next*. Natural next
-steps:
-
-- **Per-crossing undulation** — displace a strand's centerline in Z as it
-  crosses others, so a single strand can weave over-and-under (true baskets,
-  braids, knots).
-- ✅ **Direct 3D editing** — drag endpoints/control points in the scene (Move),
-  and grow attached strands from free endpoints (Attach). *Done* — see the Tool
-  switcher above. Next: snap-to-grid and dragging in a tilted view.
-- **Honor masks** from imported files to drive the undulation automatically.
-- **Round-trip** back to OpenStrand `.json`, and PNG/GLTF export.
+- ✅ **Per-crossing undulation** — a strand now weaves over-and-under along its
+  length (`weave.ts`). *Done.*
+- ✅ **Honor masks** from imported files — `MaskedStrand` records drive the
+  weave automatically. *Done.*
+- ✅ **Really-connected attachments** — a lofted connector bridges the layer gap
+  (`connector.ts`). *Done.*
+- ✅ **Direct 3D editing** — Move / Attach / Weave tools in the scene. *Done.*
+  Next: snap-to-grid and dragging in a tilted view.
+- **Deletion rectangles** — honour OSS's partial-mask edits (`mask_grid_dialog`)
+  so a mask that only covers part of a crossing weaves partially.
+- **Round-trip** back to OpenStrand `.json` (write `MaskedStrand` records from
+  the weave), and PNG/GLTF export.
 - **Materials** — glossy plastic vs. matte cord, per-strand.
 
 ## Relationship to the OpenStrand family

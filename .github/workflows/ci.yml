@@ -1,0 +1,27 @@
+# Type-check and build on every push / pull request, so a broken build is caught
+# before it reaches main (where deploy.yml publishes it).
+name: CI
+
+on:
+  push:
+    branches-ignore: [main] # main is covered by the deploy workflow's build job
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type-check and build
+        run: npm run build

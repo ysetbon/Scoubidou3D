@@ -61,13 +61,33 @@ export interface Strand3D {
   parentSide: 0 | 1 | null;
 }
 
+/**
+ * An over/under relationship between two strands at their crossing — the 3D
+ * meaning of an OpenStrand Studio MaskedStrand. In OSS a MaskedStrand paints its
+ * `first_selected_strand` on top of its `second_selected_strand` where they
+ * cross (masked_strand.py); here that becomes "at their crossing, `overId` rides
+ * over `underId`", and the weave lifts/dips the ribbons to make it real.
+ */
+export interface MaskLink {
+  /** Strand id that rides OVER (OSS first_selected_strand). */
+  overId: string;
+  /** Strand id that ducks UNDER (OSS second_selected_strand). */
+  underId: string;
+}
+
 export interface Scene3D {
   /**
    * Strands in stacking order: index 0 is the BOTTOM layer, the last index is
    * the TOP layer (highest Z). This is exactly the OpenStrand layer-panel order,
    * so "Y is above X in the layer panel" becomes "Y sits on top of X in 3D".
+   *
+   * That order sets the DEFAULT over/under at every crossing (higher layer rides
+   * over); `masks` overrides specific crossings, exactly like OSS masks override
+   * the natural stacking.
    */
   strands: Strand3D[];
+  /** Over/under overrides — the weave's masks. Empty means "stack order decides". */
+  masks: MaskLink[];
   name: string;
 }
 
