@@ -199,9 +199,9 @@ function boxStitchRounds(rounds: number, name: string): Scene3D {
   const cx = 400;
   const cy = 268;
   const Q = 33; // half the woven square: how far each arm's run sits from the middle
-  const E = 32; // how far the pinned middle runs past the square before an arm folds off it
-  const TIP = 38; // a fold's first overhang past the far corner
-  const GROW = 5; // …creeping out by this much each round, so no two folds end on one point
+  const E = 26; // how far the pinned middle runs past the square before an arm folds off it
+  const TIP = 40; // a fold's overhang past the far corner
+  const SPLAY = 3; // …give or take this much, so no two folds end on the same point
   const TAIL = 120; // the last round isn't folded again — its four ends are the loose tails
 
   // An arm: the line it lives on, and where along that line it folds. `base` is
@@ -252,6 +252,26 @@ function boxStitchRounds(rounds: number, name: string): Scene3D {
     return { x: a.base.x + a.u.x * t, y: a.base.y + a.u.y * t };
   };
 
+  // How far an arm's `n`th fold reaches past the corner.
+  //
+  // An arm goes out on its even folds and back on its odd ones, so it is only
+  // the folds of the SAME parity that land near each other — and if two of them
+  // landed on exactly the same point, everything downstream would read that
+  // point as one junction and glue four strand-ends into a fork
+  // (connections.ts glues by coincidence, and it cannot see the storeys that
+  // actually keep them apart). So each same-parity fold gets its own slot, and
+  // the slots are spread SYMMETRICALLY about `TIP`: the early rounds sit a hair
+  // tighter, the late ones a hair looser, and the column stays the same width
+  // all the way up. Spreading them in one direction instead — which is what this
+  // did at first — fans the stitch out by nearly a lace width over ten rounds.
+  const evens = Math.ceil(rounds / 2);
+  const odds = Math.floor(rounds / 2);
+  const overhang = (n: number): number => {
+    const slot = Math.floor(n / 2);
+    const slots = n % 2 === 0 ? evens : odds;
+    return TIP + (slot - (slots - 1) / 2) * SPLAY;
+  };
+
   for (let round = 0; round < rounds; round++) {
     // The rotation around the square, reversed every other round.
     const order = round % 2 === 0 ? [A, D, B, C] : [C, B, D, A];
@@ -260,7 +280,7 @@ function boxStitchRounds(rounds: number, name: string): Scene3D {
 
     const laid: string[] = [];
     for (const a of order) {
-      const over = round === rounds - 1 ? TAIL : TIP + round * GROW;
+      const over = round === rounds - 1 ? TAIL : overhang(a.count);
       const end = foldEnd(a, a.count, over);
       const id = `${a.set}_${++nextId[a.set]}`;
       strands.push(
