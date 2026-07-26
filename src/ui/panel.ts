@@ -593,6 +593,11 @@ export class Panel {
 
   // ---- Layer stack ---------------------------------------------------------
   private layersHost: HTMLElement | null = null;
+  private resetAllBtn: HTMLButtonElement | null = null;
+  // "Reset curves" hits every layer at once and there is no undo in this app, so
+  // it takes two clicks: the first arms it, the second does it.
+  private resetAllArmed = false;
+  private resetAllTimer = 0;
 
   private layersSection(): HTMLElement {
     const sec = section('Layers  (top = front)');
@@ -608,6 +613,14 @@ export class Panel {
       this.apply(false);
     });
     row.appendChild(add);
+
+    // The whole-scene twin of the ↺ on each layer row: put every strand back on
+    // the control points it was born with, straightening the lot in one go.
+    const resetAll = el('button', 'btn btn-icon') as HTMLButtonElement;
+    this.resetAllBtn = resetAll;
+    resetAll.addEventListener('click', () => this.resetAllControls());
+    row.appendChild(resetAll);
+
     sec.appendChild(row);
 
     this.layersHost = el('div', 'layers');
@@ -617,14 +630,63 @@ export class Panel {
       el(
         'div',
         'note',
-        'A level is a step of one whole storey — the strand thickness plus the band the weave needs, so a lace up there rests ON the woven round below instead of sinking into it. Drag it down the stack with ▲▼ to drop the layers it passes back a storey.',
+        'A level is a step of one whole storey — the strand thickness plus the band the weave needs, so a lace up there rests ON the woven round below instead of sinking into it. Drag it down the stack with ▲▼ to drop the layers it passes back a storey. ↺ on a row straightens that one strand, back to the control points it was born with; Reset curves does the whole stack.',
       ),
     );
     this.renderLayers();
     return sec;
   }
 
+  /** How many strands are carrying control points off their default set — the
+   *  number "Reset curves" would straighten. */
+  private bentStrandCount(): number {
+    return this.scene.strands.reduce((n, s) => (controlsAtDefault(s) ? n : n + 1), 0);
+  }
+
+  /** Keep the header button in step with the stack it acts on: nothing bent, no
+   *  button to press. It lives outside `layersHost`, so it is refreshed by hand
+   *  rather than rebuilt with the rows. */
+  private syncResetAll(): void {
+    const b = this.resetAllBtn;
+    if (!b) return;
+    const n = this.bentStrandCount();
+    b.disabled = n === 0;
+    b.classList.toggle('btn-armed', this.resetAllArmed);
+    if (this.resetAllArmed) {
+      b.innerHTML = `${RESET_ICON}<span>Reset ${n}? Click again</span>`;
+      b.title = 'Click again to straighten every strand — this cannot be undone';
+      return;
+    }
+    b.innerHTML = `${RESET_ICON}<span>Reset curves</span>`;
+    b.title = n
+      ? `Put every strand's control points back to their default (${n} bent)`
+      : 'Every strand is already on its default control points';
+  }
+
+  /**
+   * First click arms, second click resets the whole stack — and the arming lapses
+   * on its own if it goes unanswered. A `confirm()` would be the obvious guard,
+   * but modal dialogs are refused in a sandboxed frame, which is exactly where
+   * this page runs when it is published.
+   */
+  private resetAllControls(): void {
+    window.clearTimeout(this.resetAllTimer);
+    if (!this.resetAllArmed) {
+      this.resetAllArmed = true;
+      this.resetAllTimer = window.setTimeout(() => {
+        this.resetAllArmed = false;
+        this.syncResetAll();
+      }, 4000);
+      this.syncResetAll();
+      return;
+    }
+    this.resetAllArmed = false;
+    for (const s of this.scene.strands) resetControlPoints(s);
+    this.apply(false);
+  }
+
   private renderLayers(): void {
+    this.syncResetAll();
     if (!this.layersHost) return;
     this.layersHost.innerHTML = '';
     // Mask layers first: OSS appends a MaskedStrand to the end of the strand list,
@@ -753,18 +815,22 @@ export class Panel {
 
     const controls = el('div', 'layer-controls');
 
-    // Only offered when there is something to undo: a strand carrying control
-    // points off their default set. Puts them back where a fresh strand keeps
-    // them — both on the start — which straightens the run.
-    if (!controlsAtDefault(strand)) {
-      const straight = el('button', 'icon-btn', '↺');
-      straight.title = 'Reset control points (straighten this strand)';
-      straight.addEventListener('click', () => {
-        resetControlPoints(strand);
-        this.apply(false);
-      });
-      controls.appendChild(straight);
-    }
+    // Every layer carries this one: it puts the strand's control points back
+    // where a fresh strand keeps them — both on the start, no centre, nothing
+    // flagged as touched — which straightens the run. A strand already there has
+    // it greyed out rather than missing, so the controls stay in the same places
+    // on every row and the button is there to find before you need it.
+    const atDefault = controlsAtDefault(strand);
+    const straight = el('button', 'icon-btn', '↺') as HTMLButtonElement;
+    straight.disabled = atDefault;
+    straight.title = atDefault
+      ? 'Control points are already at their default'
+      : 'Reset control points (straighten this strand)';
+    straight.addEventListener('click', () => {
+      resetControlPoints(strand);
+      this.apply(false);
+    });
+    controls.appendChild(straight);
 
     const vis = el('button', 'icon-btn', strand.visible ? '●' : '○');
     vis.title = 'Show / hide';
@@ -814,6 +880,13 @@ const LAYERS_ICON =
   '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
   '<path d="M12 3 22 9.2 12 15.4 2 9.2Z"/>' +
   '<path d="M12 17.7 3.7 12.5 2 13.6 12 19.8 22 13.6 20.3 12.5Z"/>' +
+  '</svg>';
+
+// The anticlockwise turn-back arrow on "Reset curves", drawn to read as the ↺ the
+// layer rows carry, so the two controls state their kinship: one row, or all.
+const RESET_ICON =
+  '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+  '<path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7Z"/>' +
   '</svg>';
 
 const PALETTE: RGBA[] = [

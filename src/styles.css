@@ -134,6 +134,22 @@ body {
   background: #e9eef5;
 }
 
+.btn:disabled,
+.btn:disabled:hover {
+  opacity: 0.42;
+  background: #f4f6f9;
+  cursor: default;
+}
+
+/* A whole-scene button that has been armed and is waiting on the second click
+   that confirms it ("Reset curves"). */
+.btn-armed,
+.btn-armed:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: #fbe9e9;
+}
+
 .tool-btn.active,
 .tool-btn.active:hover {
   background: var(--accent);
@@ -527,6 +543,14 @@ body {
   }
   .btn:hover {
     background: #2b323d;
+  }
+  .btn:disabled,
+  .btn:disabled:hover {
+    background: #232933;
+  }
+  .btn-armed,
+  .btn-armed:hover {
+    background: #3a2226;
   }
   .select,
   .layer,
