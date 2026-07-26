@@ -164,6 +164,154 @@ function boxStitch(): Scene3D {
   return { name: 'Box stitch — starting stitch', strands, masks, levelBreaks: [] };
 }
 
+// 4b) The box stitch, worked for as many ROUNDS as you like — the square lanyard
+//     you actually end up with, a column of stitches instead of the first one.
+//
+//     The starting stitch above is round one. Every round after it is the same
+//     four moves again: each arm folds back across the middle in turn, and the
+//     four folds interlock in one flat square before the next round is laid on
+//     top. So the whole thing is described by three rules, repeated:
+//
+//     GEOMETRY. Seen from above, every round is the SAME square. The four arms
+//     run along its four edges — the two orange arms on the bottom and top, the
+//     two gold ones on the left and right — so they cross at the square's four
+//     corners, and a fold's far end pokes a little past the corner before turning
+//     back. That overhang creeps outward by `GROW` a round at a time; nothing
+//     needs it to, but two folds ending on exactly the same point would be read
+//     as one junction by everything downstream (connections.ts glues by
+//     coincidence), and a stitch that fans out by a hair is what a real one does
+//     anyway.
+//
+//     ORDER. The four arms fold in a rotation around the square, and the rotation
+//     REVERSES each round: A,D,B,C then C,B,D,A then A,D,B,C… That alternation is
+//     what makes this the BOX stitch — keep turning the same way every round and
+//     the same four moves give you the round (spiral) stitch instead.
+//
+//     WEAVE. Within a round the fold order already tells the truth at three of
+//     the four corners: each arm was laid on top of the one before it, so with
+//     folds x, y, z, w it gives y over x, z over y, w over z. The fourth corner is
+//     the move that locks the stitch — w tucks back UNDER x, closing the cycle —
+//     and that one contradicts the stacking, so it takes exactly ONE mask per
+//     round. Rounds don't interlock with each other at all; they rest on each
+//     other, which is what the LEVEL BREAK between them says (levels.ts).
+function boxStitchRounds(rounds: number, name: string): Scene3D {
+  const w = 54;
+  const cx = 400;
+  const cy = 268;
+  const Q = 33; // half the woven square: how far each arm's run sits from the middle
+  const E = 26; // how far the pinned middle runs past the square before an arm folds off it
+  const TIP = 40; // a fold's overhang past the far corner
+  const SPREAD = 14; // …give or take, over all the folds of one arm and one parity
+  const SPLAY = 2; // …and never closer than this, or two folds read as one point
+  const TAIL = 120; // the last round isn't folded again — its four ends are the loose tails
+
+  // An arm: the line it lives on, and where along that line it folds. `base` is
+  // the end of the pinned middle it hangs off; `u` is the way its FIRST fold
+  // travels; distances are measured along `u` from `base`.
+  interface Arm {
+    key: string;
+    set: 1 | 2;
+    color: RGBA;
+    base: Point;
+    u: Point;
+    count: number; // how many folds it has made so far
+    at: Point; // its current free end
+    last: string; // id of the strand its next fold hangs off
+    side: 0 | 1; // which side of that strand
+  }
+
+  const bottom = cy + Q;
+  const top = cy - Q;
+  const left = cx - Q;
+  const right = cx + Q;
+
+  const arm = (key: string, set: 1 | 2, color: RGBA, base: Point, u: Point, last: string, side: 0 | 1): Arm => ({
+    key, set, color, base, u, count: 0, at: { ...base }, last, side,
+  });
+
+  // The two laces, pinned across each other. Each runs corner to corner of the
+  // square and out the far side by `E`, and its two ends are where its two arms
+  // fold off — which is exactly the OSS shape: `1_1` with arms grown on both ends.
+  const A = arm('A', 1, ORANGE, { x: left - E, y: bottom }, { x: 1, y: 0 }, '1_1', 0);
+  const B = arm('B', 1, ORANGE, { x: right + E, y: top }, { x: -1, y: 0 }, '1_1', 1);
+  const C = arm('C', 2, YELLOW, { x: left, y: top - E }, { x: 0, y: 1 }, '2_1', 0);
+  const D = arm('D', 2, YELLOW, { x: right, y: bottom + E }, { x: 0, y: -1 }, '2_1', 1);
+
+  const strands: Strand3D[] = [
+    mk('1_1', { ...A.base }, { ...B.base }, ORANGE, { width: w }),
+    mk('2_1', { ...C.base }, { ...D.base }, YELLOW, { width: w }),
+  ];
+  const masks: MaskLink[] = [];
+  const levelBreaks: number[] = [];
+  const nextId = { 1: 1, 2: 1 };
+
+  // Where an arm's `n`th fold ends: past the far corner on the way out, past the
+  // near one on the way back. The span between the two corners is `2Q`, and the
+  // middle it folds off takes up `E` of the outward leg.
+  const foldEnd = (a: Arm, n: number, over: number): Point => {
+    const t = n % 2 === 0 ? E + 2 * Q + over : E - over;
+    return { x: a.base.x + a.u.x * t, y: a.base.y + a.u.y * t };
+  };
+
+  // How far an arm's `n`th fold reaches past the corner.
+  //
+  // An arm goes out on its even folds and back on its odd ones, so it is only
+  // the folds of the SAME parity that land near each other — and if two of them
+  // landed on exactly the same point, everything downstream would read that
+  // point as one junction and glue four strand-ends into a fork
+  // (connections.ts glues by coincidence, and it cannot see the storeys that
+  // actually keep them apart). So each same-parity fold gets its own slot, and
+  // the slots are spread SYMMETRICALLY about `TIP`: the early rounds sit a hair
+  // tighter, the late ones a hair looser, and the column stays the same width
+  // all the way up. Spreading them in one direction instead — which is what this
+  // did at first — fans the stitch out by nearly a lace width over ten rounds.
+  //
+  // The slots share a FIXED total spread rather than a fixed step, so adding
+  // rounds packs them closer instead of widening the stitch — down to `SPLAY`
+  // apart, which is as close as they can sit and still be told apart by the
+  // one-pixel snap that decides what is glued to what (connections.ts).
+  const evens = Math.ceil(rounds / 2);
+  const odds = Math.floor(rounds / 2);
+  const overhang = (n: number): number => {
+    const slot = Math.floor(n / 2);
+    const slots = n % 2 === 0 ? evens : odds;
+    if (slots < 2) return TIP;
+    const step = Math.max(SPLAY, SPREAD / (slots - 1));
+    return TIP + (slot - (slots - 1) / 2) * step;
+  };
+
+  for (let round = 0; round < rounds; round++) {
+    // The rotation around the square, reversed every other round.
+    const order = round % 2 === 0 ? [A, D, B, C] : [C, B, D, A];
+    // Everything from this round up rests one storey higher than the last one.
+    if (round > 0) levelBreaks.push(strands.length);
+
+    const laid: string[] = [];
+    for (const a of order) {
+      const over = round === rounds - 1 ? TAIL : overhang(a.count);
+      const end = foldEnd(a, a.count, over);
+      const id = `${a.set}_${++nextId[a.set]}`;
+      strands.push(
+        mk(id, { ...a.at }, end, a.color, {
+          width: w,
+          parentId: a.last,
+          parentSide: a.side,
+        }),
+      );
+      laid.push(id);
+      a.count++;
+      a.at = end;
+      a.last = id;
+      a.side = 1; // every later fold hangs off the END of the fold before it
+    }
+    // The one crossing the stacking gets wrong: the last arm folded dives back
+    // under the first, which is the move that closes the round.
+    masks.push({ overId: laid[0], underId: laid[3] });
+  }
+
+  return { name, strands, masks, levelBreaks };
+}
+
 // 5) A flat braid of `count` laces — the plait you get by repeatedly swapping a
 //    lace with its neighbour, which for three laces is the ordinary hair plait.
 //
@@ -252,6 +400,8 @@ function diagonalWeave(): Scene3D {
 export const SAMPLES: Record<string, () => Scene3D> = {
   'two-crossing': twoCrossing,
   'box-stitch': boxStitch,
+  'box-stitch-10': () => boxStitchRounds(10, 'Box stitch — 10 levels'),
+  'box-stitch-15': () => boxStitchRounds(15, 'Box stitch — 15 levels'),
   'braid-3': () => flatBraid(3, 7, 'Three-strand braid'),
   'braid-4': () => flatBraid(4, 7, 'Four-strand flat braid'),
   'diagonal': diagonalWeave,
@@ -262,6 +412,8 @@ export const SAMPLES: Record<string, () => Scene3D> = {
 export const SAMPLE_LABELS: Array<{ key: string; label: string }> = [
   { key: 'two-crossing', label: 'Two crossing strands' },
   { key: 'box-stitch', label: 'Box stitch — starting stitch' },
+  { key: 'box-stitch-10', label: 'Box stitch — 10 levels' },
+  { key: 'box-stitch-15', label: 'Box stitch — 15 levels' },
   { key: 'braid-3', label: 'Three-strand braid' },
   { key: 'braid-4', label: 'Four-strand flat braid' },
   { key: 'diagonal', label: 'Diagonal basket' },

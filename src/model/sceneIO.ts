@@ -12,7 +12,7 @@
 import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
 import { recomputeOccupancy } from './connections';
 import { normalizeLevelBreaks } from './levels';
-import { inferTriangleHasMoved } from './controlPoints';
+import { inferTriangleHasMoved, normalizeControlPoints } from './controlPoints';
 import { sceneFromOss } from './importOss';
 
 export const SCENE_FORMAT = 'scoubidou3d-scene';
@@ -95,7 +95,7 @@ function parseStrand(raw: unknown, i: number): Strand3D {
   const end = pt(s.end, { x: 100, y: 0 });
   const cps = Array.isArray(s.control_points) ? (s.control_points as unknown[]) : [];
   const thickness = s.thickness;
-  return {
+  const strand: Strand3D = {
     id: typeof s.id === 'string' && s.id ? s.id : `strand_${i}`,
     start,
     end,
@@ -118,6 +118,11 @@ function parseStrand(raw: unknown, i: number): Strand3D {
     parentId: typeof s.parentId === 'string' ? s.parentId : null,
     parentSide: s.parentSide === 0 || s.parentSide === 1 ? s.parentSide : null,
   };
+  // A straight strand carrying the leftovers of a drag (circle on the end, a
+  // centre at the midpoint) comes back on its default set — same shape, and the
+  // handles say the truth about it again.
+  normalizeControlPoints(strand);
+  return strand;
 }
 
 /** Parse Scoubidou3D's own scene format. Throws with a readable reason. */

@@ -43,7 +43,9 @@ export function updateControlCenter(s: Strand3D): void {
   if (s.control_point_center_locked && s.control_point_center) {
     if (near(s.control_point_center, def, CENTER_EPS)) s.control_point_center_locked = false;
   }
-  if (!s.control_point_center_locked) s.control_point_center = def;
+  // An untouched strand has no centre to track — writing one would take it off
+  // its default set for a value that is already implied by the two endpoints.
+  if (!s.control_point_center_locked) s.control_point_center = parked(s) ? null : def;
 }
 
 export interface VisibleControls {
@@ -106,10 +108,65 @@ export function dragControl(s: Strand3D, handle: ControlHandle, p: Point): void 
  * Keep a passive circle glued to the end while the end is dragged, so a strand
  * that was straight stays straight (move_mode.py's auto-sync). Does nothing once
  * the user has pulled the circle off the end.
+ *
+ * With one exception, which is the whole of `parked` below: a strand nobody has
+ * bent keeps BOTH control points on the start. Sending the circle out to the end
+ * instead would look identical and yet leave the strand permanently off its
+ * default — out of line mode, carrying a centre, and saving three coordinates
+ * that say nothing. Growing an arm with Attach and then nudging its end is the
+ * commonest thing there is, so that state ended up all over a hand-built stitch.
  */
 export function syncPassiveCp2(s: Strand3D): void {
   if (s.cp2Activated) return;
-  s.control_points[1] = { x: s.end.x, y: s.end.y };
+  const home = parked(s) ? s.start : s.end;
+  s.control_points[1] = { x: home.x, y: home.y };
+}
+
+/**
+ * Is this strand still in the state it was born in — both control points on the
+ * start, which `buildProfile` reads as a straight line (bezier.ts line mode)?
+ * The circle is allowed to be sitting on the end: that is the state this module
+ * now tidies away, and it is still an untouched strand.
+ */
+function parked(s: Strand3D): boolean {
+  return !s.triangleHasMoved && !s.cp2Activated && near(s.control_points[0], s.start, CP_EPS);
+}
+
+/** True when the strand's control points are exactly the default set: both on
+ *  the start, no centre, nothing flagged as touched. */
+export function controlsAtDefault(s: Strand3D): boolean {
+  return (
+    parked(s) && near(s.control_points[1], s.start, CP_EPS) && s.control_point_center === null
+  );
+}
+
+/**
+ * Put the control points back to the state a fresh strand is born in: both on
+ * the start, no centre, nothing touched. This is `Reset curve` in the layer
+ * panel, and it is also what a straight strand is normalised to on load.
+ */
+export function resetControlPoints(s: Strand3D): void {
+  s.control_points = [
+    { x: s.start.x, y: s.start.y },
+    { x: s.start.x, y: s.start.y },
+  ];
+  s.control_point_center = null;
+  s.control_point_center_locked = false;
+  s.triangleHasMoved = false;
+  s.cp2Activated = false;
+}
+
+/**
+ * Tidy a strand read off a file: one that is straight but is carrying the
+ * leftovers of a drag — the circle parked on the end, a centre written at the
+ * midpoint — is put back to the default set. The shape is unchanged (a strand
+ * whose handles all lie on its own straight line is that line either way); what
+ * changes is that it reads as untouched again, which is what it is.
+ *
+ * A strand that has genuinely been bent is left exactly as saved.
+ */
+export function normalizeControlPoints(s: Strand3D): void {
+  if (parked(s)) resetControlPoints(s);
 }
 
 /**

@@ -27,8 +27,19 @@ panel.
 
 Note the size. The Layer lift is deliberately *less* than a thickness, so two
 laces that overlap without crossing still occupy some of the same space. One
-level is exactly `thickness`, which is precisely the distance at which the upper
-ribbon's underside meets the lower ribbon's top face — laces stacked, not merged.
+level is exactly `2 · thickness`, and the factor of two is not padding — it is
+what a level is *for*. The thing a level stacks is not a flat lace, it is a
+**woven round**: a lace riding over and a lace ducking under, interlocked. That
+is two thicknesses tall. A step of one thickness cannot hold it — the lace
+ducking under upstairs lands inside the lace riding over downstairs, the two
+storeys read as one, and a box stitch of any height collapses into its bottom
+round.
+
+The weave is held to the same measure from the other side: once a scene has
+levels, a crossing lifts and dips by at most half a thickness from its storey's
+plane, whatever the **Depth** slider says, so the swing stays inside the storey
+it belongs to. Depth is unrestrained in a scene with no levels, where there is
+nothing above or below to stay clear of.
 
 ## The instruction
 
@@ -36,7 +47,7 @@ ribbon's underside meets the lower ribbon's top face — laces stacked, not merg
    icon, labelled **New level**.
 2. **What it adds.** Pressing it inserts a **level row** at the *top* of the
    layer stack. The row shows the same layers icon, is named `level N` (counting
-   up from the bottom) and is tagged `+1 thickness`.
+   up from the bottom) and is tagged `+1 storey`.
 3. **What it means.** Every strand **above** a level row rests one strand
    thickness (the Ribbon ▸ **Thickness** value) higher in Z than it otherwise
    would. Levels add up: two rows above a lace means two thicknesses.
@@ -65,13 +76,21 @@ ribbon's underside meets the lower ribbon's top face — laces stacked, not merg
 ## The rule, exactly
 
 Levels are stored as break positions in the layer stack. A break at position `k`
-means *every strand from index `k` upward is one thickness higher*:
+means *every strand from index `k` upward is one storey higher*:
 
 ```
-restZ(strand) = rank(lace(strand)) · layerGap  +  level(strand) · thickness
+restZ(strand) = rank(lace(strand)) · layerGap  +  level(strand) · 2 · thickness
 rank(lace)    = the lace's position in layer-panel order, ranked by its lowest member
 level(strand) = how many breaks sit at or below the strand's own index
 ```
+
+Crossings follow the strand up. A crossing is woven about the plane of the storey
+it happens on, not about one plane for the whole scene — otherwise every mask in
+the model drags its two laces back to the same height and the levels are undone
+where they matter most. Two strands on *different* storeys are not woven together
+at all: they are already a full storey apart, one simply passes above the other,
+and that is the statement the level break makes. An explicit mask across storeys
+is still honoured — asking for an over/under gets one.
 
 Note the two scopes, which is the whole of it: `rank` is per LACE, because the
 panel positions of one cord's members are incidental; `level` is per STRAND,
@@ -86,3 +105,11 @@ whose two ends are separate meshes is bridged by the usual lofted connector.
 
 With no level rows, `level` is `0` everywhere and the formula collapses to the
 current behaviour — the feature is invisible until it is used.
+
+## The case that set the size
+
+A box stitch worked round after round is levels at full stretch: ten or fifteen
+woven rounds, each resting on the one below. It is where the one-thickness step
+was found to be too short, and where the weave had to be taught to stay inside
+its own storey. Both samples, every round and every mask in them, and the level
+rule they forced: **[box-stitch-levels](box-stitch-levels/)**.
