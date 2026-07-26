@@ -97,7 +97,12 @@ function grabPx(e: PointerEvent): (typeof GRAB_PX)['fine'] {
 // ribbon (and above the endpoint dot they share a spot with on a fresh strand).
 const CP_LIFT = 0.1;
 
-export type EditMode = 'orbit' | 'move' | 'attach' | 'weave';
+// Two of these five drive the camera and nothing else: Orbit turns it around the
+// scene, Pan slides it sideways. Panning is on the right button and on two
+// fingers whatever the tool — Pan puts it on the plain left drag as well, which
+// is the only way to reach it on a trackpad with no second button, or on a phone,
+// where two fingers are already a pinch.
+export type EditMode = 'orbit' | 'pan' | 'move' | 'attach' | 'weave';
 
 interface MoveTarget {
   strand: Strand3D;
@@ -330,8 +335,30 @@ export class StrandScene {
     this.weavePendingOverId = null;
     this.weaveHoverId = null;
     this.onWeaveHover?.(null);
+    this.applyCameraBindings();
     this.rebuild();
-    this.setCursor(mode === 'orbit' ? '' : 'crosshair');
+    this.setCursor(this.defaultCursor());
+  }
+
+  /** True for the tools that only drive the camera — nothing in the scene can be
+   *  grabbed, so every gesture belongs to OrbitControls. */
+  private isCameraMode(): boolean {
+    return this.mode === 'orbit' || this.mode === 'pan';
+  }
+
+  /** What a plain left drag does. Pan is the whole of that tool: the gesture is
+   *  rebound rather than reimplemented, so it keeps OrbitControls' damping and
+   *  its limits. Everything else — right button, two fingers, wheel — is left
+   *  alone, so the camera works the same way under every tool. */
+  private applyCameraBindings(): void {
+    const panning = this.mode === 'pan';
+    this.controls.mouseButtons.LEFT = panning ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+    this.controls.touches.ONE = panning ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE;
+  }
+
+  private defaultCursor(): string {
+    if (this.mode === 'pan') return 'move';
+    return this.mode === 'orbit' ? '' : 'crosshair';
   }
 
   /** The strand picked as "over" in the weave tool (null when nothing pending). */
@@ -1095,8 +1122,9 @@ export class StrandScene {
 
   private buildHandles(): void {
     this.disposeHandles();
-    // Orbit has no handles; the weave tool picks strand bodies, not endpoints.
-    if (this.mode === 'orbit' || this.mode === 'weave') return;
+    // The camera tools have no handles; the weave tool picks strand bodies,
+    // not endpoints.
+    if (this.isCameraMode() || this.mode === 'weave') return;
 
     this.current.strands.forEach((strand, layerIndex) => {
       if (!strand.visible || strand.isMask) return;
@@ -1368,7 +1396,7 @@ export class StrandScene {
       e.preventDefault();
       return;
     }
-    if (this.mode === 'orbit' || e.button !== 0) return;
+    if (this.isCameraMode() || e.button !== 0) return;
 
     // Weave tool: click the OVER strand, then the UNDER strand — pick bodies,
     // not endpoint handles. Clicking empty space still orbits.
@@ -1466,7 +1494,7 @@ export class StrandScene {
     }
     // Hover is a mouse-only idea: a touch "move" only ever happens mid-gesture, so
     // reading it as hover would light up handles under a finger that is orbiting.
-    if (this.mode !== 'orbit' && e.buttons === 0 && e.pointerType === 'mouse') {
+    if (!this.isCameraMode() && e.buttons === 0 && e.pointerType === 'mouse') {
       if (this.mode === 'weave') this.updateWeaveHover(e);
       else this.updateHover(e);
     }
@@ -1531,7 +1559,7 @@ export class StrandScene {
       if (st.kind === 'move-control') settleControls(st.strand);
       this.rebuild();
     }
-    this.setCursor(this.mode === 'orbit' ? '' : 'crosshair');
+    this.setCursor(this.defaultCursor());
   };
 
   private onPointerCancel = (e: PointerEvent): void => {
@@ -1544,7 +1572,7 @@ export class StrandScene {
     }
     this.cancelDrag();
     this.rebuild();
-    this.setCursor(this.mode === 'orbit' ? '' : 'crosshair');
+    this.setCursor(this.defaultCursor());
   };
 
   private updateHover(e: PointerEvent): void {

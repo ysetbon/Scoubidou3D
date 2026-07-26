@@ -65,7 +65,10 @@ crossing, so one lace weaves over-and-under just like a real basket.
   the row down with ▲▼ to drop the layers it passes back a level.
   ([how it works](docs/layer-levels.md))
 - 🎥 **Full 3D camera.** Orbit, pan, zoom (Three.js `OrbitControls`). One click
-  snaps back to the familiar top-down OpenStrand view.
+  snaps back to the familiar top-down OpenStrand view. Panning is always on the
+  right button and on two fingers; the **Pan** tool puts it on a plain drag too,
+  for a trackpad with no second button and for a phone, where two fingers are
+  already a pinch.
 - 📱 **Works on a phone.** The panel becomes a bottom sheet you can fold away, the
   Tool bar stays over the scene so Move and Attach are one tap away (it drops to
   icons alone when the screen is too narrow for labels), and the
@@ -77,7 +80,7 @@ crossing, so one lace weaves over-and-under just like a real basket.
   outline, rounded ends, and a reference grid.
 - 🗂️ **Layer panel** to recolor, hide, reorder, delete, and add strands.
 - 🔗 **Attach & Move — OpenStrand's editing, in 3D.** A **Tool** bar across the
-  top of the scene (Orbit / Move / Attach / Weave), where OpenStrand Studio keeps
+  top of the scene (Pan / Orbit / Move / Attach / Weave), where OpenStrand Studio keeps
   its modes, turns the strand endpoints into grab handles:
   - **Attach**: pull from a *free* (green) endpoint and a new strand is born
     there — glued to the parent, inheriting its look, joining the same layer

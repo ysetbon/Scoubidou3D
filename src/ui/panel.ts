@@ -203,6 +203,7 @@ export class Panel {
   }
 
   private static readonly TOOLS: Array<{ key: EditMode; label: string; hint: string }> = [
+    { key: 'pan', label: 'Pan', hint: 'Slide the camera sideways with a plain drag' },
     { key: 'orbit', label: 'Orbit', hint: 'Move the camera only — nothing in the scene can be edited' },
     { key: 'move', label: 'Move', hint: 'Drag endpoints and control points' },
     { key: 'attach', label: 'Attach', hint: 'Grow a new strand from a free endpoint' },
@@ -275,8 +276,13 @@ export class Panel {
       note.innerHTML = pending
         ? `<b style="color:#2fb862">${pending}</b> rides over — now click the strand it should cross <b>over</b> (click it again to cancel). The layer under your pointer lights <b style="color:#2f7bd6">blue</b>: that one goes under.`
         : 'Click the strand that goes <b>over</b>, then the one it goes <b>under</b>. They interlock at their crossing — the 3D version of an OpenStrand mask. Hovering lights <b>one layer</b>, not the whole arm family, and names it — so on a stitch you can see exactly which of its strands you are about to mask.';
+    } else if (mode === 'pan') {
+      note.innerHTML = matchMedia('(pointer: coarse)').matches
+        ? 'Drag with <b>one finger</b> to slide the scene sideways instead of turning it. Pinch still zooms, and two fingers still pan under every tool — this is the version you can do one-handed.'
+        : 'Drag to slide the scene sideways instead of turning it. Right-drag does the same under every tool; this is the one that needs no second button, which is what a trackpad often is.';
     } else {
-      note.textContent = 'Orbit the camera freely. Switch to Move, Attach or Weave to edit strands in place.';
+      note.textContent =
+        'Orbit the camera freely. Switch to Move, Attach or Weave to edit strands in place, or Pan to slide the view.';
     }
     this.toolHost.appendChild(note);
   }
@@ -954,6 +960,12 @@ const svg = (body: string): string =>
   `<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${body}</svg>`;
 
 const TOOL_ICONS: Record<EditMode, string> = {
+  // A hand for Pan and arrows for Move, not two sets of arrows: one takes hold of
+  // the VIEW and slides it, the other takes hold of a strand. The four-way arrow
+  // would read the same for both.
+  pan: svg(
+    '<path d="M18.5 8.2c-.3 0-.6.07-.85.2V6.1a1.65 1.65 0 0 0-2.5-1.42A1.65 1.65 0 0 0 12 3.6a1.63 1.63 0 0 0-.9.27V2.9a1.65 1.65 0 1 0-3.3 0v7.72l-.62-.75a1.75 1.75 0 0 0-2.7 2.22l3.5 4.75A5.9 5.9 0 0 0 12.7 20h1.6a5.85 5.85 0 0 0 5.85-5.85V9.85c0-.91-.74-1.65-1.65-1.65Z"/>',
+  ),
   orbit: svg(
     '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16Z"/>' +
       '<circle cx="12" cy="12" r="3.2"/>',
