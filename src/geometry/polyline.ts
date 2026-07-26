@@ -255,20 +255,66 @@ export function easeFolds(pts: Vec3[], thickness: number, reach: number): void {
     const toOut = mid + half;
 
     // Ease each side away from the fold, the correction fading out over `reach`.
-    const ramp = (dir: -1 | 1, delta: number) => {
-      if (Math.abs(delta) < 1e-9) return;
-      let travelled = 0;
-      for (let k = i + dir; k >= 0 && k < pts.length; k += dir) {
-        travelled += Math.hypot(pts[k].x - pts[k - dir].x, pts[k].y - pts[k - dir].y);
-        if (travelled >= reach) break;
-        pts[k].z = was[k] + delta * (1 - travelled / reach);
-      }
-    };
-    ramp(-1, toIn - zIn);
-    ramp(1, toOut - zOut);
+    rampAway(pts, was, i, -1, toIn - zIn, reach);
+    rampAway(pts, was, i, 1, toOut - zOut, reach);
 
     pts[i].zIn = toIn;
     pts[i].zOut = toOut;
+    pts[i].z = mid;
+  }
+}
+
+/** Walk a correction of `delta` back into the run leaving vertex `i` in direction
+ *  `dir`, fading it out over `reach` of in-plane length. Heights are taken from
+ *  `was` so several corrections can be planned against the same original run. */
+function rampAway(
+  pts: Vec3[],
+  was: number[],
+  i: number,
+  dir: -1 | 1,
+  delta: number,
+  reach: number,
+): void {
+  if (Math.abs(delta) < 1e-9) return;
+  let travelled = 0;
+  for (let k = i + dir; k >= 0 && k < pts.length; k += dir) {
+    travelled += Math.hypot(pts[k].x - pts[k - dir].x, pts[k].y - pts[k - dir].y);
+    if (travelled >= reach) break;
+    pts[k].z = was[k] + delta * (1 - travelled / reach);
+  }
+}
+
+/**
+ * Walk a lace up a height step it meets at a GENTLE joint.
+ *
+ * Two strands glued end to end can rest on different levels — that is what a
+ * level break placed between them means. The concatenated centreline then carries
+ * the whole step at the shared vertex, in no in-plane length at all.
+ *
+ * At a FOLD that is exactly right and `easeFolds` keeps it: the lace doubles back
+ * and lies on the run it came off, and the crease is where it climbs. A gentle
+ * joint has no crease to climb at, so the step has to be walked instead — the
+ * joint is levelled to the midpoint and the difference ramped back into the runs
+ * on either side, over `reach` of in-plane length. The lace rises to the joint and
+ * carries on at the new height, which is what a real one does when it rides up
+ * onto the storey below it.
+ */
+export function easeSteps(pts: Vec3[], reach: number): void {
+  if (reach <= 0 || pts.length < 3) return;
+  const was = pts.map((p) => p.z);
+
+  for (let i = 1; i < pts.length - 1; i++) {
+    const zIn = pts[i].zIn;
+    const zOut = pts[i].zOut;
+    if (zIn === undefined || zOut === undefined) continue; // not a joint
+    if (Math.abs(zOut - zIn) < 1e-9) continue; // no step to walk
+    if (turnAt(pts, i) >= FOLD_TURN) continue; // a fold — its crease is the step
+
+    const mid = (zIn + zOut) / 2;
+    rampAway(pts, was, i, -1, mid - zIn, reach);
+    rampAway(pts, was, i, 1, mid - zOut, reach);
+    pts[i].zIn = mid;
+    pts[i].zOut = mid;
     pts[i].z = mid;
   }
 }
