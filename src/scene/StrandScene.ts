@@ -79,7 +79,10 @@ export interface RenderParams {
 }
 
 export const DEFAULT_PARAMS: RenderParams = {
-  thickness: 26,
+  // Depth of the lace, against a typical drawn width of ~54: a flat strap a bit
+  // under half as deep as it is wide, which is how plastic lacing actually comes.
+  // Deeper than this and the arms read as round cord rather than tape.
+  thickness: 20,
   // Base lift between layers. The weave picks over/under at every CROSSING on its
   // own (adaptive amplitude), so this only needs to separate strands that overlap
   // WITHOUT crossing (a plain parallel stack) — and it's what gives the ordered
