@@ -124,6 +124,15 @@ crossing only where the natural order is wrong.
 The geometry comes from a scene built by hand in the app, so the proportions are a
 real stitch rather than an idealised diagram.
 
+**Box stitch — 10 levels** carries on from there: the same four moves, worked ten
+times, each round a **level** above the last. Seen from above every round is the
+same square, so the whole thing is three rules repeated — the four arms fold in a
+rotation around that square, the rotation *reverses* every round (that alternation
+is what makes it the box stitch rather than the round stitch), and each round takes
+exactly one mask, for the last arm tucking back under the first. Rounds don't
+interlock with each other; they rest on each other, which is what the level break
+between them says.
+
 ## The 3D translation, in one picture
 
 | OpenStrand (2D) | Scoubidou3D |

@@ -15,6 +15,7 @@ import {
   removeStrandAt,
 } from '../model/levels';
 import { deleteCustom, getCustom, listCustom, saveCustom, storageAvailable } from '../model/customSamples';
+import { controlsAtDefault, resetControlPoints } from '../model/controlPoints';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -597,11 +598,11 @@ export class Panel {
     const sec = section('Layers  (top = front)');
 
     // "New level" drops a storey marker at the top of the stack, so everything
-    // added from here on rests one strand thickness higher. See levels.ts.
+    // added from here on rests a full storey higher. See levels.ts.
     const row = el('div', 'btn-row');
     const add = el('button', 'btn btn-icon');
     add.innerHTML = `${LAYERS_ICON}<span>New level</span>`;
-    add.title = 'Add a level: from now on, new layers rest one strand thickness higher';
+    add.title = 'Add a level: from now on, new layers rest one storey higher';
     add.addEventListener('click', () => {
       addLevelBreak(this.scene);
       this.apply(false);
@@ -616,7 +617,7 @@ export class Panel {
       el(
         'div',
         'note',
-        'A level is a step of exactly one strand thickness — enough for a lace to rest ON the one below instead of through it. Drag it down the stack with ▲▼ to drop the layers it passes back a storey.',
+        'A level is a step of one whole storey — the strand thickness plus the band the weave needs, so a lace up there rests ON the woven round below instead of sinking into it. Drag it down the stack with ▲▼ to drop the layers it passes back a storey.',
       ),
     );
     this.renderLayers();
@@ -641,8 +642,8 @@ export class Panel {
     }
   }
 
-  /** A level row: the storey marker itself. Everything above it rests one strand
-   *  thickness higher, and it reorders and deletes like any other layer. */
+  /** A level row: the storey marker itself. Everything above it rests one storey
+   *  higher, and it reorders and deletes like any other layer. */
   private levelRow(index: number): HTMLElement {
     const at = this.scene.levelBreaks[index];
     const row = el('div', 'layer layer-level');
@@ -653,11 +654,11 @@ export class Panel {
 
     const nameWrap = el('div', 'layer-name');
     nameWrap.appendChild(el('span', 'layer-id', `level ${index + 1}`));
-    nameWrap.appendChild(el('span', 'layer-tag', '+1 thickness'));
+    nameWrap.appendChild(el('span', 'layer-tag', '+1 storey'));
     row.appendChild(nameWrap);
-    row.title = `Everything above this rests one strand thickness (${fmt(
-      this.view.getParams().thickness,
-    )}) higher.`;
+    row.title = `Everything above this rests one storey (${fmt(
+      this.view.getLevelStep(),
+    )}) higher — the strand thickness plus the band the weave lifts and dips through.`;
 
     const controls = el('div', 'layer-controls');
 
@@ -751,6 +752,19 @@ export class Panel {
     row.appendChild(nameWrap);
 
     const controls = el('div', 'layer-controls');
+
+    // Only offered when there is something to undo: a strand carrying control
+    // points off their default set. Puts them back where a fresh strand keeps
+    // them — both on the start — which straightens the run.
+    if (!controlsAtDefault(strand)) {
+      const straight = el('button', 'icon-btn', '↺');
+      straight.title = 'Reset control points (straighten this strand)';
+      straight.addEventListener('click', () => {
+        resetControlPoints(strand);
+        this.apply(false);
+      });
+      controls.appendChild(straight);
+    }
 
     const vis = el('button', 'icon-btn', strand.visible ? '●' : '○');
     vis.title = 'Show / hide';

@@ -200,6 +200,13 @@ export class StrandScene {
   // grid sits below.
   private baseZ: number[] = [];
   private lowestZ = 0;
+  // Which storey each strand rests on, and the plane each storey weaves about
+  // (both filled by computeBaseZ, read by the weave).
+  private strandLevel: number[] = [];
+  private levelPlaneZ = new Map<number, number>();
+  // Half the stack's height in world units — the other half of what the camera
+  // has to frame once levels make a scene tall.
+  private contentZHalf = 0;
   // Weave (mask) tool: the strand picked as "over"; the next pick becomes "under".
   private weavePendingOverId: string | null = null;
 
@@ -539,8 +546,9 @@ export class StrandScene {
 
   /** Build every strand's woven centerline (world XY + Z from the weave).
    *
-   *  Each crossing is resolved to ABSOLUTE heights about the weave plane (z = 0):
-   *  the over lace goes to +h, the under lace to -h. That's what makes a mask a
+   *  Each crossing is resolved to ABSOLUTE heights about the plane of the storey
+   *  it happens on (z = 0 when nothing has levels, which is the whole stack's
+   *  middle): the over lace goes to +h, the under lace to -h. That's what makes a mask a
    *  purely LOCAL statement — "this strand crosses over that one, here" — with no
    *  dependence on how far apart the two sit in the layer panel. Masking a
    *  bottom-of-the-stack strand over a top-of-the-stack one costs exactly the same
@@ -568,22 +576,37 @@ export class StrandScene {
           if (crossings.length === 0) continue;
 
           // Who's over here: a mask if one covers the pair, else the higher layer.
-          const over = this.maskOver(i, j) ?? j;
+          const masked = this.maskOver(i, j);
+          // Two strands on DIFFERENT storeys are already a full level apart, and
+          // that separation is the statement the level break makes. Weaving them
+          // as well would drag both back toward one shared plane and undo it —
+          // which is why a tall stitch used to collapse into its lowest storey.
+          // They cross in plan only; in space one simply passes above the other.
+          // An explicit mask is the exception: the user asking for an over/under
+          // there gets one, woven about the midpoint of the two storeys.
+          if (masked === null && this.strandLevel[i] !== this.strandLevel[j]) continue;
+          const over = masked ?? j;
           const under = over === i ? j : i;
-          // Half-separation. At minimum the two ribbons must not interpenetrate;
-          // the Depth control can open the weave up beyond that.
-          const clearance =
-            ((this.strandThicknessWorld(strands[over]) + this.strandThicknessWorld(strands[under])) / 2) * 1.15;
-          const h = Math.max(this.params.weaveDepth * SCALE, clearance / 2);
+          // Half-separation: enough that the two ribbons don't interpenetrate, as
+          // much more as Depth asks for, and never more than the storey can hold.
+          const h = this.weaveAmplitude(
+            this.strandThicknessWorld(strands[over]),
+            this.strandThicknessWorld(strands[under]),
+          );
 
           const wi = strands[i].width * this.params.widthScale * SCALE;
           const wj = strands[j].width * this.params.widthScale * SCALE;
           const radius = (wi / 2 + wj / 2) * span;
+          // Heights are absolute about the storey the crossing happens on, not a
+          // nudge off each strand's own resting height: the displacement must not
+          // depend on how far apart the two sit in the layer panel, or a lace
+          // masked over several strands ramps instead of riding flat.
+          const plane = this.crossingPlaneZ(i, j);
           for (const c of crossings) {
             const sOver = over === i ? c.sA : c.sB;
             const sUnder = under === i ? c.sA : c.sB;
-            anchors[over].push({ s: sOver, radius, z: h });
-            anchors[under].push({ s: sUnder, radius, z: -h });
+            anchors[over].push({ s: sOver, radius, z: plane + h });
+            anchors[under].push({ s: sUnder, radius, z: plane - h });
           }
         }
       }
@@ -780,8 +803,8 @@ export class StrandScene {
    * reason the eye can see, so the whole lace takes the rank of its lowest
    * member and laces stack against each other.
    *
-   * LEVEL — how many level breaks sit below the strand, each worth one full
-   * strand thickness — is PER STRAND. A break is not incidental: it is the user
+   * LEVEL — how many level breaks sit below the strand, each worth one storey
+   * (`levelStepSource`) — is PER STRAND. A break is not incidental: it is the user
    * saying "this storey is higher", and the usual way to use it is to press
    * New level and then Attach, continuing an existing cord onto the new storey.
    * Averaging that away over the lace would make the button do nothing whenever
@@ -794,6 +817,50 @@ export class StrandScene {
    * Masks are untouched by all of this: they decide what happens at crossings,
    * this only sets the resting plane.
    */
+  /**
+   * The height of ONE level break, in source units: TWO strand thicknesses.
+   *
+   * A level says "what is above here rests ON what is below". One thickness — what
+   * this used to be — is what that means for FLAT laces, and it is the wrong
+   * measure, because the thing a level stacks is not a flat lace but a woven
+   * round: a lace riding over and a lace ducking under, interlocked. That is two
+   * thicknesses tall, so a storey below two thicknesses cannot hold one. The lace
+   * ducking under upstairs lands inside the lace riding over downstairs, the two
+   * storeys read as one, and a box stitch of any height collapses into its
+   * bottom round — level 4 sitting no higher than level 3.
+   */
+  private levelStepSource(): number {
+    return 2 * this.params.thickness;
+  }
+
+  /**
+   * How far a lace lifts/dips at a crossing, in world units.
+   *
+   * The Depth slider sets it, floored where the two ribbons would otherwise pass
+   * through each other — and, once the scene has storeys, CAPPED so that the
+   * swing still fits inside one. A storey is two thicknesses; a crossing inside
+   * it puts one ribbon above the other, so each can go half a thickness from the
+   * storey's plane and no further. Left uncapped, a generous Depth swings the
+   * laces clean out of their own storey and into the ones above and below, which
+   * is what turns a stacked stitch into a loose spiral with holes in it.
+   *
+   * With no levels in play nothing is capped — Depth means exactly what it did.
+   */
+  private weaveAmplitude(thicknessOver: number, thicknessUnder: number): number {
+    const clearance = ((thicknessOver + thicknessUnder) / 2) * 1.15;
+    let h = Math.max(this.params.weaveDepth * SCALE, clearance / 2);
+    if (this.current.levelBreaks.length > 0) {
+      const room = (this.levelStepSource() * SCALE - Math.max(thicknessOver, thicknessUnder)) / 2;
+      h = Math.min(h, Math.max(room, 0));
+    }
+    return h;
+  }
+
+  /** One storey's height in source units, for the layer panel to quote. */
+  getLevelStep(): number {
+    return this.levelStepSource();
+  }
+
   private computeBaseZ(): void {
     const n = this.current.strands.length;
     const root = Array.from({ length: n }, (_, i) => i);
@@ -819,17 +886,17 @@ export class StrandScene {
       if (cur === undefined || i < cur) lowest.set(r, i);
     }
     const gap = this.params.layerGap * SCALE;
-    // One level break is worth one strand thickness: the exact separation at
-    // which the upper ribbon's underside meets the lower one's top face.
-    const step = this.params.thickness * SCALE;
+    const step = this.levelStepSource() * SCALE;
     const rankZ = new Map<number, number>();
     [...lowest.entries()]
       .sort((a, b) => a[1] - b[1])
       .forEach(([r], k) => rankZ.set(r, k * gap));
 
     const rest = new Array<number>(n);
+    const level = new Array<number>(n);
     for (let i = 0; i < n; i++) {
-      rest[i] = (rankZ.get(find(i)) ?? 0) + levelAt(this.current, i) * step;
+      level[i] = levelAt(this.current, i);
+      rest[i] = (rankZ.get(find(i)) ?? 0) + level[i] * step;
     }
 
     // Re-centre on z = 0, so adding a level opens the stack up around the grid
@@ -843,6 +910,37 @@ export class StrandScene {
     const shift = n ? -(min + max) / 2 : 0;
     this.baseZ = rest.map((z) => z + shift);
     this.lowestZ = n ? min + shift : 0;
+    this.strandLevel = level;
+    // How tall the stack itself is, for the camera. A single storey is a flat
+    // sheet and the drawing-plane extent frames it; ten storeys of box stitch is
+    // a column taller than it is wide, and framing that on its footprint alone
+    // puts the camera inside it.
+    const t = this.params.thickness * SCALE;
+    this.contentZHalf = n ? (max - min) / 2 + this.weaveAmplitude(t, t) : 0;
+
+    // The plane each storey weaves about: the middle of the strands resting on
+    // it. With no breaks that is the middle of the whole stack — z = 0 — which is
+    // where every crossing was anchored before levels existed.
+    const lo = new Map<number, number>();
+    const hi = new Map<number, number>();
+    for (let i = 0; i < n; i++) {
+      const l = level[i];
+      const z = this.baseZ[i];
+      if (!lo.has(l) || z < lo.get(l)!) lo.set(l, z);
+      if (!hi.has(l) || z > hi.get(l)!) hi.set(l, z);
+    }
+    this.levelPlaneZ = new Map<number, number>();
+    for (const [l, z] of lo) this.levelPlaneZ.set(l, (z + (hi.get(l) ?? z)) / 2);
+  }
+
+  /** The plane a crossing between these two strands weaves about. Same storey:
+   *  that storey's plane. Different storeys (only reachable through an explicit
+   *  mask): halfway between them, so the mask still lifts one clear of the other
+   *  by the same amount it would anywhere else. */
+  private crossingPlaneZ(i: number, j: number): number {
+    const a = this.levelPlaneZ.get(this.strandLevel[i] ?? 0) ?? 0;
+    const b = this.levelPlaneZ.get(this.strandLevel[j] ?? 0) ?? 0;
+    return (a + b) / 2;
   }
 
   private layerZ(layerIndex: number): number {
@@ -1424,9 +1522,11 @@ export class StrandScene {
     this.scene.add(grid);
   }
 
-  /** Frame the content: point the camera at the center and back off to fit. */
+  /** Frame the content: point the camera at the center and back off to fit.
+   *  The radius is the whole model's, height included — a stack of levels is as
+   *  much of the scene as its footprint is. */
   fitView(): void {
-    const r = this.contentRadius * 1.15;
+    const r = Math.hypot(this.contentRadius, this.contentZHalf) * 1.15;
     const dist = r / Math.sin((this.camera.fov * Math.PI) / 180 / 2);
     const dir = new THREE.Vector3(0.35, -1.0, 0.85).normalize();
     this.controls.target.set(0, 0, 0);
@@ -1441,7 +1541,9 @@ export class StrandScene {
   topView(): void {
     const dist = (this.contentRadius * 1.15) / Math.sin((this.camera.fov * Math.PI) / 180 / 2);
     this.controls.target.set(0, 0, 0);
-    this.camera.position.set(0, 0, dist);
+    // Clear the top of the stack before backing off, or a tall scene puts the
+    // camera inside itself.
+    this.camera.position.set(0, 0, dist + this.contentZHalf);
     this.camera.updateProjectionMatrix();
     this.controls.update();
   }
