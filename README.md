@@ -63,6 +63,12 @@ crossing, so one lace weaves over-and-under just like a real basket.
   ([how it works](docs/layer-levels.md))
 - 🎥 **Full 3D camera.** Orbit, pan, zoom (Three.js `OrbitControls`). One click
   snaps back to the familiar top-down OpenStrand view.
+- 📱 **Works on a phone.** The panel becomes a bottom sheet you can fold away, the
+  Tool switch floats over the scene so Move and Attach stay one tap away, and the
+  handles carry OpenStrand's generous invisible grab areas (`move_mode.py`'s 120px
+  endpoint square, `attach_mode.py`'s 120px attach circle) scaled for a fingertip —
+  so a press that lands *near* a handle still takes it. One finger orbits, pinch
+  zooms, two fingers pan.
 - 🎚️ **Live controls** for thickness, width scale, weave depth/span, layer lift,
   outline, rounded ends, and a reference grid.
 - 🗂️ **Layer panel** to recolor, hide, reorder, delete, and add strands.
