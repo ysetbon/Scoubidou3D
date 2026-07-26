@@ -74,6 +74,10 @@ export class Panel {
     const brand = el('div', 'brand');
     brand.appendChild(el('div', 'brand-title', 'Scoubidou3D'));
     brand.appendChild(el('div', 'brand-sub', 'strands with real depth · orbit to explore'));
+    // The app lives at /app/ under the project site; give it a way back.
+    const home = el('a', 'brand-home', 'About the project ↗');
+    home.href = '../';
+    brand.appendChild(home);
     this.root.appendChild(brand);
 
     this.root.appendChild(this.toolSection());

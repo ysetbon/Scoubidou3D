@@ -2,6 +2,8 @@
 
 **A 3D reimagining of [OpenStrand Studio](https://github.com/ysetbon/OpenStrandStudio).**
 
+🌐 **[Project site](https://ysetbon.github.io/Scoubidou3D/)** · 🧶 **[Open the app](https://ysetbon.github.io/Scoubidou3D/app/)**
+
 OpenStrand Studio (and its browser port [OpenStrandJS](https://github.com/ysetbon/OpenStrandJS))
 draw strands from a **top-down** point of view. Strands have a *width*, and
 over/under weaving is *faked* with masking. Scoubidou3D asks a different
@@ -129,11 +131,14 @@ real stitch rather than an idealised diagram.
 
 ## Run it
 
-You need [Node.js](https://nodejs.org/) 18+.
+Nothing to install: the app is live at
+**[ysetbon.github.io/Scoubidou3D/app/](https://ysetbon.github.io/Scoubidou3D/app/)**.
+
+To hack on it you need [Node.js](https://nodejs.org/) 18+.
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173
+npm run dev      # http://localhost:5173/Scoubidou3D/
 ```
 
 Build the static site:
@@ -143,9 +148,18 @@ npm run build    # outputs to dist/
 npm run preview
 ```
 
+The build has two pages — the project site at `/` and the app at `/app/` — and
+every push to `main` publishes both to GitHub Pages
+([deploy.yml](.github/workflows/deploy.yml)). Building for a host that serves
+from the domain root instead: `BASE_PATH=/ npm run build`.
+
 ## How it's built
 
 ```
+index.html      # the project site (the landing page you get at /)
+site/site.css   #   its stylesheet — standalone, shares only the palette
+app/index.html  # the app's page, served at /app/
+public/         # copied verbatim to the site root (favicon)
 src/
   geometry/
     bezier.ts     # port of OpenStrand's eased curve profile -> sampled centerline
