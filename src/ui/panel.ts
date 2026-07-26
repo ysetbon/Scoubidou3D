@@ -55,26 +55,50 @@ export class Panel {
       this.renderLayers();
       this.renderTools();
     };
-    this.buildMobileChrome();
+    // The weave tool reports the layer under the pointer; show its name at the
+    // cursor, so the lit ribbon is not the only thing telling you which of a
+    // stitch's arms a click would take.
+    this.view.onWeaveHover = (id) => this.showHoverChip(id);
+    this.buildChrome();
     this.render();
   }
 
-  // ---- Mobile chrome -------------------------------------------------------
+  // ---- Chrome floating over the scene --------------------------------------
   /**
-   * On a phone the panel is a bottom sheet (styles.css) that can be folded away
-   * so the scene gets the whole viewport — which is what makes Move and Attach
-   * usable at all there. Two pieces of chrome float over the canvas to support
-   * that: the fold toggle, and a copy of the tool switch, because the tool is the
-   * one control you keep reaching for while the panel is down. Both are
-   * `display: none` above the narrow breakpoint, so a desktop sees no change.
+   * The tool switch lives in a horizontal bar over the top of the canvas, the way
+   * OpenStrand Studio keeps its modes on one strip above the drawing — the tool is
+   * the control you reach for between every other action, and hunting for it down
+   * a scrolling side panel put it furthest from the work. It also means the panel
+   * can be folded away on a phone with the tools still to hand, which is what
+   * makes editing possible on one at all.
+   *
+   * Two more pieces of chrome live out here with it: the panel fold toggle (narrow
+   * screens only) and the weave's hover chip.
    */
-  private buildMobileChrome(): void {
+  private buildChrome(): void {
     const bar = el('div');
-    bar.id = 'mobile-tools';
+    bar.id = 'toolbar';
     bar.setAttribute('role', 'group');
     bar.setAttribute('aria-label', 'Tool');
-    this.mobileToolHost = bar;
+    this.toolbarHost = bar;
     document.body.appendChild(bar);
+
+    const chip = el('div');
+    chip.id = 'hover-chip';
+    chip.setAttribute('aria-hidden', 'true');
+    this.hoverChip = chip;
+    document.body.appendChild(chip);
+    // The chip follows the pointer, so it has to see moves that the canvas
+    // swallows; window-level and passive keeps it clear of the edit gestures.
+    window.addEventListener(
+      'pointermove',
+      (e) => {
+        this.pointerX = e.clientX;
+        this.pointerY = e.clientY;
+        if (chip.classList.contains('on')) this.placeHoverChip();
+      },
+      { passive: true },
+    );
 
     const toggle = el('button', undefined, '') as HTMLButtonElement;
     toggle.id = 'panel-toggle';
@@ -90,6 +114,34 @@ export class Panel {
     });
     sync();
     document.body.appendChild(toggle);
+  }
+
+  // Last known pointer position, for placing the hover chip.
+  private pointerX = 0;
+  private pointerY = 0;
+  private hoverChip: HTMLElement | null = null;
+
+  /** Name the layer under the pointer next to the cursor, or clear the chip. */
+  private showHoverChip(id: string | null): void {
+    const chip = this.hoverChip;
+    if (!chip) return;
+    if (!id) {
+      chip.classList.remove('on');
+      return;
+    }
+    const pending = this.view.getWeavePending();
+    chip.textContent = pending && pending !== id ? `${id} — goes under` : id;
+    chip.classList.toggle('under', !!pending && pending !== id);
+    chip.classList.add('on');
+    this.placeHoverChip();
+  }
+
+  private placeHoverChip(): void {
+    const chip = this.hoverChip;
+    if (!chip) return;
+    // Kept clear of the cursor itself, and off the right edge on a narrow view.
+    const x = Math.min(this.pointerX + 16, window.innerWidth - chip.offsetWidth - 8);
+    chip.style.transform = `translate(${Math.max(8, x)}px, ${this.pointerY + 18}px)`;
   }
 
   setScene(scene: Scene3D): void {
@@ -131,12 +183,16 @@ export class Panel {
     this.root.appendChild(hint);
   }
 
-  // ---- Tool (Orbit / Move / Attach) ---------------------------------------
-  // The 3D analogue of OpenStrand Studio's toolbar. Orbit is pure camera; Move
-  // drags endpoints & control points (connected strands follow); Attach pulls a
-  // new strand out of a free endpoint.
+  // ---- Tool (Orbit / Move / Attach / Weave) -------------------------------
+  // The 3D analogue of OpenStrand Studio's toolbar, and in the same place: a
+  // horizontal strip over the scene. Orbit is pure camera; Move drags endpoints &
+  // control points (connected strands follow); Attach pulls a new strand out of a
+  // free endpoint; Weave masks one strand over another.
+  //
+  // The panel keeps what the toolbar has no room for — the note on the live tool,
+  // and the options that belong to it.
   private toolHost: HTMLElement | null = null;
-  private mobileToolHost: HTMLElement | null = null;
+  private toolbarHost: HTMLElement | null = null;
 
   private toolSection(): HTMLElement {
     const sec = section('Tool');
@@ -146,39 +202,45 @@ export class Panel {
     return sec;
   }
 
-  /** A fresh row of tool buttons wired to the current mode. Built twice — once in
-   *  the panel, once in the floating mobile bar — so both stay in step. */
-  private toolRow(mode: EditMode): HTMLElement {
-    const row = el('div', 'btn-row');
-    const tools: Array<{ key: EditMode; label: string }> = [
-      { key: 'orbit', label: 'Orbit' },
-      { key: 'move', label: 'Move' },
-      { key: 'attach', label: 'Attach' },
-      { key: 'weave', label: 'Weave' },
-    ];
-    for (const t of tools) {
-      const b = el('button', 'btn tool-btn' + (mode === t.key ? ' active' : ''), t.label);
+  private static readonly TOOLS: Array<{ key: EditMode; label: string; hint: string }> = [
+    { key: 'orbit', label: 'Orbit', hint: 'Move the camera only — nothing in the scene can be edited' },
+    { key: 'move', label: 'Move', hint: 'Drag endpoints and control points' },
+    { key: 'attach', label: 'Attach', hint: 'Grow a new strand from a free endpoint' },
+    { key: 'weave', label: 'Weave', hint: 'Mask one strand over another at their crossing' },
+  ];
+
+  /** The toolbar's buttons, wired to the current mode. */
+  private renderToolbar(mode: EditMode): void {
+    const bar = this.toolbarHost;
+    if (!bar) return;
+    bar.innerHTML = '';
+    for (const t of Panel.TOOLS) {
+      const active = mode === t.key;
+      const b = el('button', 'btn tool-btn' + (active ? ' active' : '')) as HTMLButtonElement;
+      b.type = 'button';
+      b.innerHTML = `${TOOL_ICONS[t.key]}<span>${t.label}</span>`;
+      b.title = t.hint;
+      b.setAttribute('aria-pressed', String(active));
       b.addEventListener('click', () => {
         this.view.setMode(t.key);
         this.renderTools();
       });
-      row.appendChild(b);
+      bar.appendChild(b);
     }
-    return row;
   }
 
   private renderTools(): void {
     const mode = this.view.getMode();
-    if (this.mobileToolHost) {
-      this.mobileToolHost.innerHTML = '';
-      this.mobileToolHost.appendChild(this.toolRow(mode));
-    }
+    this.renderToolbar(mode);
     if (!this.toolHost) return;
     this.toolHost.innerHTML = '';
 
-    const row = this.toolRow(mode);
-    row.classList.add('tool-row-panel'); // hidden on mobile — the floating bar has it
-    this.toolHost.appendChild(row);
+    // The toolbar is over the scene, not in here, so the panel says which of its
+    // buttons is live before it explains what that one does.
+    const active = Panel.TOOLS.find((t) => t.key === mode);
+    const live = el('div', 'tool-live');
+    live.innerHTML = `${TOOL_ICONS[mode]}<span>${active?.label ?? mode}</span>`;
+    this.toolHost.appendChild(live);
 
     // OSS's `enable_third_control_point`: with it off a strand has the classic two
     // handles, and a centre already placed by hand is ignored — by the handles and
@@ -207,10 +269,12 @@ export class Panel {
         '<b style="color:#008000">circle</b> (the far handle) and the <b style="color:#008000">square</b> ' +
         '(the middle). Park the circle back on the start to fold them away again.';
     } else if (mode === 'weave') {
+      // The colours here are the ones the overlays light up in, and they carry
+      // the roles: green is the over, blue the under.
       const pending = this.view.getWeavePending();
       note.innerHTML = pending
-        ? `<b style="color:#2fb862">${pending}</b> rides over — now click the strand it should cross <b>over</b> (click it again to cancel).`
-        : 'Click the strand that goes <b>over</b>, then the one it goes <b>under</b>. They interlock at their crossing — the 3D version of an OpenStrand mask.';
+        ? `<b style="color:#2fb862">${pending}</b> rides over — now click the strand it should cross <b>over</b> (click it again to cancel). The layer under your pointer lights <b style="color:#2f7bd6">blue</b>: that one goes under.`
+        : 'Click the strand that goes <b>over</b>, then the one it goes <b>under</b>. They interlock at their crossing — the 3D version of an OpenStrand mask. Hovering lights <b>one layer</b>, not the whole arm family, and names it — so on a stitch you can see exactly which of its strands you are about to mask.';
     } else {
       note.textContent = 'Orbit the camera freely. Switch to Move, Attach or Weave to edit strands in place.';
     }
@@ -881,6 +945,38 @@ const LAYERS_ICON =
   '<path d="M12 3 22 9.2 12 15.4 2 9.2Z"/>' +
   '<path d="M12 17.7 3.7 12.5 2 13.6 12 19.8 22 13.6 20.3 12.5Z"/>' +
   '</svg>';
+
+// The toolbar's marks. Each one states what the tool acts on rather than naming
+// it twice: a ring you turn around, a four-way drag, a strand growing out of a
+// joint, and one band crossing over another with the second broken where it
+// passes beneath — which is the whole of what a mask says.
+const svg = (body: string): string =>
+  `<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${body}</svg>`;
+
+const TOOL_ICONS: Record<EditMode, string> = {
+  orbit: svg(
+    '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16Z"/>' +
+      '<circle cx="12" cy="12" r="3.2"/>',
+  ),
+  move: svg(
+    '<path d="M12 1.6 8.4 5.2h2.4v4.6H6.2V7.4L2.6 11l3.6 3.6v-2.4h4.6v4.6H8.4L12 20.4l3.6-3.6h-2.4v-4.6h4.6v2.4L21.4 11l-3.6-3.6v2.4h-4.6V5.2h2.4Z"/>',
+  ),
+  attach: svg(
+    '<circle cx="5.6" cy="18.4" r="3"/>' +
+      '<path d="M6.5 15.6a10.4 10.4 0 0 1 9.1-9.1V3.2l5 4.4-5 4.4V9a7.4 7.4 0 0 0-6.1 6.1Z"/>',
+  ),
+  // Diagonally, because upright straps have only the height of the box to run in
+  // and end up too stubby to read as straps — the mark came out as a division
+  // sign. On the diagonal both have the box's full reach, and the broken one
+  // states the whole of what a mask says: this lace passes under that one.
+  weave: svg(
+    '<g transform="rotate(-45 12 12)">' +
+      '<rect x="-1.5" y="9.5" width="10" height="5" rx="2.5"/>' +
+      '<rect x="15.5" y="9.5" width="10" height="5" rx="2.5"/>' +
+      '</g>' +
+      '<rect x="-1.5" y="9.5" width="27" height="5" rx="2.5" transform="rotate(45 12 12)"/>',
+  ),
+};
 
 // The anticlockwise turn-back arrow on "Reset curves", drawn to read as the ↺ the
 // layer rows carry, so the two controls state their kinship: one row, or all.
