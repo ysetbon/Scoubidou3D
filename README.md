@@ -72,8 +72,14 @@ crossing, so one lace weaves over-and-under just like a real basket.
     junctions show gray and refuse new attachments, exactly like OSS's
     `has_circles` rule.
   - **Move**: drag a (blue) endpoint and every strand glued to that point moves
-    with it, so attachments stay connected; drag an (orange) dot to bend a
-    strand. The weave re-solves as you drag.
+    with it, so attachments stay connected. The weave re-solves as you drag.
+  - **Control points are OpenStrand's own.** Same marks, same staging: a green
+    **triangle** on an untouched strand, and pulling it brings out the **circle**
+    (the far handle) and the **square** (the middle), wired up with OSS's dashed
+    green rig. The circle rides with the end until you pull it off; the square
+    tracks the midpoint until you drag it, then locks — and unlocks itself if you
+    drop it back. Put every mark home and the set folds away again.
+    ([the full behaviour, and the one place it differs](docs/control-points.md))
 - 📥 **Import real files.** Load an OpenStrand Studio / OpenStrandJS `.json`
   save and see it in 3D. The strand geometry uses a faithful port of OSS's
   curve math (`strand.py::_build_curve_profile`), so curves match the original.

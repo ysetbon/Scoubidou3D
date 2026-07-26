@@ -124,13 +124,32 @@ export class Panel {
     }
     this.toolHost.appendChild(row);
 
+    // OSS's `enable_third_control_point`: with it off a strand has the classic two
+    // handles, and a centre already placed by hand is ignored — by the handles and
+    // by the curve alike — rather than lost.
+    if (mode === 'move') {
+      const toggles = el('div', 'toggle-row');
+      toggles.appendChild(
+        toggle('Middle handle', this.view.getParams().thirdControlPoint, (v) => {
+          this.view.setParams({ thirdControlPoint: v });
+          this.renderTools();
+        }),
+      );
+      this.toolHost.appendChild(toggles);
+    }
+
     const note = el('div', 'note');
     if (mode === 'attach') {
       note.innerHTML =
         'Pull from a <b style="color:#2fb862">green</b> endpoint to grow a new attached strand (it joins the same set and stacks on top). Gray endpoints are already joined.';
     } else if (mode === 'move') {
+      // The control marks are OpenStrand Studio's own, shapes and staging alike —
+      // see docs/control-points.md.
       note.innerHTML =
-        'Drag a <b style="color:#2f7bd6">blue</b> endpoint — connected strands follow. Drag an <b style="color:#e0872a">orange</b> dot to bend the strand.';
+        'Drag a <b style="color:#2f7bd6">blue</b> endpoint — connected strands follow. ' +
+        'Pull the <b style="color:#008000">green triangle</b> to bend the strand; that brings out the ' +
+        '<b style="color:#008000">circle</b> (the far handle) and the <b style="color:#008000">square</b> ' +
+        '(the middle). Park the circle back on the start to fold them away again.';
     } else if (mode === 'weave') {
       const pending = this.view.getWeavePending();
       note.innerHTML = pending
@@ -486,13 +505,20 @@ export class Panel {
       const m = /^(\d+)_/.exec(st.id);
       if (m) maxSet = Math.max(maxSet, parseInt(m[1], 10));
     }
+    const sx = cx - Math.cos(rad) * len;
+    const sy = cy - Math.sin(rad) * len;
     const s: Strand3D = {
       id: `${maxSet + 1}_1`,
-      start: { x: cx - Math.cos(rad) * len, y: cy - Math.sin(rad) * len },
+      start: { x: sx, y: sy },
       end: { x: cx + Math.cos(rad) * len, y: cy + Math.sin(rad) * len },
-      control_points: [{ x: cx, y: cy }, { x: cx, y: cy }],
+      // Straight out of the box: OSS parks both control points on the start, which
+      // is what buildProfile reads as line mode and what leaves the strand
+      // offering just its triangle until someone bends it.
+      control_points: [{ x: sx, y: sy }, { x: sx, y: sy }],
       control_point_center: null,
       control_point_center_locked: false,
+      triangleHasMoved: false,
+      cp2Activated: false,
       width: 46,
       stroke_width: 4,
       color: PALETTE[n % PALETTE.length],

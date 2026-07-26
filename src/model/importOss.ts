@@ -9,6 +9,7 @@
 
 import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
 import { recomputeOccupancy } from './connections';
+import { inferTriangleHasMoved } from './controlPoints';
 
 interface RawColor {
   r?: number;
@@ -26,6 +27,9 @@ interface RawStrand {
   control_points?: [Point, Point] | Point[];
   control_point_center?: Point | null;
   control_point_center_locked?: boolean;
+  // Control-point UX flags OSS writes out (save_load_manager.py).
+  triangle_has_moved?: boolean;
+  control_point2_activated?: boolean;
   width?: number;
   stroke_width?: number;
   color?: RawColor;
@@ -124,6 +128,13 @@ export function sceneFromOss(data: unknown, name = 'imported'): Scene3D {
       control_points: [cp1, cp2],
       control_point_center: s.control_point_center ?? null,
       control_point_center_locked: !!s.control_point_center_locked,
+      // OSS saves these, but derives the first from the geometry when it is
+      // missing and simply defaults the second to false — do both the same way.
+      triangleHasMoved:
+        typeof s.triangle_has_moved === 'boolean'
+          ? s.triangle_has_moved
+          : inferTriangleHasMoved({ start, control_points: [cp1, cp2] }),
+      cp2Activated: !!s.control_point2_activated,
       width: typeof s.width === 'number' ? s.width : 46,
       stroke_width: typeof s.stroke_width === 'number' ? s.stroke_width : 4,
       color: color(s.color, DEFAULT_COLOR),

@@ -12,6 +12,7 @@
 import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
 import { recomputeOccupancy } from './connections';
 import { normalizeLevelBreaks } from './levels';
+import { inferTriangleHasMoved } from './controlPoints';
 import { sceneFromOss } from './importOss';
 
 export const SCENE_FORMAT = 'scoubidou3d-scene';
@@ -101,6 +102,11 @@ function parseStrand(raw: unknown, i: number): Strand3D {
     control_points: [pt(cps[0], start), pt(cps[1], start)],
     control_point_center: s.control_point_center ? pt(s.control_point_center, start) : null,
     control_point_center_locked: !!s.control_point_center_locked,
+    triangleHasMoved:
+      typeof s.triangleHasMoved === 'boolean'
+        ? s.triangleHasMoved
+        : inferTriangleHasMoved({ start, control_points: [pt(cps[0], start), pt(cps[1], start)] }),
+    cp2Activated: !!s.cp2Activated,
     width: Math.max(1, num(s.width, 46)),
     stroke_width: Math.max(0, num(s.stroke_width, 4)),
     color: rgba(s.color, FALLBACK_COLOR),

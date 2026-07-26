@@ -179,6 +179,8 @@ export function makeAttachedStrand(scene: Scene3D, parent: Strand3D, side: 0 | 1
     control_points: [at(), at()],
     control_point_center: null,
     control_point_center_locked: false,
+    triangleHasMoved: false,
+    cp2Activated: false,
     width: parent.width,
     stroke_width: parent.stroke_width,
     color: { ...parent.color },

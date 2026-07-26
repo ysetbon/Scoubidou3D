@@ -32,6 +32,10 @@ function mk(id: string, start: Point, end: Point, color: RGBA, opts: StrandOpts 
     control_points: [opts.cp1 ?? { ...start }, opts.cp2 ?? { ...start }],
     control_point_center: null,
     control_point_center_locked: false,
+    // A sample that ships bent has already "moved its triangle", so it opens with
+    // the full handle set rather than pretending to be untouched.
+    triangleHasMoved: !!(opts.cp1 || opts.cp2),
+    cp2Activated: !!opts.cp2,
     width: opts.width ?? 46,
     stroke_width: 4,
     color,
