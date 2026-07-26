@@ -105,3 +105,11 @@ whose two ends are separate meshes is bridged by the usual lofted connector.
 
 With no level rows, `level` is `0` everywhere and the formula collapses to the
 current behaviour — the feature is invisible until it is used.
+
+## The case that set the size
+
+A box stitch worked round after round is levels at full stretch: ten or fifteen
+woven rounds, each resting on the one below. It is where the one-thickness step
+was found to be too short, and where the weave had to be taught to stay inside
+its own storey. Both samples, every round and every mask in them, and the level
+rule they forced: **[box-stitch-levels](box-stitch-levels/)**.

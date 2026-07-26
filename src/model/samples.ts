@@ -400,6 +400,7 @@ function diagonalWeave(): Scene3D {
 export const SAMPLES: Record<string, () => Scene3D> = {
   'two-crossing': twoCrossing,
   'box-stitch': boxStitch,
+  'box-stitch-10': () => boxStitchRounds(10, 'Box stitch — 10 levels'),
   'box-stitch-15': () => boxStitchRounds(15, 'Box stitch — 15 levels'),
   'braid-3': () => flatBraid(3, 7, 'Three-strand braid'),
   'braid-4': () => flatBraid(4, 7, 'Four-strand flat braid'),
@@ -411,6 +412,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
 export const SAMPLE_LABELS: Array<{ key: string; label: string }> = [
   { key: 'two-crossing', label: 'Two crossing strands' },
   { key: 'box-stitch', label: 'Box stitch — starting stitch' },
+  { key: 'box-stitch-10', label: 'Box stitch — 10 levels' },
   { key: 'box-stitch-15', label: 'Box stitch — 15 levels' },
   { key: 'braid-3', label: 'Three-strand braid' },
   { key: 'braid-4', label: 'Four-strand flat braid' },
