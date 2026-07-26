@@ -1,8 +1,21 @@
 # Build Scoubidou3D and publish it to GitHub Pages.
 #
-# The site is hosted as a project page at https://ysetbon.github.io/Scoubidou3D/,
-# which is why vite.config.ts sets base: '/Scoubidou3D/'. Enable this once under
-# the repo's Settings -> Pages -> "Build and deployment" -> Source: GitHub Actions.
+# The site is a project page at https://ysetbon.github.io/Scoubidou3D/, which is
+# why vite.config.ts sets base: '/Scoubidou3D/'.
+#
+# This publishes by pushing the build to a `gh-pages` branch rather than through
+# actions/deploy-pages, and that is deliberate. The Actions route needs a Pages
+# *site* to already exist on the repo, and this repo had never published one, so
+# every run died at:
+#
+#     Get Pages site failed.    Error: Not Found
+#     Create Pages site failed. Error: Resource not accessible by integration
+#
+# actions/configure-pages' `enablement: true` is meant to create that site, but
+# creating one is an admin-level call and GITHUB_TOKEN never has admin — so the
+# workflow could not bootstrap itself, and the first publish needed a human in
+# Settings. Pushing a branch named `gh-pages`, by contrast, makes GitHub turn
+# Pages on by itself, and needs nothing beyond `contents: write`.
 name: Deploy to GitHub Pages
 
 on:
@@ -10,11 +23,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Least-privilege token plus the permissions the Pages deploy needs.
+# Write access to the repo is the whole permission budget: we push a branch.
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 # One deploy at a time; let a newer push cancel an in-flight run.
 concurrency:
@@ -22,7 +33,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,25 +49,30 @@ jobs:
       - name: Type-check and build
         run: npm run build
 
-      # `enablement` turns Pages on for the repo if it is not on already, and sets
-      # its build source to GitHub Actions. Without it the very first deploy fails
-      # with "Get Pages site failed ... Not Found", because a repo that has never
-      # published has no Pages site to configure — and the fix would be a manual
-      # visit to Settings before the workflow can ever succeed.
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
+      # dist/ is a build artifact, so gh-pages carries no history worth keeping:
+      # each deploy force-pushes a single fresh commit instead of growing a log
+      # of generated files. .nojekyll stops Pages running the output through
+      # Jekyll, which would otherwise drop any path with a leading underscore.
+      - name: Publish dist/ to the gh-pages branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          touch dist/.nojekyll
+          cd dist
+          git init -q
+          git checkout -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Deploy ${GITHUB_SHA} to Pages"
+          git push -q --force \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            gh-pages
 
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Where it landed
+        run: |
+          echo "### Published" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Site: https://ysetbon.github.io/Scoubidou3D/" >> "$GITHUB_STEP_SUMMARY"
+          echo "- App:  https://ysetbon.github.io/Scoubidou3D/app/" >> "$GITHUB_STEP_SUMMARY"
