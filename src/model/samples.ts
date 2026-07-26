@@ -201,7 +201,8 @@ function boxStitchRounds(rounds: number, name: string): Scene3D {
   const Q = 33; // half the woven square: how far each arm's run sits from the middle
   const E = 26; // how far the pinned middle runs past the square before an arm folds off it
   const TIP = 40; // a fold's overhang past the far corner
-  const SPLAY = 3; // …give or take this much, so no two folds end on the same point
+  const SPREAD = 14; // …give or take, over all the folds of one arm and one parity
+  const SPLAY = 2; // …and never closer than this, or two folds read as one point
   const TAIL = 120; // the last round isn't folded again — its four ends are the loose tails
 
   // An arm: the line it lives on, and where along that line it folds. `base` is
@@ -264,12 +265,19 @@ function boxStitchRounds(rounds: number, name: string): Scene3D {
   // tighter, the late ones a hair looser, and the column stays the same width
   // all the way up. Spreading them in one direction instead — which is what this
   // did at first — fans the stitch out by nearly a lace width over ten rounds.
+  //
+  // The slots share a FIXED total spread rather than a fixed step, so adding
+  // rounds packs them closer instead of widening the stitch — down to `SPLAY`
+  // apart, which is as close as they can sit and still be told apart by the
+  // one-pixel snap that decides what is glued to what (connections.ts).
   const evens = Math.ceil(rounds / 2);
   const odds = Math.floor(rounds / 2);
   const overhang = (n: number): number => {
     const slot = Math.floor(n / 2);
     const slots = n % 2 === 0 ? evens : odds;
-    return TIP + (slot - (slots - 1) / 2) * SPLAY;
+    if (slots < 2) return TIP;
+    const step = Math.max(SPLAY, SPREAD / (slots - 1));
+    return TIP + (slot - (slots - 1) / 2) * step;
   };
 
   for (let round = 0; round < rounds; round++) {
@@ -392,7 +400,7 @@ function diagonalWeave(): Scene3D {
 export const SAMPLES: Record<string, () => Scene3D> = {
   'two-crossing': twoCrossing,
   'box-stitch': boxStitch,
-  'box-stitch-10': () => boxStitchRounds(10, 'Box stitch — 10 levels'),
+  'box-stitch-15': () => boxStitchRounds(15, 'Box stitch — 15 levels'),
   'braid-3': () => flatBraid(3, 7, 'Three-strand braid'),
   'braid-4': () => flatBraid(4, 7, 'Four-strand flat braid'),
   'diagonal': diagonalWeave,
@@ -403,7 +411,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
 export const SAMPLE_LABELS: Array<{ key: string; label: string }> = [
   { key: 'two-crossing', label: 'Two crossing strands' },
   { key: 'box-stitch', label: 'Box stitch — starting stitch' },
-  { key: 'box-stitch-10', label: 'Box stitch — 10 levels' },
+  { key: 'box-stitch-15', label: 'Box stitch — 15 levels' },
   { key: 'braid-3', label: 'Three-strand braid' },
   { key: 'braid-4', label: 'Four-strand flat braid' },
   { key: 'diagonal', label: 'Diagonal basket' },

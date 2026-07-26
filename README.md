@@ -55,9 +55,10 @@ crossing, so one lace weaves over-and-under just like a real basket.
   over/under (higher layer rides over); masks override specific crossings, just
   like in OSS. Reorder a layer and it restacks live.
 - 🪜 **Levels — storeys in the layer stack.** The **New level** button drops a
-  layers-icon row into the panel; everything above it rests **one full strand
-  thickness** higher, which is exactly the height at which a lace sits *on* the
-  one below instead of through it. Because the row goes in at the top, nothing
+  layers-icon row into the panel; everything above it rests **one storey** higher
+  — two strand thicknesses, the height of a woven round (a lace over plus a lace
+  under), which is what it takes for the next round to sit *on* it instead of
+  sinking into it. Because the row goes in at the top, nothing
   already drawn moves — but every strand you add next is born a storey up. Slide
   the row down with ▲▼ to drop the layers it passes back a level.
   ([how it works](docs/layer-levels.md))
@@ -124,8 +125,8 @@ crossing only where the natural order is wrong.
 The geometry comes from a scene built by hand in the app, so the proportions are a
 real stitch rather than an idealised diagram.
 
-**Box stitch — 10 levels** carries on from there: the same four moves, worked ten
-times, each round a **level** above the last. Seen from above every round is the
+**Box stitch — 15 levels** carries on from there: the same four moves, worked
+fifteen times, each round a **level** above the last. Seen from above every round is the
 same square, so the whole thing is three rules repeated — the four arms fold in a
 rotation around that square, the rotation *reverses* every round (that alternation
 is what makes it the box stitch rather than the round stitch), and each round takes
