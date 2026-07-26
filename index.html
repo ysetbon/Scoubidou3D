@@ -1,15 +1,401 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Scoubidou3D — strands with depth</title>
+  <title>Scoubidou3D — a weave with real depth</title>
+  <meta name="description"
+    content="Scoubidou3D is a 3D reimagining of OpenStrand Studio: strands become ribbons with real width and thickness, layer order becomes height, and masks become a true over/under weave you can orbit. Runs in the browser." />
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <link rel="canonical" href="https://ysetbon.github.io/Scoubidou3D/" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Scoubidou3D — a weave with real depth" />
+  <meta property="og:description"
+    content="Strands with real width and thickness, stacked layer over layer along Z. Open the weave in your browser and tilt it." />
+  <meta property="og:url" content="https://ysetbon.github.io/Scoubidou3D/" />
+  <meta name="twitter:card" content="summary" />
+
+  <link rel="stylesheet" href="./site/site.css" />
 </head>
+
 <body>
-  <div id="app">
-    <canvas id="scene"></canvas>
-    <aside id="panel"></aside>
-  </div>
-  <script type="module" src="/src/main.ts"></script>
+  <a class="skip" href="#idea">Skip to content</a>
+
+  <header class="topbar">
+    <nav class="topbar-inner" aria-label="Primary">
+      <a class="wordmark" href="./">
+        <svg class="wordmark-mark" viewBox="0 0 64 64" aria-hidden="true">
+          <g stroke="currentColor" stroke-width="3" fill="none">
+            <rect x="4" y="26" width="56" height="16" rx="5" />
+            <rect x="24" y="2" width="16" height="52" rx="5" fill="var(--bg)" />
+          </g>
+        </svg>
+        Scoubidou<span class="wordmark-3d">3D</span>
+      </a>
+      <ul class="topbar-links">
+        <li><a href="#idea">The idea</a></li>
+        <li><a href="#features">What it does</a></li>
+        <li><a href="#weave">How the weave works</a></li>
+        <li><a href="#run">Run it</a></li>
+        <li><a href="https://github.com/ysetbon/Scoubidou3D">GitHub</a></li>
+      </ul>
+      <a class="btn btn-primary btn-sm" href="./app/">Launch the app</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <p class="eyebrow">A 3D reimagining of OpenStrand Studio</p>
+          <h1>Strands with a real thickness, stacked&nbsp;in&nbsp;Z.</h1>
+          <p class="lead">
+            OpenStrand draws laces from the top down and <em>fakes</em> over-and-under with masking.
+            Scoubidou3D gives every strand a thickness, turns its layer index into a height, and turns
+            each mask into a crossing where one lace physically lifts and the other dips — so you can
+            tilt the camera and watch the weave interlock.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="./app/">Launch the app →</a>
+            <a class="btn btn-ghost" href="https://github.com/ysetbon/Scoubidou3D">View source</a>
+          </div>
+          <p class="hero-note">Runs entirely in your browser. Nothing to install, nothing uploaded.</p>
+        </div>
+
+        <div class="hero-art" aria-hidden="true">
+          <svg viewBox="80 0 550 335" class="weave-art">
+            <defs>
+              <filter id="side" x="-20%" y="-20%" width="140%" height="140%">
+                <feColorMatrix type="matrix" values="0.58 0 0 0 0  0 0.58 0 0 0  0 0 0.58 0 0  0 0 0 1 0" />
+              </filter>
+
+              <!-- The mat, drawn flat then tilted into an isometric-ish view. -->
+              <g id="mat" transform="matrix(0.94, -0.188, 0.342, 0.517, 100, 90)">
+                <g stroke="#1a1a1a" stroke-width="1.8">
+                  <!-- verticals (yellow), laid down first -->
+                  <rect x="62" y="10" width="56" height="380" rx="8" fill="#f5c837" />
+                  <rect x="172" y="10" width="56" height="380" rx="8" fill="#f5c837" />
+                  <rect x="282" y="10" width="56" height="380" rx="8" fill="#f5c837" />
+                  <!-- horizontals (orange), laid over them -->
+                  <rect x="10" y="62" width="380" height="56" rx="8" fill="#e27a26" />
+                  <rect x="10" y="172" width="380" height="56" rx="8" fill="#e27a26" />
+                  <rect x="10" y="282" width="380" height="56" rx="8" fill="#e27a26" />
+                </g>
+                <!-- ...then the four crossings where the yellow lace rides over instead -->
+                <g fill="#f5c837" stroke="#1a1a1a" stroke-width="1.8">
+                  <path d="M172 62h56v56h-56z" stroke="none" />
+                  <path d="M172 62v56M228 62v56" />
+                  <path d="M62 172h56v56H62z" stroke="none" />
+                  <path d="M62 172v56M118 172v56" />
+                  <path d="M282 172h56v56h-56z" stroke="none" />
+                  <path d="M282 172v56M338 172v56" />
+                  <path d="M172 282h56v56h-56z" stroke="none" />
+                  <path d="M172 282v56M228 282v56" />
+                </g>
+              </g>
+            </defs>
+
+            <!-- Same mat twice: the lower copy, darkened, is the thickness you see edge-on. -->
+            <use href="#mat" y="15" filter="url(#side)" />
+            <use href="#mat" />
+          </svg>
+          <p class="hero-caption">A checkerboard of masks: every lace goes over one neighbour and under the next.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="band" id="idea">
+      <div class="wrap">
+        <h2>The question the project asks</h2>
+        <blockquote class="pull">
+          What if a strand had a real <strong>thickness</strong>, and “layer over layer” in the layer panel meant
+          the strand physically sits <strong>on top</strong> in space — so you could tilt the camera and see the
+          weave in 3D?
+        </blockquote>
+        <p class="prose">
+          That's the whole idea. Each strand becomes a ribbon, like the plastic-lacing gimp lanyards this was
+          named after: its OpenStrand <em>width</em> runs across the ribbon, a new <em>thickness</em> runs
+          through it, and its <strong>layer index becomes its height</strong>. Everything else follows from
+          that one move.
+        </p>
+
+        <div class="table-scroll">
+          <table class="map">
+            <caption>The translation, in one table</caption>
+            <thead>
+              <tr>
+                <th scope="col">OpenStrand (2D)</th>
+                <th scope="col">Scoubidou3D</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>strand <code>width</code></td>
+                <td>ribbon width (across)</td>
+              </tr>
+              <tr>
+                <td><span class="none">—</span></td>
+                <td>ribbon <strong>thickness</strong> (through) <span class="tag">new</span></td>
+              </tr>
+              <tr>
+                <td>layer order in the panel</td>
+                <td><strong>default</strong> height in Z — the top layer rides over</td>
+              </tr>
+              <tr>
+                <td><code>MaskedStrand</code> (first over second)</td>
+                <td>a real over/under weave: the over lace lifts, the under lace dips</td>
+              </tr>
+              <tr>
+                <td>attached strand (glued endpoint)</td>
+                <td>a lofted <strong>connector</strong> bridging the layer gap</td>
+              </tr>
+              <tr>
+                <td>top-down canvas</td>
+                <td>orbit camera, one click back to top view</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="band band-alt" id="features">
+      <div class="wrap">
+        <h2>What works today</h2>
+        <p class="section-lead">Everything below is in the app right now — open it and try it.</p>
+
+        <ul class="cards">
+          <li class="card">
+            <span class="card-icon" aria-hidden="true">🧵</span>
+            <h3>Strands become 3D ribbons</h3>
+            <p>Every strand is extruded into a solid ribbon with configurable thickness, rounded edges, rounded
+              ends and a stroke-coloured outline.</p>
+          </li>
+          <li class="card card-wide">
+            <span class="card-icon" aria-hidden="true">🧶</span>
+            <h3>Masks become a real over/under weave</h3>
+            <p>The headline feature. Where OpenStrand paints one strand on top of another, Scoubidou3D makes it
+              physical: at every crossing the over lace lifts and the under lace dips, so a <em>single</em>
+              strand can go over one neighbour and under the next — a true basket weave, not a flat stack.
+              Masks appear in the layer stack as their own rows, with flip and delete controls, and imported
+              <code>MaskedStrand</code> records weave automatically.</p>
+          </li>
+          <li class="card">
+            <span class="card-icon" aria-hidden="true">🪢</span>
+            <h3>Attachments are really connected</h3>
+            <p>A lofted bridge morphs the parent's end cross-section into the child's start across the layer
+              gap, so the join reads as one continuous lace stepping up a storey.</p>
+          </li>
+          <li class="card">
+            <span class="card-icon" aria-hidden="true">🪜</span>
+            <h3>Levels — storeys in the stack</h3>
+            <p>Drop a level row into the layer panel and everything above it rests one full strand thickness
+              higher: the height at which a lace sits <em>on</em> the one below instead of through it.</p>
+          </li>
+          <li class="card">
+            <span class="card-icon" aria-hidden="true">🔗</span>
+            <h3>Attach, Move, Weave — editing in 3D</h3>
+            <p>Endpoints become grab handles. Pull a free endpoint to grow a new strand, drag a joined one and
+              everything glued to it follows, or click two strands to say which goes over. Control points use
+              OpenStrand's own marks and staging.</p>
+          </li>
+          <li class="card">
+            <span class="card-icon" aria-hidden="true">📥</span>
+            <h3>Imports real OpenStrand files</h3>
+            <p>Load an OpenStrand Studio or OpenStrandJS <code>.json</code> save and see it in 3D. The curve
+              math is a faithful port of the original, so shapes match.</p>
+          </li>
+          <li class="card">
+            <span class="card-icon" aria-hidden="true">💾</span>
+            <h3>Save your own samples</h3>
+            <p>Arrange strands, pick the over/unders, then save — kept in your browser, still there after a
+              refresh. Copy JSON hands you the scene as text. Nothing is uploaded.</p>
+          </li>
+          <li class="card">
+            <span class="card-icon" aria-hidden="true">🎥</span>
+            <h3>Full 3D camera and live controls</h3>
+            <p>Orbit, pan and zoom, with one click back to the familiar top-down view — plus sliders for
+              thickness, width, weave depth and span, layer lift, outline and grid.</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="band" id="weave">
+      <div class="wrap">
+        <h2>How the weave works</h2>
+        <p class="section-lead">
+          Wherever two centerlines cross, we know who is over: a mask if one covers the pair, otherwise the
+          higher layer. Each strand turns its crossings into a smooth Z height field, and the ribbon is swept
+          along that undulating centerline. Two properties make it behave the way OpenStrand does.
+        </p>
+
+        <div class="split">
+          <article class="note-card">
+            <h3>A crossing sets an absolute height, not a nudge</h3>
+            <p>
+              The over lace goes to <code>+h</code> and the under lace to <code>−h</code> about the weave plane.
+              A mask therefore means one purely local thing — <em>this strand crosses over that one, here</em> —
+              and costs the same whether the two strands are neighbours in the layer panel or ten layers apart.
+              Masking the bottom strand over the top one leaves every other layer untouched.
+            </p>
+          </article>
+          <article class="note-card">
+            <h3>Overlapping crossings blend, they don't add</h3>
+            <p>
+              Where two crossings fall close together the heights are pulse-weighted-averaged, so neighbours
+              pulling opposite ways resolve instead of cancelling or doubling. The three-way case falls out for
+              free: the top lace lands at <code>+h</code>, the bottom at <code>−h</code>, and one caught between
+              them settles in the middle.
+            </p>
+          </article>
+        </div>
+
+        <p class="prose callout">
+          Because each crossing is resolved on its own, <strong>cyclic weaves work</strong> — <code>x</code> over
+          <code>y</code>, <code>y</code> over <code>z</code> and <code>z</code> over <code>x</code> is impossible
+          for a rigid stack, but it is exactly what a real woven knot does.
+        </p>
+      </div>
+    </section>
+
+    <section class="band band-alt" id="stitch">
+      <div class="wrap">
+        <div class="split split-lead">
+          <div>
+            <h2>The box stitch</h2>
+            <p class="prose">
+              The built-in <strong>Box stitch — starting stitch</strong> sample is the classic two-colour
+              lanyard, caught at the moment the first stitch closes. Two laces are crossed and pinned, their
+              four arms lettered A/B/C/D, and each arm folds back across the middle in turn — the last tucking
+              under the first.
+            </p>
+            <p class="prose">
+              The two laces cross <strong>nine</strong> times and it needs exactly <strong>one</strong> mask.
+              The arms were folded in layer order, so the stacking already tells the truth at eight of the nine
+              crossings; the ninth is the move that locks the stitch, where the last arm dives back
+              <em>under</em> the first one folded. That single contradiction gets a mask — precisely how you'd
+              do it in OpenStrand Studio.
+            </p>
+            <p class="prose muted">
+              The geometry comes from a scene built by hand in the app, so the proportions are a real stitch
+              rather than an idealised diagram.
+            </p>
+            <a class="btn btn-primary" href="./app/">Open the sample →</a>
+          </div>
+          <figure class="stitch-fig">
+            <svg viewBox="0 0 260 276" aria-hidden="true">
+              <!-- The four arms round the pinned middle: A and C are one lace, B and D the
+                   other. They are folded in order, so each lies over the one folded before
+                   it — B over A, C over B, D over C. -->
+              <g stroke="#1a1a1a" stroke-width="2" stroke-linejoin="round">
+                <rect x="86" y="6" width="44" height="168" rx="7" fill="#e27a26" />
+                <rect x="86" y="86" width="168" height="44" rx="7" fill="#3f8a95" />
+                <rect x="130" y="86" width="44" height="168" rx="7" fill="#e27a26" />
+                <rect x="6" y="130" width="168" height="44" rx="7" fill="#3f8a95" />
+                <!-- ...all except the last fold, where D dives back under A. That crossing
+                     contradicts the layer order, so it is the one mask the stitch needs. -->
+                <path d="M86 130h44v44H86z" fill="#e27a26" stroke="none" />
+                <path d="M86 130v44M130 130v44" />
+              </g>
+              <g fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="5 5">
+                <circle cx="108" cy="152" r="34" />
+                <path d="M84 176 66 222" />
+              </g>
+              <text x="62" y="252" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent)"
+                font-family="inherit">the one mask</text>
+            </svg>
+            <figcaption>The last fold dives back under the first — the one crossing the layer order gets
+              wrong.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="band" id="run">
+      <div class="wrap">
+        <h2>Run it</h2>
+        <p class="section-lead">
+          The quickest path is the hosted build — <a href="./app/">open the app</a> and start orbiting. To hack
+          on it you need <a href="https://nodejs.org/">Node.js</a> 18 or newer.
+        </p>
+
+        <div class="split">
+          <div>
+            <h3 class="code-head">Develop</h3>
+            <pre class="code"><code>git clone https://github.com/ysetbon/Scoubidou3D.git
+cd Scoubidou3D
+npm install
+npm run dev      <span class="cmt"># http://localhost:5173</span></code></pre>
+          </div>
+          <div>
+            <h3 class="code-head">Build the static site</h3>
+            <pre class="code"><code>npm run build    <span class="cmt"># outputs to dist/</span>
+npm run preview</code></pre>
+            <p class="prose muted small">
+              The build produces this page at the root and the app at <code>/app/</code>. Pushing to
+              <code>main</code> publishes both to GitHub Pages.
+            </p>
+          </div>
+        </div>
+
+        <h3 class="sub">Built with</h3>
+        <ul class="chips">
+          <li>TypeScript</li>
+          <li>Three.js</li>
+          <li>Vite</li>
+          <li>No backend</li>
+          <li>GPL-3.0</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="band band-alt" id="family">
+      <div class="wrap">
+        <h2>The OpenStrand family</h2>
+        <p class="section-lead">Three views of the same strand model.</p>
+        <ul class="cards cards-3">
+          <li class="card card-link">
+            <h3><a href="https://github.com/ysetbon/OpenStrandStudio">OpenStrand Studio</a></h3>
+            <p>The original PyQt5 desktop app — the spec everything else is measured against.</p>
+          </li>
+          <li class="card card-link">
+            <h3><a href="https://github.com/ysetbon/OpenStrandJS">OpenStrandJS</a></h3>
+            <p>The fidelity-first browser port, drawn on a 2D canvas.</p>
+          </li>
+          <li class="card card-link card-current">
+            <h3>Scoubidou3D</h3>
+            <p>This one: the same strand model, seen with depth.</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="closer">
+      <div class="wrap closer-inner">
+        <h2>Tilt the weave.</h2>
+        <p>It's a link, not a download.</p>
+        <a class="btn btn-primary btn-lg" href="./app/">Launch Scoubidou3D →</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <p>
+        <strong>Scoubidou3D</strong> — GNU General Public License v3.0, matching OpenStrand Studio.
+      </p>
+      <ul class="footer-links">
+        <li><a href="./app/">App</a></li>
+        <li><a href="https://github.com/ysetbon/Scoubidou3D">Repository</a></li>
+        <li><a href="https://github.com/ysetbon/Scoubidou3D/blob/main/docs/layer-levels.md">Layer levels</a></li>
+        <li><a href="https://github.com/ysetbon/Scoubidou3D/blob/main/docs/control-points.md">Control points</a></li>
+        <li><a href="https://github.com/ysetbon/Scoubidou3D/issues">Issues</a></li>
+      </ul>
+    </div>
+  </footer>
 </body>
+
 </html>
