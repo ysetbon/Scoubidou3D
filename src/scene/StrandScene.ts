@@ -41,7 +41,7 @@ import {
 import { sampleCenterline } from '../geometry/bezier';
 import { buildRibbonGeometry } from '../geometry/ribbon';
 import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
-import { easeFolds, roundCorners } from '../geometry/polyline';
+import { easeFolds, easeSteps, roundCorners } from '../geometry/polyline';
 import { Anchor, arcLengths, heightField, polylineCrossings } from '../geometry/weave';
 import { Vec2, Vec3 } from '../geometry/vec';
 
@@ -489,6 +489,10 @@ export class StrandScene {
       // thickness apart, with the change eased into the runs on either side.
       const thickness = (first.thickness ?? this.params.thickness) * SCALE;
       easeFolds(line, thickness, thickness * 2);
+      // Then walk up any step left at a gentle joint — a level break between two
+      // members of the lace puts one storey's worth of height there, and without a
+      // crease to climb at it has to be ramped into the runs instead.
+      easeSteps(line, width);
       const rounded = roundCorners(line, width * 0.5);
       const mesh = this.buildStrandMesh(first, rounded, [true, true]);
       if (!mesh) {
@@ -765,18 +769,30 @@ export class StrandScene {
   /**
    * The resting height of a strand — where it sits away from any crossing.
    *
-   * Shared by every strand in one LACE. A cord built from several strands glued
-   * end to end (an OSS attached-strand family, or the folded arms of a stitch) is
-   * one physical object, so giving each member its own layer height would make the
-   * cord climb a staircase along its own length. Instead each connected group gets
-   * one height, and groups are stacked in layer-panel order. Nothing is lost:
-   * masks decide what happens at crossings, and this only sets the resting plane.
+   * Two separate things set it, and they are deliberately scoped differently.
    *
-   * Two things set that height: the lace's RANK in the layer panel, spaced by the
-   * (small) layer lift, plus its LEVEL — how many level breaks sit below it, each
-   * worth one full strand thickness. A lace takes the level of its lowest-numbered
-   * member, for the same reason it takes one height at all: it is one object, so
-   * it can't stand half on one storey and half on the next.
+   * RANK — position in the layer panel, spaced by the (small) layer lift — is
+   * shared by every strand in one LACE. A cord built from several strands glued
+   * end to end (an OSS attached-strand family, or the folded arms of a stitch) is
+   * one physical object, and its members' panel positions are incidental: they
+   * are whatever order the cord happened to be drawn in. Ranking each member
+   * separately would make the cord climb a staircase along its own length for no
+   * reason the eye can see, so the whole lace takes the rank of its lowest
+   * member and laces stack against each other.
+   *
+   * LEVEL — how many level breaks sit below the strand, each worth one full
+   * strand thickness — is PER STRAND. A break is not incidental: it is the user
+   * saying "this storey is higher", and the usual way to use it is to press
+   * New level and then Attach, continuing an existing cord onto the new storey.
+   * Averaging that away over the lace would make the button do nothing whenever
+   * the new strand is attached rather than free-standing, which is most of the
+   * time. So a lace may step between storeys along its length — at a fold it
+   * lies on the run it came off (`easeFolds`), at a gentle joint it walks up
+   * over a short ramp (`easeSteps`), and where the two ends belong to separate
+   * meshes the connector lofts between them.
+   *
+   * Masks are untouched by all of this: they decide what happens at crossings,
+   * this only sets the resting plane.
    */
   private computeBaseZ(): void {
     const n = this.current.strands.length;
@@ -806,23 +822,27 @@ export class StrandScene {
     // One level break is worth one strand thickness: the exact separation at
     // which the upper ribbon's underside meets the lower one's top face.
     const step = this.params.thickness * SCALE;
-    const restZ = new Map<number, number>();
+    const rankZ = new Map<number, number>();
     [...lowest.entries()]
       .sort((a, b) => a[1] - b[1])
-      .forEach(([r, low], k) => restZ.set(r, k * gap + levelAt(this.current, low) * step));
+      .forEach(([r], k) => rankZ.set(r, k * gap));
+
+    const rest = new Array<number>(n);
+    for (let i = 0; i < n; i++) {
+      rest[i] = (rankZ.get(find(i)) ?? 0) + levelAt(this.current, i) * step;
+    }
 
     // Re-centre on z = 0, so adding a level opens the stack up around the grid
     // instead of walking the whole model off it.
     let min = Infinity;
     let max = -Infinity;
-    for (const z of restZ.values()) {
+    for (const z of rest) {
       if (z < min) min = z;
       if (z > max) max = z;
     }
-    const shift = restZ.size ? -(min + max) / 2 : 0;
-    this.baseZ = new Array<number>(n);
-    for (let i = 0; i < n; i++) this.baseZ[i] = (restZ.get(find(i)) ?? 0) + shift;
-    this.lowestZ = restZ.size ? min + shift : 0;
+    const shift = n ? -(min + max) / 2 : 0;
+    this.baseZ = rest.map((z) => z + shift);
+    this.lowestZ = n ? min + shift : 0;
   }
 
   private layerZ(layerIndex: number): number {

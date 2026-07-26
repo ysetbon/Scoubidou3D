@@ -48,10 +48,14 @@ ribbon's underside meets the lower ribbon's top face — laces stacked, not merg
 5. **It is a real layer.** The row moves with `▲` / `▼` like any other layer, so
    you can push it down through the stack and watch the strands it passes drop a
    level. `✕` removes it and everything settles back.
-6. **A lace is one object.** Strands glued end to end share one resting height
-   (that is what stops a stitch from climbing a staircase along its own length).
-   A lace therefore takes the level of its lowest-numbered member — you cannot
-   put half a cord on the floor and half on the shelf.
+6. **A cord may climb.** Strands glued end to end share one *rank* — that is what
+   stops a stitch from climbing a staircase along its own length just because of
+   the order it happened to be drawn in. Levels are not like that: pressing **New
+   level** and then **Attach** is the ordinary way to carry a cord up onto a new
+   storey, so a level applies to the strand it is above, not to the whole lace.
+   A cord therefore *can* stand half on the floor and half on the shelf, and it
+   gets there the way a real one does — at a fold it doubles back and lies on the
+   run it came off, and at a gentle joint it walks up over about a lace width.
 7. **Crossings are unaffected.** A level changes where laces *rest*. Who goes
    over whom at a crossing is still decided by the masks and the layer order,
    exactly as before, so switching levels on can never silently rewrite a weave.
@@ -64,13 +68,21 @@ Levels are stored as break positions in the layer stack. A break at position `k`
 means *every strand from index `k` upward is one thickness higher*:
 
 ```
-restZ(lace) = rank(lace) · layerGap  +  level(lace) · thickness
-level(lace) = how many breaks sit at or below the lace's lowest member
+restZ(strand) = rank(lace(strand)) · layerGap  +  level(strand) · thickness
+rank(lace)    = the lace's position in layer-panel order, ranked by its lowest member
+level(strand) = how many breaks sit at or below the strand's own index
 ```
 
-with `rank` the lace's position in layer-panel order, as today. The whole stack
+Note the two scopes, which is the whole of it: `rank` is per LACE, because the
+panel positions of one cord's members are incidental; `level` is per STRAND,
+because a break is a deliberate statement about a particular row. The whole stack
 is then re-centred on `z = 0`, so adding a level opens the model up rather than
 sending it drifting off the grid.
+
+Where a level break falls *inside* a lace, that lace's ribbon steps between the
+two storeys along its own length — `easeFolds` lets a fold carry the step at its
+crease, `easeSteps` walks a gentle joint up over about a lace width, and a joint
+whose two ends are separate meshes is bridged by the usual lofted connector.
 
 With no level rows, `level` is `0` everywhere and the formula collapses to the
 current behaviour — the feature is invisible until it is used.
