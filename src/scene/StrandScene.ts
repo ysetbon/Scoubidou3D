@@ -65,6 +65,34 @@ const COLOR_OCC = 0x9099a6; // attach-mode occupied endpoint (gray — junction)
 // the just-created strand is discarded — the analogue of OSS's min_length guard.
 const MIN_ATTACH_LEN = 4;
 
+// GRAB AREAS, in screen pixels — the thing that makes editing work with a finger.
+//
+// OpenStrand Studio never asks you to hit the mark you can see: move_mode.py tests
+// a 120px SQUARE around an endpoint (get_start_area / get_end_area) and a 50px one
+// around a control point (get_control_point_rectangle), and attach_mode.py accepts
+// the nearest free endpoint within a 120px circle. The drawn marks are a few pixels
+// wide; the areas behind them are huge. We had no such slack — a pick was an exact
+// raycast against the little handle mesh — which is survivable with a cursor and
+// impossible with a fingertip (a ~9mm contact patch, and the finger hides the
+// target it is aiming at).
+//
+// So: a handle is grabbed when the pointer lands inside its drawn silhouette OR
+// within this radius of its centre, whichever is larger. Coarse (touch/pen)
+// pointers get roughly double the mouse radii. Control points stay tighter than
+// endpoints for the same reason OSS keeps 25 < 60: on an untouched strand the
+// triangle sits exactly on the start, and the control-point pass runs first, so
+// the smaller area is what leaves the endpoint reachable at all.
+const GRAB_PX = {
+  fine: { endpoint: 14, control: 12, attach: 22, body: 0 },
+  coarse: { endpoint: 34, control: 26, attach: 46, body: 18 },
+};
+
+// Touch and pen aim badly; a mouse aims exactly. `pointerType` is per-event, so a
+// hybrid laptop gets the right areas for whichever device is actually in use.
+function grabPx(e: PointerEvent): (typeof GRAB_PX)['fine'] {
+  return e.pointerType === 'mouse' ? GRAB_PX.fine : GRAB_PX.coarse;
+}
+
 // Control marks float a hair above their layer so they stay legible against the
 // ribbon (and above the endpoint dot they share a spot with on a fresh strand).
 const CP_LIFT = 0.1;
@@ -159,6 +187,9 @@ export class StrandScene {
   private circGeo = new THREE.CylinderGeometry(1, 1, 0.5, 24).rotateX(Math.PI / 2);
   private sqGeo = new THREE.BoxGeometry(1.4, 1.4, 0.5);
   private dragState: DragState | null = null;
+  // The one pointer driving the current drag. Every other pointer (a second
+  // finger, a stylus resting on the glass) is ignored until it lifts.
+  private activePointerId: number | null = null;
   private hovered: THREE.Mesh | null = null;
 
   // The woven world-space centerline of each strand (indexed like scene.strands;
@@ -208,6 +239,12 @@ export class StrandScene {
     window.addEventListener('pointercancel', this.onPointerCancel, true);
 
     window.addEventListener('resize', () => this.resize());
+    // The window is not the only thing that resizes the canvas: folding the panel
+    // away on a phone, or the browser's own chrome sliding in and out as you
+    // scroll, changes the canvas box with no resize event at all.
+    if (typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(() => this.resize()).observe(this.canvas);
+    }
     this.resize();
     this.animate();
   }
@@ -284,6 +321,7 @@ export class StrandScene {
   private cancelDrag(): void {
     const st = this.dragState;
     this.dragState = null;
+    this.activePointerId = null;
     this.controls.enabled = true;
     if (st && st.kind === 'attach') {
       removeStrandAt(this.current, this.current.strands.indexOf(st.child));
@@ -954,26 +992,94 @@ export class StrandScene {
     return true;
   }
 
-  private pickHandle(e: PointerEvent): THREE.Intersection | null {
-    if (!this.ndc(e)) return null;
-    this.raycaster.setFromCamera(this.pointer, this.camera);
-    const hits = this.raycaster.intersectObjects(this.handleGroup.children, false);
-    if (!hits.length) return null;
-    // Control points win over endpoints wherever both are under the cursor — OSS
-    // checks its control-point rectangles first for exactly this reason, and on an
-    // untouched strand the triangle sits right on top of the start dot.
-    return hits.find((h) => h.object.userData.kind === 'control') ?? hits[0];
+  /** Where a world point lands in the canvas box, in CSS pixels. Null when it is
+   *  behind the camera (a projected point there comes back mirrored). */
+  private toScreen(world: THREE.Vector3, rect: DOMRect): Vec2 | null {
+    const p = world.clone().project(this.camera);
+    if (p.z > 1) return null;
+    return { x: ((p.x + 1) / 2) * rect.width, y: ((1 - p.y) / 2) * rect.height };
+  }
+
+  /** How wide a handle actually draws on screen, so a mark that is already big
+   *  under the cursor keeps its own silhouette as the grab area. */
+  private screenRadius(mesh: THREE.Mesh, center: Vec2, rect: DOMRect): number {
+    const r = (mesh.userData.baseRadius as number) ?? 0;
+    if (!r) return 0;
+    // Camera-right, so the offset is the radius seen face-on whatever the orbit.
+    const right = new THREE.Vector3()
+      .setFromMatrixColumn(this.camera.matrixWorld, 0)
+      .multiplyScalar(r);
+    const edge = this.toScreen(mesh.position.clone().add(right), rect);
+    return edge ? Math.hypot(edge.x - center.x, edge.y - center.y) : 0;
+  }
+
+  /**
+   * The handle a press should grab: a proximity test in screen space, not a
+   * raycast, so a fingertip that lands *near* a mark still takes it (see GRAB_PX).
+   *
+   * OSS's pass order is preserved: a control point anywhere under the pointer beats
+   * every endpoint (move_mode.py runs try_move_control_points first), and within a
+   * kind the closest mark wins — measured as a fraction of each mark's own reach so
+   * a small tight one isn't swamped by a big loose neighbour.
+   */
+  private pickHandle(e: PointerEvent): THREE.Mesh | null {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const tol = grabPx(e);
+
+    let bestControl: { mesh: THREE.Mesh; score: number } | null = null;
+    let bestEndpoint: { mesh: THREE.Mesh; score: number } | null = null;
+
+    for (const obj of this.handleGroup.children) {
+      const mesh = obj as THREE.Mesh;
+      const center = this.toScreen(mesh.position, rect);
+      if (!center) continue;
+      const control = mesh.userData.kind === 'control';
+      // Attach mode's free endpoints get OSS's roomier circle; an occupied one
+      // keeps the plain endpoint area (it is only there to swallow the press).
+      const min = control
+        ? tol.control
+        : this.mode === 'attach' && mesh.userData.attachable
+          ? tol.attach
+          : tol.endpoint;
+      const reach = Math.max(this.screenRadius(mesh, center, rect), min);
+      const score = Math.hypot(px - center.x, py - center.y) / reach;
+      if (score > 1) continue;
+      const slot = control ? bestControl : bestEndpoint;
+      if (!slot || score < slot.score) {
+        if (control) bestControl = { mesh, score };
+        else bestEndpoint = { mesh, score };
+      }
+    }
+    return (bestControl ?? bestEndpoint)?.mesh ?? null;
   }
 
   // Topmost strand id under the pointer (skips outline shells and connectors,
-  // which carry no strandId). Used by the weave tool.
+  // which carry no strandId). Used by the weave tool. A body is a big target, so
+  // an exact ray is enough for a mouse; a finger gets a ring of fallback rays at
+  // the coarse tolerance so a tap that lands just off a lace still picks it.
   private pickStrand(e: PointerEvent): string | null {
-    if (!this.ndc(e)) return null;
-    this.raycaster.setFromCamera(this.pointer, this.camera);
-    const hits = this.raycaster.intersectObjects(this.strandGroup.children, true);
-    for (const h of hits) {
-      const id = h.object.userData?.strandId;
-      if (typeof id === 'string') return id;
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const r = grabPx(e).body;
+    const offsets: Vec2[] = [{ x: 0, y: 0 }];
+    for (let i = 0; i < 8 && r > 0; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      offsets.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+    }
+    for (const o of offsets) {
+      this.pointer.set(
+        ((e.clientX - rect.left + o.x) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top + o.y) / rect.height) * 2 + 1,
+      );
+      this.raycaster.setFromCamera(this.pointer, this.camera);
+      const hits = this.raycaster.intersectObjects(this.strandGroup.children, true);
+      for (const h of hits) {
+        const id = h.object.userData?.strandId;
+        if (typeof id === 'string') return id;
+      }
     }
     return null;
   }
@@ -1034,6 +1140,13 @@ export class StrandScene {
   }
 
   private onPointerDown = (e: PointerEvent): void => {
+    // A second finger landing mid-drag must not reach OrbitControls (which would
+    // read the pair as a pinch) — swallow it and keep dragging with the first.
+    if (this.dragState) {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      return;
+    }
     if (this.mode === 'orbit' || e.button !== 0) return;
 
     // Weave tool: click the OVER strand, then the UNDER strand — pick bodies,
@@ -1050,7 +1163,7 @@ export class StrandScene {
     const hit = this.pickHandle(e);
     if (!hit) return; // missed every handle -> let OrbitControls orbit
 
-    const ud = hit.object.userData;
+    const ud = hit.userData;
     if (this.mode === 'attach' && ud.kind === 'endpoint' && !ud.attachable) {
       // occupied junction: not attachable, but still swallow the click so we
       // don't orbit off a handle the user meant to grab.
@@ -1063,13 +1176,14 @@ export class StrandScene {
     e.stopImmediatePropagation();
     e.preventDefault();
     this.controls.enabled = false;
+    this.activePointerId = e.pointerId;
     try {
       this.canvas.setPointerCapture(e.pointerId);
     } catch {
       /* not all environments support pointer capture */
     }
 
-    const anchorWorld = (hit.object as THREE.Mesh).position.clone();
+    const anchorWorld = hit.position.clone();
     const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
       new THREE.Vector3(0, 0, 1),
       anchorWorld,
@@ -1118,12 +1232,22 @@ export class StrandScene {
     this.setCursor('grabbing');
   };
 
+  /** Events from a finger that isn't the one driving the current drag. */
+  private isStrayPointer(e: PointerEvent): boolean {
+    return this.activePointerId !== null && e.pointerId !== this.activePointerId;
+  }
+
   private onPointerMove = (e: PointerEvent): void => {
+    if (this.isStrayPointer(e)) return;
     if (this.dragState) {
       this.applyDrag(e);
       return;
     }
-    if (this.mode !== 'orbit' && e.buttons === 0) this.updateHover(e);
+    // Hover is a mouse-only idea: a touch "move" only ever happens mid-gesture, so
+    // reading it as hover would light up handles under a finger that is orbiting.
+    if (this.mode !== 'orbit' && e.buttons === 0 && e.pointerType === 'mouse') {
+      this.updateHover(e);
+    }
   };
 
   private applyDrag(e: PointerEvent): void {
@@ -1158,9 +1282,11 @@ export class StrandScene {
   }
 
   private onPointerUp = (e: PointerEvent): void => {
+    if (this.isStrayPointer(e)) return;
     const st = this.dragState;
     if (!st) return;
     this.dragState = null;
+    this.activePointerId = null;
     this.controls.enabled = true;
     try {
       this.canvas.releasePointerCapture(e.pointerId);
@@ -1187,6 +1313,7 @@ export class StrandScene {
   };
 
   private onPointerCancel = (e: PointerEvent): void => {
+    if (this.isStrayPointer(e)) return;
     if (!this.dragState) return;
     try {
       this.canvas.releasePointerCapture(e.pointerId);
@@ -1199,8 +1326,7 @@ export class StrandScene {
   };
 
   private updateHover(e: PointerEvent): void {
-    const hit = this.pickHandle(e);
-    const obj = (hit?.object as THREE.Mesh) ?? null;
+    const obj = this.pickHandle(e);
     const grabbable =
       !!obj &&
       !(this.mode === 'attach' && obj.userData.kind === 'endpoint' && !obj.userData.attachable);
@@ -1328,12 +1454,19 @@ export class StrandScene {
     this.hovered = null;
   }
 
+  /** Match the drawing buffer and the camera to the canvas's own box.
+   *
+   *  It used to measure the PARENT, which is the flex row holding the canvas AND
+   *  the side panel — so the camera got the whole window's aspect while the canvas
+   *  element was panel-width narrower, and the picture was squeezed horizontally
+   *  to fit. Harmless-looking on a wide desktop, brutal on a phone where the panel
+   *  is most of the viewport. */
   private resize(): void {
-    const parent = this.canvas.parentElement;
-    const w = parent ? parent.clientWidth : window.innerWidth;
-    const h = parent ? parent.clientHeight : window.innerHeight;
+    const rect = this.canvas.getBoundingClientRect();
+    const w = Math.max(1, Math.round(rect.width || window.innerWidth));
+    const h = Math.max(1, Math.round(rect.height || window.innerHeight));
     this.renderer.setSize(w, h, false);
-    this.camera.aspect = w / Math.max(1, h);
+    this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
 

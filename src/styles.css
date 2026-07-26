@@ -27,6 +27,10 @@ body {
 #app {
   display: flex;
   height: 100vh;
+  /* Dynamic viewport units: a phone browser's address bar slides in and out, and
+     100vh assumes it is always retracted — which pushes the bottom of the panel
+     off the screen for as long as it isn't. */
+  height: 100dvh;
   width: 100vw;
 }
 
@@ -36,6 +40,16 @@ body {
   min-width: 0;
   height: 100%;
   cursor: grab;
+  /* The canvas owns every gesture that lands on it. Without this the browser
+     claims one-finger drags for scrolling and two-finger ones for page zoom, so a
+     press-and-drag on a handle is stolen before pointermove ever fires — the app
+     looks frozen to touch. (OpenStrandJS sets exactly this on its own #c.) */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  /* Suppress the grey tap flash and the long-press callout over the scene. */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
 }
 
 #scene:active {
@@ -50,6 +64,10 @@ body {
   background: var(--panel-bg);
   border-left: 1px solid var(--line);
   padding: 16px 16px 40px;
+  /* Scrolls vertically; horizontal drags and pinches stay inert, and a scroll that
+     hits the end doesn't chain out to the page behind it. */
+  touch-action: pan-y;
+  overscroll-behavior: contain;
 }
 
 .brand {
@@ -372,6 +390,128 @@ body {
   font-size: 11px;
   color: var(--muted);
   text-align: center;
+}
+
+/* ---- Mobile chrome -------------------------------------------------------
+   Both of these are built by the panel and live in <body>, hidden until the
+   layout goes narrow (see the media query below). */
+
+/* The tool switch, floated over the scene. On a phone the panel is a bottom
+   sheet you fold away to get room to edit — and the control you reach for
+   constantly while editing is exactly this one, so it stays on screen. */
+#mobile-tools {
+  display: none;
+  position: fixed;
+  z-index: 5;
+  top: calc(8px + env(safe-area-inset-top));
+  left: calc(8px + env(safe-area-inset-left));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-bg);
+  background: color-mix(in srgb, var(--panel-bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 14%);
+}
+
+#mobile-tools .btn-row {
+  gap: 4px;
+  margin: 0;
+}
+
+#mobile-tools .btn {
+  flex: 0 0 auto;
+  padding: 9px;
+  font-size: 12px;
+  border-radius: 9px;
+}
+
+#panel-toggle {
+  display: none;
+  position: fixed;
+  z-index: 6;
+  top: calc(8px + env(safe-area-inset-top));
+  right: calc(8px + env(safe-area-inset-right));
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--panel-bg);
+  background: color-mix(in srgb, var(--panel-bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 14%);
+  cursor: pointer;
+}
+
+/* A finger is a ~9mm target with no cursor to aim it: the icon buttons in the
+   layer rows are 24px, which is half of what a thumb can reliably hit. */
+@media (pointer: coarse) {
+  .btn {
+    padding: 11px 10px;
+  }
+  .icon-btn {
+    width: 34px;
+    height: 34px;
+  }
+  .swatch,
+  .level-badge,
+  .mask-badge {
+    width: 30px;
+    height: 30px;
+  }
+  .toggle {
+    font-size: 13px;
+  }
+}
+
+/* Narrow screen: the side panel becomes a bottom sheet. It used to keep its
+   fixed 320px, which on a 390px-wide phone left the canvas about 70px across —
+   there was barely a scene to press on, let alone a handle to hit. */
+@media (max-width: 860px) {
+  #app {
+    flex-direction: column;
+  }
+
+  #scene {
+    /* `height: 100%` resolves against #app in a column layout, so the canvas
+       would claim the whole viewport and shove the panel out of it. */
+    height: auto;
+    width: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  #panel {
+    flex: 0 0 auto;
+    width: 100%;
+    height: auto;
+    max-height: 46dvh;
+    border-left: none;
+    border-top: 1px solid var(--line);
+    padding: 14px 14px calc(28px + env(safe-area-inset-bottom));
+  }
+
+  /* Folded away: the scene gets the whole viewport, the floating tool bar keeps
+     Move/Attach/Weave reachable. */
+  body.panel-collapsed #panel {
+    display: none;
+  }
+
+  #mobile-tools {
+    display: flex;
+  }
+
+  #panel-toggle {
+    display: inline-flex;
+  }
+
+  /* The panel's own Tool section is redundant while the floating bar is up. */
+  #panel .tool-row-panel {
+    display: none;
+  }
 }
 
 @media (prefers-color-scheme: dark) {

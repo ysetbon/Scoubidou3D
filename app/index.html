@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- viewport-fit=cover so the notch/home-bar insets are reported to CSS
+       (env(safe-area-inset-*) keeps the floating tool bar clear of them). -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <title>Scoubidou3D — strands with depth</title>
 </head>

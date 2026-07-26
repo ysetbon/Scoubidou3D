@@ -54,7 +54,41 @@ export class Panel {
       this.renderLayers();
       this.renderTools();
     };
+    this.buildMobileChrome();
     this.render();
+  }
+
+  // ---- Mobile chrome -------------------------------------------------------
+  /**
+   * On a phone the panel is a bottom sheet (styles.css) that can be folded away
+   * so the scene gets the whole viewport — which is what makes Move and Attach
+   * usable at all there. Two pieces of chrome float over the canvas to support
+   * that: the fold toggle, and a copy of the tool switch, because the tool is the
+   * one control you keep reaching for while the panel is down. Both are
+   * `display: none` above the narrow breakpoint, so a desktop sees no change.
+   */
+  private buildMobileChrome(): void {
+    const bar = el('div');
+    bar.id = 'mobile-tools';
+    bar.setAttribute('role', 'group');
+    bar.setAttribute('aria-label', 'Tool');
+    this.mobileToolHost = bar;
+    document.body.appendChild(bar);
+
+    const toggle = el('button', undefined, '') as HTMLButtonElement;
+    toggle.id = 'panel-toggle';
+    toggle.type = 'button';
+    const sync = (): void => {
+      const open = !document.body.classList.contains('panel-collapsed');
+      toggle.textContent = open ? 'Hide panel' : 'Panel';
+      toggle.setAttribute('aria-expanded', String(open));
+    };
+    toggle.addEventListener('click', () => {
+      document.body.classList.toggle('panel-collapsed');
+      sync();
+    });
+    sync();
+    document.body.appendChild(toggle);
   }
 
   setScene(scene: Scene3D): void {
@@ -88,7 +122,11 @@ export class Panel {
     this.root.appendChild(this.layersSection());
 
     const hint = el('div', 'hint');
-    hint.innerHTML = 'Drag to orbit · scroll to zoom · right-drag to pan';
+    // Touch has no scroll wheel and no right button, so name the gestures that
+    // actually reach the camera on the device in front of you.
+    hint.innerHTML = matchMedia('(pointer: coarse)').matches
+      ? 'One finger to orbit · pinch to zoom · two fingers to pan'
+      : 'Drag to orbit · scroll to zoom · right-drag to pan';
     this.root.appendChild(hint);
   }
 
@@ -97,6 +135,7 @@ export class Panel {
   // drags endpoints & control points (connected strands follow); Attach pulls a
   // new strand out of a free endpoint.
   private toolHost: HTMLElement | null = null;
+  private mobileToolHost: HTMLElement | null = null;
 
   private toolSection(): HTMLElement {
     const sec = section('Tool');
@@ -106,11 +145,9 @@ export class Panel {
     return sec;
   }
 
-  private renderTools(): void {
-    if (!this.toolHost) return;
-    this.toolHost.innerHTML = '';
-    const mode = this.view.getMode();
-
+  /** A fresh row of tool buttons wired to the current mode. Built twice — once in
+   *  the panel, once in the floating mobile bar — so both stay in step. */
+  private toolRow(mode: EditMode): HTMLElement {
     const row = el('div', 'btn-row');
     const tools: Array<{ key: EditMode; label: string }> = [
       { key: 'orbit', label: 'Orbit' },
@@ -126,6 +163,20 @@ export class Panel {
       });
       row.appendChild(b);
     }
+    return row;
+  }
+
+  private renderTools(): void {
+    const mode = this.view.getMode();
+    if (this.mobileToolHost) {
+      this.mobileToolHost.innerHTML = '';
+      this.mobileToolHost.appendChild(this.toolRow(mode));
+    }
+    if (!this.toolHost) return;
+    this.toolHost.innerHTML = '';
+
+    const row = this.toolRow(mode);
+    row.classList.add('tool-row-panel'); // hidden on mobile — the floating bar has it
     this.toolHost.appendChild(row);
 
     // OSS's `enable_third_control_point`: with it off a strand has the classic two
