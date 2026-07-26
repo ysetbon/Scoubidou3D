@@ -7,6 +7,13 @@ import { StrandScene, EditMode } from '../scene/StrandScene';
 import { MaskLink, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, makeSample } from '../model/samples';
 import { parseSceneText, sceneFromFile, sceneToJson } from '../model/sceneIO';
+import {
+  addLevelBreak,
+  levelAt,
+  moveLevelBreak,
+  removeLevelBreak,
+  removeStrandAt,
+} from '../model/levels';
 import { deleteCustom, getCustom, listCustom, saveCustom, storageAvailable } from '../model/customSamples';
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -507,8 +514,30 @@ export class Panel {
 
   private layersSection(): HTMLElement {
     const sec = section('Layers  (top = front)');
+
+    // "New level" drops a storey marker at the top of the stack, so everything
+    // added from here on rests one strand thickness higher. See levels.ts.
+    const row = el('div', 'btn-row');
+    const add = el('button', 'btn btn-icon');
+    add.innerHTML = `${LAYERS_ICON}<span>New level</span>`;
+    add.title = 'Add a level: from now on, new layers rest one strand thickness higher';
+    add.addEventListener('click', () => {
+      addLevelBreak(this.scene);
+      this.apply(false);
+    });
+    row.appendChild(add);
+    sec.appendChild(row);
+
     this.layersHost = el('div', 'layers');
     sec.appendChild(this.layersHost);
+
+    sec.appendChild(
+      el(
+        'div',
+        'note',
+        'A level is a step of exactly one strand thickness — enough for a lace to rest ON the one below instead of through it. Drag it down the stack with ▲▼ to drop the layers it passes back a storey.',
+      ),
+    );
     this.renderLayers();
     return sec;
   }
@@ -520,10 +549,65 @@ export class Panel {
     // which is the top of the layer panel. A mask is named `over_under` there
     // (`first_second`), so `1_2_1_3` reads "1_2 crosses over 1_3".
     this.scene.masks.forEach((m, i) => this.layersHost!.appendChild(this.maskRow(m, i)));
-    // Then the strands, topmost first (last in the array is highest Z).
-    for (let i = this.scene.strands.length - 1; i >= 0; i--) {
-      this.layersHost.appendChild(this.layerRow(i));
+    // Then the strands, topmost first (last in the array is highest Z), with the
+    // level breaks interleaved: a break at position k sits above strand k-1.
+    const breaks = this.scene.levelBreaks;
+    for (let i = this.scene.strands.length; i >= 0; i--) {
+      for (let b = breaks.length - 1; b >= 0; b--) {
+        if (breaks[b] === i) this.layersHost.appendChild(this.levelRow(b));
+      }
+      if (i > 0) this.layersHost.appendChild(this.layerRow(i - 1));
     }
+  }
+
+  /** A level row: the storey marker itself. Everything above it rests one strand
+   *  thickness higher, and it reorders and deletes like any other layer. */
+  private levelRow(index: number): HTMLElement {
+    const at = this.scene.levelBreaks[index];
+    const row = el('div', 'layer layer-level');
+
+    const badge = el('div', 'level-badge');
+    badge.innerHTML = LAYERS_ICON;
+    row.appendChild(badge);
+
+    const nameWrap = el('div', 'layer-name');
+    nameWrap.appendChild(el('span', 'layer-id', `level ${index + 1}`));
+    nameWrap.appendChild(el('span', 'layer-tag', '+1 thickness'));
+    row.appendChild(nameWrap);
+    row.title = `Everything above this rests one strand thickness (${fmt(
+      this.view.getParams().thickness,
+    )}) higher.`;
+
+    const controls = el('div', 'layer-controls');
+
+    const up = el('button', 'icon-btn', '▲');
+    up.title = 'Move up (fewer layers lifted)';
+    up.disabled = at >= this.scene.strands.length;
+    up.addEventListener('click', () => {
+      moveLevelBreak(this.scene, index, +1);
+      this.apply(false);
+    });
+    controls.appendChild(up);
+
+    const down = el('button', 'icon-btn', '▼');
+    down.title = 'Move down (lift one more layer)';
+    down.disabled = at <= 0;
+    down.addEventListener('click', () => {
+      moveLevelBreak(this.scene, index, -1);
+      this.apply(false);
+    });
+    controls.appendChild(down);
+
+    const del = el('button', 'icon-btn danger', '✕');
+    del.title = 'Remove this level';
+    del.addEventListener('click', () => {
+      removeLevelBreak(this.scene, index);
+      this.apply(false);
+    });
+    controls.appendChild(del);
+
+    row.appendChild(controls);
+    return row;
   }
 
   /** A mask layer row. The badge shows the two strands' own colors, over on top
@@ -580,6 +664,9 @@ export class Panel {
     if (strand.isMask) nameWrap.appendChild(el('span', 'layer-tag', 'mask'));
     // Show attach lineage — the OSS "this strand hangs off <parent>" relationship.
     if (strand.parentId) nameWrap.appendChild(el('span', 'layer-tag', `↳ ${strand.parentId}`));
+    // …and which storey it rests on, once any level break is in play.
+    const level = levelAt(this.scene, index);
+    if (level > 0) nameWrap.appendChild(el('span', 'layer-tag level-tag', `L${level}`));
     row.appendChild(nameWrap);
 
     const controls = el('div', 'layer-controls');
@@ -607,7 +694,7 @@ export class Panel {
     const del = el('button', 'icon-btn danger', '✕');
     del.title = 'Delete';
     del.addEventListener('click', () => {
-      this.scene.strands.splice(index, 1);
+      removeStrandAt(this.scene, index);
       this.apply(false);
     });
     controls.appendChild(del);
@@ -624,6 +711,15 @@ export class Panel {
     this.apply(false);
   }
 }
+
+// The stacked-layers mark used by the "New level" button and by the rows it adds:
+// a slab seen edge-on with a second one showing beneath it — one storey above
+// another, which is exactly what a level is.
+const LAYERS_ICON =
+  '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+  '<path d="M12 3 22 9.2 12 15.4 2 9.2Z"/>' +
+  '<path d="M12 17.7 3.7 12.5 2 13.6 12 19.8 22 13.6 20.3 12.5Z"/>' +
+  '</svg>';
 
 const PALETTE: RGBA[] = [
   { r: 245, g: 200, b: 55, a: 255 },

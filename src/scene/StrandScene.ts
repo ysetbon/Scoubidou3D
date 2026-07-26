@@ -27,6 +27,7 @@ import {
   recomputeOccupancy,
   setEndpoint,
 } from '../model/connections';
+import { levelAt, removeStrandAt } from '../model/levels';
 import { sampleCenterline } from '../geometry/bezier';
 import { buildRibbonGeometry } from '../geometry/ribbon';
 import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
@@ -112,7 +113,7 @@ export class StrandScene {
   private strandGroup = new THREE.Group();
   private handleGroup = new THREE.Group();
   private grid: THREE.GridHelper | null = null;
-  private current: Scene3D = { strands: [], masks: [], name: 'empty' };
+  private current: Scene3D = { strands: [], masks: [], levelBreaks: [], name: 'empty' };
   private params: RenderParams = { ...DEFAULT_PARAMS };
   private center: Vec2 = { x: 0, y: 0 };
   private contentRadius = 10;
@@ -248,8 +249,7 @@ export class StrandScene {
     this.dragState = null;
     this.controls.enabled = true;
     if (st && st.kind === 'attach') {
-      const idx = this.current.strands.indexOf(st.child);
-      if (idx >= 0) this.current.strands.splice(idx, 1);
+      removeStrandAt(this.current, this.current.strands.indexOf(st.child));
       recomputeOccupancy(this.current);
       this.onSceneChanged?.();
     }
@@ -692,6 +692,12 @@ export class StrandScene {
    * cord climb a staircase along its own length. Instead each connected group gets
    * one height, and groups are stacked in layer-panel order. Nothing is lost:
    * masks decide what happens at crossings, and this only sets the resting plane.
+   *
+   * Two things set that height: the lace's RANK in the layer panel, spaced by the
+   * (small) layer lift, plus its LEVEL — how many level breaks sit below it, each
+   * worth one full strand thickness. A lace takes the level of its lowest-numbered
+   * member, for the same reason it takes one height at all: it is one object, so
+   * it can't stand half on one storey and half on the next.
    */
   private computeBaseZ(): void {
     const n = this.current.strands.length;
@@ -717,17 +723,27 @@ export class StrandScene {
       const cur = lowest.get(r);
       if (cur === undefined || i < cur) lowest.set(r, i);
     }
-    const rank = new Map<number, number>();
+    const gap = this.params.layerGap * SCALE;
+    // One level break is worth one strand thickness: the exact separation at
+    // which the upper ribbon's underside meets the lower one's top face.
+    const step = this.params.thickness * SCALE;
+    const restZ = new Map<number, number>();
     [...lowest.entries()]
       .sort((a, b) => a[1] - b[1])
-      .forEach(([r], k) => rank.set(r, k));
+      .forEach(([r, low], k) => restZ.set(r, k * gap + levelAt(this.current, low) * step));
 
-    const gap = this.params.layerGap * SCALE;
-    const levels = rank.size;
-    const z0 = -((levels - 1) * gap) / 2;
+    // Re-centre on z = 0, so adding a level opens the stack up around the grid
+    // instead of walking the whole model off it.
+    let min = Infinity;
+    let max = -Infinity;
+    for (const z of restZ.values()) {
+      if (z < min) min = z;
+      if (z > max) max = z;
+    }
+    const shift = restZ.size ? -(min + max) / 2 : 0;
     this.baseZ = new Array<number>(n);
-    for (let i = 0; i < n; i++) this.baseZ[i] = z0 + (rank.get(find(i)) ?? 0) * gap;
-    this.lowestZ = levels > 0 ? z0 : 0;
+    for (let i = 0; i < n; i++) this.baseZ[i] = (restZ.get(find(i)) ?? 0) + shift;
+    this.lowestZ = restZ.size ? min + shift : 0;
   }
 
   private layerZ(layerIndex: number): number {
@@ -1031,8 +1047,7 @@ export class StrandScene {
       const child = st.child;
       const len = Math.hypot(child.end.x - child.start.x, child.end.y - child.start.y);
       if (len < MIN_ATTACH_LEN) {
-        const idx = this.current.strands.indexOf(child);
-        if (idx >= 0) this.current.strands.splice(idx, 1);
+        removeStrandAt(this.current, this.current.strands.indexOf(child));
       }
       recomputeOccupancy(this.current);
       this.rebuild();

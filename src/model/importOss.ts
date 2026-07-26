@@ -154,7 +154,7 @@ export function sceneFromOss(data: unknown, name = 'imported'): Scene3D {
     masks.push(link);
   }
 
-  const scene: Scene3D = { strands, masks, name };
+  const scene: Scene3D = { strands, masks, levelBreaks: [], name };
   recomputeOccupancy(scene);
   return scene;
 }

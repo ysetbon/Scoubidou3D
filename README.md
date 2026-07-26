@@ -52,6 +52,13 @@ crossing, so one lace weaves over-and-under just like a real basket.
 - 📚 **Layer stacking = default depth.** The layer order sets the *default*
   over/under (higher layer rides over); masks override specific crossings, just
   like in OSS. Reorder a layer and it restacks live.
+- 🪜 **Levels — storeys in the layer stack.** The **New level** button drops a
+  layers-icon row into the panel; everything above it rests **one full strand
+  thickness** higher, which is exactly the height at which a lace sits *on* the
+  one below instead of through it. Because the row goes in at the top, nothing
+  already drawn moves — but every strand you add next is born a storey up. Slide
+  the row down with ▲▼ to drop the layers it passes back a level.
+  ([how it works](docs/layer-levels.md))
 - 🎥 **Full 3D camera.** Orbit, pan, zoom (Three.js `OrbitControls`). One click
   snaps back to the familiar top-down OpenStrand view.
 - 🎚️ **Live controls** for thickness, width scale, weave depth/span, layer lift,

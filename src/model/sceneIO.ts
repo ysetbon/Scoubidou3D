@@ -11,10 +11,13 @@
 
 import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
 import { recomputeOccupancy } from './connections';
+import { normalizeLevelBreaks } from './levels';
 import { sceneFromOss } from './importOss';
 
 export const SCENE_FORMAT = 'scoubidou3d-scene';
-export const SCENE_VERSION = 1;
+// v2 added `levelBreaks`. The change is additive: a v1 file loads as a scene with
+// no levels, and a v2 file read by anything older simply ignores the field.
+export const SCENE_VERSION = 2;
 
 export interface SceneFile {
   format: typeof SCENE_FORMAT;
@@ -22,6 +25,7 @@ export interface SceneFile {
   name: string;
   strands: Strand3D[];
   masks: MaskLink[];
+  levelBreaks: number[];
 }
 
 export function sceneToFile(scene: Scene3D): SceneFile {
@@ -32,6 +36,7 @@ export function sceneToFile(scene: Scene3D): SceneFile {
     // Deep-copy so a later edit can't mutate what was saved.
     strands: scene.strands.map(cloneStrand),
     masks: scene.masks.map((m) => ({ overId: m.overId, underId: m.underId })),
+    levelBreaks: [...scene.levelBreaks],
   };
 }
 
@@ -134,6 +139,7 @@ export function sceneFromFile(data: unknown, fallbackName = 'saved scene'): Scen
   const scene: Scene3D = {
     strands,
     masks,
+    levelBreaks: normalizeLevelBreaks(obj.levelBreaks, strands.length),
     name: typeof obj.name === 'string' && obj.name ? obj.name : fallbackName,
   };
   recomputeOccupancy(scene);

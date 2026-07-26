@@ -54,6 +54,7 @@ function twoCrossing(): Scene3D {
   return {
     name: 'Two crossing strands',
     masks: [],
+    levelBreaks: [],
     strands: [
       mk('1_1', { x: 120, y: 250 }, { x: 680, y: 250 }, ORANGE, { width: 54 }),
       mk('2_1', { x: 400, y: 90 }, { x: 400, y: 410 }, YELLOW, { width: 54 }),
@@ -85,7 +86,7 @@ function wovenMat(): Scene3D {
       masks.push((i + j) % 2 === 0 ? { overId: h, underId: v } : { overId: v, underId: h });
     }
   }
-  return { name: 'Woven mat', strands, masks };
+  return { name: 'Woven mat', strands, masks, levelBreaks: [] };
 }
 
 // 3) Three bowed ribbons that sweep across one another — a soft curved weave.
@@ -104,7 +105,7 @@ function curvedStack(): Scene3D {
       }),
     );
   }
-  return { name: 'Curved ribbon weave', masks: [], strands };
+  return { name: 'Curved ribbon weave', masks: [], levelBreaks: [], strands };
 }
 
 // 4) The box stitch (square stitch), at the starting stitch.
@@ -156,7 +157,7 @@ function boxStitch(): Scene3D {
   // mask a crossing only where the natural order is wrong.
   const masks: MaskLink[] = [{ overId: '1_2', underId: '2_3' }];
 
-  return { name: 'Box stitch — starting stitch', strands, masks };
+  return { name: 'Box stitch — starting stitch', strands, masks, levelBreaks: [] };
 }
 
 // 5) A flat braid of `count` laces — the plait you get by repeatedly swapping a
@@ -210,7 +211,7 @@ function flatBraid(count: number, rows: number, name: string): Scene3D {
     }
     for (let lace = 0; lace < count; lace++) at[lace] = next[lace];
   }
-  return { name, strands, masks };
+  return { name, strands, masks, levelBreaks: [] };
 }
 
 // 6) A diagonal basket — the woven mat turned 45°, so the laces run corner to
@@ -241,7 +242,7 @@ function diagonalWeave(): Scene3D {
       masks.push((i + j) % 2 === 0 ? { overId: `a${i}`, underId: `b${j}` } : { overId: `b${j}`, underId: `a${i}` });
     }
   }
-  return { name: 'Diagonal basket', strands, masks };
+  return { name: 'Diagonal basket', strands, masks, levelBreaks: [] };
 }
 
 export const SAMPLES: Record<string, () => Scene3D> = {
