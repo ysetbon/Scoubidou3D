@@ -52,6 +52,13 @@ crossing, so one lace weaves over-and-under just like a real basket.
 - 📚 **Layer stacking = default depth.** The layer order sets the *default*
   over/under (higher layer rides over); masks override specific crossings, just
   like in OSS. Reorder a layer and it restacks live.
+- 🪜 **Levels — storeys in the layer stack.** The **New level** button drops a
+  layers-icon row into the panel; everything above it rests **one full strand
+  thickness** higher, which is exactly the height at which a lace sits *on* the
+  one below instead of through it. Because the row goes in at the top, nothing
+  already drawn moves — but every strand you add next is born a storey up. Slide
+  the row down with ▲▼ to drop the layers it passes back a level.
+  ([how it works](docs/layer-levels.md))
 - 🎥 **Full 3D camera.** Orbit, pan, zoom (Three.js `OrbitControls`). One click
   snaps back to the familiar top-down OpenStrand view.
 - 🎚️ **Live controls** for thickness, width scale, weave depth/span, layer lift,
@@ -65,8 +72,14 @@ crossing, so one lace weaves over-and-under just like a real basket.
     junctions show gray and refuse new attachments, exactly like OSS's
     `has_circles` rule.
   - **Move**: drag a (blue) endpoint and every strand glued to that point moves
-    with it, so attachments stay connected; drag an (orange) dot to bend a
-    strand. The weave re-solves as you drag.
+    with it, so attachments stay connected. The weave re-solves as you drag.
+  - **Control points are OpenStrand's own.** Same marks, same staging: a green
+    **triangle** on an untouched strand, and pulling it brings out the **circle**
+    (the far handle) and the **square** (the middle), wired up with OSS's dashed
+    green rig. The circle rides with the end until you pull it off; the square
+    tracks the midpoint until you drag it, then locks — and unlocks itself if you
+    drop it back. Put every mark home and the set folds away again.
+    ([the full behaviour, and the one place it differs](docs/control-points.md))
 - 📥 **Import real files.** Load an OpenStrand Studio / OpenStrandJS `.json`
   save and see it in 3D. The strand geometry uses a faithful port of OSS's
   curve math (`strand.py::_build_curve_profile`), so curves match the original.

@@ -27,6 +27,17 @@ import {
   recomputeOccupancy,
   setEndpoint,
 } from '../model/connections';
+import { levelAt, removeStrandAt } from '../model/levels';
+import {
+  ControlHandle,
+  VisibleControls,
+  beginControlDrag,
+  dragControl,
+  settleControls,
+  syncPassiveCp2,
+  updateControlCenter,
+  visibleControls,
+} from '../model/controlPoints';
 import { sampleCenterline } from '../geometry/bezier';
 import { buildRibbonGeometry } from '../geometry/ribbon';
 import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
@@ -40,16 +51,23 @@ const SCALE = 0.02;
 // Handle appearance (world-unit radii + colors), tuned against SCALE so the grab
 // dots read clearly at the default framing.
 const END_R = 0.18;
-const CP_R = 0.14;
+// OSS draws its control marks at 11 * 1.333 source units (strand_drawing_canvas.py),
+// so carry that radius straight over — it keeps the marks the same size against a
+// strand's width as they are on the desktop canvas.
+const CP_R = 14.66 * SCALE;
 const OCC_R = 0.12;
 const COLOR_END = 0x2f7bd6; // move-mode endpoint (blue)
-const COLOR_CP = 0xe0872a; // move-mode control point (orange)
+const COLOR_CP = 0x008000; // control points — OSS's green (strand_drawing_canvas.py)
 const COLOR_FREE = 0x2fb862; // attach-mode free endpoint (green — attachable)
 const COLOR_OCC = 0x9099a6; // attach-mode occupied endpoint (gray — junction)
 
 // A drag shorter than this (source units) counts as a click, not an attach, and
 // the just-created strand is discarded — the analogue of OSS's min_length guard.
 const MIN_ATTACH_LEN = 4;
+
+// Control marks float a hair above their layer so they stay legible against the
+// ribbon (and above the endpoint dot they share a spot with on a fresh strand).
+const CP_LIFT = 0.1;
 
 export type EditMode = 'orbit' | 'move' | 'attach' | 'weave';
 
@@ -64,7 +82,7 @@ interface MoveTarget {
 type DragState =
   | { kind: 'attach'; child: Strand3D; plane: THREE.Plane }
   | { kind: 'move-endpoint'; plane: THREE.Plane; targets: MoveTarget[] }
-  | { kind: 'move-control'; plane: THREE.Plane; strand: Strand3D; cpIndex: 0 | 1 };
+  | { kind: 'move-control'; plane: THREE.Plane; strand: Strand3D; handle: ControlHandle };
 
 export interface RenderParams {
   thickness: number; // default ribbon depth, source units
@@ -76,6 +94,9 @@ export interface RenderParams {
   weave: boolean; // realise over/under as real depth at crossings
   weaveDepth: number; // weave amplitude — how far a lace lifts/dips, source units
   weaveSpan: number; // crossing pulse width, as a multiple of the crossing widths
+  // OSS `enable_third_control_point`: offer the centre square as a third handle,
+  // and let a locked centre bend the curve through itself (bezier.ts).
+  thirdControlPoint: boolean;
 }
 
 export const DEFAULT_PARAMS: RenderParams = {
@@ -92,6 +113,9 @@ export const DEFAULT_PARAMS: RenderParams = {
   weave: true,
   weaveDepth: 26,
   weaveSpan: 1.3,
+  // On, matching the running desktop canvas (strand_drawing_canvas.py sets it
+  // true even though the settings dialog defaults it off).
+  thirdControlPoint: true,
 };
 
 function threeColor(c: RGBA): THREE.Color {
@@ -111,8 +135,12 @@ export class StrandScene {
 
   private strandGroup = new THREE.Group();
   private handleGroup = new THREE.Group();
+  // The dashed green rig linking a strand to its control points. Kept out of
+  // handleGroup so it never competes for a pick (a Line's raycast threshold is
+  // wide enough to swallow the handles it points at).
+  private controlLines = new THREE.Group();
   private grid: THREE.GridHelper | null = null;
-  private current: Scene3D = { strands: [], masks: [], name: 'empty' };
+  private current: Scene3D = { strands: [], masks: [], levelBreaks: [], name: 'empty' };
   private params: RenderParams = { ...DEFAULT_PARAMS };
   private center: Vec2 = { x: 0, y: 0 };
   private contentRadius = 10;
@@ -120,7 +148,16 @@ export class StrandScene {
   private mode: EditMode = 'orbit';
   private raycaster = new THREE.Raycaster();
   private pointer = new THREE.Vector2();
+  // Handle shapes, all unit-sized and laid flat in the drawing plane so they read
+  // as OSS's marks from the top-down view: a TRIANGLE for control point 1, a
+  // CIRCLE for control point 2, a SQUARE for the centre. Endpoints stay spheres —
+  // they are grab dots, not OSS control marks.
   private handleGeo = new THREE.SphereGeometry(1, 18, 12);
+  private triGeo = new THREE.CylinderGeometry(1.06, 1.06, 0.5, 3)
+    .rotateX(Math.PI / 2)
+    .rotateZ(Math.PI); // apex toward +Y — OSS's triangle points up the canvas
+  private circGeo = new THREE.CylinderGeometry(1, 1, 0.5, 24).rotateX(Math.PI / 2);
+  private sqGeo = new THREE.BoxGeometry(1.4, 1.4, 0.5);
   private dragState: DragState | null = null;
   private hovered: THREE.Mesh | null = null;
 
@@ -157,6 +194,7 @@ export class StrandScene {
 
     this.addLights();
     this.scene.add(this.strandGroup);
+    this.scene.add(this.controlLines);
     this.scene.add(this.handleGroup);
 
     // Capture-phase pointerdown so we can claim a handle grab BEFORE OrbitControls
@@ -248,8 +286,7 @@ export class StrandScene {
     this.dragState = null;
     this.controls.enabled = true;
     if (st && st.kind === 'attach') {
-      const idx = this.current.strands.indexOf(st.child);
-      if (idx >= 0) this.current.strands.splice(idx, 1);
+      removeStrandAt(this.current, this.current.strands.indexOf(st.child));
       recomputeOccupancy(this.current);
       this.onSceneChanged?.();
     }
@@ -432,7 +469,11 @@ export class StrandScene {
       start: strand.start,
       end: strand.end,
       control_points: strand.control_points,
-      control_point_center: strand.control_point_center,
+      // With the third control point switched off, a locked centre is ignored by
+      // the curve as well as by the handles — OSS gates its path on the setting
+      // (strand.py: `third_locked = third_enabled and ...locked`), so turning the
+      // option off restores the plain two-handle shape without losing the centre.
+      control_point_center: this.params.thirdControlPoint ? strand.control_point_center : null,
       control_point_center_locked: strand.control_point_center_locked,
     });
     return src.map((p) => ({ x: (p.x - this.center.x) * SCALE, y: -(p.y - this.center.y) * SCALE }));
@@ -692,6 +733,12 @@ export class StrandScene {
    * cord climb a staircase along its own length. Instead each connected group gets
    * one height, and groups are stacked in layer-panel order. Nothing is lost:
    * masks decide what happens at crossings, and this only sets the resting plane.
+   *
+   * Two things set that height: the lace's RANK in the layer panel, spaced by the
+   * (small) layer lift, plus its LEVEL — how many level breaks sit below it, each
+   * worth one full strand thickness. A lace takes the level of its lowest-numbered
+   * member, for the same reason it takes one height at all: it is one object, so
+   * it can't stand half on one storey and half on the next.
    */
   private computeBaseZ(): void {
     const n = this.current.strands.length;
@@ -717,17 +764,27 @@ export class StrandScene {
       const cur = lowest.get(r);
       if (cur === undefined || i < cur) lowest.set(r, i);
     }
-    const rank = new Map<number, number>();
+    const gap = this.params.layerGap * SCALE;
+    // One level break is worth one strand thickness: the exact separation at
+    // which the upper ribbon's underside meets the lower one's top face.
+    const step = this.params.thickness * SCALE;
+    const restZ = new Map<number, number>();
     [...lowest.entries()]
       .sort((a, b) => a[1] - b[1])
-      .forEach(([r], k) => rank.set(r, k));
+      .forEach(([r, low], k) => restZ.set(r, k * gap + levelAt(this.current, low) * step));
 
-    const gap = this.params.layerGap * SCALE;
-    const levels = rank.size;
-    const z0 = -((levels - 1) * gap) / 2;
+    // Re-centre on z = 0, so adding a level opens the stack up around the grid
+    // instead of walking the whole model off it.
+    let min = Infinity;
+    let max = -Infinity;
+    for (const z of restZ.values()) {
+      if (z < min) min = z;
+      if (z > max) max = z;
+    }
+    const shift = restZ.size ? -(min + max) / 2 : 0;
     this.baseZ = new Array<number>(n);
-    for (let i = 0; i < n; i++) this.baseZ[i] = z0 + (rank.get(find(i)) ?? 0) * gap;
-    this.lowestZ = levels > 0 ? z0 : 0;
+    for (let i = 0; i < n; i++) this.baseZ[i] = (restZ.get(find(i)) ?? 0) + shift;
+    this.lowestZ = restZ.size ? min + shift : 0;
   }
 
   private layerZ(layerIndex: number): number {
@@ -735,18 +792,47 @@ export class StrandScene {
   }
 
   // ---- edit handles --------------------------------------------------------
-  private makeHandle(radius: number, colorHex: number): THREE.Mesh {
+  /**
+   * One grab handle. `core` fills it with the strand's own colour at half size,
+   * the way OSS paints the inside of every control mark, so a handle says which
+   * strand it belongs to without being clicked.
+   *
+   * The core and the outline ride as CHILDREN of the pickable mesh: the handle
+   * raycast is deliberately non-recursive, so they can't steal a hit, and they
+   * still inherit the hover scale-up for free.
+   */
+  private makeHandle(
+    geo: THREE.BufferGeometry,
+    radius: number,
+    colorHex: number,
+    core?: RGBA,
+    order = 20,
+  ): THREE.Mesh {
     const mat = new THREE.MeshBasicMaterial({
       color: colorHex,
       depthTest: false, // always grabbable, even behind ribbons
       transparent: true,
       opacity: 0.95,
     });
-    const mesh = new THREE.Mesh(this.handleGeo, mat);
+    const mesh = new THREE.Mesh(geo, mat);
     mesh.scale.setScalar(radius);
-    mesh.renderOrder = 20;
+    mesh.renderOrder = order;
     mesh.userData.baseColor = colorHex;
     mesh.userData.baseRadius = radius;
+
+    if (core) {
+      const inner = new THREE.Mesh(
+        geo,
+        // Transparent like its shell, so both land in the same render pass and
+        // renderOrder decides: an opaque core would be drawn in the earlier pass
+        // and the shell would paint straight over it.
+        new THREE.MeshBasicMaterial({ color: threeColor(core), depthTest: false, transparent: true }),
+      );
+      inner.scale.setScalar(0.5);
+      inner.position.z = 0.3; // clear of the outer face when seen from above
+      inner.renderOrder = order + 1;
+      mesh.add(inner);
+    }
     return mesh;
   }
 
@@ -768,7 +854,11 @@ export class StrandScene {
         const occupied = strand.hasCircles[side];
         if (this.mode === 'attach') {
           const attachable = !occupied;
-          const mesh = this.makeHandle(attachable ? END_R : OCC_R, attachable ? COLOR_FREE : COLOR_OCC);
+          const mesh = this.makeHandle(
+            this.handleGeo,
+            attachable ? END_R : OCC_R,
+            attachable ? COLOR_FREE : COLOR_OCC,
+          );
           mesh.position.copy(this.srcToWorld(endpoint(strand, side), endZ(side)));
           mesh.userData.kind = 'endpoint';
           mesh.userData.index = layerIndex;
@@ -777,7 +867,7 @@ export class StrandScene {
           this.handleGroup.add(mesh);
         } else {
           // move mode: every endpoint is draggable
-          const mesh = this.makeHandle(END_R, COLOR_END);
+          const mesh = this.makeHandle(this.handleGeo, END_R, COLOR_END);
           mesh.position.copy(this.srcToWorld(endpoint(strand, side), endZ(side)));
           mesh.userData.kind = 'endpoint';
           mesh.userData.index = layerIndex;
@@ -786,27 +876,71 @@ export class StrandScene {
         }
       });
 
-      // Control-point handles (move mode only). For a straight strand both
-      // control points sit on the start, which would stack them on the endpoint
-      // handle — so display them at 1/3 and 2/3 along the strand instead, giving
-      // a grabbable "bend here" dot. Dragging one writes the real control point.
+      // Control points (move mode only), exactly OSS's staged set: an untouched
+      // strand offers only the TRIANGLE — parked on the start, where its control
+      // points live — and grabbing it reveals the CIRCLE and the centre SQUARE.
+      // See controlPoints.ts; the shapes are the desktop app's own.
       if (this.mode === 'move') {
-        const straight =
-          pointsClose(strand.control_points[0], strand.start) &&
-          pointsClose(strand.control_points[1], strand.start);
-        ([0, 1] as const).forEach((cp) => {
-          const display = straight
-            ? lerp(strand.start, strand.end, cp === 0 ? 1 / 3 : 2 / 3)
-            : strand.control_points[cp];
-          const mesh = this.makeHandle(CP_R, COLOR_CP);
-          mesh.position.copy(this.srcToWorld(display, z));
+        const vis = visibleControls(strand, this.params.thirdControlPoint);
+        const addMark = (handle: ControlHandle, p: Point, geo: THREE.BufferGeometry): void => {
+          const mesh = this.makeHandle(geo, CP_R, COLOR_CP, strand.color, 22);
+          mesh.position.copy(this.srcToWorld(p, z + CP_LIFT));
           mesh.userData.kind = 'control';
           mesh.userData.index = layerIndex;
-          mesh.userData.cp = cp;
+          mesh.userData.cp = handle;
           this.handleGroup.add(mesh);
-        });
+        };
+        if (vis.circle) addMark(1, strand.control_points[1], this.circGeo);
+        if (vis.center && strand.control_point_center) {
+          addMark('center', strand.control_point_center, this.sqGeo);
+        }
+        // Triangle last so it lands on top wherever the marks coincide — which is
+        // every mark at once on a strand nobody has bent yet.
+        if (vis.triangle) addMark(0, strand.control_points[0], this.triGeo);
+
+        this.buildControlLines(strand, vis, z);
       }
     });
+  }
+
+  /**
+   * OSS's dashed green rig (strand_drawing_canvas.py `_create_control_line_pen`):
+   * start→triangle, end→circle — or start→circle while the circle is still parked
+   * on the start — plus the centre's two spokes. Drawn only once the set is open,
+   * so an untouched strand stays clean.
+   */
+  private buildControlLines(strand: Strand3D, vis: VisibleControls, z: number): void {
+    if (!vis.circle && !vis.center) return;
+    const [cp1, cp2] = strand.control_points;
+    const ends: Point[] = [strand.start, cp1];
+    ends.push(pointsClose(cp2, strand.start) ? strand.start : strand.end, cp2);
+    if (vis.center && strand.control_point_center) {
+      ends.push(strand.control_point_center, cp1, strand.control_point_center, cp2);
+    }
+
+    const positions = new Float32Array(ends.length * 3);
+    ends.forEach((p, i) => {
+      const w = this.srcToWorld(p, z + CP_LIFT);
+      positions[i * 3] = w.x;
+      positions[i * 3 + 1] = w.y;
+      positions[i * 3 + 2] = w.z;
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const line = new THREE.LineSegments(
+      geo,
+      new THREE.LineDashedMaterial({
+        color: COLOR_CP,
+        dashSize: 0.12,
+        gapSize: 0.08,
+        depthTest: false,
+        transparent: true,
+        opacity: 0.9,
+      }),
+    );
+    line.computeLineDistances();
+    line.renderOrder = 19; // under the handles it points at
+    this.controlLines.add(line);
   }
 
   // ---- pointer interaction -------------------------------------------------
@@ -824,7 +958,11 @@ export class StrandScene {
     if (!this.ndc(e)) return null;
     this.raycaster.setFromCamera(this.pointer, this.camera);
     const hits = this.raycaster.intersectObjects(this.handleGroup.children, false);
-    return hits.length ? hits[0] : null;
+    if (!hits.length) return null;
+    // Control points win over endpoints wherever both are under the cursor — OSS
+    // checks its control-point rectangles first for exactly this reason, and on an
+    // untouched strand the triangle sits right on top of the start dot.
+    return hits.find((h) => h.object.userData.kind === 'control') ?? hits[0];
   }
 
   // Topmost strand id under the pointer (skips outline shells and connectors,
@@ -969,12 +1107,13 @@ export class StrandScene {
       });
       this.dragState = { kind: 'move-endpoint', plane, targets };
     } else {
-      this.dragState = {
-        kind: 'move-control',
-        plane,
-        strand: this.current.strands[ud.index as number],
-        cpIndex: ud.cp as 0 | 1,
-      };
+      const strand = this.current.strands[ud.index as number];
+      const handle = ud.cp as ControlHandle;
+      // OSS applies the press side effects before any movement: grabbing the
+      // triangle opens the set, grabbing the centre is what locks it.
+      beginControlDrag(strand, handle);
+      this.dragState = { kind: 'move-control', plane, strand, handle };
+      this.rebuild(); // the newly revealed marks appear under the cursor at once
     }
     this.setCursor('grabbing');
   };
@@ -1001,17 +1140,19 @@ export class StrandScene {
       for (const t of st.targets) {
         setEndpoint(t.strand, t.side, src);
         // Keep control points that were pinned to this junction glued to it, so a
-        // straight strand stays straight as its endpoint moves.
+        // straight strand stays straight as its endpoint moves (OSS's `start`
+        // setter does the same for whatever coincides with the old start).
         if (t.cpAtAnchor[0]) t.strand.control_points[0] = { ...src };
         if (t.cpAtAnchor[1]) t.strand.control_points[1] = { ...src };
         if (t.centerAtAnchor && t.strand.control_point_center) {
           t.strand.control_point_center = { ...src };
         }
+        // A circle nobody has claimed rides with the end it belongs to.
+        if (t.side === 1) syncPassiveCp2(t.strand);
+        updateControlCenter(t.strand);
       }
     } else {
-      st.strand.control_points[st.cpIndex] = { ...src };
-      // Editing a control point directly detaches the auto-centered midpoint.
-      st.strand.control_point_center_locked = false;
+      dragControl(st.strand, st.handle, src);
     }
     this.rebuild();
   }
@@ -1031,13 +1172,15 @@ export class StrandScene {
       const child = st.child;
       const len = Math.hypot(child.end.x - child.start.x, child.end.y - child.start.y);
       if (len < MIN_ATTACH_LEN) {
-        const idx = this.current.strands.indexOf(child);
-        if (idx >= 0) this.current.strands.splice(idx, 1);
+        removeStrandAt(this.current, this.current.strands.indexOf(child));
       }
       recomputeOccupancy(this.current);
       this.rebuild();
       this.onSceneChanged?.();
     } else {
+      // Putting the circle back on the start (with the centre free or back there
+      // too) means the strand is untouched again, so the set folds away.
+      if (st.kind === 'move-control') settleControls(st.strand);
       this.rebuild();
     }
     this.setCursor(this.mode === 'orbit' ? '' : 'crosshair');
@@ -1169,11 +1312,19 @@ export class StrandScene {
   }
 
   private disposeHandles(): void {
-    for (const child of this.handleGroup.children) {
-      const mat = (child as THREE.Mesh).material as THREE.Material | undefined;
-      if (mat) mat.dispose(); // geometry is shared (handleGeo) — never dispose it here
-    }
+    // Geometries are shared between handles (handleGeo / triGeo / circGeo / sqGeo)
+    // — only the per-handle materials are ours to free here.
+    this.handleGroup.traverse((obj) => {
+      const mat = (obj as THREE.Mesh).material as THREE.Material | undefined;
+      if (mat) mat.dispose();
+    });
     this.handleGroup.clear();
+    for (const line of this.controlLines.children) {
+      const l = line as THREE.LineSegments;
+      l.geometry.dispose(); // built per rebuild, unlike the handle shapes
+      (l.material as THREE.Material).dispose();
+    }
+    this.controlLines.clear();
     this.hovered = null;
   }
 
@@ -1191,11 +1342,6 @@ export class StrandScene {
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
   };
-}
-
-// Linear interpolation between two source-space points.
-function lerp(a: Point, b: Point, t: number): Point {
-  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }
 
 // Subdivide a polyline so no segment is longer than maxSeg. Straight strands are

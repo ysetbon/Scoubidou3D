@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 320" font-family="-apple-system, Segoe UI, Roboto, sans-serif">
+  <rect width="880" height="320" fill="#f4f6f9"/>
+
+  <text x="440" y="32" text-anchor="middle" font-size="16" font-weight="700" fill="#46505f">What a level does in 3D — side view, Z is up</text>
+
+  <defs>
+    <marker id="up" markerWidth="8" markerHeight="8" refX="4" refY="7" orient="auto">
+      <path d="M4 0 L8 8 L0 8 z" fill="#46505f"/>
+    </marker>
+    <marker id="dn" markerWidth="8" markerHeight="8" refX="4" refY="1" orient="auto">
+      <path d="M4 8 L0 0 L8 0 z" fill="#46505f"/>
+    </marker>
+  </defs>
+
+  <!-- Z axis -->
+  <path d="M34 250 v-70" stroke="#9aa5b3" stroke-width="1.5" marker-end="url(#up)" fill="none"/>
+  <text x="34" y="268" text-anchor="middle" font-size="11" fill="#6a7686">Z</text>
+
+  <!-- ================= left: layer lift only ================= -->
+  <text x="230" y="72" text-anchor="middle" font-size="13" font-weight="700" fill="#46505f">Layer lift alone (the slider)</text>
+
+  <rect x="90" y="200" width="210" height="26" rx="6" fill="#e27a26" stroke="#1e1e1e" stroke-width="0.9"/>
+  <rect x="130" y="190" width="210" height="26" rx="6" fill="#f5c837" fill-opacity="0.88" stroke="#1e1e1e" stroke-width="0.9"/>
+
+  <!-- centre leaders -->
+  <path d="M300 213 h58" stroke="#b0b9c5" stroke-width="1" stroke-dasharray="3 3"/>
+  <path d="M340 203 h18" stroke="#b0b9c5" stroke-width="1" stroke-dasharray="3 3"/>
+  <path d="M352 203 v10" stroke="#46505f" stroke-width="1.4" marker-start="url(#up)" marker-end="url(#dn)"/>
+  <text x="366" y="200" font-size="12" font-weight="600" fill="#46505f">10</text>
+  <text x="366" y="216" font-size="11" fill="#6a7686">Layer lift</text>
+
+  <text x="230" y="264" text-anchor="middle" font-size="11" fill="#6a7686">a small nudge — less than a thickness,</text>
+  <text x="230" y="279" text-anchor="middle" font-size="11" fill="#6a7686">so the two bodies still share space</text>
+
+  <!-- ================= right: one level ================= -->
+  <text x="640" y="72" text-anchor="middle" font-size="13" font-weight="700" fill="#46505f">…plus one level</text>
+
+  <rect x="500" y="200" width="210" height="26" rx="6" fill="#e27a26" stroke="#1e1e1e" stroke-width="0.9"/>
+  <rect x="540" y="174" width="210" height="26" rx="6" fill="#f5c837" stroke="#1e1e1e" stroke-width="0.9"/>
+
+  <!-- the level line -->
+  <path d="M478 200 h300" stroke="#2f7bd6" stroke-width="1.5" stroke-dasharray="6 5" fill="none"/>
+  <g transform="translate(452,189) scale(0.8)" fill="#2f7bd6">
+    <path d="M12 3 22 9.2 12 15.4 2 9.2Z"/>
+    <path d="M12 17.7 3.7 12.5 2 13.6 12 19.8 22 13.6 20.3 12.5Z"/>
+  </g>
+  <text x="463" y="222" text-anchor="middle" font-size="10" fill="#2f7bd6">level 1</text>
+
+  <!-- dimension -->
+  <path d="M710 213 h68" stroke="#b0b9c5" stroke-width="1" stroke-dasharray="3 3"/>
+  <path d="M750 187 h28" stroke="#b0b9c5" stroke-width="1" stroke-dasharray="3 3"/>
+  <path d="M772 187 v26" stroke="#46505f" stroke-width="1.4" marker-start="url(#up)" marker-end="url(#dn)"/>
+  <text x="786" y="196" font-size="12" font-weight="600" fill="#46505f">26</text>
+  <text x="786" y="211" font-size="11" fill="#6a7686">= one strand</text>
+  <text x="786" y="224" font-size="11" fill="#6a7686">thickness</text>
+
+  <text x="640" y="264" text-anchor="middle" font-size="11" fill="#6a7686">the upper lace rests exactly on the lower one —</text>
+  <text x="640" y="279" text-anchor="middle" font-size="11" fill="#6a7686">faces meet, nothing sinks in</text>
+</svg>

@@ -111,6 +111,21 @@ body {
   border-color: var(--accent);
 }
 
+/* A button that leads with an icon (e.g. "New level"). */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.icon-svg {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+  flex: 0 0 auto;
+}
+
 .field {
   margin-bottom: 10px;
 }
@@ -200,6 +215,34 @@ body {
    kind of row rather than a dimmed one. */
 .layer-mask {
   border-style: dashed;
+}
+
+/* A level row: not a strand at all but a step in the stack, so it reads as a rule
+   drawn across the panel — accented, with the layers mark where a swatch goes. */
+.layer-level {
+  background: #eaf2fd;
+  border-color: var(--accent);
+}
+
+.level-badge {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
+.level-badge .icon-svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* The storey a strand rests on, shown on its row once any level exists. */
+.level-tag {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .swatch {
@@ -341,5 +384,8 @@ body {
   }
   .icon-btn:hover {
     background: #2a313c;
+  }
+  .layer-level {
+    background: #1c2a3c;
   }
 }

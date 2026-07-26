@@ -24,6 +24,21 @@ export interface Strand3D {
   control_point_center: Point | null;
   control_point_center_locked: boolean;
 
+  /**
+   * OSS `triangle_has_moved` (strand.py). Gates the staged reveal of the control
+   * handles: an untouched strand offers only the triangle (control point 1); the
+   * circle (control point 2) and the centre square appear once the triangle has
+   * been grabbed, and fold away again when the circle is put back on the start.
+   */
+  triangleHasMoved: boolean;
+  /**
+   * OSS `control_point2_activated`. While false the circle is PASSIVE — it rides
+   * along with the strand's end, so dragging the end keeps the strand straight.
+   * Pulling the circle off the end activates it (now independent); dropping it
+   * back on the end makes it passive again.
+   */
+  cp2Activated: boolean;
+
   /** OSS strand width (across the ribbon), in source/pixel units. */
   width: number;
   /** OSS stroke width — used for the ribbon's outline shell. */
@@ -88,6 +103,19 @@ export interface Scene3D {
   strands: Strand3D[];
   /** Over/under overrides — the weave's masks. Empty means "stack order decides". */
   masks: MaskLink[];
+  /**
+   * LEVEL BREAKS — storeys in the layer stack, as positions in `strands`
+   * (ascending, duplicates allowed, each in `[0, strands.length]`).
+   *
+   * A break at `k` lifts every strand from index `k` upward by one full strand
+   * thickness, on top of the usual layer-lift spacing. That's the one distance
+   * at which a ribbon rests ON another instead of sinking into it, so a break is
+   * a real step in the model: below it one storey, above it the next.
+   *
+   * Empty (the default) means one storey — exactly the old behaviour.
+   * See docs/layer-levels.md.
+   */
+  levelBreaks: number[];
   name: string;
 }
 
