@@ -127,6 +127,27 @@ So the ideal stitch is *uniform*. Which is
 [the cylinder we started from](README.md#8-why-it-is-grown-and-not-derived) — see
 [§6](#6-slack-is-what-makes-a-stitch-look-handmade).
 
+### The one thing the geometry does *not* fix
+
+The weave has two phases. A face is a grid, so "over, under, over, under" can
+start either way — and the complement of a plain weave is another plain weave,
+alternating just as correctly along every row and every column. Nothing in the
+reach algebra prefers one.
+
+The **hand-built 2×1 pins it**, and pins it for every shape. Read by *position* —
+weft and warp lines each ordered by their offset across the face — its outermost
+weft line goes **under** the outermost warp line:
+
+```
+   sample, level 4, by position:      uOuO
+                                      OuOu
+```
+
+So the rule is: a weft line rides **over** the warp lines of *opposite* parity,
+counting both from the outside in. The first version of this note had it the
+other way round for every shape, which is a valid weave and the wrong one; the
+sample was the only thing that could tell, and it does.
+
 ---
 
 ## 4. The snug limit
@@ -198,12 +219,13 @@ Building an m×n from the formulas above and nothing else, then measuring it:
 | junctions | 66 | 66 |
 | warp parallel to | 0.0000° | 2.52° |
 | weft parallel to | 0.0000° | 2.10° |
-| weave | O,u,O,u on both weft arms, every level | same |
+| weave, by position | `uOuO / OuOu` | `uOuO / OuOu` |
 | θ | 28.07° snug | 26.0° fitted |
 
-Every count matches, and the generated stitch is *more* regular than the
-hand-built one — the expected direction. The angle is close but not equal: 28.07°
-snug against 26.0° measured.
+Every count matches, the weave matches crossing for crossing once both are read
+by position, and the generated stitch is *more* regular than the hand-built one —
+the expected direction. The angle is close but not equal: 28.07° snug against
+26.0° measured.
 
 That gap is what ρ is for. Writing `s = ρ / ρ_min` for how much further than snug
 the folds are pulled, `s = cot(13°)/4 = 1.083`: the hand-built stitch is **8%
@@ -250,7 +272,8 @@ Machine-checked on every build, for 1×1, 2×1, 3×1, 4×1, 2×2, 3×2 and 3×3:
 mask and junction counts as predicted; every parent anchor exact; **exactly 4mn
 crossings per level and not one more** (no warp crossing warp, no weft crossing
 weft); every weft arm reading `O,u,O,u…` across all 2m warp arms on every level;
-and warp and weft each parallel to **0.0000°**.
+and warp and weft each parallel to **0.0000°**. The 2×1's weave now matches the
+hand-built sample's, read by position — which is what fixed the phase.
 
 The 3×1's reaches, all forced, at `w = G = V = 54`:
 
