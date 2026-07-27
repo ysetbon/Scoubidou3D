@@ -34,7 +34,9 @@ crossing, so one lace weaves over-and-under just like a real basket.
   neighbour and under the next — a true basket weave, not a flat stack.
   - The **Weave** tool: click the strand that goes over, then the strand it
     crosses over — the 3D version of picking two strands for an OSS mask (first
-    selected = over).
+    selected = over). Hovering lights **one layer** and names it at the cursor —
+    green for the over, blue for the under — so on a stitch whose arms are drawn
+    as one seamless lace you can still see exactly which strand a click will take.
   - **Masks are layers.** Each one appears in the layer stack named
     `over_under` (OSS's `first_second`, e.g. `1_2_1_3`), tagged `mask`, with a
     two-tone badge showing the over strand's colour above the under strand's, and
@@ -63,9 +65,13 @@ crossing, so one lace weaves over-and-under just like a real basket.
   the row down with ▲▼ to drop the layers it passes back a level.
   ([how it works](docs/layer-levels.md))
 - 🎥 **Full 3D camera.** Orbit, pan, zoom (Three.js `OrbitControls`). One click
-  snaps back to the familiar top-down OpenStrand view.
+  snaps back to the familiar top-down OpenStrand view. Panning is always on the
+  right button and on two fingers; the **Pan** tool puts it on a plain drag too,
+  for a trackpad with no second button and for a phone, where two fingers are
+  already a pinch.
 - 📱 **Works on a phone.** The panel becomes a bottom sheet you can fold away, the
-  Tool switch floats over the scene so Move and Attach stay one tap away, and the
+  Tool bar stays over the scene so Move and Attach are one tap away (it drops to
+  icons alone when the screen is too narrow for labels), and the
   handles carry OpenStrand's generous invisible grab areas (`move_mode.py`'s 120px
   endpoint square, `attach_mode.py`'s 120px attach circle) scaled for a fingertip —
   so a press that lands *near* a handle still takes it. One finger orbits, pinch
@@ -73,8 +79,9 @@ crossing, so one lace weaves over-and-under just like a real basket.
 - 🎚️ **Live controls** for thickness, width scale, weave depth/span, layer lift,
   outline, rounded ends, and a reference grid.
 - 🗂️ **Layer panel** to recolor, hide, reorder, delete, and add strands.
-- 🔗 **Attach & Move — OpenStrand's editing, in 3D.** A **Tool** switcher (Orbit
-  / Move / Attach / Weave) turns the strand endpoints into grab handles:
+- 🔗 **Attach & Move — OpenStrand's editing, in 3D.** A **Tool** bar across the
+  top of the scene (Pan / Orbit / Move / Attach / Weave), where OpenStrand Studio keeps
+  its modes, turns the strand endpoints into grab handles:
   - **Attach**: pull from a *free* (green) endpoint and a new strand is born
     there — glued to the parent, inheriting its look, joining the same layer
     *set* (`1_1` → `1_2`), stacked on top, and bridged by a connector. Occupied

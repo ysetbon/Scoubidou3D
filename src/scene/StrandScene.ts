@@ -97,7 +97,12 @@ function grabPx(e: PointerEvent): (typeof GRAB_PX)['fine'] {
 // ribbon (and above the endpoint dot they share a spot with on a fresh strand).
 const CP_LIFT = 0.1;
 
-export type EditMode = 'orbit' | 'move' | 'attach' | 'weave';
+// Two of these five drive the camera and nothing else: Orbit turns it around the
+// scene, Pan slides it sideways. Panning is on the right button and on two
+// fingers whatever the tool — Pan puts it on the plain left drag as well, which
+// is the only way to reach it on a trackpad with no second button, or on a phone,
+// where two fingers are already a pinch.
+export type EditMode = 'orbit' | 'pan' | 'move' | 'attach' | 'weave';
 
 interface MoveTarget {
   strand: Strand3D;
@@ -161,8 +166,16 @@ export class StrandScene {
    *  layer, only geometry. */
   onSceneChanged: (() => void) | null = null;
 
+  /** Called with the strand LAYER under the pointer in the weave tool (null when
+   *  the pointer is over nothing), so the UI can name what a click would take. */
+  onWeaveHover: ((id: string | null) => void) | null = null;
+
   private strandGroup = new THREE.Group();
   private handleGroup = new THREE.Group();
+  // One ribbon per strand LAYER, laid over the visible geometry, built only while
+  // the weave tool is up. See buildWeaveOverlays: this is both what the weave
+  // picks against and what it lights up.
+  private weaveGroup = new THREE.Group();
   // The dashed green rig linking a strand to its control points. Kept out of
   // handleGroup so it never competes for a pick (a Line's raycast threshold is
   // wide enough to swallow the handles it points at).
@@ -209,6 +222,12 @@ export class StrandScene {
   private contentZHalf = 0;
   // Weave (mask) tool: the strand picked as "over"; the next pick becomes "under".
   private weavePendingOverId: string | null = null;
+  // …and the layer under the pointer, so you can see which one a click would take
+  // before you commit to it.
+  private weaveHoverId: string | null = null;
+  // The overlay ribbon of each strand, by id, for lighting one up without a
+  // rebuild (a rebuild per pointermove would re-sweep every ribbon in the scene).
+  private weaveOverlays = new Map<string, THREE.Mesh>();
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -232,6 +251,7 @@ export class StrandScene {
 
     this.addLights();
     this.scene.add(this.strandGroup);
+    this.scene.add(this.weaveGroup);
     this.scene.add(this.controlLines);
     this.scene.add(this.handleGroup);
 
@@ -313,8 +333,32 @@ export class StrandScene {
     this.mode = mode;
     this.hovered = null;
     this.weavePendingOverId = null;
+    this.weaveHoverId = null;
+    this.onWeaveHover?.(null);
+    this.applyCameraBindings();
     this.rebuild();
-    this.setCursor(mode === 'orbit' ? '' : 'crosshair');
+    this.setCursor(this.defaultCursor());
+  }
+
+  /** True for the tools that only drive the camera — nothing in the scene can be
+   *  grabbed, so every gesture belongs to OrbitControls. */
+  private isCameraMode(): boolean {
+    return this.mode === 'orbit' || this.mode === 'pan';
+  }
+
+  /** What a plain left drag does. Pan is the whole of that tool: the gesture is
+   *  rebound rather than reimplemented, so it keeps OrbitControls' damping and
+   *  its limits. Everything else — right button, two fingers, wheel — is left
+   *  alone, so the camera works the same way under every tool. */
+  private applyCameraBindings(): void {
+    const panning = this.mode === 'pan';
+    this.controls.mouseButtons.LEFT = panning ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+    this.controls.touches.ONE = panning ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE;
+  }
+
+  private defaultCursor(): string {
+    if (this.mode === 'pan') return 'move';
+    return this.mode === 'orbit' ? '' : 'crosshair';
   }
 
   /** The strand picked as "over" in the weave tool (null when nothing pending). */
@@ -381,6 +425,91 @@ export class StrandScene {
 
     this.updateGrid();
     this.buildHandles();
+    this.buildWeaveOverlays();
+  }
+
+  /**
+   * A pick-and-highlight ribbon for every strand LAYER, built only while the
+   * weave tool is up.
+   *
+   * The visible geometry cannot answer "which layer is this?" on its own. Strands
+   * glued end to end are drawn as ONE seamless ribbon (buildLaceMeshes), which
+   * carries a single strand's id for the whole lace — so picking anywhere along a
+   * five-arm stitch returned the head strand, and lighting up the pick lit the
+   * whole arm family. A mask is a relationship between two LAYERS, so that is the
+   * wrong unit in both directions.
+   *
+   * These overlays restore the unit: one ribbon per strand, swept along that
+   * strand's own woven centerline, carrying its own id. They are invisible until
+   * hovered or picked (three's raycaster ignores `visible`, so an unlit overlay
+   * still answers a ray and costs nothing to draw), and a hair fatter than the
+   * body they cover so the lit one reads as a coat over the lace rather than
+   * fighting it for the same pixels.
+   */
+  private buildWeaveOverlays(): void {
+    this.weaveOverlays.clear();
+    if (this.mode !== 'weave') return;
+
+    this.current.strands.forEach((strand, i) => {
+      const line = this.world3D[i];
+      if (!line || line.length < 2) return;
+      // A hair fatter than the body, and shaped like it: a coarser cross-section
+      // would show its own corners through the tint and read as a slab lying on
+      // the lace rather than a coat of paint on it.
+      const grow = 1.04;
+      const width = strand.width * this.params.widthScale * SCALE * grow;
+      const thickness = this.strandThicknessWorld(strand) * grow;
+      if (width <= 0 || thickness <= 0) return;
+      const geom = buildRibbonGeometry(line, {
+        width,
+        thickness,
+        cornerRadius: thickness * 0.48,
+        cornerSteps: 3,
+        roundCaps: false,
+      });
+      const mesh = new THREE.Mesh(
+        geom,
+        new THREE.MeshBasicMaterial({
+          transparent: true,
+          opacity: 0.55,
+          side: THREE.DoubleSide,
+          // Depth-WRITING, unusually for a transparent material, and that is the
+          // point: the tube is double-sided, so without it the far wall paints
+          // over the near one and the tint reads as a muddle of overlapping
+          // slabs instead of one lit lace.
+          depthWrite: true,
+          // Pull the coat toward the camera so it wins the depth test against the
+          // body it wraps, without being visible through the strands in front.
+          polygonOffset: true,
+          polygonOffsetFactor: -4,
+          polygonOffsetUnits: -4,
+        }),
+      );
+      mesh.visible = false;
+      mesh.userData.strandId = strand.id;
+      this.weaveGroup.add(mesh);
+      this.weaveOverlays.set(strand.id, mesh);
+    });
+    this.applyWeaveHighlight();
+  }
+
+  /**
+   * Light the layer the weave is holding and the one under the pointer, in the
+   * colours the two roles are named in: green rides OVER, blue goes UNDER. With
+   * nothing picked yet the hover is green, because the first click is the over.
+   */
+  private applyWeaveHighlight(): void {
+    for (const [id, mesh] of this.weaveOverlays) {
+      const pending = id === this.weavePendingOverId;
+      const hovered = id === this.weaveHoverId && !pending;
+      mesh.visible = pending || hovered;
+      if (!mesh.visible) continue;
+      const mat = mesh.material as THREE.MeshBasicMaterial;
+      // A hover while a strand is already held previews the UNDER half of the
+      // pair; anything else is an over.
+      mat.color.set(hovered && this.weavePendingOverId ? 0x2f7bd6 : 0x2fb862);
+      mat.opacity = pending ? 0.62 : 0.42;
+    }
   }
 
   /**
@@ -732,11 +861,10 @@ export class StrandScene {
       fillMat.transparent = true;
       fillMat.opacity = strand.color.a / 255;
     }
-    // Weave tool: glow the strand picked as "over" while waiting for the "under".
-    if (this.mode === 'weave' && strand.id === this.weavePendingOverId) {
-      fillMat.emissive = new THREE.Color(0x2fb862);
-      fillMat.emissiveIntensity = 0.6;
-    }
+    // The weave tool's glow does NOT live here: a lace of glued strands is one
+    // mesh built from its head strand, so glowing it would light every arm of the
+    // family instead of the one layer picked. It rides on the per-layer overlays
+    // in buildWeaveOverlays.
     const fillMesh = new THREE.Mesh(fillGeom, fillMat);
     fillMesh.castShadow = true;
     fillMesh.receiveShadow = true;
@@ -994,8 +1122,9 @@ export class StrandScene {
 
   private buildHandles(): void {
     this.disposeHandles();
-    // Orbit has no handles; the weave tool picks strand bodies, not endpoints.
-    if (this.mode === 'orbit' || this.mode === 'weave') return;
+    // The camera tools have no handles; the weave tool picks strand bodies,
+    // not endpoints.
+    if (this.isCameraMode() || this.mode === 'weave') return;
 
     this.current.strands.forEach((strand, layerIndex) => {
       if (!strand.visible || strand.isMask) return;
@@ -1193,7 +1322,9 @@ export class StrandScene {
         -((e.clientY - rect.top + o.y) / rect.height) * 2 + 1,
       );
       this.raycaster.setFromCamera(this.pointer, this.camera);
-      const hits = this.raycaster.intersectObjects(this.strandGroup.children, true);
+      // Against the per-layer overlays, not the drawn ribbons: a lace of glued
+      // strands is one drawn ribbon under one id, and a mask is between layers.
+      const hits = this.raycaster.intersectObjects(this.weaveGroup.children, true);
       for (const h of hits) {
         const id = h.object.userData?.strandId;
         if (typeof id === 'string') return id;
@@ -1265,7 +1396,7 @@ export class StrandScene {
       e.preventDefault();
       return;
     }
-    if (this.mode === 'orbit' || e.button !== 0) return;
+    if (this.isCameraMode() || e.button !== 0) return;
 
     // Weave tool: click the OVER strand, then the UNDER strand — pick bodies,
     // not endpoint handles. Clicking empty space still orbits.
@@ -1363,8 +1494,9 @@ export class StrandScene {
     }
     // Hover is a mouse-only idea: a touch "move" only ever happens mid-gesture, so
     // reading it as hover would light up handles under a finger that is orbiting.
-    if (this.mode !== 'orbit' && e.buttons === 0 && e.pointerType === 'mouse') {
-      this.updateHover(e);
+    if (!this.isCameraMode() && e.buttons === 0 && e.pointerType === 'mouse') {
+      if (this.mode === 'weave') this.updateWeaveHover(e);
+      else this.updateHover(e);
     }
   };
 
@@ -1427,7 +1559,7 @@ export class StrandScene {
       if (st.kind === 'move-control') settleControls(st.strand);
       this.rebuild();
     }
-    this.setCursor(this.mode === 'orbit' ? '' : 'crosshair');
+    this.setCursor(this.defaultCursor());
   };
 
   private onPointerCancel = (e: PointerEvent): void => {
@@ -1440,7 +1572,7 @@ export class StrandScene {
     }
     this.cancelDrag();
     this.rebuild();
-    this.setCursor(this.mode === 'orbit' ? '' : 'crosshair');
+    this.setCursor(this.defaultCursor());
   };
 
   private updateHover(e: PointerEvent): void {
@@ -1458,6 +1590,18 @@ export class StrandScene {
       this.hovered = null;
       this.setCursor('crosshair');
     }
+  }
+
+  /** The weave tool's hover: light the layer a click would take, and say which
+   *  one it is. Repaints materials in place — a rebuild here would re-sweep every
+   *  ribbon in the scene on every mouse move. */
+  private updateWeaveHover(e: PointerEvent): void {
+    const id = this.pickStrand(e);
+    this.setCursor(id ? 'pointer' : 'crosshair');
+    if (id === this.weaveHoverId) return;
+    this.weaveHoverId = id;
+    this.applyWeaveHighlight();
+    this.onWeaveHover?.(id);
   }
 
   private highlightHandle(mesh: THREE.Mesh): void {
@@ -1549,14 +1693,17 @@ export class StrandScene {
   }
 
   private disposeGroup(): void {
-    this.strandGroup.traverse((obj) => {
-      const mesh = obj as THREE.Mesh;
-      if (mesh.geometry) mesh.geometry.dispose();
-      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
-      if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-      else if (mat) mat.dispose();
-    });
-    this.strandGroup.clear();
+    for (const group of [this.strandGroup, this.weaveGroup]) {
+      group.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (mesh.geometry) mesh.geometry.dispose();
+        const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
+        if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+        else if (mat) mat.dispose();
+      });
+      group.clear();
+    }
+    this.weaveOverlays.clear();
   }
 
   private disposeHandles(): void {

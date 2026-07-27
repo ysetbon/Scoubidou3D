@@ -73,6 +73,28 @@ the scene. An imported OSS file brings its own flags across; when a file predate
 them, OSS's fallback applies — a strand counts as touched when its triangle sits
 off the start.
 
+### Getting back to the default
+
+Parking the handles back on the start by hand is fiddly at the best of times and
+worse once a strand has been bent in three places, so the layer panel does it for
+you. Every strand row carries a **↺**, which puts that one strand back on the
+control points it was born with — both on the start, no centre, nothing flagged as
+touched — and straightens the run. It is greyed out, not hidden, on a strand
+already there, so the row keeps the same controls in the same places whatever
+state the strand is in.
+
+The header of the Layers section carries the same thing for the whole stack:
+**Reset curves** straightens every strand at once. There is no undo in the app, so
+it takes two clicks — the first arms it and names the count (`Reset 4? Click
+again`), the second does it, and the arming lapses on its own after four seconds.
+(A `confirm()` would be the obvious guard, but modal dialogs are refused in a
+sandboxed frame, which is where the published page runs.)
+
+Both go through `resetControlPoints` in `src/model/controlPoints.ts` — the same
+function that normalises a straight strand on load, so a reset strand is
+indistinguishable from a freshly drawn one, in the panel and in the saved file
+alike.
+
 ### One deliberate difference
 
 OSS's fold-away check on release looks at the circle and the centre but **not**

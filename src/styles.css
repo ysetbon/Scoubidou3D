@@ -134,6 +134,22 @@ body {
   background: #e9eef5;
 }
 
+.btn:disabled,
+.btn:disabled:hover {
+  opacity: 0.42;
+  background: #f4f6f9;
+  cursor: default;
+}
+
+/* A whole-scene button that has been armed and is waiting on the second click
+   that confirms it ("Reset curves"). */
+.btn-armed,
+.btn-armed:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: #fbe9e9;
+}
+
 .tool-btn.active,
 .tool-btn.active:hover {
   background: var(--accent);
@@ -392,39 +408,99 @@ body {
   text-align: center;
 }
 
-/* ---- Mobile chrome -------------------------------------------------------
-   Both of these are built by the panel and live in <body>, hidden until the
-   layout goes narrow (see the media query below). */
+/* ---- Chrome floating over the scene --------------------------------------
+   All of this is built by the panel and lives in <body>, over the canvas. */
 
-/* The tool switch, floated over the scene. On a phone the panel is a bottom
-   sheet you fold away to get room to edit — and the control you reach for
-   constantly while editing is exactly this one, so it stays on screen. */
-#mobile-tools {
-  display: none;
+/* The tool switch: one horizontal strip along the top of the scene, the way
+   OpenStrand Studio keeps its modes above the drawing. Centred on the CANVAS
+   rather than the window — the side panel takes a fixed slice off the right, and
+   centring on the window would push the strip visibly off-centre over the work.
+   It is also what keeps the tools reachable on a phone, where the panel is a
+   bottom sheet you fold away to get room to edit. */
+#toolbar {
+  display: flex;
   position: fixed;
   z-index: 5;
-  top: calc(8px + env(safe-area-inset-top));
-  left: calc(8px + env(safe-area-inset-left));
+  top: calc(12px + env(safe-area-inset-top));
+  left: 12px;
+  right: calc(var(--panel-w) + 12px);
+  width: fit-content;
+  margin-inline: auto;
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 13px;
   background: var(--panel-bg);
-  background: color-mix(in srgb, var(--panel-bg) 88%, transparent);
+  background: color-mix(in srgb, var(--panel-bg) 90%, transparent);
   backdrop-filter: blur(8px);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 14%);
+  box-shadow: 0 4px 18px rgb(0 0 0 / 14%);
 }
 
-#mobile-tools .btn-row {
-  gap: 4px;
-  margin: 0;
-}
-
-#mobile-tools .btn {
+#toolbar .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   flex: 0 0 auto;
-  padding: 9px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  border-color: transparent;
+  background: transparent;
+  border-radius: 10px;
+}
+
+#toolbar .btn:hover {
+  background: #e9eef5;
+}
+
+/* The transparent-button rule above outranks .tool-btn.active on its own (an id
+   beats a class), so the live tool restates its fill here. */
+#toolbar .tool-btn.active,
+#toolbar .tool-btn.active:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+/* Which tool the notes below belong to — the toolbar itself is over the scene,
+   so the panel has to say. */
+.tool-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 5px 10px 5px 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-radius: 999px;
+}
+
+/* The weave tool names the layer under the pointer, at the pointer. It must
+   never eat the click it is describing. */
+#hover-chip {
+  position: fixed;
+  z-index: 7;
+  top: 0;
+  left: 0;
+  display: none;
+  padding: 3px 8px;
   font-size: 12px;
-  border-radius: 9px;
+  font-weight: 700;
+  color: #fff;
+  background: #2fb862;
+  border-radius: 7px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 22%);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+#hover-chip.on {
+  display: block;
+}
+
+#hover-chip.under {
+  background: var(--accent);
 }
 
 #panel-toggle {
@@ -500,17 +576,32 @@ body {
     display: none;
   }
 
-  #mobile-tools {
-    display: flex;
+  /* No side panel to sit clear of, and the fold toggle owns the right-hand
+     corner — so the strip goes left rather than centred, and drops its labels
+     if the four tools would otherwise reach the toggle. */
+  #toolbar {
+    top: calc(8px + env(safe-area-inset-top));
+    left: calc(8px + env(safe-area-inset-left));
+    right: auto;
+    margin-inline: 0;
+  }
+
+  #toolbar .btn {
+    padding: 9px 10px;
   }
 
   #panel-toggle {
     display: inline-flex;
   }
+}
 
-  /* The panel's own Tool section is redundant while the floating bar is up. */
-  #panel .tool-row-panel {
+@media (max-width: 560px) {
+  #toolbar .btn span {
     display: none;
+  }
+
+  #toolbar .btn {
+    padding: 10px;
   }
 }
 
@@ -528,6 +619,14 @@ body {
   .btn:hover {
     background: #2b323d;
   }
+  .btn:disabled,
+  .btn:disabled:hover {
+    background: #232933;
+  }
+  .btn-armed,
+  .btn-armed:hover {
+    background: #3a2226;
+  }
   .select,
   .layer,
   .text-input,
@@ -539,5 +638,8 @@ body {
   }
   .layer-level {
     background: #1c2a3c;
+  }
+  #toolbar .btn:hover {
+    background: #2b323d;
   }
 }
