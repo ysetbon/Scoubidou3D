@@ -15,7 +15,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { SAMPLES } from '../src/model/samples';
+import { SAMPLE_LABELS, SAMPLES } from '../src/model/samples';
 import { Point, RGBA, Scene3D, Strand3D } from '../src/model/types';
 import { sampleCenterline } from '../src/geometry/bezier';
 
@@ -203,7 +203,9 @@ function render(key: string, scene: Scene3D): Stats {
 }
 
 const rows: Stats[] = [];
-for (const [key, make] of Object.entries(SAMPLES)) rows.push(render(key, make()));
+// Only the named samples get a thumbnail: the m x n twist family is 64 scenes and
+// the site does not show them as cards, so drawing them would be dead weight.
+for (const { key } of SAMPLE_LABELS) rows.push(render(key, SAMPLES[key]()));
 
 const head = ['key', 'name', 'strands', 'masks', 'levels', 'junctions'];
 const table = [head, ...rows.map((r) => head.map((k) => String(r[k as keyof Stats])))];

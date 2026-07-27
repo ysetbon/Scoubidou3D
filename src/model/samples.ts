@@ -741,15 +741,46 @@ function diagonalWeave(): Scene3D {
   return { name: 'Diagonal basket', strands, masks, levelBreaks: [] };
 }
 
+/**
+ * The whole m x n twist family, generated. Every shape from 1x1 to `TWIST_MAX`
+ * squared is a real sample you can open — `twist-3x2-10` and the rest — but they
+ * do NOT all go in the dropdown, which would be unusable at 64 entries. The
+ * browser (Browse… in the Scene panel) lists them as a grid instead, and
+ * `SAMPLE_LABELS` keeps only the handful worth naming.
+ */
+export const TWIST_MAX = 8;
+export interface TwistShape {
+  key: string;
+  m: number;
+  n: number;
+  /** The turn the law gives this face, in degrees — what the grid quotes. */
+  turn: number;
+}
+export const TWIST_FAMILY: TwistShape[] = (() => {
+  const out: TwistShape[] = [];
+  for (let m = 1; m <= TWIST_MAX; m++) {
+    for (let n = 1; n <= TWIST_MAX; n++) {
+      const hi = Math.max(m, n);
+      const lo = Math.min(m, n);
+      const turn = (2 * Math.atan(1 / (hi + Math.sqrt(hi * hi + 2 * (lo - 1)))) * 180) / Math.PI;
+      out.push({ key: `twist-${m}x${n}-10`, m, n, turn });
+    }
+  }
+  return out;
+})();
+
+const FAMILY_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
+  TWIST_FAMILY.map((s) => [s.key, () => twistStitchMN(s.m, s.n, 10, `Twist stitch — ${s.m}×${s.n}, 10 twists`)]),
+);
+
 export const SAMPLES: Record<string, () => Scene3D> = {
+  ...FAMILY_SAMPLES,
   'two-crossing': twoCrossing,
   'box-stitch': boxStitch,
   'box-stitch-10': () => boxStitchRounds(10, 'Box stitch — 10 levels'),
   'box-stitch-15': () => boxStitchRounds(15, 'Box stitch — 15 levels'),
   'round-stitch-10': () => boxStitchRounds(10, 'Round stitch — 10 levels', true),
   'twist-stitch-10': () => twistStitch(10, 'Twist stitch — 10 twists'),
-  'twist-3x1-10': () => twistStitchMN(3, 1, 10, 'Twist stitch — 3×1, 10 twists'),
-  'twist-2x2-10': () => twistStitchMN(2, 2, 10, 'Twist stitch — 2×2, 10 twists'),
   'braid-3': () => flatBraid(3, 7, 'Three-strand braid'),
   'braid-4': () => flatBraid(4, 7, 'Four-strand flat braid'),
   'diagonal': diagonalWeave,
@@ -757,20 +788,21 @@ export const SAMPLES: Record<string, () => Scene3D> = {
   'curved-stack': curvedStack,
 };
 
-export const SAMPLE_LABELS: Array<{ key: string; label: string }> = [
-  { key: 'two-crossing', label: 'Two crossing strands' },
-  { key: 'box-stitch', label: 'Box stitch — starting stitch' },
-  { key: 'box-stitch-10', label: 'Box stitch — 10 levels' },
-  { key: 'box-stitch-15', label: 'Box stitch — 15 levels' },
-  { key: 'round-stitch-10', label: 'Round stitch — 10 levels' },
-  { key: 'twist-stitch-10', label: 'Twist stitch — 10 twists' },
-  { key: 'twist-3x1-10', label: 'Twist stitch — 3×1, 10 twists' },
-  { key: 'twist-2x2-10', label: 'Twist stitch — 2×2, 10 twists' },
-  { key: 'braid-3', label: 'Three-strand braid' },
-  { key: 'braid-4', label: 'Four-strand flat braid' },
-  { key: 'diagonal', label: 'Diagonal basket' },
-  { key: 'woven-mat', label: 'Woven mat' },
-  { key: 'curved-stack', label: 'Curved ribbon weave' },
+/** What the dropdown and the project site list, in order, with the group each sits in. */
+export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }> = [
+  { key: 'two-crossing', label: 'Two crossing strands', group: 'Basics' },
+  { key: 'box-stitch', label: 'Box stitch — starting stitch', group: 'Stitches' },
+  { key: 'box-stitch-10', label: 'Box stitch — 10 levels', group: 'Stitches' },
+  { key: 'box-stitch-15', label: 'Box stitch — 15 levels', group: 'Stitches' },
+  { key: 'round-stitch-10', label: 'Round stitch — 10 levels', group: 'Stitches' },
+  { key: 'twist-stitch-10', label: 'Twist stitch — 10 twists', group: 'Stitches' },
+  { key: 'twist-3x1-10', label: 'Twist stitch — 3×1, 10 twists', group: 'Stitches' },
+  { key: 'twist-2x2-10', label: 'Twist stitch — 2×2, 10 twists', group: 'Stitches' },
+  { key: 'braid-3', label: 'Three-strand braid', group: 'Braids' },
+  { key: 'braid-4', label: 'Four-strand flat braid', group: 'Braids' },
+  { key: 'diagonal', label: 'Diagonal basket', group: 'Weaves' },
+  { key: 'woven-mat', label: 'Woven mat', group: 'Weaves' },
+  { key: 'curved-stack', label: 'Curved ribbon weave', group: 'Weaves' },
 ];
 
 export function makeSample(key: string): Scene3D {

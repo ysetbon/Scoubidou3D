@@ -5,7 +5,7 @@
 
 import { StrandScene, EditMode } from '../scene/StrandScene';
 import { MaskLink, Scene3D, Strand3D, RGBA } from '../model/types';
-import { SAMPLE_LABELS, makeSample } from '../model/samples';
+import { SAMPLE_LABELS, TWIST_FAMILY, TWIST_MAX, makeSample } from '../model/samples';
 import { parseSceneText, sceneFromFile, sceneToJson } from '../model/sceneIO';
 import {
   addLevelBreak,
@@ -373,9 +373,14 @@ export class Panel {
     const sampleRow = el('div', 'field');
     sampleRow.appendChild(el('label', 'field-label', 'Sample'));
     const select = el('select', 'select');
-    if (this.sceneSource === 'imported') {
+    // An imported file has no key, and neither does a twist face opened from the
+    // browser — the dropdown lists a dozen scenes and the family is 64. Either way
+    // the current scene gets its own entry so the box is never blank.
+    const named = SAMPLE_LABELS.some((s) => s.key === this.sceneSource)
+      || saved.some((c) => c.id === this.sceneSource);
+    if (this.sceneSource === 'imported' || !named) {
       const opt = el('option');
-      opt.value = 'imported';
+      opt.value = this.sceneSource;
       opt.textContent = `↳ ${this.scene.name}`;
       select.appendChild(opt);
     }
@@ -403,6 +408,12 @@ export class Panel {
     select.addEventListener('change', () => this.loadSource(select.value));
     sampleRow.appendChild(select);
     host.appendChild(sampleRow);
+
+    // The dropdown names a dozen scenes; the m x n twist family is 64 more, which
+    // is a grid rather than a list. Browse… opens both.
+    const browseRow = el('div', 'btn-row');
+    browseRow.appendChild(button('Browse samples…', () => this.openBrowser()));
+    host.appendChild(browseRow);
 
     const row = el('div', 'btn-row');
     row.append(
@@ -552,6 +563,94 @@ export class Panel {
       ? 'Opens OpenStrand Studio / OpenStrandJS saves and scenes saved here. <b>Save sample</b> keeps the current scene in this browser, so it survives a refresh; <b>Copy JSON</b> gives you the text to share.'
       : 'Opens OpenStrand Studio / OpenStrandJS saves. This browser is blocking local storage, so samples cannot be saved — use <b>Copy JSON</b> instead.';
     host.appendChild(note);
+  }
+
+  /**
+   * The sample browser: every built-in in one place, grouped, plus the whole m x n
+   * twist family as a grid. The dropdown stays for the dozen named scenes — this is
+   * for the 64 that would drown it, and it quotes each face's turn so the family
+   * reads as the table it is.
+   */
+  private openBrowser(): void {
+    const saved = listCustom();
+    const back = el('div', 'browser-back');
+    const close = (): void => {
+      back.remove();
+      document.removeEventListener('keydown', onKey);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') close();
+    };
+    document.addEventListener('keydown', onKey);
+    back.addEventListener('click', (e) => {
+      if (e.target === back) close();
+    });
+
+    const box = el('div', 'browser');
+    const head = el('div', 'browser-head');
+    head.appendChild(el('h3', undefined, 'Samples'));
+    head.appendChild(button('Close', close));
+    box.appendChild(head);
+
+    const body = el('div', 'browser-body');
+    const pick = (key: string): void => {
+      close();
+      this.loadSource(key);
+    };
+
+    // The named scenes, in the groups they belong to.
+    const groups: string[] = [];
+    for (const s of SAMPLE_LABELS) if (!groups.includes(s.group)) groups.push(s.group);
+    for (const g of groups) {
+      body.appendChild(el('h4', 'browser-group', g));
+      const list = el('div', 'browser-list');
+      for (const s of SAMPLE_LABELS.filter((x) => x.group === g)) {
+        const b = button(s.label, () => pick(s.key));
+        if (s.key === this.sceneSource) b.classList.add('browser-on');
+        list.appendChild(b);
+      }
+      body.appendChild(list);
+    }
+
+    // The family. Rows are m, columns are n, and the two are interchangeable — an
+    // m x n stitch is an n x m one looked at sideways — so the grid is symmetric.
+    body.appendChild(el('h4', 'browser-group', `Twist family — every m×n face, 10 twists`));
+    body.appendChild(
+      el('p', 'browser-note', 'Rows m, columns n. Each button quotes the turn the law gives that face.'),
+    );
+    const grid = el('div', 'browser-grid');
+    grid.style.gridTemplateColumns = `auto repeat(${TWIST_MAX}, 1fr)`;
+    grid.appendChild(el('span', 'browser-axis', ''));
+    for (let n = 1; n <= TWIST_MAX; n++) grid.appendChild(el('span', 'browser-axis', `n=${n}`));
+    for (let m = 1; m <= TWIST_MAX; m++) {
+      grid.appendChild(el('span', 'browser-axis', `m=${m}`));
+      for (let n = 1; n <= TWIST_MAX; n++) {
+        const s = TWIST_FAMILY.find((x) => x.m === m && x.n === n)!;
+        const b = button('', () => pick(s.key));
+        b.classList.add('browser-cell');
+        b.appendChild(el('b', undefined, `${m}×${n}`));
+        b.appendChild(el('small', undefined, `${s.turn.toFixed(1)}°`));
+        b.title = `${m}×${n} — ${m + n} laces, ${2 * (m + n)} arms a level, turn ${s.turn.toFixed(2)}°`;
+        if (s.key === this.sceneSource) b.classList.add('browser-on');
+        grid.appendChild(b);
+      }
+    }
+    body.appendChild(grid);
+
+    if (saved.length) {
+      body.appendChild(el('h4', 'browser-group', 'Saved by you'));
+      const list = el('div', 'browser-list');
+      for (const c of saved) {
+        const b = button(c.scene.name, () => pick(c.id));
+        if (c.id === this.sceneSource) b.classList.add('browser-on');
+        list.appendChild(b);
+      }
+      body.appendChild(list);
+    }
+
+    box.appendChild(body);
+    back.appendChild(box);
+    document.body.appendChild(back);
   }
 
   private loadSource(key: string): void {
