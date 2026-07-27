@@ -104,11 +104,13 @@ crossing, so one lace weaves over-and-under just like a real basket.
   dropdown after a refresh (grouped under *Saved by you*). **Copy JSON** gives
   you the scene as text to send on or paste back in, and that same text can be
   dropped into `samples.ts` to become a permanent built-in. Nothing is uploaded.
-- 🧩 **Ten sample scenes:** two crossing strands, the **box stitch** (below) on
+- 🧩 **Eleven sample scenes:** two crossing strands, the **box stitch** (below) on
   its own and worked as a 10- or 15-round column, the **round stitch** — the
   same four folds without the reversal, so the column repeats every round
   instead of every two ([the difference](docs/box-stitch-levels/README.md#the-round-stitch))
-  — three- and four-strand braids, a truly-woven mat (a checkerboard
+  — the **twist stitch**, three laces on a 2×1 face that turns 28° a stitch
+  ([how it is built](docs/twist-stitch/README.md)),
+  three- and four-strand braids, a truly-woven mat (a checkerboard
   of masks), a diagonal basket, and a curved ribbon weave. Each is listed with
   its own picture on [the project site](https://ysetbon.github.io/Scoubidou3D/),
   and `?sample=<key>` opens one directly — e.g.
@@ -151,6 +153,22 @@ rest on each other, which is what the level break between them says.
 Both come out of one generator, so the round count is the only difference.
 Every round, every mask, every start and end point, and the level rule they
 forced: **[docs/box-stitch-levels](docs/box-stitch-levels/)**.
+
+### The twist stitch
+
+**Twist stitch — 10 twists** is three laces rather than two, on a **2×1** face
+instead of the box stitch's square: four arms lying side by side across the face
+and two lying through it, eight crossings woven plain, four masks a stitch. What
+makes it a twist is that the face each fold lands on is the same face turned
+**28°**, so ten stitches wind the column 280°.
+
+The interesting part is that a fold's *length* is not a free choice. A fold
+starts at the tip its arm left behind one level down, placed in the frame that
+level was woven in; unless that tip lands exactly on the line the arm is about
+to fold along, the arm lies at an angle to the three beside it and the face fans
+open as it climbs. Every reach is therefore solved from the turn — which is also
+why an arm's two folds come out different lengths.
+**[docs/twist-stitch](docs/twist-stitch/)**.
 
 ## The 3D translation, in one picture
 

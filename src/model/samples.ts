@@ -408,6 +408,223 @@ function flatBraid(count: number, rows: number, name: string): Scene3D {
   return { name, strands, masks, levelBreaks: [] };
 }
 
+// 4c) The TWIST stitch, worked on a 2x1 starting stitch — three laces instead of
+//     the box stitch's two, and a column that TURNS as it climbs.
+//
+//     THE FACE. Seen from above, a stitch is one flat woven face: four arms lying
+//     side by side across it (the warp — two from the gold lace, two from the
+//     teal) and two arms lying through it (the weft — both from the orange lace),
+//     so every stitch is 4 x 2 = eight crossings. Four arms one way and two the
+//     other is what makes the face twice as long as it is deep, which is the 2x1
+//     the starting stitch is named for: the box stitch is the 1x1 case, four arms
+//     round a square.
+//
+//     THE WEAVE. A weft arm crosses all four warp arms in a row and goes OVER,
+//     under, OVER, under along the way; the other weft arm runs the other
+//     direction and so lands on the opposite phase. That is plain weave, and it
+//     comes out as exactly FOUR masks a stitch — the other four crossings the
+//     layer order already has right, since every warp arm is laid above both weft
+//     arms.
+//
+//     THE TWIST. Each arm folds back across the face, and the face it folds onto
+//     is the same face TURNED by `TURN`. That is the whole stitch: nothing about
+//     the weave changes from one level to the next, the frame it is woven in just
+//     keeps rotating, and ten stitches wind the column round most of a full turn.
+//     A fold lands in its lace's OTHER slot — the two arms of a lace trade places
+//     every level, which is why an arm's direction reverses AND swings by `TURN`
+//     each time.
+//
+//     HOW FAR A FOLD REACHES is not a free choice, and this is the one thing the
+//     stitch will not forgive. A fold starts at the tip the arm left behind one
+//     level down, in the PREVIOUS frame — so unless that tip was dropped exactly
+//     on the line the arm is about to fold along, the arm starts off its own line
+//     and lies at an angle to the three arms beside it. Every reach here is
+//     therefore SOLVED, not picked: `reach()` returns the one length that lands a
+//     tip on its own successor's line. Get it right and all four warp arms of a
+//     level are exactly parallel, both weft arms are exactly parallel, and the
+//     face stays a rigid rectangle all the way up; get it wrong by a little and
+//     the arms fan by a few degrees a level. It also explains why an arm's two
+//     folds are not the same length: crossing the face outward and inward against
+//     the same turn are different distances (105 and 135 at these settings).
+//
+//     WHY THE TURN IS 28° AND NOT 26°. Solved reaches put every warp tip on ONE
+//     circle round the column and every weft tip on another — a tidy envelope, and
+//     a hazard, because junction detection (connections.ts) glues endpoints purely
+//     by coincidence in the drawing plane and cannot see the storeys that really
+//     keep two tips apart. On one circle, two tips five levels apart can land on
+//     the same spot and fuse four strand-ends into a fork. Fitting each hand-built
+//     twist as a rigid turn of the starting stitch's eight crossings gives 24.6°
+//     and 26.0°; at 26° exactly, tips five levels apart land 0.8 units apart and
+//     the column breaks into pieces. 28° is the nearest turn that keeps every pair
+//     of distinct tips ~5 units apart over ten twists, and it sits inside the band
+//     the hand-built scene actually measures (its warp arms fit 32-37°, its weft
+//     arms 23°; freehand, the two disagree). `twistStitch(2, …)` reproduces that
+//     scene fold for fold and mask for mask, on a tidied-up version of it.
+function twistStitch(twists: number, name: string): Scene3D {
+  const w = 54;
+  const cx = 400;
+  const cy = 270;
+  const G = 60; // across the face: the gap between neighbouring warp lines
+  const V = 70; // through the face: the gap between the two weft lines
+  const E = 44; // how far a pinned run pokes past the far edge before its arm folds off it
+  const TAIL = 130; // the top stitch is never folded again — its six ends are the loose tails
+  const TURN = (28 * Math.PI) / 180; // how far the whole face turns from one level to the next
+
+  const COS = Math.cos(TURN);
+  const SIN = Math.sin(TURN);
+  const ACROSS = 1.5 * G; // half the woven face, across it (the outer warp lines)
+  const THROUGH = V / 2; //  half the woven face, through it (the two weft lines)
+
+  // A point given in the stitch's OWN frame at level `n`: `a` measured across the
+  // face — the way the weft arms run — and `b` through it. The frame turns by
+  // TURN a level, and that turn is the entire difference from the box stitch.
+  const at = (n: number, a: number, b: number): Point => {
+    const t = TURN * n;
+    const c = Math.cos(t);
+    const s = Math.sin(t);
+    return { x: cx + a * c - b * s, y: cy + a * s + b * c };
+  };
+
+  // One of the six places an arm can lie in the face. An arm lying here runs ALONG
+  // its own line and sits `off` to the side of the middle; `dir` is which way along
+  // the line it travels, fixed for the slot, so an arm reverses simply by moving to
+  // its lace's other slot. `band` is the half-width of the woven part it must clear.
+  interface Slot {
+    warp: boolean;
+    off: number;
+    dir: -1 | 1;
+  }
+  const slot = (warp: boolean, off: number, dir: -1 | 1): Slot => ({ warp, off, dir });
+  const on = (s: Slot, n: number, along: number): Point =>
+    (s.warp ? at(n, s.off, along) : at(n, along, s.off));
+  const band = (s: Slot): number => (s.warp ? THROUGH : ACROSS);
+
+  // How far the arm in `s` must reach for its tip to land exactly on `next`'s line
+  // one level up — the fold's whole length, solved rather than chosen.
+  //
+  // A turn of TURN takes frame-n coordinates (a, b) to (a·cos + b·sin, −a·sin +
+  // b·cos), so a slot's offset one level up is `off·cos ± along·sin`: plus for a
+  // warp slot, whose offset is the `a` of the pair, minus for a weft slot, whose
+  // offset is the `b`. Setting that equal to `next.off` and solving for `along`
+  // leaves one length, and it is the only one that keeps the face rigid.
+  const reach = (s: Slot, next: Slot): number =>
+    (next.off - s.off * COS) / ((s.warp ? 1 : -1) * s.dir * SIN);
+  /** Where the arm lying in this slot ends: on its own line, `along` out from the middle. */
+  const tip = (s: Slot, n: number, along: number): Point => on(s, n, s.dir * along);
+  /** Where the starting stitch's pinned run hands this slot its first arm. */
+  const entry = (s: Slot): Point => on(s, 0, -s.dir * (band(s) + E));
+
+  // The four warp slots in order across the face, then the two weft slots. Their
+  // travel directions alternate, which is what puts the two weft arms on opposite
+  // phases of the same plain weave.
+  const W0 = slot(true, ACROSS, -1);
+  const W1 = slot(true, 0.5 * G, 1);
+  const W2 = slot(true, -0.5 * G, -1);
+  const W3 = slot(true, -ACROSS, 1);
+  const V0 = slot(false, -THROUGH, -1);
+  const V1 = slot(false, THROUGH, 1);
+  // Bottom of the layer stack first: both weft arms, then all four warp arms, so
+  // that every crossing the masks DON'T name comes out warp-over-weft.
+  const FACE = [V0, V1, W0, W1, W2, W3];
+
+  // A lace: its pinned run across the middle and the two arms folded off its ends.
+  // `arms[i]` is the arm currently lying in `slots[i]`, and every level the two
+  // trade places — which is the fold.
+  interface Arm {
+    at: Point;
+    last: string;
+    side: 0 | 1;
+  }
+  interface Lace {
+    set: number;
+    color: RGBA;
+    slots: [Slot, Slot];
+    arms: [Arm, Arm];
+    /** Which arm the starting stitch folded first — the hand-built scene's own order. */
+    first: 0 | 1;
+  }
+  const lace = (set: number, color: RGBA, a: Slot, b: Slot, first: 0 | 1): Lace => ({
+    set,
+    color,
+    slots: [a, b],
+    arms: [
+      { at: entry(a), last: `${set}_1`, side: 1 },
+      { at: entry(b), last: `${set}_1`, side: 0 },
+    ],
+    first,
+  });
+  // The orange lace is the weft; the teal and gold ones are the warp, a pair of
+  // neighbouring slots each. Listed in the order the starting stitch lays them.
+  const LACES: Lace[] = [
+    lace(1, ORANGE, V0, V1, 0),
+    lace(3, TEAL, W0, W1, 0),
+    lace(2, YELLOW, W2, W3, 1),
+  ];
+
+  const strands: Strand3D[] = [];
+  const masks: MaskLink[] = [];
+  const levelBreaks: number[] = [];
+  const nextId: Record<number, number> = { 1: 1, 2: 1, 3: 1 };
+
+  // The three laces pinned across each other, each running from one of its slots'
+  // entries to the other's — the slant that offsets its two arms from each other.
+  for (const l of [...LACES].sort((a, b) => a.set - b.set)) {
+    strands.push(mk(`${l.set}_1`, entry(l.slots[1]), entry(l.slots[0]), l.color, { width: w }));
+  }
+
+  // Lay one arm in each of the six slots, weave the eight crossings, and hand each
+  // arm on to its lace's other slot ready for the level above.
+  const stitch = (level: number, order: Slot[]): void => {
+    const holder = new Map<Slot, { lace: Lace; index: 0 | 1 }>();
+    for (const l of LACES) {
+      holder.set(l.slots[0], { lace: l, index: 0 });
+      holder.set(l.slots[1], { lace: l, index: 1 });
+    }
+    const laid = new Map<Slot, string>();
+    for (const s of order) {
+      const { lace: l, index } = holder.get(s)!;
+      const a = l.arms[index];
+      // Every fold but the last reaches exactly as far as the fold above it needs
+      // it to; the top one is never folded again, so it just runs out as a tail.
+      const next = l.slots[index === 0 ? 1 : 0];
+      const along = level === twists ? band(s) + TAIL : reach(s, next);
+      const id = `${l.set}_${++nextId[l.set]}`;
+      strands.push(
+        mk(id, { ...a.at }, tip(s, level, along), l.color, {
+          width: w,
+          parentId: a.last,
+          parentSide: a.side,
+        }),
+      );
+      laid.set(s, id);
+      a.at = tip(s, level, along);
+      a.last = id;
+      a.side = 1; // every later fold hangs off the END of the fold before it
+    }
+    // Plain weave, in the four places the layer order gets it wrong: each weft arm
+    // rides over the first and third warp arm it meets, and the stacking already
+    // has it under the second and fourth.
+    masks.push({ overId: laid.get(V0)!, underId: laid.get(W0)! });
+    masks.push({ overId: laid.get(V0)!, underId: laid.get(W2)! });
+    masks.push({ overId: laid.get(V1)!, underId: laid.get(W3)! });
+    masks.push({ overId: laid.get(V1)!, underId: laid.get(W1)! });
+    // The arms swap slots: that swap IS the fold, and with the frame turned it is
+    // also what makes an arm leave in a new direction rather than doubling back.
+    for (const l of LACES) l.arms.reverse();
+  };
+
+  // The starting stitch. Its six arms fold off the pinned runs rather than off
+  // each other, and one lace folded its second arm first when this was built by
+  // hand, so the order is given per lace rather than straight down the face.
+  stitch(0, LACES.flatMap((l) => (l.first === 0 ? l.slots : [l.slots[1], l.slots[0]])));
+  for (let level = 1; level <= twists; level++) {
+    levelBreaks.push(strands.length); // every twist rests one storey above the last
+    stitch(level, FACE);
+  }
+
+  return { name, strands, masks, levelBreaks };
+}
+
 // 6) A diagonal basket — the woven mat turned 45°, so the laces run corner to
 //    corner. Same checkerboard of over/unders, a noticeably different fabric.
 function diagonalWeave(): Scene3D {
@@ -445,6 +662,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
   'box-stitch-10': () => boxStitchRounds(10, 'Box stitch — 10 levels'),
   'box-stitch-15': () => boxStitchRounds(15, 'Box stitch — 15 levels'),
   'round-stitch-10': () => boxStitchRounds(10, 'Round stitch — 10 levels', true),
+  'twist-stitch-10': () => twistStitch(10, 'Twist stitch — 10 twists'),
   'braid-3': () => flatBraid(3, 7, 'Three-strand braid'),
   'braid-4': () => flatBraid(4, 7, 'Four-strand flat braid'),
   'diagonal': diagonalWeave,
@@ -458,6 +676,7 @@ export const SAMPLE_LABELS: Array<{ key: string; label: string }> = [
   { key: 'box-stitch-10', label: 'Box stitch — 10 levels' },
   { key: 'box-stitch-15', label: 'Box stitch — 15 levels' },
   { key: 'round-stitch-10', label: 'Round stitch — 10 levels' },
+  { key: 'twist-stitch-10', label: 'Twist stitch — 10 twists' },
   { key: 'braid-3', label: 'Three-strand braid' },
   { key: 'braid-4', label: 'Four-strand flat braid' },
   { key: 'diagonal', label: 'Diagonal basket' },
