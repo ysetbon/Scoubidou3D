@@ -133,9 +133,10 @@ It is measured, not chosen. Fit each of the hand-built scene's two twists as a
 column 260°.
 
 Measured is not the same as explained, and there is a proposition for where it
-comes from — that the turn is fixed by the shape of the face and how hard each
-fold is pulled, `θ = 2·arctan((V/2) / ρ)`, which for a snug m×1 stitch is
-`2·arctan(1/2m)` and so **28.07°** for this one:
+comes from — that the turn is whatever carries a fold's tip from its own line
+onto its sibling's, so it is fixed by the face's shape and by how hard each fold
+is pulled. For a snug m×n stitch that comes out as
+`tan(θ/2) = 1/(M + √(M² + 2(N−1)))`, and **28.07°** for this one:
 **[deriving-the-turn.md](deriving-the-turn.md)**. It is not settled — the test is
 a hand-built 3×1, where it predicts about 18°.
 

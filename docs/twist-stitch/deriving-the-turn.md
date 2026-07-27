@@ -1,176 +1,194 @@
 # Deriving the turn — a proposition
 
 *Status: proposition. The algebra is proved and the construction is built and
-checked in code; the physical claim in [§4](#4-the-snug-limit) has been tested
-against one hand-built stitch only, and the 3×1 in [§7](#7-the-3×1-prediction)
-is a prediction waiting to be built.*
+machine-checked for every m×n up to 4×4; the physical claim in
+[§4](#4-the-snug-limit) has been tested against one hand-built stitch only, and
+the stitches in [§7](#7-what-it-predicts) are predictions waiting to be built.*
 
 ---
 
 ## The question
 
-The 26° in [the twist-stitch note](README.md) was **fitted**. It came out of a
-Kabsch fit of one hand-built scene onto itself one level up — 24.6° and 26.0° —
-and 26 was the number carried upward. That is a measurement, not an explanation.
-It does not say why a 2×1 stitch turns about 26° rather than 5° or 50°, and it
-gives nothing at all for a 3×1.
+The 26° in [the twist-stitch note](README.md) was **fitted** — a Kabsch fit of
+one hand-built scene onto itself one level up, 24.6° and 26.0°, and 26 carried
+upward. That is a measurement, not an explanation. It does not say why a 2×1
+stitch turns about 26° rather than 5° or 50°, and it gives nothing for any other
+stitch.
 
-This note proposes that the turn is **not a free parameter**. It is fixed by two
-things you can measure with a ruler: the shape of the woven face, and how far you
-pull each fold through. Everything else — every reach, every arm length, the
-whole column — follows.
+This note proposes that the turn is **not a free parameter**: it is fixed by the
+shape of the woven face and by how far each fold is pulled through. Everything
+else — every reach, every arm length, which way each arm even runs — follows.
+
+> **A first draft of this note only varied m, holding n = 1.** That was wrong,
+> and it hid the interesting half of the answer. The face has two dimensions and
+> the law has to treat them the same way. Everything below is symmetric in m and
+> n, and n = 1 falls out as a special case.
 
 ---
 
-## 1. The m×1 family
+## 1. The m×n family
 
-An **m×1** stitch is a rectangular column whose woven face is *m* times as long
-as it is deep. Count the arms round the perimeter of an m×1 rectangle of cells
-and you get `2m + 2`, so:
+An **m×n** stitch is a column whose woven face is an m-by-n rectangle of cells.
+Count the arms round its perimeter and there are `2(m + n)`:
 
-| | m×1 |
+| | m×n |
 | --- | --- |
-| laces | m + 1 |
-| arms per level | 2m + 2 |
-| warp arms (across the face) | 2m |
-| weft arms (through it) | 2 |
-| crossings per level | 4m |
-| masks per level | 2m |
-| strands, k twists | 3(m+1) + 2(m+1)·k |
-| junctions, k twists | 2(m+1)·k |
+| laces | m + n |
+| arms per level | 2(m + n) |
+| **warp** arms — across the face | 2m |
+| **weft** arms — through it | 2n |
+| crossings per level | 4mn |
+| masks per level | 2mn |
+| strands, k twists | 3(m+n) + 2(m+n)·k |
+| junctions, k twists | 2(m+n)·(k+1) |
 
-m = 1 is the box stitch (2 laces, 4 arms). m = 2 is the stitch we built (3 laces,
-6 arms, 8 crossings, 4 masks — which is exactly what `twist-stitch-10` has).
-m = 3 is next.
+`1×1` is the box stitch (2 laces, 4 arms). `2×1` is what we built — 3 laces, 6
+arms, 8 crossings, 4 masks, and at ten twists 69 strands / 44 masks / 66
+junctions, which is exactly what `twist-stitch-10` has.
 
-Write `w` for the lace width, `G` for the gap between neighbouring warp lines and
-`V` for the gap between the two weft lines. Laid snug, all three are equal. The
-warp slots sit at
+Write `w` for the lace width, `G` for the gap between neighbouring warp lines,
+`V` for the gap between neighbouring weft lines. Laid snug, all three are equal.
+The lines sit at
 
 ```
-a_j = (m − ½ − j)·G        j = 0 … 2m−1
+warp   a_j = (m − ½ − j)·G      j = 0 … 2m−1
+weft   b_i = (n − ½ − i)·V      i = 0 … 2n−1
 ```
 
-and the weft slots at `b = ±V/2`. Each lace owns an **adjacent pair** of slots —
-`(0,1), (2,3), …` for the warp, `(V0,V1)` for the weft — so a fold always
-migrates by exactly one gap, whatever m is.
+and each lace owns an **adjacent pair** — `(0,1), (2,3), …` in each family. So a
+fold always migrates by exactly one gap, whatever m and n are. The two families
+differ in nothing but which axis they run along.
 
 ---
 
 ## 2. The law
 
-Here is the whole derivation. It is three lines.
+An arm has to lie **along** its own line, not at an angle to it. Its far end is
+its tip, which we put on the line by construction. Its near end is the tip its
+lace left behind one level down — a point placed in the *previous* frame. So:
 
-An arm has to lie **along** its slot line, not at an angle to it. Its far end is
-its own tip, which we place on the line by construction. Its near end is the tip
-its lace left behind one level down — placed in the *previous* frame. So the
-constraint is: **the tip an arm leaves must land on the line its lace folds onto
-next.**
+> **The tip a fold leaves must land on the line its lace folds onto next.**
 
-Take the weft. At level *n* the arm in `V0` lies on `b = −V/2` and its tip sits
-`ρ` out from the centre — ρ is *how far the fold is pulled through*, the one
-genuinely physical quantity here. Turning the frame by θ takes coordinates
-`(a, b)` to `(a·cosθ + b·sinθ, −a·sinθ + b·cosθ)`, so that tip's new offset is
+Turning the frame by θ takes an offset `o` and an along-coordinate `x` to
+`o·cosθ ± x·sinθ` — plus for one family, minus for the other. Setting that equal
+to the sibling line's offset `o′` and solving for `x` leaves exactly one answer:
 
 ```
-b′ = ρ·sinθ − (V/2)·cosθ
+────────────────────────────────────────────────────
+     x  =  ( o′ − o·cosθ ) / ( ±sinθ )
+────────────────────────────────────────────────────
 ```
 
-and it must equal `+V/2`, the other weft line. Solve:
+Two things come out of that single equation, and neither is a choice.
+
+**The reach** is `R = |x|` — how far past the middle the tip has to sit.
+
+**The direction the arm travels** is `sign(x)`. An arm has no freedom about which
+way it runs; the requirement that its tip land on the next line picks the
+direction for it. (The first draft of this note hard-coded an alternating
+pattern and got the weft backwards for n ≥ 2. Deriving the sign removed both the
+guess and the bug.)
+
+### The one physical quantity
+
+For the **outermost** slot of a family the reach comes out smallest, and that arm
+is the one that has to work hardest. Call its reach `ρ` — *how far the fold is
+pulled through*. Rearranged for the simplest case, n = 1, where the two weft
+lines sit symmetrically at `±V/2`:
 
 ```
-ρ·sinθ = (V/2)·(1 + cosθ)
+ρ  =  (V/2)·cot(θ/2)          θ = 2·arctan( (V/2) / ρ )
 ```
 
-```
-────────────────────────────────────────────
-   ρ  =  (V/2)·cot(θ/2)        θ = 2·arctan( (V/2) / ρ )
-────────────────────────────────────────────
-```
+**The turn and the pull are the same number seen twice.** Pull tighter — smaller
+ρ — and the stitch twists *more*. Leave slack and it twists less.
 
-**That is the law.** The turn and the pull are the same number seen twice. Pull
-the fold tighter — smaller ρ — and the stitch twists *more*. Leave slack and it
-twists less.
+![the turn carries a fold tip onto its sibling's line](fig/law.svg)
 
-![the twist is the angle the two weft lines subtend](fig/law.svg)
-
-Geometrically it is even simpler than the algebra. The tip and its image sit at
-the same distance `r = √(ρ² + (V/2)²)` from the centre, one on each weft line, so
-the turn is just **the angle those two lines subtend at the centre, seen from the
-tip's distance**. Nothing else could it be.
+On the left, `2×1`: the two weft lines are symmetric about the middle, so θ is
+simply the angle they subtend at the centre from the tip's distance. On the
+right, `2×2`: the binding slot is the outer weft line and its sibling is one gap
+in, so the wedge is lopsided — but it is the same statement. **θ is whatever
+carries the tip from its own line onto its sibling's.**
 
 ---
 
 ## 3. What follows, for free
 
-With θ fixed, no freedom is left anywhere. The same "tip lands on the next line"
-condition, applied to a warp slot at offset `a` whose sibling is at `a′`, gives
+With θ fixed, nothing is left to choose:
 
-```
-R = | a′ − a·cosθ | / sinθ
-```
+- **Arm length = 2R.** The arm runs from `+R` to `−R` along its own line. The
+  incoming tip landing at exactly `+R` is not assumed — it falls out of the
+  rotation.
+- **A lace's two reaches sum to `g·cot(θ/2)`**, where `g` is that family's gap.
+- **Every arm of a snug m×1 is the same length as the face is long.**
 
-and three things drop out of it:
-
-- **Arm length = 2R.** The arm runs from `+R` to `−R` along its own line. (The
-  incoming tip lands at exactly `+R`; that is not assumed, it falls out of the
-  rotation.)
-- **A lace's two reaches sum to `G·cot(θ/2)`** — the same `cot(θ/2)` as the weft,
-  so a lace's two arms always sum to twice the face length.
-- **The weft arms are each exactly the face length.**
-
-So the ideal stitch is *uniform*: every fold the same, every tip on one circle.
-Which is [the cylinder we started from](README.md#8-why-it-is-grown-and-not-derived)
-— see [§6](#6-slack-is-what-makes-a-stitch-look-handmade).
+So the ideal stitch is *uniform*. Which is
+[the cylinder we started from](README.md#8-why-it-is-grown-and-not-derived) — see
+[§6](#6-slack-is-what-makes-a-stitch-look-handmade).
 
 ---
 
 ## 4. The snug limit
 
-ρ still has to come from somewhere. The one bound it cannot escape: a weft arm
-must **cross its own face**. Its tip has to reach at least the far edge of the
-outermost warp arm, at `(m − ½)·G + w/2`. So
+ρ still has to come from somewhere, and there are now **two** bounds, one per
+family, each saying an arm must cross the band it is woven through:
 
 ```
-ρ ≥ ρ_min = ( (2m−1)·G + w ) / 2
+weft crosses the warp band:   R_weft,min  ≥  (m − ½)·G + w/2
+warp crosses the weft band:   R_warp,min  ≥  (n − ½)·V + w/2
 ```
 
-and since θ falls as ρ rises, the **tightest possible stitch** is `ρ = ρ_min`:
+Both matter, and which one binds depends on the shape. Laid snug (`G = V = w`)
+and writing `t = tan(θ/2)`, the two conditions become two quadratics:
 
 ```
-tan(θ/2)  =  V / ( (2m−1)·G + w )
+2(n−1)·t² + 2m·t − 1  ≤  0
+2(m−1)·t² + 2n·t − 1  ≤  0
 ```
 
-Laid snug — `G = V = w`, laces touching — that collapses to
+The tightest stitch takes the smaller of the two positive roots, and it
+rationalises to one closed form. With `M = max(m, n)` and `N = min(m, n)`:
 
 ```
-────────────────────────────────
-     tan(θ/2)  =  1 / (2m)
-────────────────────────────────
+────────────────────────────────────────────
+   tan(θ/2)  =  1 / ( M + √( M² + 2(N−1) ) )
+────────────────────────────────────────────
 ```
 
-**The twist of a snug m×1 stitch depends on nothing but m.** Not on the lace
-width, not on the scale — only on how many laces wide the face is.
+(Checked against solving the quadratics directly for every m, n up to 8: max
+error 2·10⁻¹⁶.)
 
-And it is exact in a satisfying way: `(4m² − 1, 4m, 4m² + 1)` is a Pythagorean
-triple, so cos θ and sin θ are rational for every whole m.
+Two sanity checks fall straight out. For **n = 1** the square root collapses to M
+and it becomes `1/(2m)` — the clean form the first draft found. For **1×1** it
+gives `1/2`, θ = 53.130°, the box stitch.
 
-| m | θ | cos θ | sin θ | levels per full turn |
-| --- | --- | --- | --- | --- |
-| 1 | 53.130° | 3/5 | 4/5 | 6.8 |
-| **2** | **28.072°** | 15/17 | 8/17 | 12.8 |
-| **3** | **18.925°** | 35/37 | 12/37 | 19.0 |
-| 4 | 14.250° | 63/65 | 16/65 | 25.3 |
-| 5 | 11.421° | 99/101 | 20/101 | 31.5 |
+|  | n=1 | n=2 | n=3 | n=4 | n=5 |
+| --- | --- | --- | --- | --- | --- |
+| **m=1** | 53.130° | 28.072° | 18.925° | 14.250° | 11.421° |
+| **m=2** | 28.072° | 25.333° | 17.992° | 13.835° | 11.203° |
+| **m=3** | 18.925° | 17.992° | 17.217° | 13.463° | 11.000° |
+| **m=4** | 14.250° | 13.835° | 13.463° | 13.128° | 10.811° |
+| **m=5** | 11.421° | 11.203° | 11.000° | 10.811° | 10.634° |
 
-A wider stitch turns less. That is the headline prediction, and it is easy to
-check by eye on a real lanyard.
+Symmetric, as it must be — an m×n stitch is an n×m stitch looked at sideways.
+
+The shape of the table is the interesting part. **The turn is set mostly by the
+larger dimension**; the smaller one only nudges it. A 3×1, a 3×2 and a 3×3 turn
+18.9°, 18.0° and 17.2° — all "about eighteen" — while going from 2 to 3 in the
+long direction drops the turn by a third. Whatever the stitch's aspect ratio, the
+long way across is what the fold has to reach, and reach is what sets the turn.
+
+For n = 1 the numbers are rational in a way that looks like a coincidence and is
+not: `(4m² − 1, 4m, 4m² + 1)` is a Pythagorean triple, so `cos θ` and `sin θ` are
+rational for every whole m — 15/17 and 8/17 for the 2×1, 35/37 and 12/37 for the
+3×1.
 
 ---
 
 ## 5. Does it reproduce the 2×1?
 
-Building an m×1 from the formulas above and nothing else, for m = 2:
+Building an m×n from the formulas above and nothing else, then measuring it:
 
 | | from the law | `twist-stitch-10` |
 | --- | --- | --- |
@@ -180,60 +198,61 @@ Building an m×1 from the formulas above and nothing else, for m = 2:
 | junctions | 66 | 66 |
 | warp parallel to | 0.0000° | 2.52° |
 | weft parallel to | 0.0000° | 2.10° |
-| weave | O,u,O,u on both weft arms, all 11 levels | same |
+| weave | O,u,O,u on both weft arms, every level | same |
 | θ | 28.07° snug | 26.0° fitted |
 
-Every count matches. The generated stitch is *more* regular than the hand-built
-one, which is the expected direction. And the angle is close but not equal:
-28.07° snug against 26.0° measured.
+Every count matches, and the generated stitch is *more* regular than the
+hand-built one — the expected direction. The angle is close but not equal: 28.07°
+snug against 26.0° measured.
 
-That gap is exactly what ρ is for. Writing `s = ρ / ρ_min` for how much further
-than snug the folds are pulled:
-
-```
-s = cot(13°) / 4  =  1.083
-```
-
-The hand-built stitch is **8% slacker than snug**. One number, and the law lands
-on the measurement. (It is not a free fit in disguise — `s` is a single scalar
-that must then predict *every* reach in the stitch, and it does.)
+That gap is what ρ is for. Writing `s = ρ / ρ_min` for how much further than snug
+the folds are pulled, `s = cot(13°)/4 = 1.083`: the hand-built stitch is **8%
+slacker than snug**. One scalar, and it then has to predict *every* reach in the
+stitch — which it does, so it is not a free fit in disguise.
 
 ---
 
 ## 6. Slack is what makes a stitch look handmade
 
-The ideal predicts every fold the same length. The real one has six folds of
-461, 405, 211, 267, 303 and 272 units. There is no contradiction: **ρ is per
-arm.** Every arm is pulled a slightly different amount, so each has its own
-`ρ_k`, and each *would* imply its own `θ_k`.
+The ideal predicts every fold the same length. The real one has six folds of 461,
+405, 211, 267, 303 and 272 units. No contradiction: **ρ is per arm.** Each is
+pulled a slightly different amount, so each has its own `ρ_k` and would imply its
+own `θ_k`.
 
-But a level can only turn by one angle. The stitch resolves the disagreement by
-letting the arms **lean** a little off their slot lines — which is exactly the
-2.5° of warp spread the hand-built stitch carries, and exactly the thing an
-idealised construction throws away. So:
+But a level can only turn by one angle. The stitch settles the disagreement by
+letting arms **lean** slightly off their lines — which is exactly the 2.5° of
+warp spread the hand-built one carries, and exactly what an idealised
+construction throws away.
 
 > The law fixes the mean turn. The scatter of `ρ_k` about it is the hand of
-> whoever tied it, and it shows up as lean.
+> whoever tied it, and it comes out as lean.
 
-That is testable too, and it is the sharpest form of the proposition: **the
-spread of arm lengths within a level should predict the spread of arm angles.**
+Sharper form, and testable: **the spread of arm lengths within a level should
+predict the spread of arm angles.**
 
 ---
 
-## 7. The 3×1 prediction
+## 7. What it predicts
 
-Everything needed to build one, with no measurement of a real 3×1 anywhere in it.
-Snug, `w = G = V = 54`:
+Built straight from the law, no measurement of a real stitch anywhere in them:
 
-```
-θ        = 2·arctan(1/6) = 18.9246°        cos θ = 35/37   sin θ = 12/37
-face     = 324 × 108  (3 : 1)
-ρ (weft) = 162
-warp slots  a_j = (2.5 − j)·54  =  +135, +81, +27, −27, −81, −135
-lace pairs  (0,1) (2,3) (4,5) warp,  (V0,V1) weft
-```
+| | 3×1 | 2×2 | 3×2 |
+| --- | --- | --- | --- |
+| θ | 18.925° | 25.333° | 17.992° |
+| laces | 4 | 4 | 5 |
+| arms per level | 8 | 8 | 10 |
+| crossings per level | 12 | 16 | 24 |
+| masks per level | 6 | 8 | 12 |
+| | <img src="fig/pred-3x1.png" width="250" alt="predicted 3x1"> | <img src="fig/pred-2x2.png" width="250" alt="predicted 2x2"> | <img src="fig/pred-3x2.png" width="250" alt="predicted 3x2"> |
+| from above | <img src="fig/pred-3x1-top.png" width="250" alt="predicted 3x1 face"> | <img src="fig/pred-2x2-top.png" width="250" alt="predicted 2x2 face"> | <img src="fig/pred-3x2-top.png" width="250" alt="predicted 3x2 face"> |
 
-Reaches, all forced:
+Machine-checked on every build, for 1×1, 2×1, 3×1, 4×1, 2×2, 3×2 and 3×3: strand,
+mask and junction counts as predicted; every parent anchor exact; **exactly 4mn
+crossings per level and not one more** (no warp crossing warp, no weft crossing
+weft); every weft arm reading `O,u,O,u…` across all 2m warp arms on every level;
+and warp and weft each parallel to **0.0000°**.
+
+The 3×1's reaches, all forced, at `w = G = V = 54`:
 
 | lace | slots | reach out | reach back | arm lengths |
 | --- | --- | --- | --- | --- |
@@ -242,58 +261,39 @@ Reaches, all forced:
 | warp B | W2 / W3 | 162 | 162 | 324 / 324 |
 | warp C | W4 / W5 | 180 | 144 | 360 / 288 |
 
-Counts at ten twists: **92 strands, 66 masks, 10 level breaks, 88 junctions.**
-Masks per level: `V0` over the even warp slots, `V1` over the odd ones.
-
-Built straight from those numbers, this is what comes out:
-
-<img src="fig/pred-3x1.png" width="420" alt="The predicted 3x1 column"> <img src="fig/pred-3x1-top.png" width="330" alt="The predicted 3x1 face from above">
-
-Machine-checked on that build: 92 / 66 / 10 as predicted, 88 junctions with no
-forks, every parent anchor exact, **132 crossings and not one more** (no warp
-crossing warp), every weft arm reading `O,u,O,u,O,u` across all six warp arms on
-all eleven levels, and warp and weft each parallel to **0.0000°**.
-
-If instead the 3×1 is worked at the same 8% slack as the hand-built 2×1:
-
-```
-θ = 2·arctan( 1 / (6 × 1.083) ) = 17.49°
-```
-
-So the prediction to test is **θ(3×1) ≈ 17.5°–18.9°**, against 26° for the 2×1.
+If a stitch is worked at the same 8% slack as the hand-built 2×1, every angle in
+the table drops by about the same factor — for the 3×1, 18.92° → **17.49°**.
 
 ---
 
 ## 8. How to falsify it
 
 Build a 3×1 by hand in the app the way the 2×1 was built — starting stitch plus
-two twists — and fit the turn the same way (Kabsch on the level's crossing
-points).
+two twists — and fit the turn the same way.
 
-- **θ ≈ 17–19°** → the law holds; the turn really is set by the aspect ratio, and
-  `twistStitch` can be replaced by an `m` parameter.
-- **θ ≈ 26° again**, independent of m → the law is wrong. The turn would then be
-  something about the *lace* rather than the face — thickness, or friction, or
-  how far a thumb naturally pushes a fold.
-- **θ between, drifting the wrong way with m** → the face shape matters but the
-  1/(2m) form is wrong, and `ρ_min` is the suspect: perhaps a fold must clear the
-  face by a fixed margin rather than reach exactly to its edge, which would put a
-  constant inside the arctan.
+- **θ ≈ 17–19°** → the law holds, and `twistStitch` can take `m` and `n` instead
+  of a fitted constant.
+- **θ ≈ 26° again, independent of the shape** → the law is wrong. The turn would
+  be something about the *lace* rather than the face — thickness, friction, how
+  far a thumb naturally pushes a fold.
+- **In between, or moving the wrong way with m** → the face shape matters but
+  this form is wrong, and the clearance bound is the suspect: perhaps a fold must
+  clear the face by a fixed margin rather than reach exactly to its edge, which
+  would put a constant inside the arctan.
 
-The middle answer is the interesting one, and none of the three needs more than
-one hand-built 3×1 to settle.
+A 2×2 would settle a second question at the same time, since it is the first
+shape where the two clearance bounds compete rather than one simply dominating.
 
 ---
 
-## 9. What this does not yet explain
+## 9. What this still does not explain
 
-- **Why the arms alternate travel direction** across the row (`W0` one way, `W1`
-  the other, `W2` back again). It does not affect the weave, and the law is
-  silent on it.
-- **Where the base level's overhang `E` comes from.** The pinned run's poke past
-  the face is treated as free here.
-- **m × n for n > 1.** Everything above assumes exactly two weft arms. A 2×2
-  stitch would have four, the face would be a square grid rather than a band, and
-  the "two weft lines subtend θ" picture needs redoing.
-- **Whether ρ_min is really the tightest a hand can pull.** It is the tightest
-  that still *works*; a real thumb may stop short of it.
+- **Where the base level's overhang comes from.** The pinned run's poke past the
+  face is free here.
+- **Whether the snug bound is really the tightest a hand can pull.** It is the
+  tightest that still *works*; a real thumb may stop short of it.
+- **Why the two families should share one gap.** `G = V = w` is assumed for the
+  snug case; a lace that is wider than it is thick might not pack that way, and
+  the general law keeps G and V separate for exactly that reason.
+- **Non-rectangular cross-sections** — a triangular or hexagonal column has a
+  different perimeter count and the two-family split stops making sense.
