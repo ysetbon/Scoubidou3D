@@ -104,12 +104,14 @@ crossing, so one lace weaves over-and-under just like a real basket.
   dropdown after a refresh (grouped under *Saved by you*). **Copy JSON** gives
   you the scene as text to send on or paste back in, and that same text can be
   dropped into `samples.ts` to become a permanent built-in. Nothing is uploaded.
-- 🧩 **Eleven sample scenes:** two crossing strands, the **box stitch** (below) on
+- 🧩 **Thirteen sample scenes:** two crossing strands, the **box stitch** (below) on
   its own and worked as a 10- or 15-round column, the **round stitch** — the
   same four folds without the reversal, so the column repeats every round
   instead of every two ([the difference](docs/box-stitch-levels/README.md#the-round-stitch))
   — the **twist stitch**, three laces on a 2×1 face that turns 26° a stitch
-  ([how it is built](docs/twist-stitch/README.md)),
+  ([how it is built](docs/twist-stitch/README.md)), and the same stitch derived
+  for a **3×1** and a **2×2** face
+  ([the law](docs/twist-stitch/deriving-the-turn.md)),
   three- and four-strand braids, a truly-woven mat (a checkerboard
   of masks), a diagonal basket, and a curved ribbon weave. Each is listed with
   its own picture on [the project site](https://ysetbon.github.io/Scoubidou3D/),
