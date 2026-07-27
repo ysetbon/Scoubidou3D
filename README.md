@@ -168,7 +168,13 @@ above is that scene turned — because the idealised version came out a *cylinde
 Solve every fold's reach and each one travels the same distance, every tip lands
 on one circle, and the column looks turned on a lathe. In the hand-built stitch
 the six folds run 461, 405, 211, 267, 303 and 272 units, and rotation carries
-that unevenness all the way up. **[docs/twist-stitch](docs/twist-stitch/)**.
+that unevenness all the way up.
+
+The turn is one rigid motion applied over and over — a discrete screw group — so
+a level's six start points ride six circles about a fixed centre and every level
+can be written down in closed form. The matrix, the six radii, the one place two
+slots are coupled, and what the level-by-level pictures show:
+**[docs/twist-stitch](docs/twist-stitch/)**.
 
 ## The 3D translation, in one picture
 
