@@ -377,8 +377,11 @@ export class StrandScene {
     if (st && st.kind === 'attach') {
       removeStrandAt(this.current, this.current.strands.indexOf(st.child));
       recomputeOccupancy(this.current);
-      this.onSceneChanged?.();
     }
+    // An abandoned gesture still leaves the scene changed — the attach is undone,
+    // but a control point that moved before the cancel keeps where it got to — so
+    // the panel hears about this one too. See onPointerUp for why that matters.
+    if (st) this.onSceneChanged?.();
   }
 
   /** Rebuild all ribbon meshes, connectors and edit handles from the current
@@ -1552,13 +1555,20 @@ export class StrandScene {
       }
       recomputeOccupancy(this.current);
       this.rebuild();
-      this.onSceneChanged?.();
     } else {
       // Putting the circle back on the start (with the centre free or back there
       // too) means the strand is untouched again, so the set folds away.
       if (st.kind === 'move-control') settleControls(st.strand);
       this.rebuild();
     }
+    // Every finished drag tells the panel, not just the one that adds a layer.
+    // The layer rows read their state off the strands as they are drawn — whether
+    // ↺ has anything to straighten, how many strands "Reset curves" would touch —
+    // and a drag is the one thing that changes that answer without going through
+    // the panel. Left unsaid, bending a strand by hand kept the ↺ it was drawn
+    // with: greyed out, insisting the control points were already at their
+    // default, with no way to put the strand back short of reloading the scene.
+    this.onSceneChanged?.();
     this.setCursor(this.defaultCursor());
   };
 
