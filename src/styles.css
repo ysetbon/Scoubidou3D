@@ -643,3 +643,128 @@ body {
     background: #2b323d;
   }
 }
+
+/* The sample browser — a dozen named scenes are a dropdown, sixty-four m x n twist
+   faces are a table, so this is where the table lives. Sits over the whole app
+   rather than inside the panel, because on a phone the panel is a bottom sheet
+   and there is no room for a grid in it. */
+.browser-back {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(18, 24, 33, 0.45);
+}
+
+.browser {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  max-height: 100%;
+  border-radius: 14px;
+  background: var(--panel-bg);
+  box-shadow: 0 24px 60px rgba(18, 24, 33, 0.3);
+  overflow: hidden;
+}
+
+.browser-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.browser-head h3 {
+  margin: 0;
+  font-size: 15px;
+  margin-right: auto;
+}
+
+.browser-head .btn {
+  flex: 0 0 auto;
+  min-width: 84px;
+}
+
+.browser-body {
+  padding: 4px 16px 18px;
+  overflow: auto;
+}
+
+.browser-group {
+  margin: 18px 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.browser-note {
+  margin: -4px 0 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.browser-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.browser-grid {
+  display: grid;
+  gap: 4px;
+  align-items: center;
+}
+
+.browser-axis {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.browser-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 2px;
+  line-height: 1.15;
+}
+
+.browser-cell b {
+  font-size: 12px;
+}
+
+.browser-cell small {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.browser-on,
+.browser-on:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+@media (max-width: 640px) {
+  .browser-back {
+    padding: 10px;
+  }
+
+  .browser-cell {
+    padding: 5px 0;
+  }
+
+  .browser-cell b {
+    font-size: 11px;
+  }
+
+  .browser-cell small {
+    font-size: 9px;
+  }
+}

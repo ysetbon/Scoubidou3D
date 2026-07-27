@@ -408,6 +408,308 @@ function flatBraid(count: number, rows: number, name: string): Scene3D {
   return { name, strands, masks, levelBreaks: [] };
 }
 
+// 4c) The TWIST stitch — three laces on a 2x1 face, and a column that TURNS as it
+//     climbs. Unlike every other sample here, this one is not an idealised
+//     diagram: it is a scene built BY HAND in the app, carried on upward.
+//
+//     THE FACE. Seen from above, a stitch is one flat woven face: four arms lying
+//     side by side across it (the warp — two gold, two teal) and two arms lying
+//     through it (the weft — both orange), so every stitch is 4 x 2 = eight
+//     crossings and warp never crosses warp. Four arms one way and two the other
+//     is what makes the face twice as long as it is deep, which is the 2x1 the
+//     starting stitch is named for; the box stitch is the 1x1 case.
+//
+//     THE WEAVE. A weft arm crosses all four warp arms in a row and goes OVER,
+//     under, OVER, under along the way; the other weft arm runs the other
+//     direction and lands on the opposite phase. Plain weave. The layer order
+//     already has half of it right — every warp arm is laid above both weft arms —
+//     so it takes exactly FOUR masks a stitch.
+//
+//     THE TWIST, AND WHY THIS SAMPLE IS GROWN RATHER THAN DRAWN. Level n+1 is
+//     level n turned by TURN about C, slot for slot, which in ids is simply
+//     "+2": `1_8` is `1_6` turned, `3_9` is `3_7` turned. Everything else follows
+//     — a fold hangs off its lace's OTHER arm one level down, so an arm reverses
+//     AND swings by TURN each time, and the masks repeat by slot.
+//
+//     Turning the hand-built stitch, rather than re-deriving it, is the whole
+//     point. An idealised version reaches every fold the same distance and the
+//     column comes out a smooth cylinder; a real one does not. In `START` below
+//     the six folds of a stitch run 461, 405, 211, 267, 303 and 272 units, and
+//     rotation carries that unevenness up the column unchanged, which is what
+//     makes the stack read as scoubidou instead of as a lathe part.
+//
+//     WORKING A STITCH EATS THE TAIL. The top stitch's six ends are loose tails,
+//     drawn long. Work another stitch on top and those ends stop being tails:
+//     they become the junctions the new folds hang off, and they pull in to
+//     `turn(the ends one level further down)`. `grow` does exactly that before
+//     laying the new level, which is why the last level of any twist count is the
+//     only one with long ends.
+//
+//     TURN is 26°, measured: fitting each of the hand-built scene's two twists as
+//     a rigid turn of the starting stitch's eight crossing points gives 24.6° and
+//     26.0°. C is the mean of its three levels' crossing centroids. Its own drift
+//     of about (-9, -2) a level is NOT carried up — that is freehand wobble, and
+//     keeping it would lean the column by most of a lace width over ten stitches.
+function twistStitch(twists: number, name: string): Scene3D {
+  const TURN = (26 * Math.PI) / 180;
+  const C: Point = { x: 474.5, y: 304.0 };
+
+  // The hand-built scene: a 2x1 starting stitch with two twist stitches on it,
+  // in the app's own layer order. [id, start, end, parent, side].
+  type Row = [string, number, number, number, number, string | null, 0 | 1 | null];
+  const START: Row[] = [
+    ['1_1', 354.66, 329.14, 620.41, 287.83, null, null],
+    ['2_1', 399.99, 222.79, 457.00, 392.74, null, null],
+    ['3_1', 511.38, 231.06, 566.90, 386.61, null, null],
+    ['1_2', 620.41, 287.83, 325.36, 268.39, '1_1', 1],
+    ['1_3', 354.66, 329.14, 624.97, 341.70, '1_1', 0],
+    ['3_2', 566.90, 386.61, 550.50, 238.00, '3_1', 1],
+    ['3_3', 511.38, 231.06, 537.98, 416.32, '3_1', 0],
+    ['2_2', 399.99, 222.79, 406.99, 378.45, '2_1', 0],
+    ['2_3', 457.00, 392.74, 420.50, 197.19, '2_1', 1],
+    ['1_4', 624.97, 341.70, 343.12, 200.03, '1_3', 1],
+    ['1_5', 325.36, 268.39, 585.67, 393.74, '1_2', 1],
+    ['3_4', 537.98, 416.32, 582.42, 274.29, '3_3', 1],
+    ['3_5', 550.50, 238.00, 455.80, 403.33, '3_2', 1],
+    ['2_4', 406.99, 378.45, 498.78, 187.05, '2_2', 1],
+    ['2_5', 420.50, 197.19, 348.98, 335.31, '2_3', 1],
+    ['1_6', 585.67, 393.74, 284.69, 44.17, '1_5', 1],
+    ['1_7', 343.12, 200.03, 602.19, 511.53, '1_4', 1],
+    ['3_6', 455.80, 403.33, 640.56, 301.14, '3_5', 1],
+    ['3_7', 582.42, 274.29, 347.25, 400.86, '3_4', 1],
+    ['2_6', 348.98, 335.31, 616.41, 193.01, '2_5', 1],
+    ['2_7', 498.78, 187.05, 255.17, 308.30, '2_4', 1],
+  ];
+  // Its four masks a stitch, by slot: each weft arm rides over the first and third
+  // warp arm it meets and the layer order has it under the second and fourth.
+  const STARTMASKS: Array<[string, string]> = [
+    ['1_2', '3_2'], ['1_2', '2_3'], ['1_3', '2_2'], ['1_3', '3_3'],
+    ['1_4', '3_4'], ['1_4', '2_4'], ['1_5', '2_5'], ['1_5', '3_5'],
+    ['1_6', '3_6'], ['1_6', '2_6'], ['1_7', '2_7'], ['1_7', '3_7'],
+  ];
+  const LACE: Record<string, { color: RGBA; width: number }> = {
+    '1': { color: ORANGE, width: 54 },
+    '2': { color: YELLOW, width: 54 },
+    '3': { color: TEAL, width: 46 },
+  };
+
+  const turn = (p: Point): Point => {
+    const c = Math.cos(TURN);
+    const s = Math.sin(TURN);
+    const x = p.x - C.x;
+    const y = p.y - C.y;
+    return { x: C.x + x * c - y * s, y: C.y + x * s + y * c };
+  };
+
+  const strands: Strand3D[] = START.map(([id, sx, sy, ex, ey, parentId, parentSide]) => {
+    const set = LACE[id[0]];
+    return mk(id, { x: sx, y: sy }, { x: ex, y: ey }, set.color, {
+      width: set.width,
+      parentId: parentId ?? undefined,
+      parentSide: parentSide ?? undefined,
+    });
+  });
+  const masks: MaskLink[] = STARTMASKS.map(([overId, underId]) => ({ overId, underId }));
+  const levelBreaks: number[] = [9, 15];
+
+  // One more stitch: turn the top one, and pull the ends it was resting on in.
+  const grow = (): void => {
+    const top = strands.slice(-6); // laid in slot order: V0 V1 W0 W1 W2 W3
+    const below = strands.slice(-12, -6); // the same six slots, one level down
+    const laid = top.map((s, i) => {
+      // the arm this fold continues is its lace's OTHER arm on the top level
+      const sibling = top[i % 2 ? i - 1 : i + 1];
+      const [lace, n] = s.id.split('_');
+      return mk(`${lace}_${Number(n) + 2}`, turn(s.start), turn(s.end), s.color, {
+        width: s.width,
+        parentId: sibling.id,
+        parentSide: 1,
+      });
+    });
+    // The top stitch is worked now, not loose: its tails become the junctions the
+    // new folds hang off, which is exactly where turning the level below puts them.
+    top.forEach((s, i) => {
+      s.end = turn(below[i].end);
+    });
+    levelBreaks.push(strands.length);
+    strands.push(...laid);
+    const [v0, v1, w0, w1, w2, w3] = laid;
+    masks.push(
+      { overId: v0.id, underId: w0.id },
+      { overId: v0.id, underId: w2.id },
+      { overId: v1.id, underId: w3.id },
+      { overId: v1.id, underId: w1.id },
+    );
+  };
+
+  for (let n = 2; n < twists; n++) grow();
+
+  return { name, strands, masks, levelBreaks };
+}
+
+
+// 4d) The twist stitch for ANY m x n face, built from the law rather than from a
+//     hand-built scene — see docs/twist-stitch/deriving-the-turn.md.
+//
+//     An m x n stitch is a column whose woven face is an m-by-n rectangle of
+//     cells, so it has 2(m+n) arms round its perimeter: 2m WARP arms side by side
+//     across the face, 2n WEFT arms through it, m+n laces, 4mn crossings and 2mn
+//     masks a level. `twistStitch` above is the 2x1 case, carried up from a scene
+//     built by hand; this one derives every number instead.
+//
+//     THE LAW. An arm must lie ALONG its own line, and its near end is the tip its
+//     lace left behind one level down — a point placed in the PREVIOUS frame. So
+//     the tip a fold leaves has to land on the line its lace folds onto next.
+//     Turning by TURN takes an offset `o` and an along-coordinate `x` to
+//     `o·cos ± x·sin`; setting that equal to the sibling line's offset and solving
+//     leaves one answer. Its magnitude is the reach, and its SIGN is the direction
+//     the arm travels — an arm has no freedom about which way it runs.
+//
+//     THE TURN. What is left is how far each fold is pulled through, and the bound
+//     it cannot escape is that an arm must cross the band it is woven through.
+//     Taking that as an equality gives the tightest stitch: with the laces laid
+//     snug, tan(TURN/2) = 1 / (M + sqrt(M² + 2(N−1))) for M and N the longer and
+//     shorter side. It collapses to 1/(2m) for an m x 1 and to 1/2 — 53.13°, the
+//     box stitch — for the 1x1, and it says the turn is set mostly by the LONGER
+//     side: 3x1, 3x2 and 3x3 all turn about eighteen degrees.
+//
+//     THE WEAVE is the one thing the geometry does NOT fix: a face is a grid, so
+//     over-under-over-under can start either way and the complement of a plain
+//     weave is another plain weave. The hand-built 2x1 pins it — read by position,
+//     its outermost weft line goes UNDER the outermost warp line — so a weft line
+//     rides over the warp lines of OPPOSITE parity, counting both from outside in.
+export function twistStitchMN(m: number, n: number, twists: number, name: string): Scene3D {
+  const w = 54;
+  const G = w; // across the face: the gap between neighbouring warp lines
+  const V = w; // through it: the gap between neighbouring weft lines
+  const cx = 400;
+  const cy = 300;
+
+  const hi = Math.max(m, n);
+  const lo = Math.min(m, n);
+  const TURN = 2 * Math.atan(1 / (hi + Math.sqrt(hi * hi + 2 * (lo - 1))));
+  const c = Math.cos(TURN);
+  const s = Math.sin(TURN);
+
+  // A slot is one of the 2(m+n) lines an arm can lie on: `off` is how far it sits
+  // from the middle across its own direction, and `dir` which way along it the arm
+  // travels — solved below, never chosen.
+  interface Slot {
+    warp: boolean;
+    off: number;
+    dir: number;
+  }
+  const slots: Slot[] = [];
+  for (let i = 0; i < 2 * n; i++) slots.push({ warp: false, off: (n - 0.5 - i) * V, dir: 0 });
+  for (let j = 0; j < 2 * m; j++) slots.push({ warp: true, off: (m - 0.5 - j) * G, dir: 0 });
+  const NW = 2 * n; // where the warp slots start — the layer order is weft, then warp
+
+  // Each lace owns an ADJACENT pair of lines in its own family, so a fold always
+  // migrates by exactly one gap whatever m and n are.
+  const sib: number[] = [];
+  const laces: Array<{ set: number; pair: [number, number] }> = [];
+  for (let p = 0; p < n; p++) laces.push({ set: 1 + p, pair: [2 * p, 2 * p + 1] });
+  for (let p = 0; p < m; p++) laces.push({ set: 1 + n + p, pair: [NW + 2 * p, NW + 2 * p + 1] });
+  for (const l of laces) {
+    sib[l.pair[0]] = l.pair[1];
+    sib[l.pair[1]] = l.pair[0];
+  }
+  const laceOf: number[] = [];
+  for (const l of laces) for (const k of l.pair) laceOf[k] = l.set;
+
+  // A point on slot `k`'s line, `along` out from the middle, before the level turn.
+  const on = (k: number, along: number): Point => {
+    const sl = slots[k];
+    return sl.warp ? { x: cx + sl.off, y: cy + along } : { x: cx + along, y: cy + sl.off };
+  };
+  /** Half the band this arm has to cross, plus half a width to clear its far edge. */
+  const band = (k: number): number => (slots[k].warp ? (n - 0.5) * V : (m - 0.5) * G) + w / 2;
+  /** The law: the one length that lands this tip on its sibling's line one level up. */
+  const solved = (k: number): number =>
+    (slots[sib[k]].off - slots[k].off * c) / ((slots[k].warp ? 1 : -1) * s);
+
+  const reach: number[] = slots.map((_, k) => solved(k));
+  slots.forEach((sl, k) => {
+    sl.dir = reach[k] >= 0 ? 1 : -1;
+    reach[k] = Math.abs(reach[k]);
+  });
+  const E = 0.55 * Math.min(...reach); // the pinned run's poke past the face
+  const TAIL = 1.5 * Math.max(...reach); // the top stitch is never folded again
+
+  const turned = (p: Point, level: number): Point => {
+    const t = TURN * level;
+    const cc = Math.cos(t);
+    const ss = Math.sin(t);
+    const x = p.x - cx;
+    const y = p.y - cy;
+    return { x: cx + x * cc - y * ss, y: cy + x * ss + y * cc };
+  };
+  const tip = (k: number, level: number, along: number): Point =>
+    turned(on(k, slots[k].dir * along), level);
+  const entry = (k: number): Point => on(k, -slots[k].dir * (band(k) + E));
+
+  const PALETTE: RGBA[] = [
+    ORANGE, YELLOW, TEAL, WHITE,
+    { r: 210, g: 90, b: 110, a: 255 },
+    { r: 140, g: 160, b: 210, a: 255 },
+    { r: 150, g: 195, b: 120, a: 255 },
+    { r: 190, g: 140, b: 200, a: 255 },
+  ];
+  const colour = (set: number): RGBA => PALETTE[(set - 1) % PALETTE.length];
+
+  const strands: Strand3D[] = [];
+  const masks: MaskLink[] = [];
+  const levelBreaks: number[] = [];
+  const nextId: Record<number, number> = {};
+
+  // The laces pinned across each other, each running from one of its lines' entry
+  // points to the other's — the slant that offsets its two arms from each other.
+  for (const l of laces) {
+    nextId[l.set] = 1;
+    strands.push(mk(`${l.set}_1`, entry(l.pair[1]), entry(l.pair[0]), colour(l.set), { width: w }));
+  }
+
+  interface Arm {
+    at: Point;
+    last: string;
+    side: 0 | 1;
+  }
+  const arm: Arm[] = [];
+  for (const l of laces) {
+    arm[l.pair[0]] = { at: entry(l.pair[0]), last: `${l.set}_1`, side: 1 };
+    arm[l.pair[1]] = { at: entry(l.pair[1]), last: `${l.set}_1`, side: 0 };
+  }
+
+  for (let level = 0; level <= twists; level++) {
+    if (level > 0) levelBreaks.push(strands.length);
+    const laid: string[] = [];
+    for (let k = 0; k < slots.length; k++) {
+      const set = laceOf[k];
+      const a = arm[k];
+      const along = level === twists ? band(k) + TAIL : reach[k];
+      const end = tip(k, level, along);
+      const id = `${set}_${++nextId[set]}`;
+      strands.push(mk(id, { ...a.at }, end, colour(set), { width: w, parentId: a.last, parentSide: a.side }));
+      laid[k] = id;
+      a.at = end;
+      a.last = id;
+      a.side = 1;
+    }
+    for (let i = 0; i < NW; i++) {
+      for (let j = NW; j < slots.length; j++) {
+        if (i % 2 !== (j - NW) % 2) masks.push({ overId: laid[i], underId: laid[j] });
+      }
+    }
+    for (const l of laces) {
+      const t = arm[l.pair[0]];
+      arm[l.pair[0]] = arm[l.pair[1]];
+      arm[l.pair[1]] = t;
+    }
+  }
+
+  return { name, strands, masks, levelBreaks };
+}
+
 // 6) A diagonal basket — the woven mat turned 45°, so the laces run corner to
 //    corner. Same checkerboard of over/unders, a noticeably different fabric.
 function diagonalWeave(): Scene3D {
@@ -439,12 +741,46 @@ function diagonalWeave(): Scene3D {
   return { name: 'Diagonal basket', strands, masks, levelBreaks: [] };
 }
 
+/**
+ * The whole m x n twist family, generated. Every shape from 1x1 to `TWIST_MAX`
+ * squared is a real sample you can open — `twist-3x2-10` and the rest — but they
+ * do NOT all go in the dropdown, which would be unusable at 64 entries. The
+ * browser (Browse… in the Scene panel) lists them as a grid instead, and
+ * `SAMPLE_LABELS` keeps only the handful worth naming.
+ */
+export const TWIST_MAX = 8;
+export interface TwistShape {
+  key: string;
+  m: number;
+  n: number;
+  /** The turn the law gives this face, in degrees — what the grid quotes. */
+  turn: number;
+}
+export const TWIST_FAMILY: TwistShape[] = (() => {
+  const out: TwistShape[] = [];
+  for (let m = 1; m <= TWIST_MAX; m++) {
+    for (let n = 1; n <= TWIST_MAX; n++) {
+      const hi = Math.max(m, n);
+      const lo = Math.min(m, n);
+      const turn = (2 * Math.atan(1 / (hi + Math.sqrt(hi * hi + 2 * (lo - 1)))) * 180) / Math.PI;
+      out.push({ key: `twist-${m}x${n}-10`, m, n, turn });
+    }
+  }
+  return out;
+})();
+
+const FAMILY_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
+  TWIST_FAMILY.map((s) => [s.key, () => twistStitchMN(s.m, s.n, 10, `Twist stitch — ${s.m}×${s.n}, 10 twists`)]),
+);
+
 export const SAMPLES: Record<string, () => Scene3D> = {
+  ...FAMILY_SAMPLES,
   'two-crossing': twoCrossing,
   'box-stitch': boxStitch,
   'box-stitch-10': () => boxStitchRounds(10, 'Box stitch — 10 levels'),
   'box-stitch-15': () => boxStitchRounds(15, 'Box stitch — 15 levels'),
   'round-stitch-10': () => boxStitchRounds(10, 'Round stitch — 10 levels', true),
+  'twist-stitch-10': () => twistStitch(10, 'Twist stitch — 10 twists'),
   'braid-3': () => flatBraid(3, 7, 'Three-strand braid'),
   'braid-4': () => flatBraid(4, 7, 'Four-strand flat braid'),
   'diagonal': diagonalWeave,
@@ -452,17 +788,21 @@ export const SAMPLES: Record<string, () => Scene3D> = {
   'curved-stack': curvedStack,
 };
 
-export const SAMPLE_LABELS: Array<{ key: string; label: string }> = [
-  { key: 'two-crossing', label: 'Two crossing strands' },
-  { key: 'box-stitch', label: 'Box stitch — starting stitch' },
-  { key: 'box-stitch-10', label: 'Box stitch — 10 levels' },
-  { key: 'box-stitch-15', label: 'Box stitch — 15 levels' },
-  { key: 'round-stitch-10', label: 'Round stitch — 10 levels' },
-  { key: 'braid-3', label: 'Three-strand braid' },
-  { key: 'braid-4', label: 'Four-strand flat braid' },
-  { key: 'diagonal', label: 'Diagonal basket' },
-  { key: 'woven-mat', label: 'Woven mat' },
-  { key: 'curved-stack', label: 'Curved ribbon weave' },
+/** What the dropdown and the project site list, in order, with the group each sits in. */
+export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }> = [
+  { key: 'two-crossing', label: 'Two crossing strands', group: 'Basics' },
+  { key: 'box-stitch', label: 'Box stitch — starting stitch', group: 'Stitches' },
+  { key: 'box-stitch-10', label: 'Box stitch — 10 levels', group: 'Stitches' },
+  { key: 'box-stitch-15', label: 'Box stitch — 15 levels', group: 'Stitches' },
+  { key: 'round-stitch-10', label: 'Round stitch — 10 levels', group: 'Stitches' },
+  { key: 'twist-stitch-10', label: 'Twist stitch — 10 twists', group: 'Stitches' },
+  { key: 'twist-3x1-10', label: 'Twist stitch — 3×1, 10 twists', group: 'Stitches' },
+  { key: 'twist-2x2-10', label: 'Twist stitch — 2×2, 10 twists', group: 'Stitches' },
+  { key: 'braid-3', label: 'Three-strand braid', group: 'Braids' },
+  { key: 'braid-4', label: 'Four-strand flat braid', group: 'Braids' },
+  { key: 'diagonal', label: 'Diagonal basket', group: 'Weaves' },
+  { key: 'woven-mat', label: 'Woven mat', group: 'Weaves' },
+  { key: 'curved-stack', label: 'Curved ribbon weave', group: 'Weaves' },
 ];
 
 export function makeSample(key: string): Scene3D {

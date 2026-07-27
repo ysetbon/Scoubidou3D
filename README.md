@@ -104,11 +104,15 @@ crossing, so one lace weaves over-and-under just like a real basket.
   dropdown after a refresh (grouped under *Saved by you*). **Copy JSON** gives
   you the scene as text to send on or paste back in, and that same text can be
   dropped into `samples.ts` to become a permanent built-in. Nothing is uploaded.
-- 🧩 **Ten sample scenes:** two crossing strands, the **box stitch** (below) on
+- 🧩 **Thirteen sample scenes:** two crossing strands, the **box stitch** (below) on
   its own and worked as a 10- or 15-round column, the **round stitch** — the
   same four folds without the reversal, so the column repeats every round
   instead of every two ([the difference](docs/box-stitch-levels/README.md#the-round-stitch))
-  — three- and four-strand braids, a truly-woven mat (a checkerboard
+  — the **twist stitch**, three laces on a 2×1 face that turns 26° a stitch
+  ([how it is built](docs/twist-stitch/README.md)), and the same stitch derived
+  for a **3×1** and a **2×2** face
+  ([the law](docs/twist-stitch/deriving-the-turn.md)),
+  three- and four-strand braids, a truly-woven mat (a checkerboard
   of masks), a diagonal basket, and a curved ribbon weave. Each is listed with
   its own picture on [the project site](https://ysetbon.github.io/Scoubidou3D/),
   and `?sample=<key>` opens one directly — e.g.
@@ -151,6 +155,32 @@ rest on each other, which is what the level break between them says.
 Both come out of one generator, so the round count is the only difference.
 Every round, every mask, every start and end point, and the level rule they
 forced: **[docs/box-stitch-levels](docs/box-stitch-levels/)**.
+
+### The twist stitch
+
+**Twist stitch — 10 twists** is three laces rather than two, on a **2×1** face
+instead of the box stitch's square: four arms lying side by side across the face
+and two lying through it, eight crossings woven plain, four masks a stitch. What
+makes it a twist is that each stitch lands on the same face turned **26°**, so
+ten of them wind the column 260°.
+
+It is the one sample that is **not** an idealised diagram. Its first three levels
+are a scene built by hand in the app, coordinate for coordinate, and every level
+above is that scene turned — because the idealised version came out a *cylinder*.
+Solve every fold's reach and each one travels the same distance, every tip lands
+on one circle, and the column looks turned on a lathe. In the hand-built stitch
+the six folds run 461, 405, 211, 267, 303 and 272 units, and rotation carries
+that unevenness all the way up.
+
+The turn is one rigid motion applied over and over — a discrete screw group — so
+a level's six start points ride six circles about a fixed centre and every level
+can be written down in closed form. The matrix, the six radii, the one place two
+slots are coupled, and what the level-by-level pictures show:
+**[docs/twist-stitch](docs/twist-stitch/)**. Where the 26° itself might come
+from — a proposition that the turn is whatever carries a fold's tip onto its
+sibling's line, and so is set by the face's shape and how hard each fold is
+pulled, for any m×n stitch —
+**[deriving-the-turn.md](docs/twist-stitch/deriving-the-turn.md)**.
 
 ## The 3D translation, in one picture
 
