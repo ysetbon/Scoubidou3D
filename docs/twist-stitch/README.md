@@ -132,6 +132,13 @@ It is measured, not chosen. Fit each of the hand-built scene's two twists as a
 **24.6°** and **26.0°**. 26° is the value carried upward; ten twists wind the
 column 260°.
 
+Measured is not the same as explained, and there is a proposition for where it
+comes from — that the turn is fixed by the shape of the face and how hard each
+fold is pulled, `θ = 2·arctan((V/2) / ρ)`, which for a snug m×1 stitch is
+`2·arctan(1/2m)` and so **28.07°** for this one:
+**[deriving-the-turn.md](deriving-the-turn.md)**. It is not settled — the test is
+a hand-built 3×1, where it predicts about 18°.
+
 C is the mean of the hand-built scene's three levels' crossing centroids. Those
 centroids also *drift* by about (−9, −2) a level — freehand wobble — and that
 drift is deliberately **not** carried up. Kept, it would lean the column by most

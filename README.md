@@ -174,7 +174,10 @@ The turn is one rigid motion applied over and over — a discrete screw group �
 a level's six start points ride six circles about a fixed centre and every level
 can be written down in closed form. The matrix, the six radii, the one place two
 slots are coupled, and what the level-by-level pictures show:
-**[docs/twist-stitch](docs/twist-stitch/)**.
+**[docs/twist-stitch](docs/twist-stitch/)**. Where the 26° itself might come
+from — a proposition that the turn is set by the face's aspect ratio and how hard
+each fold is pulled, `2·arctan(1/2m)` for a snug m×1 —
+**[deriving-the-turn.md](docs/twist-stitch/deriving-the-turn.md)**.
 
 ## The 3D translation, in one picture
 
