@@ -93,23 +93,54 @@ function wovenMat(): Scene3D {
   return { name: 'Woven mat', strands, masks, levelBreaks: [] };
 }
 
-// 3) Three bowed ribbons that sweep across one another — a soft curved weave.
-//    They start on separate rows (so the flat ends don't overlap) but bow enough
-//    to cross in the middle, where the weave lifts and dips them over each other.
+// 3) The woven mat again, but with every lace BOWED instead of ruled straight —
+//    a soft basket. It is the one sample that puts both halves of the port under
+//    load at once: the centerline comes from OSS's eased two-segment curve
+//    (bezier.ts), and the over/unders come from a checkerboard of masks, so a
+//    ribbon has to lift and dip while it is already bending. Straight laces can
+//    hide a curve bug and a single crossing can hide a weave bug; this hides
+//    neither.
+//
+//    Each lace carries its control points at a fixed offset either side of the
+//    middle, which is what gives every one the same gentle S and keeps the fabric
+//    reading as a weave rather than a tangle.
 function curvedStack(): Scene3D {
-  const cols = [YELLOW, ORANGE, WHITE];
   const strands: Strand3D[] = [];
-  for (let i = 0; i < 3; i++) {
-    const y = 170 + i * 80;
+  const masks: MaskLink[] = [];
+  const n = 3;
+  const w = 50;
+  const BOW = 72; // how far the control points sit off the lace's own line
+  const ys = [165, 270, 375];
+  const xs = [250, 400, 550];
+
+  for (let i = 0; i < n; i++) {
+    const y = ys[i];
     strands.push(
-      mk(`${i + 1}_1`, { x: 130, y }, { x: 670, y }, cols[i], {
-        width: 50,
-        cp1: { x: 300, y: y - 120 + i * 40 },
-        cp2: { x: 500, y: y + 120 - i * 40 },
+      mk(`h${i}`, { x: 130, y }, { x: 670, y }, i % 2 ? ORANGE : YELLOW, {
+        width: w,
+        cp1: { x: 285, y: y - BOW },
+        cp2: { x: 515, y: y + BOW },
       }),
     );
   }
-  return { name: 'Curved ribbon weave', masks: [], levelBreaks: [], strands };
+  for (let i = 0; i < n; i++) {
+    const x = xs[i];
+    strands.push(
+      mk(`v${i}`, { x, y: 110 }, { x, y: 430 }, i % 2 ? WHITE : TEAL, {
+        width: w,
+        cp1: { x: x + BOW, y: 190 },
+        cp2: { x: x - BOW, y: 350 },
+      }),
+    );
+  }
+  // Same checkerboard as the straight mat: at crossing (row i, col j) the
+  // horizontal rides over when i+j is even, otherwise the vertical does.
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      masks.push((i + j) % 2 === 0 ? { overId: `h${i}`, underId: `v${j}` } : { overId: `v${j}`, underId: `h${i}` });
+    }
+  }
+  return { name: 'Curved ribbon weave', masks, levelBreaks: [], strands };
 }
 
 // 4) The box stitch (square stitch), at the starting stitch.
@@ -185,7 +216,17 @@ function boxStitch(): Scene3D {
 //     ORDER. The four arms fold in a rotation around the square, and the rotation
 //     REVERSES each round: A,D,B,C then C,B,D,A then A,D,B,C… That alternation is
 //     what makes this the BOX stitch — keep turning the same way every round and
-//     the same four moves give you the round (spiral) stitch instead.
+//     the same four moves give you the round (spiral) stitch instead, which is
+//     what `spiral` asks for. Everything else about the two is identical: same
+//     square, same four folds, same one mask a round, same strand and junction
+//     counts. What the reversal changes is the column's PERIOD: reversing makes
+//     the over/unders repeat every two rounds, and not reversing makes them
+//     repeat every one.
+//
+//     What neither one does is turn. An arm keeps to its own edge of the square
+//     for every round, so both columns rise straight; a real round stitch
+//     corkscrews because the whole square rotates a little each round, and that
+//     rotation is not modelled here. The ordering that causes it is.
 //
 //     WEAVE. Within a round the fold order already tells the truth at three of
 //     the four corners: each arm was laid on top of the one before it, so with
@@ -194,7 +235,7 @@ function boxStitch(): Scene3D {
 //     and that one contradicts the stacking, so it takes exactly ONE mask per
 //     round. Rounds don't interlock with each other at all; they rest on each
 //     other, which is what the LEVEL BREAK between them says (levels.ts).
-function boxStitchRounds(rounds: number, name: string): Scene3D {
+function boxStitchRounds(rounds: number, name: string, spiral = false): Scene3D {
   const w = 54;
   const cx = 400;
   const cy = 268;
@@ -281,8 +322,9 @@ function boxStitchRounds(rounds: number, name: string): Scene3D {
   };
 
   for (let round = 0; round < rounds; round++) {
-    // The rotation around the square, reversed every other round.
-    const order = round % 2 === 0 ? [A, D, B, C] : [C, B, D, A];
+    // The rotation around the square, reversed every other round — unless this
+    // is the round stitch, which never turns back.
+    const order = spiral || round % 2 === 0 ? [A, D, B, C] : [C, B, D, A];
     // Everything from this round up rests one storey higher than the last one.
     if (round > 0) levelBreaks.push(strands.length);
 
@@ -402,6 +444,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
   'box-stitch': boxStitch,
   'box-stitch-10': () => boxStitchRounds(10, 'Box stitch — 10 levels'),
   'box-stitch-15': () => boxStitchRounds(15, 'Box stitch — 15 levels'),
+  'round-stitch-10': () => boxStitchRounds(10, 'Round stitch — 10 levels', true),
   'braid-3': () => flatBraid(3, 7, 'Three-strand braid'),
   'braid-4': () => flatBraid(4, 7, 'Four-strand flat braid'),
   'diagonal': diagonalWeave,
@@ -414,6 +457,7 @@ export const SAMPLE_LABELS: Array<{ key: string; label: string }> = [
   { key: 'box-stitch', label: 'Box stitch — starting stitch' },
   { key: 'box-stitch-10', label: 'Box stitch — 10 levels' },
   { key: 'box-stitch-15', label: 'Box stitch — 15 levels' },
+  { key: 'round-stitch-10', label: 'Round stitch — 10 levels' },
   { key: 'braid-3', label: 'Three-strand braid' },
   { key: 'braid-4', label: 'Four-strand flat braid' },
   { key: 'diagonal', label: 'Diagonal basket' },

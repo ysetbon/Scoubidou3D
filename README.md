@@ -104,8 +104,15 @@ crossing, so one lace weaves over-and-under just like a real basket.
   dropdown after a refresh (grouped under *Saved by you*). **Copy JSON** gives
   you the scene as text to send on or paste back in, and that same text can be
   dropped into `samples.ts` to become a permanent built-in. Nothing is uploaded.
-- 🧩 **Sample scenes:** two crossing strands, the **box stitch** (below), a
-  truly-woven mat (a checkerboard of masks), and a curved ribbon weave.
+- 🧩 **Ten sample scenes:** two crossing strands, the **box stitch** (below) on
+  its own and worked as a 10- or 15-round column, the **round stitch** — the
+  same four folds without the reversal, so the column repeats every round
+  instead of every two ([the difference](docs/box-stitch-levels/README.md#the-round-stitch))
+  — three- and four-strand braids, a truly-woven mat (a checkerboard
+  of masks), a diagonal basket, and a curved ribbon weave. Each is listed with
+  its own picture on [the project site](https://ysetbon.github.io/Scoubidou3D/),
+  and `?sample=<key>` opens one directly — e.g.
+  [`/app/?sample=box-stitch-10`](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-stitch-10).
 
 ### The box stitch
 
@@ -180,13 +187,30 @@ every push to `main` publishes both to GitHub Pages
 ([deploy.yml](.github/workflows/deploy.yml)). Building for a host that serves
 from the domain root instead: `BASE_PATH=/ npm run build`.
 
+```sh
+npm run art      # redraw site/art/*.svg from src/model/samples.ts
+```
+
+Every picture of a sample on the project site is *drawn from that sample*. The
+generator ([`scripts/sample-art.ts`](scripts/sample-art.ts)) takes each scene's
+own strands, runs their centerlines through the same curve math the 3D ribbon is
+swept along, and paints the over/unders from the scene's own mask list —
+top-down for a flat scene, tipped into an oblique for one worked in storeys,
+because ten rounds of a box stitch land on the same square from straight above.
+It also prints each scene's strand / mask / level / junction counts, which are
+the numbers the site quotes. Change a sample and re-run it; the pictures and the
+counts follow, so neither can drift away from the code.
+
 ## How it's built
 
 ```
 index.html      # the project site (the landing page you get at /)
 site/site.css   #   its stylesheet — standalone, shares only the palette
+site/art/       #   one thumbnail per sample, GENERATED — see below
 app/index.html  # the app's page, served at /app/
 public/         # copied verbatim to the site root (favicon)
+scripts/
+  sample-art.ts # draws site/art/*.svg from the samples themselves (`npm run art`)
 src/
   geometry/
     bezier.ts     # port of OpenStrand's eased curve profile -> sampled centerline
