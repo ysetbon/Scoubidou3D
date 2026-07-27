@@ -108,7 +108,7 @@ crossing, so one lace weaves over-and-under just like a real basket.
   its own and worked as a 10- or 15-round column, the **round stitch** — the
   same four folds without the reversal, so the column repeats every round
   instead of every two ([the difference](docs/box-stitch-levels/README.md#the-round-stitch))
-  — the **twist stitch**, three laces on a 2×1 face that turns 28° a stitch
+  — the **twist stitch**, three laces on a 2×1 face that turns 26° a stitch
   ([how it is built](docs/twist-stitch/README.md)),
   three- and four-strand braids, a truly-woven mat (a checkerboard
   of masks), a diagonal basket, and a curved ribbon weave. Each is listed with
@@ -159,16 +159,16 @@ forced: **[docs/box-stitch-levels](docs/box-stitch-levels/)**.
 **Twist stitch — 10 twists** is three laces rather than two, on a **2×1** face
 instead of the box stitch's square: four arms lying side by side across the face
 and two lying through it, eight crossings woven plain, four masks a stitch. What
-makes it a twist is that the face each fold lands on is the same face turned
-**28°**, so ten stitches wind the column 280°.
+makes it a twist is that each stitch lands on the same face turned **26°**, so
+ten of them wind the column 260°.
 
-The interesting part is that a fold's *length* is not a free choice. A fold
-starts at the tip its arm left behind one level down, placed in the frame that
-level was woven in; unless that tip lands exactly on the line the arm is about
-to fold along, the arm lies at an angle to the three beside it and the face fans
-open as it climbs. Every reach is therefore solved from the turn — which is also
-why an arm's two folds come out different lengths.
-**[docs/twist-stitch](docs/twist-stitch/)**.
+It is the one sample that is **not** an idealised diagram. Its first three levels
+are a scene built by hand in the app, coordinate for coordinate, and every level
+above is that scene turned — because the idealised version came out a *cylinder*.
+Solve every fold's reach and each one travels the same distance, every tip lands
+on one circle, and the column looks turned on a lathe. In the hand-built stitch
+the six folds run 461, 405, 211, 267, 303 and 272 units, and rotation carries
+that unevenness all the way up. **[docs/twist-stitch](docs/twist-stitch/)**.
 
 ## The 3D translation, in one picture
 
