@@ -4,15 +4,25 @@
 import './styles.css';
 import { StrandScene } from './scene/StrandScene';
 import { Panel } from './ui/panel';
-import { makeSample } from './model/samples';
+import { SAMPLES, makeSample } from './model/samples';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const panelRoot = document.getElementById('panel') as HTMLElement;
 
-const view = new StrandScene(canvas);
-view.setScene(makeSample('two-crossing'));
+// `?sample=<key>` opens a named built-in instead of the default, so the project
+// site can link a card straight at the scene it is showing a picture of. An
+// unknown key is ignored rather than erroring — a stale bookmark should still
+// land you in a working app.
+const DEFAULT_SAMPLE = 'two-crossing';
+const requested = new URLSearchParams(window.location.search).get('sample');
+const opening = requested && Object.prototype.hasOwnProperty.call(SAMPLES, requested)
+  ? requested
+  : DEFAULT_SAMPLE;
 
-const panel = new Panel(panelRoot, view);
+const view = new StrandScene(canvas);
+view.setScene(makeSample(opening));
+
+const panel = new Panel(panelRoot, view, opening);
 
 // Dev-only handle for automated UI tests (stripped from production builds).
 if (import.meta.env.DEV) {

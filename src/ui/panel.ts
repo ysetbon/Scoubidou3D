@@ -43,10 +43,13 @@ function rgbaFromHex(hexStr: string, a: number): RGBA {
 export class Panel {
   private scene: Scene3D;
   // Which entry the Sample dropdown should show: a sample key, or 'imported'
-  // for a loaded file (the file name is shown as an extra option).
-  private sceneSource = 'two-crossing';
+  // for a loaded file (the file name is shown as an extra option). `openKey` is
+  // whatever main.ts actually put on screen, so a `?sample=` link opens with the
+  // dropdown already pointing at the scene you asked for.
+  private sceneSource: string;
 
-  constructor(private root: HTMLElement, private view: StrandScene) {
+  constructor(private root: HTMLElement, private view: StrandScene, openKey = 'two-crossing') {
+    this.sceneSource = openKey;
     this.scene = view.getScene();
     // Attach/finalize adds a strand layer, a weave pick adds a mask layer — both
     // land in the layer stack, and the tool note tracks the pending weave pick.

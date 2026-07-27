@@ -1,16 +1,18 @@
 # Box stitch — stacked levels
 
 The **box stitch** worked as a column: the starting stitch carried on for round
-after round, each round a **level** above the last. Two built-in samples:
+after round, each round a **level** above the last. Three built-in samples:
 
 | sample | rounds | strands | masks | level breaks | junctions |
 | --- | --- | --- | --- | --- | --- |
 | **Box stitch — 10 levels** (`box-stitch-10`) | 10 | 42 | 10 | 9 | 40 |
 | **Box stitch — 15 levels** (`box-stitch-15`) | 15 | 62 | 15 | 14 | 60 |
+| **Round stitch — 10 levels** (`round-stitch-10`) | 10 | 42 | 10 | 9 | 40 |
 
-Both come out of one generator, `boxStitchRounds(rounds, name)` in
-[`src/model/samples.ts`](../../src/model/samples.ts) — the round count is the
-only thing that differs. The single-round case is the older hand-built
+All three come out of one generator, `boxStitchRounds(rounds, name, spiral)` in
+[`src/model/samples.ts`](../../src/model/samples.ts) — the round count and one
+boolean are the only things that differ ([the round stitch](#the-round-stitch),
+below). The single-round case is the older hand-built
 [**Box stitch — starting stitch**](../../README.md#the-box-stitch), which this
 does not replace.
 
@@ -71,6 +73,31 @@ Levels 1–4 reproduce, fold for fold and mask for mask, a four-round stitch bui
 by hand in the app — which is where the pattern came from. The 10-level sample
 is rows 1–10 of the same table; only its *geometry* differs slightly from the
 15-level one (the fold slots below, and which round carries the loose tails).
+
+## The round stitch
+
+`boxStitchRounds` takes a `spiral` flag, and `round-stitch-10` is the same
+generator with it set. It changes one line: the rotation no longer reverses, so
+every round folds `A,D,B,C` and the table above becomes the odd rows repeated —
+`1_2 E`, `2_2 N`, `1_3 W`, `2_3 S`, then `1_4 E`, `2_4 N`, `1_5 W`, `2_5 S`, and
+so on for as many rounds as you ask for.
+
+Everything else is untouched: same square, same four folds a round, same one mask
+a round, same level break between rounds, same 42 strands and 40 junctions at ten
+rounds. Only the *order within the round* differs, and with it the layer stack.
+
+What that changes is the column's **period**. The box stitch reverses, so its
+over/unders repeat every *two* rounds — level 5 is level 3, level 6 is level 4,
+which is the alternation the table above shows. The round stitch never reverses,
+so every round is laid identically and the column repeats every *one*. Put the
+two ten-round samples side by side and the box stitch bands in pairs while the
+round stitch runs straight; that rhythm is the whole visible difference.
+
+One thing this does **not** model, in either stitch: the arms stay on their own
+edges of the square for every round, so the column rises straight rather than
+winding. A real round stitch corkscrews because the whole square turns a little
+each round. That turn is not in the generator — what is in it is the ordering
+that causes it, which is the part masks and levels are here to express.
 
 ## Every level, from above
 
