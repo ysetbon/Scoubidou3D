@@ -7,7 +7,8 @@ pinned by the two angles anyone has measured — a 1×1's 45° and the hand-buil
 2×1's 26° — and supersedes the snug limit of [§4](#4-the-snug-limit). The
 stitches in [§7](#7-what-it-predicts) are still predictions waiting to be built,
 and the `|m − n|` slack on a lopsided face is
-[unresolved](attempts/prior-art.md).*
+unresolved — the working record of what has been ruled out, and by which
+measurement, is in [attempts/](attempts/README.md).*
 
 ---
 
