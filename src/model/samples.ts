@@ -633,7 +633,11 @@ export function twistStitchMN(m: number, n: number, twists: number, name: string
     sl.dir = reach[k] >= 0 ? 1 : -1;
     reach[k] = Math.abs(reach[k]);
   });
-  const E = 0.55 * Math.min(...reach); // the pinned run's poke past the face
+  // How far the pinned run pokes past the face before its loop turns back. This is
+  // a CLEARANCE, not a length that scales with the face: the loop of a snug stitch
+  // sits half a width clear of the band it turns around whatever m and n are. The
+  // hand-built 2×1 measures 133 across / 81 through against 135 / 81 for w/2.
+  const E = w / 2;
   const TAIL = 1.5 * Math.max(...reach); // the top stitch is never folded again
 
   const turned = (p: Point, level: number): Point => {

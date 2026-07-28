@@ -127,6 +127,45 @@ So the ideal stitch is *uniform*. Which is
 [the cylinder we started from](README.md#8-why-it-is-grown-and-not-derived) — see
 [§6](#6-slack-is-what-makes-a-stitch-look-handmade).
 
+### The one length that is a clearance, not a reach
+
+Every arm above the base is bounded at both ends by the law: it starts on the tip
+its lace left one level down and stops on the line its lace folds onto one level
+up. The **base level is not**. Its arms start on the pinned run that was simply
+laid across the face, and how far that run pokes past the face before its loop
+turns back is not a reach — nothing lands on it.
+
+It is a **clearance**, and clearances do not scale with the face. The loop turns
+around the outermost perpendicular arm, so it needs half a width past that arm's
+far edge and no more, whatever m and n are:
+
+```
+   E = w/2                        ← a constant
+   entry = band + E               ← where the base arm starts
+   band  = (·−½)·gap + w/2        ← the far edge of the band it crosses
+```
+
+Getting this wrong is the one error that *looks* like the turn is wrong. Making
+`E` proportional to the reach — `0.55·min reach`, which is what this note first
+built — leaves the four loop sides of the base stitch standing off the face by a
+distance that grows with the shape: half a width at 1×1, two widths at 2×4,
+nearly four at 3×7. The column above is correct and every crossing is right, but
+the bottom stitch reads as slack on all four sides, and slack is exactly what a
+snug derivation is not allowed to have.
+
+The hand-built 2×1 measures it directly. Its three pinned runs span, from the
+face centre:
+
+| pinned run | measured | `band + w/2` |
+| --- | --- | --- |
+| weft lace, across | 133 | 135 |
+| warp lace 2, through | 85 | 81 |
+| warp lace 3, through | 78 | 81 |
+
+Within the 4 units a hand-laid scene is placed to. So `E = w/2` is not a fitted
+constant either — it is read off the one stitch that was built by hand, and it is
+the same half width for all 64 shapes.
+
 ### The one thing the geometry does *not* fix
 
 The weave has two phases. A face is a grid, so "over, under, over, under" can
@@ -350,8 +389,12 @@ shape where the two clearance bounds compete rather than one simply dominating.
 
 ## 9. What this still does not explain
 
-- **Where the base level's overhang comes from.** The pinned run's poke past the
-  face is free here.
+- **Why the loop clearance is half a width rather than some other constant.** It
+  is measured off the hand-built 2×1 and it is the smallest value that lets a
+  fold turn without the loop biting the arm it turns around — but that is an
+  argument about lace stiffness, not about the screw motion, and this note does
+  not derive it. Only that it is a constant is derived: see
+  [§3](#the-one-length-that-is-a-clearance-not-a-reach).
 - **Whether the snug bound is really the tightest a hand can pull.** It is the
   tightest that still *works*; a real thumb may stop short of it.
 - **Why the two families should share one gap.** `G = V = w` is assumed for the
