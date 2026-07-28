@@ -734,6 +734,10 @@ body {
   gap: 1px;
   padding: 6px 2px;
   line-height: 1.15;
+  /* --slack runs 0 (tight) to 1 (six widths of free arm or more). A tight face
+     reads as a solid tile; a loose one fades towards the page, because a
+     lopsided stitch really is mostly air. */
+  background: color-mix(in srgb, var(--accent) calc((1 - var(--slack, 0)) * 13%), transparent);
 }
 
 .browser-cell b {
@@ -743,6 +747,11 @@ body {
 .browser-cell small {
   font-size: 10px;
   color: var(--muted);
+}
+
+.browser-slack {
+  opacity: calc(0.45 + (1 - var(--slack, 0)) * 0.55);
+  font-variant-numeric: tabular-nums;
 }
 
 .browser-on,

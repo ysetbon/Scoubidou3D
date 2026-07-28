@@ -1,9 +1,14 @@
 # Deriving the turn — a proposition
 
 *Status: proposition. The algebra is proved and the construction is built and
-machine-checked for every m×n up to 4×4; the physical claim in
-[§4](#4-the-snug-limit) has been tested against one hand-built stitch only, and
-the stitches in [§7](#7-what-it-predicts) are predictions waiting to be built.*
+machine-checked for every m×n from 1×1 to 8×8. The turn is
+[§4b](#4b-the-turn-a-second-measurement-pins-it), `arctan(1/max(m,n))`, which is
+pinned by the two angles anyone has measured — a 1×1's 45° and the hand-built
+2×1's 26° — and supersedes the snug limit of [§4](#4-the-snug-limit). The
+stitches in [§7](#7-what-it-predicts) are still predictions waiting to be built,
+and the `|m − n|` slack on a lopsided face is
+unresolved — the working record of what has been ruled out, and by which
+measurement, is in [attempts/](attempts/README.md).*
 
 ---
 
@@ -127,6 +132,45 @@ So the ideal stitch is *uniform*. Which is
 [the cylinder we started from](README.md#8-why-it-is-grown-and-not-derived) — see
 [§6](#6-slack-is-what-makes-a-stitch-look-handmade).
 
+### The one length that is a clearance, not a reach
+
+Every arm above the base is bounded at both ends by the law: it starts on the tip
+its lace left one level down and stops on the line its lace folds onto one level
+up. The **base level is not**. Its arms start on the pinned run that was simply
+laid across the face, and how far that run pokes past the face before its loop
+turns back is not a reach — nothing lands on it.
+
+It is a **clearance**, and clearances do not scale with the face. The loop turns
+around the outermost perpendicular arm, so it needs half a width past that arm's
+far edge and no more, whatever m and n are:
+
+```
+   E = w/2                        ← a constant
+   entry = band + E               ← where the base arm starts
+   band  = (·−½)·gap + w/2        ← the far edge of the band it crosses
+```
+
+Getting this wrong is the one error that *looks* like the turn is wrong. Making
+`E` proportional to the reach — `0.55·min reach`, which is what this note first
+built — leaves the four loop sides of the base stitch standing off the face by a
+distance that grows with the shape: half a width at 1×1, two widths at 2×4,
+nearly four at 3×7. The column above is correct and every crossing is right, but
+the bottom stitch reads as slack on all four sides, and slack is exactly what a
+snug derivation is not allowed to have.
+
+The hand-built 2×1 measures it directly. Its three pinned runs span, from the
+face centre:
+
+| pinned run | measured | `band + w/2` |
+| --- | --- | --- |
+| weft lace, across | 133 | 135 |
+| warp lace 2, through | 85 | 81 |
+| warp lace 3, through | 78 | 81 |
+
+Within the 4 units a hand-laid scene is placed to. So `E = w/2` is not a fitted
+constant either — it is read off the one stitch that was built by hand, and it is
+the same half width for all 64 shapes.
+
 ### The one thing the geometry does *not* fix
 
 The weave has two phases. A face is a grid, so "over, under, over, under" can
@@ -151,6 +195,12 @@ sample was the only thing that could tell, and it does.
 ---
 
 ## 4. The snug limit
+
+> **Superseded by [§4b](#4b-the-turn-a-second-measurement-pins-it).** The bound
+> derived here is real, but it is not the turn a hand pulls: it misses both
+> angles that have since been measured. Kept because §4b is a correction *to* it,
+> and because the bound still matters — it is what says how far the turn can be
+> pushed before the weave comes apart.
 
 ρ still has to come from somewhere, and there are now **two** bounds, one per
 family, each saying an arm must cross the band it is woven through:
@@ -207,6 +257,62 @@ rational for every whole m — 15/17 and 8/17 for the 2×1, 35/37 and 12/37 for 
 
 ---
 
+## 4b. The turn: a second measurement pins it
+
+§4 asks how tight the stitch *can* be pulled. That is a bound, and a bound is not
+a law — it says where the wall is, not where the hand stops. Two angles have now
+been measured, and they agree with each other and not with the wall:
+
+| | 1×1 | 2×1 |
+| --- | --- | --- |
+| **measured** | **45.00°** | **≈26.0°** (hand-built) |
+| §4's snug limit | 53.13° | 28.07° |
+| **arctan( 1 / max(m,n) )** | **45.00°** | **26.57°** |
+
+Several forms hit 45° at a 1×1 — `90/(m+n)` and `arctan(2/(m+n))` both do. The
+hand-built 2×1 is what separates them, sending them to 30° and 33.69°. Only
+`arctan(1/max)` survives both.
+
+And it says something simpler than §4 did:
+
+```
+   tan θ = one lace width / the face the arm crosses = 1 / max(m, n)
+```
+
+**Over the run of the face, a fold migrates exactly one lace width.** No arctan of
+a square root, no `2(N−1)` correction term. §4 was solving a stricter version of
+the same idea — it required every arm to clear the far *edge* of its band, half a
+width beyond the last line's centre, and that half width is the whole of the
+1.5° it lands tight by.
+
+Only the larger dimension appears, so the turn is flat along each row past the
+diagonal:
+
+```
+          n=1    n=2    n=3    n=4    n=5    n=6    n=7    n=8
+  m=1   45.00  26.57  18.43  14.04  11.31   9.46   8.13   7.13
+  m=2   26.57  26.57  18.43  14.04  11.31   9.46   8.13   7.13
+  m=3   18.43  18.43  18.43  14.04  11.31   9.46   8.13   7.13
+  m=4   14.04  14.04  14.04  14.04  11.31   9.46   8.13   7.13
+  m=5   11.31  11.31  11.31  11.31  11.31   9.46   8.13   7.13
+  m=6    9.46   9.46   9.46   9.46   9.46   9.46   8.13   7.13
+  m=7    8.13   8.13   8.13   8.13   8.13   8.13   8.13   7.13
+  m=8    7.13   7.13   7.13   7.13   7.13   7.13   7.13   7.13
+```
+
+It sits *inside* §4's wall on the lopsided shapes and just outside it on the
+diagonal, where an arm ends up to **0.40 widths** short of its band's far edge —
+worst case 8×8. That costs nothing: the shortfall is entirely inside the half
+width of clearance, and every one of the `4mn` crossings on every level of all 64
+shapes still physically happens, tested as segments rather than assumed.
+
+What it does **not** do is close the `|m − n|` slack on the long side of a
+lopsided face — for those shapes it moves the turn by less than a tenth of a
+degree. That is a separate problem, and [prior art](attempts/prior-art.md) says it
+is the same one weavers call *jamming* and braiders meet on a rectangular mandrel.
+
+---
+
 ## 5. Does it reproduce the 2×1?
 
 Building an m×n from the formulas above and nothing else, then measuring it:
@@ -220,17 +326,18 @@ Building an m×n from the formulas above and nothing else, then measuring it:
 | warp parallel to | 0.0000° | 2.52° |
 | weft parallel to | 0.0000° | 2.10° |
 | weave, by position | `uOuO / OuOu` | `uOuO / OuOu` |
-| θ | 28.07° snug | 26.0° fitted |
+| θ | 26.57° ([§4b](#4b-the-turn-a-second-measurement-pins-it)) | 26.0° fitted |
 
 Every count matches, the weave matches crossing for crossing once both are read
 by position, and the generated stitch is *more* regular than the hand-built one —
-the expected direction. The angle is close but not equal: 28.07° snug against
-26.0° measured.
+the expected direction. The angle now matches too: **26.57° against 26.0°
+measured**, half a degree, which is inside what a hand-placed scene resolves.
 
-That gap is what ρ is for. Writing `s = ρ / ρ_min` for how much further than snug
-the folds are pulled, `s = cot(13°)/4 = 1.083`: the hand-built stitch is **8%
-slacker than snug**. One scalar, and it then has to predict *every* reach in the
-stitch — which it does, so it is not a free fit in disguise.
+The first version of this note read the remaining gap — 28.07° against 26.0° — as
+slack, a scalar ρ measuring how much further than snug the folds are pulled. That
+was fitting a residual that turned out to be an error in the law: with §4b the
+residual is 0.57°, and there is nothing left for a slack parameter to explain.
+Slack is still real in a hand-built stitch, but this sample is not evidence of it.
 
 ---
 
@@ -260,7 +367,7 @@ Built straight from the law, no measurement of a real stitch anywhere in them:
 
 | | 3×1 | 2×2 | 3×2 |
 | --- | --- | --- | --- |
-| θ | 18.925° | 25.333° | 17.992° |
+| θ | 18.435° | 26.565° | 18.435° |
 | laces | 4 | 4 | 5 |
 | arms per level | 8 | 8 | 10 |
 | crossings per level | 12 | 16 | 24 |
@@ -279,17 +386,25 @@ The 3×1's reaches, all forced, at `w = G = V = 54`:
 
 | lace | slots | reach out | reach back | arm lengths |
 | --- | --- | --- | --- | --- |
-| weft | V0 / V1 | 162 | 162 | 324 / 324 |
-| warp A | W0 / W1 | 144 | 180 | 288 / 360 |
-| warp B | W2 / W3 | 162 | 162 | 324 / 324 |
-| warp C | W4 / W5 | 180 | 144 | 360 / 288 |
+| weft | V0 / V1 | 166.4 | 166.4 | 332.8 / 332.8 |
+| warp A | W0 / W1 | 148.9 | 183.9 | 297.8 / 367.8 |
+| warp B | W2 / W3 | 166.4 | 166.4 | 332.8 / 332.8 |
+| warp C | W4 / W5 | 183.9 | 148.9 | 367.8 / 297.8 |
 
-If a stitch is worked at the same 8% slack as the hand-built 2×1, every angle in
-the table drops by about the same factor — for the 3×1, 18.92° → **17.49°**.
+There is no slack factor in these any more. The 2×1's 26.0° is 0.57° off
+`arctan(1/2)`, which is inside what a hand-placed scene resolves, so the
+`18.92° → 17.49°` correction the first version of this note applied was
+correcting for its own error, not for a hand.
 
 ---
 
 ## 7b. The whole family, built
+
+> The 64 scenes this section describes are stashed, with the generator that made
+> them and the reason they are parked, in
+> [attempts/2026-07-snug-turn](attempts/2026-07-snug-turn/). The law is not
+> settled: the shapes it gives off the m = n diagonal are the open question, and
+> nothing but a hand-built 3×1 can close it.
 
 Every m×n from 1×1 to 8×8, ten twists each, generated by `twistStitchMN` from the
 law and nothing else — one level of each, drawn from its own mask list:
@@ -301,57 +416,90 @@ warp arm on every level, warp and weft each parallel to **0°** within 1e-13, ev
 `parentId` anchor exact, and strand / mask / junction / crossing counts exactly as
 predicted by §1.
 
-**But 39 of the 64 have fold tips that land on the same point in the drawing
-plane**, and that is worth stating plainly rather than hiding. It is not a broken
-stitch. A lace's fold tips all ride *one circle* about the column, spaced by the
-turn — see [six circles](README.md#4-six-circles) — so when the angular offset
-between that lace's two slots happens to be a whole number of turns, the tip from
-level *n* lands on the tip from level *n+k*. Those two points are **k storeys
-apart in space**; only the top-down projection puts them together. The app's
-junction detection ([`connections.ts`](../../src/model/connections.ts)) glues by
-coincidence in that projection with a one-unit snap and cannot see storeys, so it
-would weld them into a fork.
+**But in 39 of the 64, two tips that are not the same joint come closer in the
+drawing plane than the app's one-unit snap** — and that is worth stating plainly
+rather than hiding. It is not a broken stitch. Fold tips ride *circles* about the
+column, spaced by the turn — see [six circles](README.md#4-six-circles) — and two
+laces that mirror each other across the face ride the *same* circle. When their
+angular offset comes near a whole number of turns, one lace's tip at level *n*
+passes within a fraction of a unit of the other's at level *n±k*:
 
-| tips | shapes |
+| closest pair that is not a joint | shapes |
 | --- | --- |
-| clean — nothing within 2 units | 16 |
-| tight — two distinct tips within 2 units | 9 |
-| fused — tips on the same point | 39 |
+| nothing within 2 units | 16 |
+| within 2 units, outside the snap | 9 |
+| inside the one-unit snap | 39 |
 
-Working fewer twists than the resonance gap avoids it, and so does nudging the
-turn off the snug value — which is exactly what the hand-built 2×1 sample does at
-26° instead of 28.07°. Slack alone does not fix it, because slack changes the turn
-and the slot offset together and the ratio between them barely moves. The real
-cure is level-aware junction detection, the same fix
-[box-stitch-levels](../box-stitch-levels/README.md#fold-slots-and-why-the-tips-are-not-all-the-same-length)
-already asks for.
+The separations are real — 0.27 to 1.0 units, never zero — and the two points are
+storeys apart in space. Only the projection puts them together, and
+[`connections.ts`](../../src/model/connections.ts) used to pair a start with
+*whichever* coincident endpoint came first in the strand array. Across those 39
+shapes that bridged **784 arms to the wrong strand**, mostly to the mirror lace
+one to three levels below.
+
+The cure is not level-aware detection. 760 of the ambiguous pairs are exactly
+**one** storey apart — and so is every genuine link in a chain, since an arm hangs
+off the arm below it. No rule on storeys can separate those two cases. What can is
+that the generator already *says* which endpoint each arm hangs off:
+`parentId` / `parentSide` is a declaration, and coincidence is only how an
+undeclared pairing is recovered. Preferring the declaration takes the 784 wrong
+bridges to zero and leaves all twelve other samples bit-identical.
+
+Two smaller things the near-misses still cost, both editor-only: dragging one of
+the pair moves the other, and the junction dot is drawn once for what look like
+two joints. Both would need the projection to carry the storey.
+
+### All 64, ten twists each
+
+Rendered from the app, one scene per cell, m down and n across:
+
+![every m×n built out to ten twists](fig/family-built.png)
+
+The shape of the family is legible at a glance. Down the **m = n** diagonal the
+column is square and upright. Off it, the smaller dimension sets the turn — the
+face is short one way, so the arms crossing the long way run far past it and the
+column opens into a skirt, the more so the further from square. `8×1` is the
+extreme: a one-deep face with arms as long as the face is wide, fanned almost
+flat. Every one of them is a genuine stitch by the checks above; the ones that
+look loose are loose *because the law says they are*, not because the build is
+wrong.
+
+From above, the same 64 — this is the view that shows the weave and the twist:
+
+![every m×n from above](fig/family-built-top.png)
 
 ---
 
 ## 8. How to falsify it
 
 Build a 3×1 by hand in the app the way the 2×1 was built — starting stitch plus
-two twists — and fit the turn the same way.
+two twists — and fit the turn the same way. [§4b](#4b-the-turn-a-second-measurement-pins-it)
+commits to a number with no free parameter left in it:
 
-- **θ ≈ 17–19°** → the law holds, and `twistStitch` can take `m` and `n` instead
-  of a fitted constant.
+- **θ ≈ 18.4°** → the law holds for a third shape and there is nothing left to fit.
 - **θ ≈ 26° again, independent of the shape** → the law is wrong. The turn would
   be something about the *lace* rather than the face — thickness, friction, how
-  far a thumb naturally pushes a fold.
-- **In between, or moving the wrong way with m** → the face shape matters but
-  this form is wrong, and the clearance bound is the suspect: perhaps a fold must
-  clear the face by a fixed margin rather than reach exactly to its edge, which
-  would put a constant inside the arctan.
+  far a thumb naturally pushes a fold. Note that a 2×2 is *also* 26.57°, so the
+  shape to build is the 3×1, not the 2×2: only a change in max(m,n) separates the
+  two explanations.
+- **In between** → the face shape matters but this form is wrong.
 
-A 2×2 would settle a second question at the same time, since it is the first
-shape where the two clearance bounds compete rather than one simply dominating.
+> The first version of this note guessed its own correction here: *"perhaps a
+> fold must clear the face by a fixed margin rather than reach exactly to its
+> edge, which would put a constant inside the arctan."* That is what happened.
+> The margin was the half width of clearance in §4's band, and taking it out is
+> §4b.
 
 ---
 
 ## 9. What this still does not explain
 
-- **Where the base level's overhang comes from.** The pinned run's poke past the
-  face is free here.
+- **Why the loop clearance is half a width rather than some other constant.** It
+  is measured off the hand-built 2×1 and it is the smallest value that lets a
+  fold turn without the loop biting the arm it turns around — but that is an
+  argument about lace stiffness, not about the screw motion, and this note does
+  not derive it. Only that it is a constant is derived: see
+  [§3](#the-one-length-that-is-a-clearance-not-a-reach).
 - **Whether the snug bound is really the tightest a hand can pull.** It is the
   tightest that still *works*; a real thumb may stop short of it.
 - **Why the two families should share one gap.** `G = V = w` is assumed for the
