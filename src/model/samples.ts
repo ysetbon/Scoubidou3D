@@ -585,9 +585,14 @@ export function twistStitchMN(m: number, n: number, twists: number, name: string
   const cx = 400;
   const cy = 300;
 
-  const hi = Math.max(m, n);
-  const lo = Math.min(m, n);
-  const TURN = 2 * Math.atan(1 / (hi + Math.sqrt(hi * hi + 2 * (lo - 1))));
+  // THE TURN. Over the run of the face, a fold migrates exactly one lace width:
+  // one width sideways for max(m,n) widths of travel. Everything else here is
+  // solved; this is the one statement about the craft, and it is measured, not
+  // fitted — it is the only form that hits BOTH angles anyone has actually built:
+  // 45.00° for a 1×1 and 26.57° against the hand-built 2×1's 26°. (The earlier
+  // snug-limit form missed both, at 53.13° and 28.07°, by solving a stricter
+  // version of the same idea — see docs/twist-stitch/attempts/2026-07-snug-turn.)
+  const TURN = Math.atan(1 / Math.max(m, n));
   const c = Math.cos(TURN);
   const s = Math.sin(TURN);
 
@@ -764,9 +769,7 @@ export const TWIST_FAMILY: TwistShape[] = (() => {
   const out: TwistShape[] = [];
   for (let m = 1; m <= TWIST_MAX; m++) {
     for (let n = 1; n <= TWIST_MAX; n++) {
-      const hi = Math.max(m, n);
-      const lo = Math.min(m, n);
-      const turn = (2 * Math.atan(1 / (hi + Math.sqrt(hi * hi + 2 * (lo - 1)))) * 180) / Math.PI;
+      const turn = (Math.atan(1 / Math.max(m, n)) * 180) / Math.PI;
       out.push({ key: `twist-${m}x${n}-10`, m, n, turn });
     }
   }

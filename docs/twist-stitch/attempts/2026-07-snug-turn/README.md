@@ -1,11 +1,17 @@
 # Stashed: the snug-turn family, July 2026
 
-**Status — parked.** The results here are complete, checked and reproducible.
-They are stashed because the turn law they rest on is **not settled**: the shapes
-it produces off the `m = n` diagonal do not look right, and no hand-built stitch
-other than the 2×1 has confirmed it. Nothing here is deleted or "fixed up" — it is
-the record of what one particular law produces, kept so the next attempt has
-something exact to disagree with.
+**Status — superseded.** The turn law these 64 scenes rest on has since been
+replaced by `θ = arctan(1/max(m,n))`
+([§4b](../../deriving-the-turn.md#4b-the-turn-a-second-measurement-pins-it)),
+which is pinned by the two angles anyone has measured — a 1×1's 45° and the
+hand-built 2×1's 26° — where the snug limit below misses both, at 53.13° and
+28.07°. It was solving a stricter version of the same idea: it made every arm
+clear the far *edge* of its band, half a width past the last line's centre, and
+that half width is the whole of the 1.5° it lands tight by.
+
+Nothing here is deleted or quietly corrected — it is the record of what the snug
+limit produces, kept so the correction has something exact to be a correction to.
+The scenes in `scenes.tar.gz` are the old law and stay that way.
 
 ## What was tried
 

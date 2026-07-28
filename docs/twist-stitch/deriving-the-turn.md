@@ -1,9 +1,13 @@
 # Deriving the turn — a proposition
 
 *Status: proposition. The algebra is proved and the construction is built and
-machine-checked for every m×n up to 4×4; the physical claim in
-[§4](#4-the-snug-limit) has been tested against one hand-built stitch only, and
-the stitches in [§7](#7-what-it-predicts) are predictions waiting to be built.*
+machine-checked for every m×n from 1×1 to 8×8. The turn is
+[§4b](#4b-the-turn-a-second-measurement-pins-it), `arctan(1/max(m,n))`, which is
+pinned by the two angles anyone has measured — a 1×1's 45° and the hand-built
+2×1's 26° — and supersedes the snug limit of [§4](#4-the-snug-limit). The
+stitches in [§7](#7-what-it-predicts) are still predictions waiting to be built,
+and the `|m − n|` slack on a lopsided face is
+[unresolved](attempts/prior-art.md).*
 
 ---
 
@@ -191,6 +195,12 @@ sample was the only thing that could tell, and it does.
 
 ## 4. The snug limit
 
+> **Superseded by [§4b](#4b-the-turn-a-second-measurement-pins-it).** The bound
+> derived here is real, but it is not the turn a hand pulls: it misses both
+> angles that have since been measured. Kept because §4b is a correction *to* it,
+> and because the bound still matters — it is what says how far the turn can be
+> pushed before the weave comes apart.
+
 ρ still has to come from somewhere, and there are now **two** bounds, one per
 family, each saying an arm must cross the band it is woven through:
 
@@ -246,6 +256,62 @@ rational for every whole m — 15/17 and 8/17 for the 2×1, 35/37 and 12/37 for 
 
 ---
 
+## 4b. The turn: a second measurement pins it
+
+§4 asks how tight the stitch *can* be pulled. That is a bound, and a bound is not
+a law — it says where the wall is, not where the hand stops. Two angles have now
+been measured, and they agree with each other and not with the wall:
+
+| | 1×1 | 2×1 |
+| --- | --- | --- |
+| **measured** | **45.00°** | **≈26.0°** (hand-built) |
+| §4's snug limit | 53.13° | 28.07° |
+| **arctan( 1 / max(m,n) )** | **45.00°** | **26.57°** |
+
+Several forms hit 45° at a 1×1 — `90/(m+n)` and `arctan(2/(m+n))` both do. The
+hand-built 2×1 is what separates them, sending them to 30° and 33.69°. Only
+`arctan(1/max)` survives both.
+
+And it says something simpler than §4 did:
+
+```
+   tan θ = one lace width / the face the arm crosses = 1 / max(m, n)
+```
+
+**Over the run of the face, a fold migrates exactly one lace width.** No arctan of
+a square root, no `2(N−1)` correction term. §4 was solving a stricter version of
+the same idea — it required every arm to clear the far *edge* of its band, half a
+width beyond the last line's centre, and that half width is the whole of the
+1.5° it lands tight by.
+
+Only the larger dimension appears, so the turn is flat along each row past the
+diagonal:
+
+```
+          n=1    n=2    n=3    n=4    n=5    n=6    n=7    n=8
+  m=1   45.00  26.57  18.43  14.04  11.31   9.46   8.13   7.13
+  m=2   26.57  26.57  18.43  14.04  11.31   9.46   8.13   7.13
+  m=3   18.43  18.43  18.43  14.04  11.31   9.46   8.13   7.13
+  m=4   14.04  14.04  14.04  14.04  11.31   9.46   8.13   7.13
+  m=5   11.31  11.31  11.31  11.31  11.31   9.46   8.13   7.13
+  m=6    9.46   9.46   9.46   9.46   9.46   9.46   8.13   7.13
+  m=7    8.13   8.13   8.13   8.13   8.13   8.13   8.13   7.13
+  m=8    7.13   7.13   7.13   7.13   7.13   7.13   7.13   7.13
+```
+
+It sits *inside* §4's wall on the lopsided shapes and just outside it on the
+diagonal, where an arm ends up to **0.40 widths** short of its band's far edge —
+worst case 8×8. That costs nothing: the shortfall is entirely inside the half
+width of clearance, and every one of the `4mn` crossings on every level of all 64
+shapes still physically happens, tested as segments rather than assumed.
+
+What it does **not** do is close the `|m − n|` slack on the long side of a
+lopsided face — for those shapes it moves the turn by less than a tenth of a
+degree. That is a separate problem, and [prior art](attempts/prior-art.md) says it
+is the same one weavers call *jamming* and braiders meet on a rectangular mandrel.
+
+---
+
 ## 5. Does it reproduce the 2×1?
 
 Building an m×n from the formulas above and nothing else, then measuring it:
@@ -259,17 +325,18 @@ Building an m×n from the formulas above and nothing else, then measuring it:
 | warp parallel to | 0.0000° | 2.52° |
 | weft parallel to | 0.0000° | 2.10° |
 | weave, by position | `uOuO / OuOu` | `uOuO / OuOu` |
-| θ | 28.07° snug | 26.0° fitted |
+| θ | 26.57° ([§4b](#4b-the-turn-a-second-measurement-pins-it)) | 26.0° fitted |
 
 Every count matches, the weave matches crossing for crossing once both are read
 by position, and the generated stitch is *more* regular than the hand-built one —
-the expected direction. The angle is close but not equal: 28.07° snug against
-26.0° measured.
+the expected direction. The angle now matches too: **26.57° against 26.0°
+measured**, half a degree, which is inside what a hand-placed scene resolves.
 
-That gap is what ρ is for. Writing `s = ρ / ρ_min` for how much further than snug
-the folds are pulled, `s = cot(13°)/4 = 1.083`: the hand-built stitch is **8%
-slacker than snug**. One scalar, and it then has to predict *every* reach in the
-stitch — which it does, so it is not a free fit in disguise.
+The first version of this note read the remaining gap — 28.07° against 26.0° — as
+slack, a scalar ρ measuring how much further than snug the folds are pulled. That
+was fitting a residual that turned out to be an error in the law: with §4b the
+residual is 0.57°, and there is nothing left for a slack parameter to explain.
+Slack is still real in a hand-built stitch, but this sample is not evidence of it.
 
 ---
 
@@ -299,7 +366,7 @@ Built straight from the law, no measurement of a real stitch anywhere in them:
 
 | | 3×1 | 2×2 | 3×2 |
 | --- | --- | --- | --- |
-| θ | 18.925° | 25.333° | 17.992° |
+| θ | 18.435° | 26.565° | 18.435° |
 | laces | 4 | 4 | 5 |
 | arms per level | 8 | 8 | 10 |
 | crossings per level | 12 | 16 | 24 |
@@ -318,13 +385,15 @@ The 3×1's reaches, all forced, at `w = G = V = 54`:
 
 | lace | slots | reach out | reach back | arm lengths |
 | --- | --- | --- | --- | --- |
-| weft | V0 / V1 | 162 | 162 | 324 / 324 |
-| warp A | W0 / W1 | 144 | 180 | 288 / 360 |
-| warp B | W2 / W3 | 162 | 162 | 324 / 324 |
-| warp C | W4 / W5 | 180 | 144 | 360 / 288 |
+| weft | V0 / V1 | 166.4 | 166.4 | 332.8 / 332.8 |
+| warp A | W0 / W1 | 148.9 | 183.9 | 297.8 / 367.8 |
+| warp B | W2 / W3 | 166.4 | 166.4 | 332.8 / 332.8 |
+| warp C | W4 / W5 | 183.9 | 148.9 | 367.8 / 297.8 |
 
-If a stitch is worked at the same 8% slack as the hand-built 2×1, every angle in
-the table drops by about the same factor — for the 3×1, 18.92° → **17.49°**.
+There is no slack factor in these any more. The 2×1's 26.0° is 0.57° off
+`arctan(1/2)`, which is inside what a hand-placed scene resolves, so the
+`18.92° → 17.49°` correction the first version of this note applied was
+correcting for its own error, not for a hand.
 
 ---
 
@@ -403,20 +472,22 @@ From above, the same 64 — this is the view that shows the weave and the twist:
 ## 8. How to falsify it
 
 Build a 3×1 by hand in the app the way the 2×1 was built — starting stitch plus
-two twists — and fit the turn the same way.
+two twists — and fit the turn the same way. [§4b](#4b-the-turn-a-second-measurement-pins-it)
+commits to a number with no free parameter left in it:
 
-- **θ ≈ 17–19°** → the law holds, and `twistStitch` can take `m` and `n` instead
-  of a fitted constant.
+- **θ ≈ 18.4°** → the law holds for a third shape and there is nothing left to fit.
 - **θ ≈ 26° again, independent of the shape** → the law is wrong. The turn would
   be something about the *lace* rather than the face — thickness, friction, how
-  far a thumb naturally pushes a fold.
-- **In between, or moving the wrong way with m** → the face shape matters but
-  this form is wrong, and the clearance bound is the suspect: perhaps a fold must
-  clear the face by a fixed margin rather than reach exactly to its edge, which
-  would put a constant inside the arctan.
+  far a thumb naturally pushes a fold. Note that a 2×2 is *also* 26.57°, so the
+  shape to build is the 3×1, not the 2×2: only a change in max(m,n) separates the
+  two explanations.
+- **In between** → the face shape matters but this form is wrong.
 
-A 2×2 would settle a second question at the same time, since it is the first
-shape where the two clearance bounds compete rather than one simply dominating.
+> The first version of this note guessed its own correction here: *"perhaps a
+> fold must clear the face by a fixed margin rather than reach exactly to its
+> edge, which would put a constant inside the arctan."* That is what happened.
+> The margin was the half width of clearance in §4's band, and taking it out is
+> §4b.
 
 ---
 
