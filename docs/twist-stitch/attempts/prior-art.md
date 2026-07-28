@@ -88,8 +88,62 @@ right assumption without touching the widths.
 
 The caveat is stated in the same literature: the geodesic assumption holds only
 where curvature is moderate and transverse slip is negligible — it breaks at
-corners. A scoubidou cross-section is *all* corners, so this may transfer badly.
-It is still the next thing to try.
+corners. A scoubidou cross-section is *all* corners.
+
+### Tried it. It gives back the law we already have.
+
+The run an arm makes is fixed once you say *which* line of its family it lands
+on, so minimum path here is a choice over lines:
+
+```
+   x(o′) = (o′ − o·cos θ) / (±sin θ)     minimise |x| over the lattice of lines,
+                                          excluding staying where you are
+```
+
+`|x|` is linear in `o′`, so it is smallest for the line nearest `o·cos θ` — and
+that is a question about how far the turn carries a line inward against how far
+apart the lines are. Across all 64 shapes and every slot:
+
+```
+   the turn carries a line inward by at most  0.16 widths
+   the lines are                              1.00 width  apart
+```
+
+So the nearest line to `o·cos θ` is always `o` itself, and the nearest one an arm
+is *allowed* to migrate to is always its neighbour — which is the pairing the
+hand-built 2×1 already showed and the law already assumes. Minimum path does not
+disagree with the landing law here; it **derives** it.
+
+That is not a failure of the idea, it is a difference in the setting. A braiding
+yarn touches down on a continuous surface, so minimising has somewhere to go. Our
+landing points are quantised to a lattice one lace width apart, and on a lattice
+that coarse the minimum is forced.
+
+### What minimum path *would* have used, if it had it
+
+Every arm climbs exactly **one storey**. That is the assumption doing the work,
+and nothing has ever tested it. Let an arm climb `k` storeys and the face turns
+`kθ` while it runs, so its reach is `≈ w/sin(kθ)` — and the loose family's slack
+collapses:
+
+| shape | family | band | reach at k=1 | best k | reach there |
+| --- | --- | --- | --- | --- | --- |
+| 1×6 | weft | 54 | 304 (+4.6w) | **5** | 57 (**+0.05w**) |
+| 2×6 | weft | 108 | 304 (+3.6w) | **2** | 117 (**+0.17w**) |
+| 3×7 | weft | 162 | 357 (+3.6w) | **8** | 164 (**+0.04w**) |
+| 2×4 | weft | 108 | 199 (+1.7w) | **6** | 117 (**+0.16w**) |
+| 3×3 | both | 162 | 149 | 1 | already tight |
+
+The tight family stays at `k = 1` throughout; only the loose one climbs. Read
+physically: **the laces on the long side fold once every k storeys instead of
+every storey**, running as long diagonals that spiral up around the spine while
+the short side folds every level.
+
+It would fix the slack. It is also not a reparameterisation of this stitch — it is
+a different stitch. An arm spanning five storeys crosses five storeys of the other
+family, so `4mn` crossings per level, one arm per line per level, and the whole
+`levelBreaks` model go with it. Worth knowing that it is the remaining degree of
+freedom; not worth building on a guess.
 
 ## Sources
 
