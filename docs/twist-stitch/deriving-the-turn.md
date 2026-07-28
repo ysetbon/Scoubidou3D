@@ -340,30 +340,38 @@ warp arm on every level, warp and weft each parallel to **0°** within 1e-13, ev
 `parentId` anchor exact, and strand / mask / junction / crossing counts exactly as
 predicted by §1.
 
-**But 39 of the 64 have fold tips that land on the same point in the drawing
-plane**, and that is worth stating plainly rather than hiding. It is not a broken
-stitch. A lace's fold tips all ride *one circle* about the column, spaced by the
-turn — see [six circles](README.md#4-six-circles) — so when the angular offset
-between that lace's two slots happens to be a whole number of turns, the tip from
-level *n* lands on the tip from level *n+k*. Those two points are **k storeys
-apart in space**; only the top-down projection puts them together. The app's
-junction detection ([`connections.ts`](../../src/model/connections.ts)) glues by
-coincidence in that projection with a one-unit snap and cannot see storeys, so it
-would weld them into a fork.
+**But in 39 of the 64, two tips that are not the same joint come closer in the
+drawing plane than the app's one-unit snap** — and that is worth stating plainly
+rather than hiding. It is not a broken stitch. Fold tips ride *circles* about the
+column, spaced by the turn — see [six circles](README.md#4-six-circles) — and two
+laces that mirror each other across the face ride the *same* circle. When their
+angular offset comes near a whole number of turns, one lace's tip at level *n*
+passes within a fraction of a unit of the other's at level *n±k*:
 
-| tips | shapes |
+| closest pair that is not a joint | shapes |
 | --- | --- |
-| clean — nothing within 2 units | 16 |
-| tight — two distinct tips within 2 units | 9 |
-| fused — tips on the same point | 39 |
+| nothing within 2 units | 16 |
+| within 2 units, outside the snap | 9 |
+| inside the one-unit snap | 39 |
 
-Working fewer twists than the resonance gap avoids it, and so does nudging the
-turn off the snug value — which is exactly what the hand-built 2×1 sample does at
-26° instead of 28.07°. Slack alone does not fix it, because slack changes the turn
-and the slot offset together and the ratio between them barely moves. The real
-cure is level-aware junction detection, the same fix
-[box-stitch-levels](../box-stitch-levels/README.md#fold-slots-and-why-the-tips-are-not-all-the-same-length)
-already asks for.
+The separations are real — 0.27 to 1.0 units, never zero — and the two points are
+storeys apart in space. Only the projection puts them together, and
+[`connections.ts`](../../src/model/connections.ts) used to pair a start with
+*whichever* coincident endpoint came first in the strand array. Across those 39
+shapes that bridged **784 arms to the wrong strand**, mostly to the mirror lace
+one to three levels below.
+
+The cure is not level-aware detection. 760 of the ambiguous pairs are exactly
+**one** storey apart — and so is every genuine link in a chain, since an arm hangs
+off the arm below it. No rule on storeys can separate those two cases. What can is
+that the generator already *says* which endpoint each arm hangs off:
+`parentId` / `parentSide` is a declaration, and coincidence is only how an
+undeclared pairing is recovered. Preferring the declaration takes the 784 wrong
+bridges to zero and leaves all twelve other samples bit-identical.
+
+Two smaller things the near-misses still cost, both editor-only: dragging one of
+the pair moves the other, and the junction dot is drawn once for what look like
+two joints. Both would need the projection to carry the storey.
 
 ---
 

@@ -91,9 +91,16 @@ function isJunction(strands: Strand3D[], index: number, side: 0 | 1): boolean {
  * A glued endpoint pair to bridge in 3D. Each strand's START that sits on
  * another strand's endpoint (the OSS "child.start glued to parent" attach shape)
  * yields one junction, pairing the child start with the parent endpoint it hangs
- * off. Derived purely from coincident points, so it reconnects imported files as
- * well as in-app attaches — and a parent carrying several children yields one
- * junction per child (never child-to-child).
+ * off — and a parent carrying several children yields one junction per child
+ * (never child-to-child).
+ *
+ * A strand that DECLARES its parent is paired with that one. Coincidence is how
+ * an undeclared pairing is recovered, not the definition of one: `x, y` is a
+ * projection of the strand, so two endpoints a storey or more apart in a stacked
+ * scene can land on the same spot without being the same joint. In a twisting
+ * column they routinely do, and picking by lowest index then bridges an arm to
+ * the wrong lace several levels down. The declaration is the author's answer to
+ * a question the projection cannot answer.
  */
 export interface Junction {
   childIndex: number;
@@ -106,22 +113,35 @@ export function collectJunctions(scene: Scene3D): Junction[] {
   const strands = scene.strands;
   const out: Junction[] = [];
   const seen = new Set<string>();
+  const indexOf = new Map<string, number>();
+  strands.forEach((s, i) => {
+    if (!s.isMask && !indexOf.has(s.id)) indexOf.set(s.id, i);
+  });
 
   for (let ci = 0; ci < strands.length; ci++) {
     const child = strands[ci];
     if (child.isMask) continue;
     const anchor = child.start; // only a strand's START hangs off a parent
-    // Find coincident endpoints on other strands; prefer a parent END (a real
-    // chain) over a parent START (two strands sharing a head).
     let best: { index: number; side: 0 | 1 } | null = null;
-    for (let pi = 0; pi < strands.length; pi++) {
-      if (pi === ci) continue;
-      const p = strands[pi];
-      if (p.isMask) continue;
-      ([1, 0] as const).forEach((side) => {
-        if (!pointsClose(endpoint(p, side), anchor)) return;
-        if (!best || (side === 1 && best.side === 0)) best = { index: pi, side };
-      });
+    // The declared parent, when it is there and still holds this start.
+    if (child.parentId != null && child.parentSide != null) {
+      const pi = indexOf.get(child.parentId);
+      if (pi !== undefined && pi !== ci && pointsClose(endpoint(strands[pi], child.parentSide), anchor)) {
+        best = { index: pi, side: child.parentSide };
+      }
+    }
+    // Otherwise find coincident endpoints on other strands; prefer a parent END
+    // (a real chain) over a parent START (two strands sharing a head).
+    if (best === null) {
+      for (let pi = 0; pi < strands.length; pi++) {
+        if (pi === ci) continue;
+        const p = strands[pi];
+        if (p.isMask) continue;
+        ([1, 0] as const).forEach((side) => {
+          if (!pointsClose(endpoint(p, side), anchor)) return;
+          if (!best || (side === 1 && best.side === 0)) best = { index: pi, side };
+        });
+      }
     }
     if (!best) continue;
     const parent = best as { index: number; side: 0 | 1 };
