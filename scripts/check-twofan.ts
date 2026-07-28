@@ -4,7 +4,7 @@
 // from the three construction rules, and this compares the result with the
 // numbers measured off the reference's own drawings
 // (docs/twist-stitch/attempts/1xn-reference/measured.json).
-import { twoFanStitch, TWOFAN_FAMILY, GAP, W } from '../src/model/twofan';
+import { twoFanStitch, twoFanColumn, columnTurn, TWOFAN_FAMILY, TWOFAN_MAX, GAP, W } from '../src/model/twofan';
 
 const REF: Record<number, { H: number; V: number; ext: number[] }> = {
   1: { H: 50.04, V: 140.04, ext: [0] },
@@ -80,4 +80,45 @@ console.log(
   `\n${TWOFAN_FAMILY.length} shapes, ${bad} failures.` +
     `  lace ${W}, gap ${GAP} = ${(GAP / W).toFixed(3)} w (floor is w + 10).`,
 );
-if (bad > 0) process.exit(1);
+
+// ---- and the column, over the whole family -------------------------------
+// A column repeats, so its levels are congruent, so both families turn by the
+// same angle -- the reference's two cannot both survive. What is checked here is
+// that the one a column CAN take still weaves: every crossing real, every fan
+// parallel, every gap at the floor.
+let miss = 0;
+let gapErr = 0;
+let skew = 0;
+let levels = 0;
+for (let m = 1; m <= TWOFAN_MAX; m++) {
+  for (let n = 1; n <= TWOFAN_MAX; n++) {
+    const sc = twoFanColumn(m, n, 4, 'x');
+    for (let L = 0; L < sc.levelBreaks.length; L++) {
+      levels++;
+      const lo = sc.levelBreaks[L];
+      const hi = sc.levelBreaks[L + 1] ?? sc.strands.length;
+      const lvl = sc.strands.slice(lo, hi);
+      const weft = lvl.filter((x) => parseInt(x.id, 10) <= n);
+      const warp = lvl.filter((x) => parseInt(x.id, 10) > n);
+      for (const p of weft) for (const q of warp) if (!cross(p, q)) miss++;
+      for (const fam of [weft, warp]) {
+        const dirs = fam.map((x) => n180(deg(x.end.x - x.start.x, x.end.y - x.start.y)));
+        skew = Math.max(skew, Math.max(...dirs) - Math.min(...dirs));
+        const th = (dirs[0] * Math.PI) / 180;
+        const nx = -Math.sin(th);
+        const ny = Math.cos(th);
+        const o = fam.map((x) => x.start.x * nx + x.start.y * ny).sort((a, b) => a - b);
+        for (let i = 1; i < o.length; i++) gapErr = Math.max(gapErr, Math.abs(o[i] - o[i - 1] - GAP));
+      }
+    }
+  }
+}
+const colBad = miss > 0 || gapErr > 1e-8 || skew > 1e-8;
+console.log(`\ncolumn, all ${TWOFAN_MAX * TWOFAN_MAX} faces x ${levels / (TWOFAN_MAX * TWOFAN_MAX)} levels:`);
+console.log(`  missing crossings ${miss}   gap error ${gapErr.toExponential(1)} px   fan skew ${skew.toExponential(1)} deg`);
+console.log(`  turn on the diagonal, where the reference has one angle and this IS it:`);
+for (const k of [1, 2, 4, 8]) {
+  console.log(`    ${k}x${k}  ${columnTurn(k, k).toFixed(2)} deg   (the old law said ${((Math.atan(1 / k) * 180) / Math.PI).toFixed(2)})`);
+}
+console.log(colBad ? '  FAIL' : '  all clear');
+if (bad > 0 || colBad) process.exit(1);

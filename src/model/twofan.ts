@@ -274,8 +274,244 @@ export const TWOFAN_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
   ]),
 );
 
-export const TWOFAN_LABELS: Array<{ key: string; label: string; group: string }> = TWOFAN_FAMILY.map((s) => ({
-  key: s.key,
-  label: `${s.m}×${s.n} — weft ${s.weft.toFixed(1)}°, warp ${s.warp.toFixed(1)}°`,
-  group: 'Twist — two fans (1×n reference)',
-}));
+
+
+// ---------------------------------------------------------------------------
+// THE COLUMN — a real m×n twist, many levels, stacked in Z.
+//
+// `twoFanStitch` above is the reference's own object: a block with its ends
+// fanned out once. It is not a level of a column, and it cannot be one. A column
+// repeats, so its levels are congruent, so it is the orbit of one stitch under a
+// screw motion — and a screw motion turns BOTH families by the same angle. Our
+// generators measure that split at exactly 0.00° on all 64 shapes, against the
+// reference's 11.58° at 1×2 and 15.69° at 1×8. Two angles do not survive
+// repetition. A column has to choose one.
+//
+// It takes the MAJORITY family's — the fan with 2·max(m,n) strands. That is the
+// one you see, the one that was laid three times too shallow under the old law,
+// and the choice is forced at m = n where the reference's two angles coincide:
+// there the formula below IS the reference, 50.03° at a 1×1.
+//
+// What the reference contributes here is not one number but three:
+//
+//   the GAP FLOOR. Neighbouring parallel laces sit `w + 10` apart, not `w`. The
+//   old column packed them edge to edge, permanently jammed — the constraint the
+//   whole single-turn derivation was missing.
+//
+//   the TURN, by way of that floor, which is what rules 45° out at a 1×1.
+//
+//   the ARM CLEARANCE, 32 px measured, where the old column used `w/2`.
+//
+// The reference's extension ladder is the one thing deliberately dropped: it
+// exists to make the gaps of a fan equal, and a rotation has already done that.
+export function twoFanColumn(m: number, n: number, levels: number, name: string): Scene3D {
+  const g = GAP;
+  const cx = 400;
+  const cy = 300;
+
+  // THE TURN, and which of the reference's two a column can actually take.
+  //
+  // Not the majority family's. A column's binding constraint is the MINORITY
+  // family: its few laces have to reach clear across the wide band the majority
+  // makes, and reach goes as 1/sin θ, so a steep turn puts that crossing out of
+  // range. Measured: at 1×8 the majority's 22.78° leaves the lone lace 281 px
+  // short of a 420 px band and the level loses 132 of its 192 crossings. The
+  // minority's angle is the one that spans it, and it is the reference's own
+  // number for that fan.
+  //
+  // This is why the old `arctan(1/max(m,n))` built columns that wove correctly
+  // while being the wrong angle: it is very nearly this one. The two coincide at
+  // m = n, where the reference has a single angle anyway — 50.03° at a 1×1, which
+  // is the number the old law got wrong.
+  const hi = Math.max(m, n);
+  const lo = Math.min(m, n);
+  const TURN = fan(lo, (2 * hi - 1) * g + 2 * POKE).turn;
+  const c = Math.cos(TURN);
+  const s = Math.sin(TURN);
+
+  interface Slot {
+    warp: boolean;
+    off: number;
+    dir: number;
+  }
+  const slots: Slot[] = [];
+  for (let i = 0; i < 2 * n; i++) slots.push({ warp: false, off: (n - 0.5 - i) * g, dir: 0 });
+  for (let j = 0; j < 2 * m; j++) slots.push({ warp: true, off: (m - 0.5 - j) * g, dir: 0 });
+  const NW = 2 * n;
+
+  const sib: number[] = [];
+  const laces: Array<{ set: number; pair: [number, number] }> = [];
+  for (let p = 0; p < n; p++) laces.push({ set: 1 + p, pair: [2 * p, 2 * p + 1] });
+  for (let p = 0; p < m; p++) laces.push({ set: 1 + n + p, pair: [NW + 2 * p, NW + 2 * p + 1] });
+  for (const l of laces) {
+    sib[l.pair[0]] = l.pair[1];
+    sib[l.pair[1]] = l.pair[0];
+  }
+  const laceOf: number[] = [];
+  for (const l of laces) for (const k of l.pair) laceOf[k] = l.set;
+
+  const on = (k: number, along: number): Point => {
+    const sl = slots[k];
+    return sl.warp ? { x: cx + sl.off, y: cy + along } : { x: cx + along, y: cy + sl.off };
+  };
+  /** Half the perpendicular band this arm crosses — the reference's, in gaps. */
+  const band = (k: number): number => (slots[k].warp ? n - 0.5 : m - 0.5) * g;
+  /** The landing law: the length that puts this tip on its sibling's line one level up. */
+  const solved = (k: number): number =>
+    (slots[sib[k]].off - slots[k].off * c) / ((slots[k].warp ? 1 : -1) * s);
+
+  const reach: number[] = slots.map((_, k) => solved(k));
+  slots.forEach((sl, k) => {
+    sl.dir = reach[k] >= 0 ? 1 : -1;
+    reach[k] = Math.abs(reach[k]);
+  });
+  // The reference's third rule, as a guard: an arm runs to whichever is further,
+  // where the landing law puts it or POKE past the band it has to cross. At this
+  // turn it never fires — and that is the check that the turn is the right one.
+  // At the majority family's angle it fires on every lopsided shape, and the fan
+  // stops being parallel when it does.
+  slots.forEach((_, k) => {
+    reach[k] = Math.max(reach[k], band(k) + POKE);
+  });
+  const TAIL = 1.5 * Math.max(...reach);
+
+  const turned = (p: Point, level: number): Point => {
+    const t = TURN * level;
+    const cc = Math.cos(t);
+    const ss = Math.sin(t);
+    const x = p.x - cx;
+    const y = p.y - cy;
+    return { x: cx + x * cc - y * ss, y: cy + x * ss + y * cc };
+  };
+  const tip = (k: number, level: number, along: number): Point =>
+    turned(on(k, slots[k].dir * along), level);
+  const entry = (k: number): Point => on(k, -slots[k].dir * (band(k) + POKE));
+
+  const colour = (set: number): RGBA => (set > n ? INDIGO : WEFT[(set - 1) % WEFT.length]);
+
+  const strands: Strand3D[] = [];
+  const masks: MaskLink[] = [];
+  const levelBreaks: number[] = [];
+  const nextId: Record<number, number> = {};
+
+  for (const l of laces) {
+    nextId[l.set] = 1;
+    strands.push(mk(`${l.set}_1`, entry(l.pair[1]), entry(l.pair[0]), colour(l.set)));
+  }
+
+  interface Arm {
+    at: Point;
+    last: string;
+    side: 0 | 1;
+  }
+  const arm: Arm[] = [];
+  for (const l of laces) {
+    arm[l.pair[0]] = { at: entry(l.pair[0]), last: `${l.set}_1`, side: 1 };
+    arm[l.pair[1]] = { at: entry(l.pair[1]), last: `${l.set}_1`, side: 0 };
+  }
+
+  for (let level = 0; level <= levels; level++) {
+    if (level > 0) levelBreaks.push(strands.length);
+    const laid: string[] = [];
+    for (let k = 0; k < slots.length; k++) {
+      const set = laceOf[k];
+      const a = arm[k];
+      const along = level === levels ? band(k) + TAIL : reach[k];
+      const end = tip(k, level, along);
+      const id = `${set}_${++nextId[set]}`;
+      strands.push(mk(id, { ...a.at }, end, colour(set), a.last, a.side));
+      laid[k] = id;
+      a.at = end;
+      a.last = id;
+      a.side = 1;
+    }
+    for (let i = 0; i < NW; i++) {
+      for (let j = NW; j < slots.length; j++) {
+        if (i % 2 !== (j - NW) % 2) masks.push({ overId: laid[i], underId: laid[j] });
+      }
+    }
+    for (const l of laces) {
+      const t = arm[l.pair[0]];
+      arm[l.pair[0]] = arm[l.pair[1]];
+      arm[l.pair[1]] = t;
+    }
+  }
+
+  return { name, strands, masks, levelBreaks };
+}
+
+/** The turn a two-fan column of this shape runs at, in degrees — the minority fan. */
+export function columnTurn(m: number, n: number): number {
+  const t = fan(Math.min(m, n), (2 * Math.max(m, n) - 1) * GAP + 2 * POKE).turn;
+  return (t * 180) / Math.PI;
+}
+
+export interface TwoFanColumnShape {
+  key: string;
+  m: number;
+  n: number;
+  /** The column's turn, in degrees — the minority fan's, which is what repeats. */
+  turn: number;
+  /** How far the loosest arm hangs past the band it crosses, in lace widths. */
+  slack: number;
+  /** `max(m,n)/min(m,n)` — how much more binding one lace does than another. */
+  load: number;
+  /** What the reference's majority fan wants, and a column cannot have. */
+  wanted: number;
+}
+
+export const TWOFAN_COLUMN_FAMILY: TwoFanColumnShape[] = (() => {
+  const out: TwoFanColumnShape[] = [];
+  for (let m = 1; m <= TWOFAN_MAX; m++) {
+    for (let n = 1; n <= TWOFAN_MAX; n++) {
+      const t = (columnTurn(m, n) * Math.PI) / 180;
+      const c = Math.cos(t);
+      const s = Math.sin(t);
+      let slack = 0;
+      for (const warp of [false, true]) {
+        const cnt = warp ? m : n;
+        const band = (warp ? n - 0.5 : m - 0.5) * GAP;
+        for (let i = 0; i < 2 * cnt; i++) {
+          const off = (cnt - 0.5 - i) * GAP;
+          const sib = (cnt - 0.5 - (i % 2 === 0 ? i + 1 : i - 1)) * GAP;
+          const reach = Math.abs((sib - off * c) / ((warp ? 1 : -1) * s));
+          slack = Math.max(slack, (reach - band) / W);
+        }
+      }
+      const wanted = (fan(Math.max(m, n), (2 * Math.min(m, n) - 1) * GAP + 2 * POKE).turn * 180) / Math.PI;
+      out.push({
+        key: `twofan-col-${m}x${n}-10`,
+        m,
+        n,
+        turn: columnTurn(m, n),
+        slack,
+        load: Math.max(m, n) / Math.min(m, n),
+        wanted,
+      });
+    }
+  }
+  return out;
+})();
+
+export const TWOFAN_COLUMN_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
+  TWOFAN_COLUMN_FAMILY.map((s) => [
+    s.key,
+    () => twoFanColumn(s.m, s.n, 10, `Two-fan column — ${s.m}×${s.n}, 10 levels, ${s.turn.toFixed(2)}°`),
+  ]),
+);
+const GROUP = 'Twist — the 1×n reference';
+
+export const TWOFAN_LABELS: Array<{ key: string; label: string; group: string }> = [
+  // The reference's own object: a block with its ends fanned out once, two angles.
+  ...TWOFAN_FAMILY.map((s) => ({
+    key: s.key,
+    label: `Stitch ${s.m}×${s.n} — weft ${s.weft.toFixed(1)}°, warp ${s.warp.toFixed(1)}°`,
+    group: GROUP,
+  })),
+  // And the column it implies. The rest of the 64 are in the browser.
+  ...[[1, 1], [2, 2], [1, 6], [3, 7]].map(([m, n]) => ({
+    key: `twofan-col-${m}x${n}-10`,
+    label: `Column ${m}×${n} — 10 levels, ${columnTurn(m, n).toFixed(1)}°`,
+    group: GROUP,
+  })),
+];
