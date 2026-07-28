@@ -96,6 +96,18 @@ cleared the last line it crosses by `POKE + w/2`, the same clearance its arm use
 Everything that carries meaning — the two angles, the gaps, the extensions — is
 the reference's.
 
+## Seeing them
+
+Four orbits and a top view of each, shot from the app's own 3D view rather than
+redrawn — `scripts/orbit-shots.mjs`, then `scripts/orbit-sheet.py`.
+
+| | |
+| --- | --- |
+| ![1×1, two-fan](../../fig/orbit-twofan-col-1x1-10.png) | **1×1 at 50.03°** — two laces, the plain scoubidou spiral |
+| ![1×1, existing](../../fig/orbit-twist-1x1-10.png) | **the same face at 45°**, the existing column, for comparison |
+| ![2×4](../../fig/orbit-twofan-col-2x4-10.png) | **2×4 at 13.61°** — 192 crossings a level, every one real |
+| ![1×6](../../fig/orbit-twofan-col-1x6-10.png) | **1×6 at 9.42°** — the lopsided case. The top view is the argument: six laces fan wide and one runs straight through them. Ribbons round a spine |
+
 ## What is not settled
 
 The reference covers **m = 1 only**. `fans.py` carries the same derivation to a
