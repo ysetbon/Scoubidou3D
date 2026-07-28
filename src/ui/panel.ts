@@ -385,15 +385,23 @@ export class Panel {
       opt.textContent = `↳ ${this.scene.name}`;
       select.appendChild(opt);
     }
-    const builtIn = el('optgroup') as HTMLOptGroupElement;
-    builtIn.label = 'Built-in';
+    // One optgroup per group, in the order SAMPLE_LABELS first mentions each —
+    // the same grouping the browser uses, so a scene sits in the same folder
+    // whichever way you reach it.
+    const byGroup = new Map<string, HTMLOptGroupElement>();
     for (const s of SAMPLE_LABELS) {
+      let g = byGroup.get(s.group);
+      if (!g) {
+        g = el('optgroup') as HTMLOptGroupElement;
+        g.label = s.group;
+        byGroup.set(s.group, g);
+        select.appendChild(g);
+      }
       const opt = el('option');
       opt.value = s.key;
       opt.textContent = s.label;
-      builtIn.appendChild(opt);
+      g.appendChild(opt);
     }
-    select.appendChild(builtIn);
     if (saved.length) {
       const mine = el('optgroup') as HTMLOptGroupElement;
       mine.label = 'Saved by you';
