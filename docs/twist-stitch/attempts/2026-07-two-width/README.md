@@ -133,5 +133,12 @@ past it, which is the 8% slack the hand-built sample shows.
   face"*. That would free the turn to go higher, at the cost of arms that stop
   inside the face and a crossing count below `4mn`. Nothing here tests it.
 
+[**Prior art**](../prior-art.md): this is textile *jamming* — a plain weave can be
+warp-jammed or weft-jammed and only in special cases both — and it is the standard
+problem of braiding over a non-circular mandrel, where a fixed carrier count over a
+rectangular section gives measured angle differences of 10°+ and the same slack,
+slip and bridging. The industry fixes are the same two we found (vary the yarn
+width, or vary the count), and nobody makes the mismatch vanish.
+
 `generator.ts` builds either variant — `build(m, n, twists, V, G, name)` solves the
 turn by bisection rather than by the closed form, so it stays honest when `V ≠ G`.
