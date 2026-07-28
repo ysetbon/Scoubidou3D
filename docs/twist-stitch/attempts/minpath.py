@@ -1,72 +1,61 @@
-"""Minimum path, applied to this structure.
+"""What I actually minimised, and what happens when the restriction comes off.
 
-The braiding version: lay the yarn where the free span from the last deposition
-point is shortest. Here the run an arm makes is fixed once you say WHICH line of
-its family it lands on, so minimum path is a choice over lines:
+A weft arm sits on the line y = b and runs along x. Its tip is (x, b). For that
+tip to land on a line of the NEXT level, that line rotated by theta must pass
+through it.
 
-    x(o') = (o' - o.cos t) / (+/- sin t)      minimise |x| over the lattice of
-                                              lines, excluding staying put
+  same family — the next level's weft line y = b'
+      (x, b) on the rotated line  ->   x = (b' - b.cos t) / (-sin t)
 
-|x| is linear in o', so it is smallest for the line nearest o.cos(t). The
-question is whether that is ever anything but the neighbour.
+  other family — the next level's warp line x = a
+      rotate it by t: points (a.c - u.s, a.s + u.c); set equal to (x, b)
+      u = (b - a.s)/c   ->   x = (a - b.sin t) / cos t
+
+Both are exact. The first is the law we use. The second is the one I excluded
+by hand, on the strength of the hand-built 2x1 — and that is the whole argument.
 """
 import math
 
 w = 54.0
 
 
-def scan(m, n):
+def runs(m, n):
     t = math.atan(1 / max(m, n))
     c, s = math.cos(t), math.sin(t)
-    worst = None
-    for warp, cnt in ((False, n), (True, m)):
-        offs = [(cnt - 0.5 - i) * w for i in range(2 * cnt)]
-        for i, o in enumerate(offs):
-            # every other line of this family, ranked by the run needed to reach it
-            cand = sorted(
-                ((abs((o2 - o * c) / ((1 if warp else -1) * s)), j) for j, o2 in enumerate(offs) if j != i),
-            )
-            best_j = cand[0][1]
-            migration = abs(best_j - i)
-            drift = o * (1 - c)          # how far the rotation carries this line inward
-            if worst is None or drift > worst[0]:
-                worst = (drift, f'{m}x{n} slot {i}')
-            if migration != 1:
-                print(f'  {m}x{n} slot {i}: minimum path migrates {migration} lines, not 1')
-    return worst
+    weft = [(n - 0.5 - i) * w for i in range(2 * n)]
+    warp = [(m - 0.5 - j) * w for j in range(2 * m)]
+    out = []
+    for i, b in enumerate(weft):
+        same = min(abs((b2 - b * c) / -s) for j, b2 in enumerate(weft) if j != i)
+        cross = min(abs((a - b * s) / c) for a in warp)
+        out.append((b, same, cross))
+    return math.degrees(t), out
 
 
-print('does minimum path ever choose a line other than the neighbour?')
-worst = (0, '')
+print('shortest run an arm can make, staying in its family vs turning the corner')
+print('(one lace width = 54)\n')
+print('shape    arm on line   stay in family   turn the corner   which is shorter')
+for (m, n) in [(2, 1), (1, 1), (3, 3), (2, 4), (1, 6), (3, 7)]:
+    deg, rows = runs(m, n)
+    b, same, cross = max(rows, key=lambda r: r[1] - r[2])
+    tag = 'CORNER' if cross < same else 'family'
+    print(f'{m}x{n} {deg:6.2f}°  off {b:7.1f}   {same:12.1f}   {cross:15.1f}   {tag}'
+          f'  ({same / cross:.0f}x shorter)' if cross < same else '')
+
+print('\nevery arm of every shape, does minimum path prefer to turn the corner?')
+prefer, total = 0, 0
 for m in range(1, 9):
     for n in range(1, 9):
-        d = scan(m, n)
-        if d[0] > worst[0]:
-            worst = d
-print('  no — the neighbour wins in all 64 shapes, every slot')
-print(f'\nwhy: the turn carries a line inward by o(1-cos t), at most {worst[0]:.1f} units ({worst[0]/w:.2f}w, {worst[1]})')
-print(f'     the lattice spacing is {w:.0f} units, so the nearest line to o.cos(t) is always o itself,')
-print('     and the nearest one you are allowed to move to is always its neighbour.')
+        _, rows = runs(m, n)
+        for b, same, cross in rows:
+            total += 1
+            if cross < same:
+                prefer += 1
+print(f'  {prefer} of {total} weft arms — {100 * prefer // total}%')
 
-print('\n--- the freedom minimum path does NOT have here, and what would use it ---')
-print('an arm climbs exactly one storey. Let it climb k, and the face turns k.t while it runs:')
-print('\nshape   turn    family      band     k=1 reach   best k   reach at best k')
-for (m, n) in [(1, 6), (2, 6), (3, 7), (2, 4), (3, 3)]:
-    t = math.atan(1 / max(m, n))
-    for warp in (False, True):
-        cnt = m if warp else n
-        band = (n if warp else m) * w
-        o = (cnt - 0.5) * w
-        sib = (cnt - 1.5) * w
-        r1 = abs((sib - o * math.cos(t)) / ((1 if warp else -1) * math.sin(t)))
-        best, bestr = 1, r1
-        for k in range(1, 40):
-            tk = k * t
-            if tk >= math.pi / 2:
-                break
-            r = abs((sib - o * math.cos(tk)) / ((1 if warp else -1) * math.sin(tk)))
-            if abs(r - band) < abs(bestr - band):
-                best, bestr = k, r
-        tag = 'warp' if warp else 'weft'
-        print(f'{m}x{n}   {math.degrees(t):5.2f}°  {tag}  {band:8.0f}  {r1:10.0f}   {best:6d}   {bestr:12.0f}'
-              f'   ({(bestr-band)/w:+.2f}w)')
+print('\nand the 2x1, arm by arm, against what the hand-built scene actually does:')
+deg, rows = runs(2, 1)
+for b, same, cross in rows:
+    print(f'  weft line at {b:+6.1f}: family {same:6.1f}   corner {cross:6.1f}'
+          f'   -> minimum path says {"CORNER" if cross < same else "family"}')
+print('  the hand-built 2x1 does: family, on all six arms (sigma-check.py)')

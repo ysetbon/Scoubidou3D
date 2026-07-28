@@ -90,39 +90,65 @@ The caveat is stated in the same literature: the geodesic assumption holds only
 where curvature is moderate and transverse slip is negligible — it breaks at
 corners. A scoubidou cross-section is *all* corners.
 
-### Tried it. It gives back the law we already have.
+### Tried it. It is falsified, and my first reading of it was circular.
 
-The run an arm makes is fixed once you say *which* line of its family it lands
-on, so minimum path here is a choice over lines:
-
-```
-   x(o′) = (o′ − o·cos θ) / (±sin θ)     minimise |x| over the lattice of lines,
-                                          excluding staying where you are
-```
-
-`|x|` is linear in `o′`, so it is smallest for the line nearest `o·cos θ` — and
-that is a question about how far the turn carries a line inward against how far
-apart the lines are. Across all 64 shapes and every slot:
+An arm on the weft line `y = b` runs along `x`, so its tip is `(x, b)`. For that
+tip to land on a line of the next level, that line rotated by θ has to pass
+through it. Two exact answers, depending on which family the line belongs to:
 
 ```
-   the turn carries a line inward by at most  0.16 widths
-   the lines are                              1.00 width  apart
+   same family, the next level's weft line y = b′
+        x = ( b′ − b·cos θ ) / ( −sin θ )
+
+   other family, the next level's warp line x = a
+        x = ( a − b·sin θ ) / cos θ
 ```
 
-So the nearest line to `o·cos θ` is always `o` itself, and the nearest one an arm
-is *allowed* to migrate to is always its neighbour — which is the pairing the
-hand-built 2×1 already showed and the law already assumes. Minimum path does not
-disagree with the landing law here; it **derives** it.
+I minimised `|x|` — which is the right objective, since the arm also rises one
+storey and that rise is the same whatever it lands on, so minimising
+`√(x² + rise²)` has the same argmin. But I minimised it over **only the first
+family of candidates**, having excluded the second by hand on the strength of the
+hand-built 2×1. That made the conclusion circular: I fed in the answer the 2×1
+gives and then reported that minimum path agrees with the 2×1.
 
-That is not a failure of the idea, it is a difference in the setting. A braiding
-yarn touches down on a continuous surface, so minimising has somewhere to go. Our
-landing points are quantised to a lattice one lace width apart, and on a lattice
-that coarse the minimum is forced.
+With the restriction off, minimum path is not ambiguous. It prefers to **turn the
+corner**, everywhere:
 
-### What minimum path *would* have used, if it had it
+| shape | arm on line | stay in family | turn the corner | |
+| --- | --- | --- | --- | --- |
+| 2×1 | 27.0 | 114.4 | **16.7** | 7× shorter |
+| 1×1 | 27.0 | 65.2 | **11.2** | 6× shorter |
+| 3×3 | 81.0 | 157.6 | **1.5** | 108× shorter |
+| 2×4 | 81.0 | 212.7 | **7.6** | 28× shorter |
+| 1×6 | 135.0 | 317.3 | **4.9** | 65× shorter |
+| 3×7 | 189.0 | 368.4 | **0.3** | 1344× shorter |
 
-Every arm climbs exactly **one storey**. That is the assumption doing the work,
-and nothing has ever tested it. Let an arm climb `k` storeys and the face turns
+**576 of 576 arms across all 64 shapes** prefer the corner. And the 2×1 — the one
+stitch that can arbitrate — does not turn corners: all six of its arms carry on in
+their own family, turning by the level turn and never by ~90°
+([`sigma-check.py`](2026-07-two-width/sigma-check.py)).
+
+So minimum path does not derive the landing law. **It contradicts it**, and the
+measurement goes against minimum path.
+
+There is a second clause it needs, too. Nothing above stops an arm landing back on
+its *own* line, and that run is shorter still — `b·tan(θ/2)`, a few units. Pure
+minimum path says: do not migrate, do not twist, there is no stitch. Both the
+"must migrate" clause and the "stay in your family" clause have to be supplied
+from outside, and between them they *are* the law. Minimum path contributes
+nothing.
+
+Why it fails here is not mysterious. A braiding yarn is held under tension by a
+carrier and free to slide, so shortest-span is real physics. A lace is pushed
+through by hand, and what it does next is fixed by how the stitch is worked — a
+rule about continuity, not an energy minimum. Nothing is pulling the free span
+short.
+
+### The one thing that came out of trying it
+
+Every arm climbs exactly **one storey**. That is an assumption nothing has ever
+tested, and it survives the above independently of minimum path — it is a
+statement about the stitch, not about path length. Let an arm climb `k` storeys and the face turns
 `kθ` while it runs, so its reach is `≈ w/sin(kθ)` — and the loose family's slack
 collapses:
 
