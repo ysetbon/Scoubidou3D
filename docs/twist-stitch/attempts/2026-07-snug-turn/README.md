@@ -68,6 +68,11 @@ run. It is self-consistent. Whether it is what a hand actually pulls is the open
 question, and the honest answer is that nothing has tested it — the only hand-built
 stitch in the repo is a 2×1.
 
+**Followed up in [2026-07-two-width](../2026-07-two-width/)**: the overhang is
+exactly `|m − n|` lace widths, no single turn can reduce it, and the assumption at
+fault is that both families share one width — not the turn and not the pairing,
+both of which the hand-built 2×1 confirms.
+
 Two things would settle it, in this order:
 
 1. **A hand-built 3×1** — the cheapest falsification. The law predicts ≈18.9° snug,
