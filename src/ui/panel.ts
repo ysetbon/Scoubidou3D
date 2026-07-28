@@ -6,7 +6,7 @@
 import { StrandScene, EditMode } from '../scene/StrandScene';
 import { MaskLink, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, TWIST_FAMILY, TWIST_MAX, makeSample } from '../model/samples';
-import { TWOFAN_COLUMN_FAMILY, TWOFAN_MAX } from '../model/twofan';
+import { HANDS, TWOFAN_COLUMN_FAMILY, TWOFAN_MAX, columnKey } from '../model/twofan';
 import { parseSceneText, sceneFromFile, sceneToJson } from '../model/sceneIO';
 import {
   addLevelBreak,
@@ -623,7 +623,9 @@ export class Panel {
 
     // The family. Rows are m, columns are n, and the two are interchangeable — an
     // m x n stitch is an n x m one looked at sideways — so the grid is symmetric.
-    body.appendChild(el('h4', 'browser-group', `Twist family — every m×n face, 10 twists`));
+    body.appendChild(
+      el('h4', 'browser-group', 'Twist family — the original, every m×n face, 10 twists'),
+    );
     body.appendChild(
       el(
         'p',
@@ -667,10 +669,12 @@ export class Panel {
     }
     body.appendChild(grid);
 
-    // The same family built to the 1xn reference instead: a gap floor of w + 10
-    // rather than laces edge to edge, and a turn that is derived rather than
-    // posited. See docs/twist-stitch/attempts/1xn-reference/.
-    body.appendChild(el('h4', 'browser-group', 'Twist family — two-fan column, every m×n face, 10 levels'));
+    // Folder two: the same 64 faces built to the 1xn reference, in both hands.
+    // Hand is a real distinction here and not a label -- the reference tabulates
+    // every size in both, and one is the exact mirror of the other.
+    body.appendChild(
+      el('h4', 'browser-group', 'Twist family — the 1×n reference, every m×n face, 10 levels, both hands'),
+    );
     body.appendChild(
       el(
         'p',
@@ -678,42 +682,47 @@ export class Panel {
         'The same 64 faces built to the 1×n reference. Two things change. Laces now ' +
           'sit a tenth of a width apart instead of touching, so the weave is no longer ' +
           'jammed against itself; and the turn comes out of that clearance rather than ' +
-          'being assumed — 50.03° at a 1×1, where the old law said 45° and 45° turns out ' +
-          'to overlap the laces. Each cell quotes its turn, and after it what the ' +
+          'being assumed — 50.03° at a 1×1, where the original says 45°, and 45° turns ' +
+          'out to overlap the laces. Each cell quotes its turn, and its tooltip what the ' +
           "reference's larger fan wants. A column cannot have that larger angle: its few " +
           'laces would no longer reach across the wide band, and the weave comes apart. ' +
           'That is why the shading off the diagonal is unchanged — the slack is real, and ' +
           'it is not the turn that causes it.',
       ),
     );
-    const g2 = el('div', 'browser-grid');
-    g2.style.gridTemplateColumns = `auto repeat(${TWOFAN_MAX}, 1fr)`;
-    g2.appendChild(el('span', 'browser-axis', ''));
-    for (let n = 1; n <= TWOFAN_MAX; n++) g2.appendChild(el('span', 'browser-axis', `n=${n}`));
-    for (let m = 1; m <= TWOFAN_MAX; m++) {
-      g2.appendChild(el('span', 'browser-axis', `m=${m}`));
-      for (let n = 1; n <= TWOFAN_MAX; n++) {
-        const s = TWOFAN_COLUMN_FAMILY.find((x) => x.m === m && x.n === n)!;
-        const b = button('', () => pick(s.key));
-        b.classList.add('browser-cell');
-        b.style.setProperty('--slack', String(Math.min(1, s.slack / 6)));
-        b.appendChild(el('b', undefined, `${m}×${n}`));
-        b.appendChild(el('small', undefined, `${s.turn.toFixed(1)}°`));
-        b.appendChild(
-          el('small', 'browser-slack', s.slack < 1 ? 'tight' : `+${s.slack.toFixed(1)}w`),
-        );
-        b.title =
-          `${m}×${n} — ${m + n} laces, ${2 * (m + n)} arms a level, turn ${s.turn.toFixed(2)}°\n` +
-          `gap ${(56 / 46).toFixed(3)} widths — the reference's floor, w + 10\n` +
-          (Math.abs(s.wanted - s.turn) < 0.005
-            ? `m = n, so the reference's two fans coincide and this IS its angle`
-            : `its larger fan wants ${s.wanted.toFixed(2)}°, which a column cannot take`) +
-          `\nloosest arm hangs ${s.slack.toFixed(2)} widths past the weave`;
-        if (s.key === this.sceneSource) b.classList.add('browser-on');
-        g2.appendChild(b);
+    for (const { hand, label, sense } of HANDS) {
+      body.appendChild(el('h5', 'browser-subgroup', `${label} — turns ${sense}`));
+      const g2 = el('div', 'browser-grid');
+      g2.style.gridTemplateColumns = `auto repeat(${TWOFAN_MAX}, 1fr)`;
+      g2.appendChild(el('span', 'browser-axis', ''));
+      for (let n = 1; n <= TWOFAN_MAX; n++) g2.appendChild(el('span', 'browser-axis', `n=${n}`));
+      for (let m = 1; m <= TWOFAN_MAX; m++) {
+        g2.appendChild(el('span', 'browser-axis', `m=${m}`));
+        for (let n = 1; n <= TWOFAN_MAX; n++) {
+          const s = TWOFAN_COLUMN_FAMILY.find((x) => x.m === m && x.n === n)!;
+          const key = columnKey(hand, m, n);
+          const b = button('', () => pick(key));
+          b.classList.add('browser-cell');
+          b.style.setProperty('--slack', String(Math.min(1, s.slack / 6)));
+          b.appendChild(el('b', undefined, `${m}×${n}`));
+          b.appendChild(el('small', undefined, `${s.turn.toFixed(1)}°`));
+          b.appendChild(
+            el('small', 'browser-slack', s.slack < 1 ? 'tight' : `+${s.slack.toFixed(1)}w`),
+          );
+          b.title =
+            `${m}×${n} ${hand.toUpperCase()} — ${m + n} laces, ${2 * (m + n)} arms a level, ` +
+            `turn ${s.turn.toFixed(2)}° ${sense}\n` +
+            "gap 1.217 widths — the reference's floor, w + 10\n" +
+            (Math.abs(s.wanted - s.turn) < 0.005
+              ? `m = n, so the reference's two fans coincide and this IS its angle`
+              : `its larger fan wants ${s.wanted.toFixed(2)}°, which a column cannot take`) +
+            `\nloosest arm hangs ${s.slack.toFixed(2)} widths past the weave`;
+          if (key === this.sceneSource) b.classList.add('browser-on');
+          g2.appendChild(b);
+        }
       }
+      body.appendChild(g2);
     }
-    body.appendChild(g2);
 
     if (saved.length) {
       body.appendChild(el('h4', 'browser-group', 'Saved by you'));

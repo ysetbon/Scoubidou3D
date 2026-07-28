@@ -4,7 +4,10 @@
 // from the three construction rules, and this compares the result with the
 // numbers measured off the reference's own drawings
 // (docs/twist-stitch/attempts/1xn-reference/measured.json).
-import { twoFanStitch, twoFanColumn, columnTurn, TWOFAN_FAMILY, TWOFAN_MAX, GAP, W } from '../src/model/twofan';
+import {
+  twoFanStitch, twoFanColumn, columnTurn, stitchKey, columnKey,
+  TWOFAN_FAMILY, TWOFAN_MAX, HANDS, GAP, W,
+} from '../src/model/twofan';
 
 const REF: Record<number, { H: number; V: number; ext: number[] }> = {
   1: { H: 50.04, V: 140.04, ext: [0] },
@@ -121,4 +124,47 @@ for (const k of [1, 2, 4, 8]) {
   console.log(`    ${k}x${k}  ${columnTurn(k, k).toFixed(2)} deg   (the old law said ${((Math.atan(1 / k) * 180) / Math.PI).toFixed(2)})`);
 }
 console.log(colBad ? '  FAIL' : '  all clear');
-if (bad > 0 || colBad) process.exit(1);
+
+// ---- and the right hand --------------------------------------------------
+// The reference says RH is the mirror of LH, always, and tabulates both. So the
+// check is against ITS right-hand numbers, not against our left-hand ones
+// reflected: if the mirror were the wrong operation this would show it.
+const RH: Record<number, { H: number; V: number }> = {
+  1: { H: -50.04, V: -140.04 }, 2: { H: -38.72, V: -117.15 },
+  3: { H: -33.32, V: -108.50 }, 4: { H: -29.89, V: -104.01 },
+  5: { H: -27.43, V: -101.27 }, 6: { H: -25.54, V: -99.42 },
+  7: { H: -24.02, V: -98.09 },  8: { H: -22.77, V: -97.09 },
+};
+let handErr = 0;
+for (const s of TWOFAN_FAMILY) {
+  const sc = twoFanStitch(1, s.n, 'x', 'rh');
+  const tw = sc.strands.slice(sc.levelBreaks[0]);
+  const dirOf = (g: typeof tw) => {
+    const d = deg(g[0].end.x - g[0].start.x, g[0].end.y - g[0].start.y);
+    return d > 90 ? d - 180 : d <= -90 ? d + 180 : d;
+  };
+  const weft = tw.filter((x) => parseInt(x.id, 10) <= s.n);
+  const warp = tw.filter((x) => parseInt(x.id, 10) > s.n);
+  const r = RH[s.n];
+  // compare as undirected lines: a fan's two halves run opposite ways
+  const near = (a: number, b: number) => {
+    const d = Math.abs(a - b) % 180;
+    return d > 90 ? 180 - d : d;
+  };
+  handErr = Math.max(handErr, near(dirOf(weft), r.H), near(dirOf(warp), r.V));
+}
+console.log(`\nright hand, against the reference's own RH column:`);
+console.log(`  largest angle error over all 8 sizes: ${handErr.toFixed(3)} deg`);
+const handBad = handErr > 0.03;
+console.log(handBad ? '  FAIL' : '  all clear');
+
+// every sample the browser can reach must build
+let built = 0;
+for (const { hand } of HANDS) {
+  for (const s of TWOFAN_FAMILY) twoFanStitch(1, s.n, stitchKey(hand, 1, s.n), hand), built++;
+  for (let m = 1; m <= TWOFAN_MAX; m++)
+    for (let n = 1; n <= TWOFAN_MAX; n++) twoFanColumn(m, n, 2, columnKey(hand, m, n), hand), built++;
+}
+console.log(`\n${built} browser samples built, both hands.`);
+
+if (bad > 0 || colBad || handBad) process.exit(1);

@@ -704,6 +704,18 @@ body {
   color: var(--muted);
 }
 
+/* A folder's subdivision — the two hands of the reference family. Reads as a
+   step below .browser-group without competing with it. */
+.browser-subgroup {
+  margin: 14px 0 6px;
+  padding-left: 9px;
+  border-left: 2px solid var(--line, rgba(128, 128, 128, 0.35));
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
 .browser-note {
   margin: -4px 0 10px;
   font-size: 12px;

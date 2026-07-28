@@ -64,7 +64,7 @@ stitches, to machine precision.
 | --- | --- |
 | [measured.json](measured.json) | angles, gaps and spreads read off the reference's own drawings — its coordinates, not its prose |
 | [fans.py](fans.py) | the construction derived from the three rules, and the check against the table |
-| [`src/model/twofan.ts`](../../../../src/model/twofan.ts) | the generator. Eight samples, `1×1` … `1×8`, in their own group in the browser |
+| [`src/model/twofan.ts`](../../../../src/model/twofan.ts) | the generator — the reference's stitch, and the column it implies, in both hands |
 | [`scripts/check-twofan.ts`](../../../../scripts/check-twofan.ts) | `npm run check:twofan` — the generated scenes against the table above |
 
 `fans.py` fits nothing. It reproduces all 16 angles to **0.016°** and 7 of the 8
@@ -72,10 +72,20 @@ extension ladders exactly, from the rules alone.
 
 ## The samples
 
-`twistStitchMN` is untouched — the eight two-fan stitches sit beside the 64
-single-turn ones rather than replacing them, so the two can be compared. Every
-existing thumbnail in `site/art` re-renders byte-identical, which is the check
-that nothing moved.
+`twistStitchMN` is untouched — everything here sits beside the original 64 rather
+than replacing them, so the two can be compared. Every existing thumbnail in
+`site/art` re-renders byte-identical, which is the check that nothing moved.
+
+The sample browser has two twist folders. The first is the original family. The
+second is this one, split into **Left hand** (clockwise) and **Right hand**
+(counter-clockwise), 64 faces each — hand is part of the key, so a face is a
+different sample in each. Both are real: the reference tabulates every size in
+both, and one is the exact mirror of the other. Mirroring across the vertical
+takes a direction θ to 180° − θ, which carries the 1×2's LH `H` of −141.28° to
+−38.72° and its `V` of 117.15° to −117.15° — both the reference's own RH numbers.
+`npm run check:twofan` verifies the right hand against **the reference's RH
+column**, not against our left hand reflected: largest error **0.016°** over all
+eight sizes, the same as the left.
 
 `npm run check:twofan` compares the generated scenes with the measured table:
 
@@ -84,6 +94,7 @@ that nothing moved.
 - the extension ladders, within **1 px** (the reference's own 1 × 8 lists 136
   where its own step gives 135.4)
 - every weft twist strand really crosses every warp one: **144 of 144** crossings
+- all **144 browser samples** build, both hands
 
 The block matches the reference **exactly** — all nine strands of a 1 × 2, both
 endpoints, to the last decimal — and every twist strand starts on the right point

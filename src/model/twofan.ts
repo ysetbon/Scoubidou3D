@@ -78,6 +78,38 @@ function mk(id: string, start: Point, end: Point, color: RGBA, parentId?: string
 }
 
 /**
+ * Which way the stitch turns. The reference gives every size in both, and they
+ * are not two constructions: "Hand only swaps `_2` and `_3`: RH is the mirror
+ * image of LH, always." Mirroring across the vertical through the centre takes
+ * its LH numbers to its RH ones exactly — a direction θ goes to 180° − θ, which
+ * carries the 1×2's H of −141.28° to −38.72° and its V of 117.15° to −117.15°,
+ * both the reference's own RH values.
+ *
+ * Left hand turns clockwise, right hand counter-clockwise.
+ */
+export type Hand = 'lh' | 'rh';
+
+export const HANDS: Array<{ hand: Hand; label: string; sense: string }> = [
+  { hand: 'lh', label: 'Left hand', sense: 'clockwise' },
+  { hand: 'rh', label: 'Right hand', sense: 'counter-clockwise' },
+];
+
+/** Reflect a scene across `x = cx`. Layer order is untouched, so the over/unders
+ *  survive: a mirror does not change which lace is on top of which. */
+function mirrored(scene: Scene3D, cx: number): Scene3D {
+  const flip = (p: Point): Point => ({ x: 2 * cx - p.x, y: p.y });
+  return {
+    ...scene,
+    strands: scene.strands.map((s) => ({
+      ...s,
+      start: flip(s.start),
+      end: flip(s.end),
+      control_points: s.control_points.map(flip) as [Point, Point],
+    })),
+  };
+}
+
+/**
  * One family's fan: `count` pairs of arms whose two columns of tips sit `d`
  * apart. Returns the fan's angle off its own family's axis, in radians, and the
  * ladder step the extensions climb by.
@@ -100,6 +132,11 @@ export function fan(count: number, d: number, g = GAP): { turn: number; step: nu
   const step = (-b + Math.sqrt(b * b - 4 * a * c)) / (2 * a);
   return { turn: Math.atan2(4 * g, 2 * d + q * step), step };
 }
+
+/** Browser keys. Hand is part of the key, so a face is a different sample in each. */
+export const stitchKey = (hand: Hand, m: number, n: number): string => `twofan-${hand}-${m}x${n}`;
+export const columnKey = (hand: Hand, m: number, n: number): string =>
+  `twofan-col-${hand}-${m}x${n}-10`;
 
 export interface TwoFanShape {
   key: string;
@@ -141,7 +178,7 @@ export const TWOFAN_FAMILY: TwoFanShape[] = Array.from({ length: TWOFAN_MAX }, (
  * leaving it, and `_4` / `_5` are the twist — `_2` continues as `_4`, `_3` as
  * `_5`. Weft sets are numbered first, then warp.
  */
-export function twoFanStitch(m: number, n: number, name: string): Scene3D {
+export function twoFanStitch(m: number, n: number, name: string, hand: Hand = 'lh'): Scene3D {
   const cx = 400;
   const cy = 300;
   const { turn: weftTurn, step: weftStep } = fan(n, (2 * m - 1) * GAP + 2 * POKE);
@@ -264,47 +301,34 @@ export function twoFanStitch(m: number, n: number, name: string): Scene3D {
     }
   }
 
-  return { name, strands, masks, levelBreaks };
+  const built = { name, strands, masks, levelBreaks };
+  return hand === 'rh' ? mirrored(built, cx) : built;
 }
 
+/** The reference's own object — a block with its ends fanned out once — both hands. */
 export const TWOFAN_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
-  TWOFAN_FAMILY.map((s) => [
-    s.key,
-    () => twoFanStitch(s.m, s.n, `Two-fan twist — ${s.m}×${s.n} (weft ${s.weft.toFixed(2)}°, warp ${s.warp.toFixed(2)}°)`),
-  ]),
+  HANDS.flatMap(({ hand, sense }) =>
+    TWOFAN_FAMILY.map((s) => [
+      stitchKey(hand, s.m, s.n),
+      () =>
+        twoFanStitch(
+          s.m,
+          s.n,
+          `Two-fan stitch — ${s.m}×${s.n} ${hand.toUpperCase()} (${sense}), ` +
+            `weft ${s.weft.toFixed(2)}°, warp ${s.warp.toFixed(2)}°`,
+          hand,
+        ),
+    ]),
+  ),
 );
 
-
-
-// ---------------------------------------------------------------------------
-// THE COLUMN — a real m×n twist, many levels, stacked in Z.
-//
-// `twoFanStitch` above is the reference's own object: a block with its ends
-// fanned out once. It is not a level of a column, and it cannot be one. A column
-// repeats, so its levels are congruent, so it is the orbit of one stitch under a
-// screw motion — and a screw motion turns BOTH families by the same angle. Our
-// generators measure that split at exactly 0.00° on all 64 shapes, against the
-// reference's 11.58° at 1×2 and 15.69° at 1×8. Two angles do not survive
-// repetition. A column has to choose one.
-//
-// It takes the MAJORITY family's — the fan with 2·max(m,n) strands. That is the
-// one you see, the one that was laid three times too shallow under the old law,
-// and the choice is forced at m = n where the reference's two angles coincide:
-// there the formula below IS the reference, 50.03° at a 1×1.
-//
-// What the reference contributes here is not one number but three:
-//
-//   the GAP FLOOR. Neighbouring parallel laces sit `w + 10` apart, not `w`. The
-//   old column packed them edge to edge, permanently jammed — the constraint the
-//   whole single-turn derivation was missing.
-//
-//   the TURN, by way of that floor, which is what rules 45° out at a 1×1.
-//
-//   the ARM CLEARANCE, 32 px measured, where the old column used `w/2`.
-//
-// The reference's extension ladder is the one thing deliberately dropped: it
-// exists to make the gaps of a fan equal, and a rotation has already done that.
-export function twoFanColumn(m: number, n: number, levels: number, name: string): Scene3D {
+export function twoFanColumn(
+  m: number,
+  n: number,
+  levels: number,
+  name: string,
+  hand: Hand = 'lh',
+): Scene3D {
   const g = GAP;
   const cx = 400;
   const cy = 300;
@@ -437,7 +461,8 @@ export function twoFanColumn(m: number, n: number, levels: number, name: string)
     }
   }
 
-  return { name, strands, masks, levelBreaks };
+  const built = { name, strands, masks, levelBreaks };
+  return hand === 'rh' ? mirrored(built, cx) : built;
 }
 
 /** The turn a two-fan column of this shape runs at, in degrees — the minority fan. */
@@ -494,24 +519,39 @@ export const TWOFAN_COLUMN_FAMILY: TwoFanColumnShape[] = (() => {
 })();
 
 export const TWOFAN_COLUMN_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
-  TWOFAN_COLUMN_FAMILY.map((s) => [
-    s.key,
-    () => twoFanColumn(s.m, s.n, 10, `Two-fan column — ${s.m}×${s.n}, 10 levels, ${s.turn.toFixed(2)}°`),
-  ]),
+  HANDS.flatMap(({ hand, sense }) =>
+    TWOFAN_COLUMN_FAMILY.map((s) => [
+      columnKey(hand, s.m, s.n),
+      () =>
+        twoFanColumn(
+          s.m,
+          s.n,
+          10,
+          `Two-fan column — ${s.m}×${s.n} ${hand.toUpperCase()} (${sense}), ` +
+            `10 levels, ${s.turn.toFixed(2)}°`,
+          hand,
+        ),
+    ]),
+  ),
 );
-const GROUP = 'Twist — the 1×n reference';
 
-export const TWOFAN_LABELS: Array<{ key: string; label: string; group: string }> = [
-  // The reference's own object: a block with its ends fanned out once, two angles.
-  ...TWOFAN_FAMILY.map((s) => ({
-    key: s.key,
-    label: `Stitch ${s.m}×${s.n} — weft ${s.weft.toFixed(1)}°, warp ${s.warp.toFixed(1)}°`,
-    group: GROUP,
-  })),
-  // And the column it implies. The rest of the 64 are in the browser.
-  ...[[1, 1], [2, 2], [1, 6], [3, 7]].map(([m, n]) => ({
-    key: `twofan-col-${m}x${n}-10`,
-    label: `Column ${m}×${n} — 10 levels, ${columnTurn(m, n).toFixed(1)}°`,
-    group: GROUP,
-  })),
-];
+// The named list. These are the reference's own object -- a block with its ends
+// fanned out once -- not levels of a column; the columns live in the browser grid.
+const GROUP = 'Twist — the reference stitch (block + one twist)';
+
+export const TWOFAN_LABELS: Array<{ key: string; label: string; group: string }> = HANDS.flatMap(
+  ({ hand, label }) => [
+    // The reference's own object at every size it tabulates, plus three columns.
+    // The other 61 faces per hand are in the browser.
+    ...TWOFAN_FAMILY.map((s) => ({
+      key: stitchKey(hand, s.m, s.n),
+      label: `${label} · stitch ${s.m}×${s.n} — weft ${s.weft.toFixed(1)}°, warp ${s.warp.toFixed(1)}°`,
+      group: GROUP,
+    })),
+    ...([[1, 1], [2, 2], [1, 6]] as Array<[number, number]>).map(([m, n]) => ({
+      key: columnKey(hand, m, n),
+      label: `${label} · column ${m}×${n} — 10 levels, ${columnTurn(m, n).toFixed(1)}°`,
+      group: GROUP,
+    })),
+  ],
+);
