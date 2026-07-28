@@ -64,9 +64,37 @@ stitches, to machine precision.
 | --- | --- |
 | [measured.json](measured.json) | angles, gaps and spreads read off the reference's own drawings — its coordinates, not its prose |
 | [fans.py](fans.py) | the construction derived from the three rules, and the check against the table |
+| [`src/model/twofan.ts`](../../../../src/model/twofan.ts) | the generator. Eight samples, `1×1` … `1×8`, in their own group in the browser |
+| [`scripts/check-twofan.ts`](../../../../scripts/check-twofan.ts) | `npm run check:twofan` — the generated scenes against the table above |
 
 `fans.py` fits nothing. It reproduces all 16 angles to **0.016°** and 7 of the 8
 extension ladders exactly, from the rules alone.
+
+## The samples
+
+`twistStitchMN` is untouched — the eight two-fan stitches sit beside the 64
+single-turn ones rather than replacing them, so the two can be compared. Every
+existing thumbnail in `site/art` re-renders byte-identical, which is the check
+that nothing moved.
+
+`npm run check:twofan` compares the generated scenes with the measured table:
+
+- both fan angles, within **0.02°** on all eight
+- every gap exactly `56` — largest error `4 × 10⁻¹³` px over 92 gaps
+- the extension ladders, within **1 px** (the reference's own 1 × 8 lists 136
+  where its own step gives 135.4)
+- every weft twist strand really crosses every warp one: **144 of 144** crossings
+
+The block matches the reference **exactly** — all nine strands of a 1 × 2, both
+endpoints, to the last decimal — and every twist strand starts on the right point
+in the right direction.
+
+One thing is not the reference's: **how long a twist strand runs**. Its tails come
+out of its aligner's bookkeeping rather than out of the geometry, and are 8–29%
+longer with no rule behind the variation. Here a twist strand runs until it has
+cleared the last line it crosses by `POKE + w/2`, the same clearance its arm used.
+Everything that carries meaning — the two angles, the gaps, the extensions — is
+the reference's.
 
 ## What is not settled
 

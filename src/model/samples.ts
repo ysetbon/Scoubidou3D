@@ -4,6 +4,7 @@
 // lanyards that inspired the 3D treatment.
 
 import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
+import { TWOFAN_LABELS, TWOFAN_SAMPLES } from './twofan';
 
 const YELLOW: RGBA = { r: 245, g: 200, b: 55, a: 255 };
 const ORANGE: RGBA = { r: 226, g: 122, b: 38, a: 255 };
@@ -823,6 +824,7 @@ const FAMILY_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
 
 export const SAMPLES: Record<string, () => Scene3D> = {
   ...FAMILY_SAMPLES,
+  ...TWOFAN_SAMPLES,
   'two-crossing': twoCrossing,
   'box-stitch': boxStitch,
   'box-stitch-10': () => boxStitchRounds(10, 'Box stitch — 10 levels'),
@@ -851,6 +853,9 @@ export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }>
   { key: 'diagonal', label: 'Diagonal basket', group: 'Weaves' },
   { key: 'woven-mat', label: 'Woven mat', group: 'Weaves' },
   { key: 'curved-stack', label: 'Curved ribbon weave', group: 'Weaves' },
+  // The 1xn reference's stitch, alongside the single-turn one rather than replacing
+  // it: two fans, two angles. See docs/twist-stitch/attempts/1xn-reference/.
+  ...TWOFAN_LABELS,
 ];
 
 export function makeSample(key: string): Scene3D {
