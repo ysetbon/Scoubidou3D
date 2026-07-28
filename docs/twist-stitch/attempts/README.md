@@ -41,7 +41,15 @@ apart and so is every genuine link — but `parentId` already says which.
 
 ---
 
-## The open problem
+## The open problem — now with an answer to test
+
+> **Superseded by [1xn-reference](1xn-reference/).** An external reference for
+> 1 × 1 … 1 × 8 reports **two angles per stitch, one per family**, and our single
+> turn turns out to track the *minority* family to within 0.05° while saying
+> nothing about the majority one. Give each fan its own angle and its own arm
+> extensions and every gap lands at the floor — no slack, in all sixteen stitches.
+> The section below is why one turn cannot do it; the reference is what to do
+> instead. Not yet adopted in `samples.ts`, and verified only at m = 1.
 
 **On a lopsided face the long side is slack by `|m − n|` lace widths.** Under one
 width on the diagonal, 5.5 at 1×6, 7.5 at 8×1. It has a second face: the smaller
@@ -103,6 +111,7 @@ That is the useful part: the derivation is not what is wrong.
 
 | | |
 | --- | --- |
+| [1xn-reference](1xn-reference/) | **the current front.** An outside reference for 1 × 1 … 1 × 8: two fans, two angles, a gap floor, and per-arm extensions |
 | [2026-07-snug-turn](2026-07-snug-turn/) | superseded. All 64 scenes built under the old snug-limit turn, with the generator that made them |
 | [2026-07-two-width](2026-07-two-width/) | rejected. The `\|m − n\|` measurement, the proof the turn cannot be blamed, and the two-width variant that would fix it |
 | [prior-art.md](prior-art.md) | jamming, non-circular-mandrel braiding, and minimum path applied and falsified |
