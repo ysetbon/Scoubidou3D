@@ -1,7 +1,9 @@
 # Two widths: the only way both sides come out snug
 
-**Status — a result, not yet a decision.** It says exactly what has to change for a
-lopsided face to pull tight, and it is not the turn.
+**Status — rejected.** The widths are not free: a stitch is made from one gauge of
+lace, and changing that is not a fix, it is a different object. What survives is
+the measurement — `|m − n|` widths of overhang — and the proof that the turn
+cannot be blamed for it. Kept for that, not as a proposal.
 
 ## The complaint
 
@@ -96,13 +98,37 @@ built by hand is an equal-width stitch pulled slightly slack, which is A, not B.
 But at `|m−n| = 1` the two are barely a width apart, so it cannot discriminate.
 **A lopsided hand-built stitch is still the only thing that can.**
 
+## One width: the turn is already against the ceiling
+
+If the widths are fixed, the only knob left is the turn, and it has no room. Force
+it higher and count the crossings that *physically* happen — every weft arm
+against every warp arm of its level, tested as segments rather than assumed:
+
+| shape | snug turn | at snug | +0.5° | +2° |
+| --- | --- | --- | --- | --- |
+| 1×6 | 9.53° | all | all | 24 gone |
+| 2×6 | 9.40° | all | all | 48 gone |
+| 3×7 | 8.01° | all | all | 72 gone |
+| 2×4 | 13.83° | all | all | 24 gone |
+| 4×4 | 13.13° | all | all | 28 gone |
+| 2×1 | 28.07° | all | all | all |
+
+At the shipped turn every crossing is real. Two degrees tighter and the arms stop
+reaching each other — the weave is not merely loose, it comes apart. So the turn is
+within about a degree of its hard ceiling for every lopsided shape, and the
+`|m − n|` slack on the long side cannot be turned away.
+
+The 2×1 is the exception that explains the hand-built one: at `|m − n| = 1` the
+ceiling is far enough above the snug turn that the stitch tolerates being pulled
+past it, which is the 8% slack the hand-built sample shows.
+
 ## Where this leaves it
 
 - With **one width**, `|m−n|` widths of overhang is a theorem, not a bug. If real
   laces come in one width, a lopsided twist really is loose, and A is already
   optimal.
-- With **two widths in the ratio √(m/n)**, it goes away. That is a claim about the
-  craft — thin laces on the long side — and it is testable with real lace.
+- With **two widths in the ratio √(m/n)**, it goes away — but that is a different
+  object, not this one, and it is rejected on those grounds.
 - One door not opened: keeping one width but dropping *"every arm crosses the whole
   face"*. That would free the turn to go higher, at the cost of arms that stop
   inside the face and a crossing count below `4mn`. Nothing here tests it.
