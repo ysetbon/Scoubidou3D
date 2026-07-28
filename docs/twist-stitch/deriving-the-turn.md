@@ -10,6 +10,14 @@ and the `|m − n|` slack on a lopsided face is
 unresolved — the working record of what has been ruled out, and by which
 measurement, is in [attempts/](attempts/README.md).*
 
+> **Contradicted at the premise.** This whole note gives a stitch **one** turn.
+> An outside reference for 1 × 1 … 1 × 8 gives it **two**, one per family, and
+> `arctan(1/max(m,n))` turns out to be the minority family's angle — right to
+> within 0.05°, and applied to the wrong strands. The 45° that pins §4b is also
+> unavailable at 1 × 1: it puts the laces 45.25 px apart on a 46 px lace, i.e.
+> overlapping. See [attempts/1xn-reference](attempts/1xn-reference/). Read what
+> follows as the best single-turn account, which is not the same as a correct one.*
+
 ---
 
 ## The question
