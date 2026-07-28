@@ -373,6 +373,25 @@ Two smaller things the near-misses still cost, both editor-only: dragging one of
 the pair moves the other, and the junction dot is drawn once for what look like
 two joints. Both would need the projection to carry the storey.
 
+### All 64, ten twists each
+
+Rendered from the app, one scene per cell, m down and n across:
+
+![every m×n built out to ten twists](fig/family-built.png)
+
+The shape of the family is legible at a glance. Down the **m = n** diagonal the
+column is square and upright. Off it, the smaller dimension sets the turn — the
+face is short one way, so the arms crossing the long way run far past it and the
+column opens into a skirt, the more so the further from square. `8×1` is the
+extreme: a one-deep face with arms as long as the face is wide, fanned almost
+flat. Every one of them is a genuine stitch by the checks above; the ones that
+look loose are loose *because the law says they are*, not because the build is
+wrong.
+
+From above, the same 64 — this is the view that shows the weave and the twist:
+
+![every m×n from above](fig/family-built-top.png)
+
 ---
 
 ## 8. How to falsify it
