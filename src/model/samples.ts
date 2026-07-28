@@ -764,13 +764,54 @@ export interface TwistShape {
   n: number;
   /** The turn the law gives this face, in degrees — what the grid quotes. */
   turn: number;
+  /**
+   * How far the loosest arm hangs past the band it crosses, in lace widths.
+   *
+   * The 64 are NOT 64 equally good stitches and the grid should not pretend they
+   * are. One turn has to serve two families whose bands are m and n widths deep,
+   * so the family crossing the shallower one is left with arm it does not need —
+   * about `|m − n|` widths of it, free air. On the diagonal it is under a width;
+   * at 1×8 it is seven, and only a fifth of each of those arms is inside the
+   * weave at all. Nothing is broken there — every crossing is real — but the
+   * thing has stopped being a woven column and become ribbons round a spine.
+   */
+  slack: number;
+  /**
+   * How much more binding one lace does than another: `max(m,n)/min(m,n)`. A
+   * lace of the smaller family is in `4·max` crossings a level, one of the
+   * larger in `4·min`. At 1×6 the single lace is in ALL 24 of them, so the
+   * stitch hangs off one piece of plastic.
+   */
+  load: number;
 }
 export const TWIST_FAMILY: TwistShape[] = (() => {
   const out: TwistShape[] = [];
+  const w = 54;
   for (let m = 1; m <= TWIST_MAX; m++) {
     for (let n = 1; n <= TWIST_MAX; n++) {
-      const turn = (Math.atan(1 / Math.max(m, n)) * 180) / Math.PI;
-      out.push({ key: `twist-${m}x${n}-10`, m, n, turn });
+      const t = Math.atan(1 / Math.max(m, n));
+      const c = Math.cos(t);
+      const s = Math.sin(t);
+      // the loosest arm of either family, measured against the band it crosses
+      let slack = 0;
+      for (const warp of [false, true]) {
+        const cnt = warp ? m : n;
+        const band = (warp ? n : m) * w;
+        for (let i = 0; i < 2 * cnt; i++) {
+          const off = (cnt - 0.5 - i) * w;
+          const sib = ((cnt - 0.5 - (i % 2 === 0 ? i + 1 : i - 1)) * w);
+          const reach = Math.abs((sib - off * c) / ((warp ? 1 : -1) * s));
+          slack = Math.max(slack, (reach - band) / w);
+        }
+      }
+      out.push({
+        key: `twist-${m}x${n}-10`,
+        m,
+        n,
+        turn: (t * 180) / Math.PI,
+        slack,
+        load: Math.max(m, n) / Math.min(m, n),
+      });
     }
   }
   return out;

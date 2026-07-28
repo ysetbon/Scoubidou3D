@@ -616,7 +616,16 @@ export class Panel {
     // m x n stitch is an n x m one looked at sideways — so the grid is symmetric.
     body.appendChild(el('h4', 'browser-group', `Twist family — every m×n face, 10 twists`));
     body.appendChild(
-      el('p', 'browser-note', 'Rows m, columns n. Each button quotes the turn the law gives that face.'),
+      el(
+        'p',
+        'browser-note',
+        'Rows m, columns n, and each cell quotes its turn. The shading is how far the ' +
+          'loosest arm hangs past the weave: a square face pulls tight, a lopsided one ' +
+          'cannot. Off the diagonal one turn has to serve two bands of different depth, ' +
+          'so the shallower side is left with arm it does not need — and the smaller ' +
+          'family carries the binding alone. Pale cells are ribbons round a spine, not ' +
+          'woven columns. Nothing is broken in them; they are just loose by construction.',
+      ),
     );
     const grid = el('div', 'browser-grid');
     grid.style.gridTemplateColumns = `auto repeat(${TWIST_MAX}, 1fr)`;
@@ -628,9 +637,21 @@ export class Panel {
         const s = TWIST_FAMILY.find((x) => x.m === m && x.n === n)!;
         const b = button('', () => pick(s.key));
         b.classList.add('browser-cell');
+        // Fade with the slack, so the usable region of the family is visible at a
+        // glance rather than hidden behind 64 identical buttons.
+        b.style.setProperty('--slack', String(Math.min(1, s.slack / 6)));
         b.appendChild(el('b', undefined, `${m}×${n}`));
         b.appendChild(el('small', undefined, `${s.turn.toFixed(1)}°`));
-        b.title = `${m}×${n} — ${m + n} laces, ${2 * (m + n)} arms a level, turn ${s.turn.toFixed(2)}°`;
+        b.appendChild(el('small', 'browser-slack', s.slack < 1 ? 'tight' : `+${s.slack.toFixed(1)}w`));
+        const crossings = 4 * m * n;
+        const most = 4 * Math.max(m, n);
+        b.title =
+          `${m}×${n} — ${m + n} laces, ${2 * (m + n)} arms a level, turn ${s.turn.toFixed(2)}°\n` +
+          `loosest arm hangs ${s.slack.toFixed(2)} widths past the weave\n` +
+          (s.load === 1
+            ? `every lace is in ${most} of the ${crossings} crossings a level — balanced`
+            : `a ${Math.min(m, n) === m ? 'warp' : 'weft'} lace is in ${most} of the ${crossings} ` +
+              `crossings a level against ${4 * Math.min(m, n)} for the others — ${s.load.toFixed(1)}× the load`);
         if (s.key === this.sceneSource) b.classList.add('browser-on');
         grid.appendChild(b);
       }
