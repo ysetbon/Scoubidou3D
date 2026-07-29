@@ -328,6 +328,9 @@ export function twoFanColumn(
   levels: number,
   name: string,
   hand: Hand = 'lh',
+  /** Override the turn, in radians. For comparing against what a family wants —
+   *  see docs/twist-stitch/attempts/1xn-reference/. Omit for the derived turn. */
+  turnOverride?: number,
 ): Scene3D {
   const g = GAP;
   const cx = 400;
@@ -347,9 +350,7 @@ export function twoFanColumn(
   // while being the wrong angle: it is very nearly this one. The two coincide at
   // m = n, where the reference has a single angle anyway — 50.03° at a 1×1, which
   // is the number the old law got wrong.
-  const hi = Math.max(m, n);
-  const lo = Math.min(m, n);
-  const TURN = fan(lo, (2 * hi - 1) * g + 2 * POKE).turn;
+  const TURN = turnOverride ?? columnTurnRad(m, n);
   const c = Math.cos(TURN);
   const s = Math.sin(TURN);
 
@@ -465,10 +466,43 @@ export function twoFanColumn(
   return hand === 'rh' ? mirrored(built, cx) : built;
 }
 
-/** The turn a two-fan column of this shape runs at, in degrees — the minority fan. */
+/**
+ * The turn a two-fan column of this shape runs at, in radians — the MAJORITY fan's.
+ *
+ * This is a chosen trade, not a derivation, and it is worth being plain about which.
+ *
+ * The majority family is the one you see: 2·max(m,n) strands against the minority's
+ * 2·min. At the minority fan's angle it is handed an arm several widths longer than
+ * the shallow band it crosses, and the leftover hangs off the side of every level —
+ * six widths on a 1×5. Its own fan angle is the one that lays it tight, and that is
+ * what a lopsided face is judged on by eye.
+ *
+ * WHAT IT COSTS, per face, measured rather than estimated by
+ * `npm run probe:turn` and asserted by `npm run check:twofan`:
+ *
+ *   - crossings stop being real. A 1×5 keeps 162 of 200 a level, a 1×8 80 of 96.
+ *     The minority arms no longer reach clear across the majority band.
+ *   - the fan stops having equal gaps. Arms that fall short get extended to
+ *     compensate, and on a 1×5 the level's gaps run 56 to 167.6 px against the
+ *     reference's floor of 56 and ceiling of 69.
+ *
+ * Faces on the diagonal pay nothing: at m = n the reference's two fans coincide, so
+ * this IS the minority fan and every crossing and gap is untouched.
+ *
+ * `reachTurn` is the angle that keeps a face whole, for comparison.
+ */
+export function columnTurnRad(m: number, n: number): number {
+  return fan(Math.max(m, n), (2 * Math.min(m, n) - 1) * GAP + 2 * POKE).turn;
+}
+
+/** The turn that keeps every crossing real and every gap at the floor. */
+export function reachTurn(m: number, n: number): number {
+  return (fan(Math.min(m, n), (2 * Math.max(m, n) - 1) * GAP + 2 * POKE).turn * 180) / Math.PI;
+}
+
+/** The same, in degrees — what the browser cells quote. */
 export function columnTurn(m: number, n: number): number {
-  const t = fan(Math.min(m, n), (2 * Math.max(m, n) - 1) * GAP + 2 * POKE).turn;
-  return (t * 180) / Math.PI;
+  return (columnTurnRad(m, n) * 180) / Math.PI;
 }
 
 export interface TwoFanColumnShape {

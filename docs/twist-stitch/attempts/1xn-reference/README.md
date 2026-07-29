@@ -119,6 +119,70 @@ redrawn — `scripts/orbit-shots.mjs`, then `scripts/orbit-sheet.py`.
 | ![2×4](../../fig/orbit-twofan-col-2x4-10.png) | **2×4 at 13.61°** — 192 crossings a level, every one real |
 | ![1×6](../../fig/orbit-twofan-col-1x6-10.png) | **1×6 at 9.42°** — the lopsided case. The top view is the argument: six laces fan wide and one runs straight through them. Ribbons round a spine |
 
+## Why a lopsided column's middle levels do not look like its top
+
+Take a 1×5 and look at every level (`scripts/level-shots.mjs`). Levels 1–9 carry
+big bundles of folded-back arm on two sides; level 10 is clean. The difference is
+not the turn — it is that the top level's arms are **never folded again**, so they
+run out straight instead of doubling back.
+
+The mechanism, exactly:
+
+| | the 5 side (weft) | the 1 side (warp) |
+| --- | --- | --- |
+| band it must cross | 28 px | 252 px |
+| arm length it gets | **287 px** | **287 px** |
+| overshoot | **6.05 widths** | 0.70 widths |
+
+Both families own two lines one gap apart, so **both arms are the same length**,
+`g / sin θ`. And the turn is set so that length just carries the minority family
+across its deep band — `g/sin(11.26°) = 287` against `252 + 32 = 284`. The
+majority family gets handed the same 287 to cross 28, and the extra 6 widths is
+what hangs out the side.
+
+So it is not a slack that a better turn removes; it is the same length being
+right for one family and six widths too long for the other. The turn is already
+against the gap floor — see the ceiling result below.
+
+**What the column ships at, and what it costs.**
+
+A lopsided face has two candidate turns and they cannot both be had. The
+**minority fan's** keeps every crossing real and every gap at the floor, and leaves
+the majority family — the one you see, `2·max(m,n)` strands against `2·min` — with
+six widths of arm bundling up on two sides of every level. The **majority fan's**
+lays that family tight. That is what ships, and it is a decision about which
+failure is worse to look at, not a derivation.
+
+| 1×5 | minority fan, 11.26° | majority fan, 27.44° |
+| --- | --- | --- |
+| majority overhang | 6.05 w | **3.07 w** |
+| crossings a level | **200 / 200** | 162 / 200 |
+| gaps in a level | **all 56 px** | 56 … 167.6 px |
+
+Over all 64 faces, measured by `npm run probe:turn` and asserted face by face by
+`npm run check:twofan` against [`scripts/twofan-cost.json`](../../../../scripts/twofan-cost.json):
+
+| | before | after |
+| --- | --- | --- |
+| mean majority overhang | 4.56 w | **2.30 w** |
+| crossings kept | 20736 / 20736 | 20252 / 20736 |
+| faces weaving whole | 64 / 64 | 14 / 64 |
+| faces with every gap at 56 | 64 / 64 | 8 / 64 |
+| tightest gap anywhere | 56 px | **1.1 px** |
+
+The eight faces that pay nothing are the diagonal, where the reference's two fans
+are the same angle — the check fails if any of them moves.
+
+The last row is the part to keep in view. Gaps do not only open (167.6 px on a 1×5
+against a ceiling of 69); on a 4×8 one closes to **1.1 px**, which is two 46 px
+laces almost exactly on top of each other. `reachTurn()` is the angle that costs
+none of this, kept for comparison.
+
+The k-storey figure also corrects an earlier claim in
+[attempts/README](../README.md), which put a 1×6 at k = 5 at +0.05 widths. That
+took one arm of a pair; across all of them the best any k does for a 1×6 is
+**3.25 widths**, at k = 4.
+
 ## What is not settled
 
 The reference covers **m = 1 only**. `fans.py` carries the same derivation to a
