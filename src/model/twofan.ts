@@ -328,6 +328,9 @@ export function twoFanColumn(
   levels: number,
   name: string,
   hand: Hand = 'lh',
+  /** Override the turn, in radians. For comparing against what a family wants —
+   *  see docs/twist-stitch/attempts/1xn-reference/. Omit for the derived turn. */
+  turnOverride?: number,
 ): Scene3D {
   const g = GAP;
   const cx = 400;
@@ -349,7 +352,7 @@ export function twoFanColumn(
   // is the number the old law got wrong.
   const hi = Math.max(m, n);
   const lo = Math.min(m, n);
-  const TURN = fan(lo, (2 * hi - 1) * g + 2 * POKE).turn;
+  const TURN = turnOverride ?? fan(lo, (2 * hi - 1) * g + 2 * POKE).turn;
   const c = Math.cos(TURN);
   const s = Math.sin(TURN);
 

@@ -119,6 +119,47 @@ redrawn — `scripts/orbit-shots.mjs`, then `scripts/orbit-sheet.py`.
 | ![2×4](../../fig/orbit-twofan-col-2x4-10.png) | **2×4 at 13.61°** — 192 crossings a level, every one real |
 | ![1×6](../../fig/orbit-twofan-col-1x6-10.png) | **1×6 at 9.42°** — the lopsided case. The top view is the argument: six laces fan wide and one runs straight through them. Ribbons round a spine |
 
+## Why a lopsided column's middle levels do not look like its top
+
+Take a 1×5 and look at every level (`scripts/level-shots.mjs`). Levels 1–9 carry
+big bundles of folded-back arm on two sides; level 10 is clean. The difference is
+not the turn — it is that the top level's arms are **never folded again**, so they
+run out straight instead of doubling back.
+
+The mechanism, exactly:
+
+| | the 5 side (weft) | the 1 side (warp) |
+| --- | --- | --- |
+| band it must cross | 28 px | 252 px |
+| arm length it gets | **287 px** | **287 px** |
+| overshoot | **6.05 widths** | 0.70 widths |
+
+Both families own two lines one gap apart, so **both arms are the same length**,
+`g / sin θ`. And the turn is set so that length just carries the minority family
+across its deep band — `g/sin(11.26°) = 287` against `252 + 32 = 284`. The
+majority family gets handed the same 287 to cross 28, and the extra 6 widths is
+what hangs out the side.
+
+So it is not a slack that a better turn removes; it is the same length being
+right for one family and six widths too long for the other.
+
+**What was measured against it, on a 1×5:**
+
+| | 5-side overshoot | crossings a level |
+| --- | --- | --- |
+| the derived turn, 11.26° | 6.05 w | **200 / 200** |
+| the 5 side's own fan, 27.44° | 3.07 w | 162 / 200 |
+| letting the 5 side climb 3 storeys | 2.87 w | — |
+
+Both halve the overshoot and neither closes it. The 27.44° column costs 38
+crossings a level — the lone lace stops reaching across. `twoFanColumn` takes an
+optional turn override so this comparison can be re-run rather than believed.
+
+The k-storey figure also corrects an earlier claim in
+[attempts/README](../README.md), which put a 1×6 at k = 5 at +0.05 widths. That
+took one arm of a pair; across all of them the best any k does for a 1×6 is
+**3.25 widths**, at k = 4.
+
 ## What is not settled
 
 The reference covers **m = 1 only**. `fans.py` carries the same derivation to a
