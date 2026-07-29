@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twist stitch levels — Scoubidou3D</title>
+<meta name="description" content="Every level of every m x n twist face, top and orbit, at full resolution.">
+<link rel="icon" href="../favicon.svg">
+<link rel="stylesheet" href="../site/site.css">
+<style>
+  /* The site's tokens carry the page; only what the site has no component for
+     lives here — the face matrix and the level viewer. */
+  .lv { max-width: 1180px; margin: 0 auto; padding: 34px 24px 90px; }
+  .lv-head { display: flex; flex-direction: column; gap: 14px; padding-bottom: 26px;
+    border-bottom: 1px solid var(--line); }
+  .lv-head h1 { font-family: Georgia, serif; font-size: clamp(30px, 4.6vw, 48px);
+    line-height: 1.08; margin: 0; letter-spacing: -0.02em; }
+  .lv-head p { margin: 0; max-width: 62ch; color: var(--muted); font-size: 16px; line-height: 1.6; }
+  .kicker { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 11px;
+    letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+  .lv h2 { font-family: Georgia, serif; font-size: 26px; margin: 40px 0 6px; }
+  .lv h2 + p { margin: 0 0 18px; color: var(--muted); max-width: 62ch; line-height: 1.6; }
+
+  .grid { display: grid; grid-template-columns: auto repeat(8, minmax(0, 1fr)); gap: 4px; }
+  .ax { font-family: ui-monospace, monospace; font-size: 10.5px; color: var(--muted);
+    display: flex; align-items: center; justify-content: center; }
+  .axm { justify-content: flex-end; padding-right: 7px; }
+  .cell { background: var(--paper); border: 1px solid var(--line); border-left: 3px solid var(--line);
+    border-radius: 2px; padding: 8px 3px 7px; cursor: pointer; display: flex; flex-direction: column;
+    align-items: center; gap: 1px; font-family: ui-monospace, monospace; text-align: center;
+    font-variant-numeric: tabular-nums;
+    box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--coral) calc(var(--s) * 13%), transparent); }
+  .cell.clean { border-left-color: var(--teal); }
+  .cell.warn { border-left-color: var(--yellow); }
+  .cell.crit { border-left-color: var(--coral); }
+  .cell b { font-size: 12px; }
+  .cell i { font-style: normal; font-size: 10.5px; color: var(--muted); }
+  .cell s { text-decoration: none; font-size: 9.5px; color: var(--muted); opacity: 0.8; }
+  .cell:hover { border-color: var(--ink); }
+  .cell[aria-pressed="true"] { box-shadow: inset 0 0 0 999px
+    color-mix(in srgb, var(--coral) calc(var(--s) * 13%), transparent), 0 0 0 2px var(--ink); }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 14px;
+    font-family: ui-monospace, monospace; font-size: 11.5px; color: var(--muted); }
+  .legend i { display: inline-block; width: 3px; height: 13px; vertical-align: -2px; margin-right: 8px; }
+
+  .viewer { margin-top: 30px; background: var(--paper); border: 1px solid var(--line); border-radius: 3px; }
+  .vhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 20px; padding: 16px 20px;
+    border-bottom: 1px solid var(--line); font-family: ui-monospace, monospace; font-size: 12.5px;
+    color: var(--muted); }
+  .vhead b { font-size: 19px; color: var(--ink); font-family: Georgia, serif; }
+  .vhead em { font-style: normal; color: var(--ink); font-weight: 600; }
+  .chip { padding: 3px 10px; border-radius: 12px; font-size: 11px; }
+  .chip.clean { background: color-mix(in srgb, var(--teal) 15%, transparent); color: var(--teal); }
+  .chip.warn { background: color-mix(in srgb, var(--yellow) 42%, transparent); color: #6b5200; }
+  .chip.crit { background: color-mix(in srgb, var(--coral) 16%, transparent); color: var(--coral); }
+  .hint { padding: 12px 20px 0; font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted); }
+  .levels { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 14px; padding: 14px 20px 22px; }
+  .lvl { display: flex; flex-direction: column; gap: 6px; }
+  .lvl .n { font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted);
+    letter-spacing: 0.06em; text-transform: uppercase; }
+  .lvl a { display: block; border: 1px solid var(--line); border-radius: 2px; overflow: hidden;
+    background: #eef0f4; }
+  .lvl a:hover { border-color: var(--ink); }
+  .lvl img { display: block; width: 100%; height: auto; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .cap { font-family: ui-monospace, monospace; font-size: 10px; color: var(--muted); }
+  @media (max-width: 640px) { .grid { font-size: 9px; } .cell b { font-size: 10px; } }
+</style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="../">
+      <svg class="mark small" viewBox="0 0 72 72" aria-hidden="true">
+        <path d="M9 16h54v16H9z" class="ma" />
+        <path d="M28 8h16v56H28z" class="mb" />
+        <path d="M28 16h16v16H28z" class="mt" />
+      </svg>
+      <span>Scoubidou<strong>3D</strong></span>
+    </a>
+    <nav aria-label="Primary">
+      <a href="../#samples">Samples</a>
+      <a href="../#how">How it works</a>
+      <a href="../#learn">Notes</a>
+      <a href="https://github.com/ysetbon/Scoubidou3D">GitHub</a>
+    </nav>
+    <a class="btn dark" href="../app/">Open the studio
+      <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5l5 5-5 5" /></svg>
+    </a>
+  </header>
+
+  <div class="lv">
+    <div class="lv-head">
+      <span class="kicker">Twist family · every level of every face</span>
+      <h1>All 64 faces, level by level.</h1>
+      <p>Eleven levels of each m&nbsp;×&nbsp;n twist column, straight from the studio's own 3D view — top
+      view and orbit, side by side. Pick a face; open any picture for the full-resolution render.</p>
+    </div>
+
+    <h2>The family</h2>
+    <p>Each cell carries its turn and how far the majority family's loosest arm hangs past the band it
+    crosses. The stripe on the left is what that face paid for being turned at its own angle instead of
+    the one that suits the few.</p>
+    <div class="grid">
+      <span class="ax"></span><span class="ax">n1</span><span class="ax">n2</span><span class="ax">n3</span><span class="ax">n4</span><span class="ax">n5</span><span class="ax">n6</span><span class="ax">n7</span><span class="ax">n8</span>
+      <span class="ax axm">m1</span>
+      <button class="cell clean" type="button" data-face="1x1" style="--s:0.000" title="1×1 — turn 50.03° (was 50.03°) · overhang 0.7w (was 0.7w) · 16/16 crossings · gaps 56–56 px&#10;every crossing real, every gap at the floor"><b>1×1</b><i>50.03°</i><s>0.7w</s></button>
+      <button class="cell warn" type="button" data-face="1x2" style="--s:0.243" title="1×2 — turn 38.72° (was 27.14°) · overhang 1.55w (was 2.21w) · 32/32 crossings · gaps 56–87.9 px&#10;every crossing still real, but gaps open to 87.9 px — past the 69 px ceiling"><b>1×2</b><i>38.72°</i><s>1.55w</s></button>
+      <button class="cell warn" type="button" data-face="1x3" style="--s:0.414" title="1×3 — turn 33.33° (was 18.49°) · overhang 2.15w (was 3.53w) · 42/48 crossings · gaps 56–117.3 px&#10;6 crossings a level lost, gaps out to 117.3 px"><b>1×3</b><i>33.33°</i><s>2.15w</s></button>
+      <button class="cell warn" type="button" data-face="1x4" style="--s:0.557" title="1×4 — turn 29.9° (was 14°) · overhang 2.65w (was 4.8w) · 58/64 crossings · gaps 56–143.6 px&#10;6 crossings a level lost, gaps out to 143.6 px"><b>1×4</b><i>29.9°</i><s>2.65w</s></button>
+      <button class="cell warn" type="button" data-face="1x5" style="--s:0.677" title="1×5 — turn 27.44° (was 11.26°) · overhang 3.07w (was 6.05w) · 66/80 crossings · gaps 56–167.6 px&#10;14 crossings a level lost, gaps out to 167.6 px"><b>1×5</b><i>27.44°</i><s>3.07w</s></button>
+      <button class="cell warn" type="button" data-face="1x6" style="--s:0.789" title="1×6 — turn 25.55° (was 9.42°) · overhang 3.46w (was 7.28w) · 82/96 crossings · gaps 56–189.7 px&#10;14 crossings a level lost, gaps out to 189.7 px"><b>1×6</b><i>25.55°</i><s>3.46w</s></button>
+      <button class="cell warn" type="button" data-face="1x7" style="--s:0.889" title="1×7 — turn 24.04° (was 8.09°) · overhang 3.81w (was 8.52w) · 96/112 crossings · gaps 56–210.4 px&#10;16 crossings a level lost, gaps out to 210.4 px"><b>1×7</b><i>24.04°</i><s>3.81w</s></button>
+      <button class="cell warn" type="button" data-face="1x8" style="--s:0.980" title="1×8 — turn 22.78° (was 7.09°) · overhang 4.13w (was 9.75w) · 106/128 crossings · gaps 56–229.8 px&#10;22 crossings a level lost, gaps out to 229.8 px"><b>1×8</b><i>22.78°</i><s>4.13w</s></button>
+      <span class="ax axm">m2</span>
+      <button class="cell warn" type="button" data-face="2x1" style="--s:0.243" title="2×1 — turn 38.72° (was 27.14°) · overhang 1.55w (was 2.21w) · 32/32 crossings · gaps 56–87.9 px&#10;every crossing still real, but gaps open to 87.9 px — past the 69 px ceiling"><b>2×1</b><i>38.72°</i><s>1.55w</s></button>
+      <button class="cell clean" type="button" data-face="2x2" style="--s:0.151" title="2×2 — turn 24.64° (was 24.64°) · overhang 1.23w (was 1.23w) · 64/64 crossings · gaps 56–56 px&#10;every crossing real, every gap at the floor"><b>2×2</b><i>24.64°</i><s>1.23w</s></button>
+      <button class="cell crit" type="button" data-face="2x3" style="--s:0.280" title="2×3 — turn 22.84° (was 17.62°) · overhang 1.68w (was 2.48w) · 96/96 crossings · gaps 27.3–76.6 px&#10;a gap closes to 27.3 px — two 46 px laces overlapping"><b>2×3</b><i>22.84°</i><s>1.68w</s></button>
+      <button class="cell crit" type="button" data-face="2x4" style="--s:0.394" title="2×4 — turn 21.45° (was 13.61°) · overhang 2.08w (was 3.71w) · 128/128 crossings · gaps 6.3–99.3 px&#10;a gap closes to 6.3 px — two 46 px laces overlapping"><b>2×4</b><i>21.45°</i><s>2.08w</s></button>
+      <button class="cell crit" type="button" data-face="2x5" style="--s:0.497" title="2×5 — turn 20.33° (was 11.05°) · overhang 2.44w (was 4.94w) · 154/160 crossings · gaps 4.9–106.6 px&#10;a gap closes to 4.9 px — two 46 px laces overlapping"><b>2×5</b><i>20.33°</i><s>2.44w</s></button>
+      <button class="cell crit" type="button" data-face="2x6" style="--s:0.594" title="2×6 — turn 19.4° (was 9.29°) · overhang 2.78w (was 6.16w) · 186/192 crossings · gaps 8.1–108.4 px&#10;a gap closes to 8.1 px — two 46 px laces overlapping"><b>2×6</b><i>19.4°</i><s>2.78w</s></button>
+      <button class="cell crit" type="button" data-face="2x7" style="--s:0.683" title="2×7 — turn 18.6° (was 8.01°) · overhang 3.09w (was 7.38w) · 212/224 crossings · gaps 20.7–108.9 px&#10;a gap closes to 20.7 px — two 46 px laces overlapping"><b>2×7</b><i>18.6°</i><s>3.09w</s></button>
+      <button class="cell crit" type="button" data-face="2x8" style="--s:0.766" title="2×8 — turn 17.9° (was 7.04°) · overhang 3.38w (was 8.6w) · 242/256 crossings · gaps 32.7–109.3 px&#10;a gap closes to 32.7 px — two 46 px laces overlapping"><b>2×8</b><i>17.9°</i><s>3.38w</s></button>
+      <span class="ax axm">m3</span>
+      <button class="cell warn" type="button" data-face="3x1" style="--s:0.414" title="3×1 — turn 33.33° (was 18.49°) · overhang 2.15w (was 3.53w) · 42/48 crossings · gaps 56–117.3 px&#10;6 crossings a level lost, gaps out to 117.3 px"><b>3×1</b><i>33.33°</i><s>2.15w</s></button>
+      <button class="cell crit" type="button" data-face="3x2" style="--s:0.280" title="3×2 — turn 22.84° (was 17.62°) · overhang 1.68w (was 2.48w) · 96/96 crossings · gaps 27.3–76.6 px&#10;a gap closes to 27.3 px — two 46 px laces overlapping"><b>3×2</b><i>22.84°</i><s>1.68w</s></button>
+      <button class="cell clean" type="button" data-face="3x3" style="--s:0.206" title="3×3 — turn 16.89° (was 16.89°) · overhang 1.42w (was 1.42w) · 144/144 crossings · gaps 56–56 px&#10;every crossing real, every gap at the floor"><b>3×3</b><i>16.89°</i><s>1.42w</s></button>
+      <button class="cell crit" type="button" data-face="3x4" style="--s:0.297" title="3×4 — turn 16.26° (was 13.25°) · overhang 1.74w (was 2.62w) · 184/192 crossings · gaps 36.6–71.1 px&#10;a gap closes to 36.6 px — two 46 px laces overlapping"><b>3×4</b><i>16.26°</i><s>1.74w</s></button>
+      <button class="cell crit" type="button" data-face="3x5" style="--s:0.383" title="3×5 — turn 15.71° (was 10.86°) · overhang 2.04w (was 3.82w) · 232/240 crossings · gaps 19.2–89.1 px&#10;a gap closes to 19.2 px — two 46 px laces overlapping"><b>3×5</b><i>15.71°</i><s>2.04w</s></button>
+      <button class="cell crit" type="button" data-face="3x6" style="--s:0.463" title="3×6 — turn 15.23° (was 9.17°) · overhang 2.32w (was 5.03w) · 280/288 crossings · gaps 2.4–106.4 px&#10;a gap closes to 2.4 px — two 46 px laces overlapping"><b>3×6</b><i>15.23°</i><s>2.32w</s></button>
+      <button class="cell crit" type="button" data-face="3x7" style="--s:0.540" title="3×7 — turn 14.8° (was 7.93°) · overhang 2.59w (was 6.24w) · 328/336 crossings · gaps 5.4–109.1 px&#10;a gap closes to 5.4 px — two 46 px laces overlapping"><b>3×7</b><i>14.8°</i><s>2.59w</s></button>
+      <button class="cell crit" type="button" data-face="3x8" style="--s:0.614" title="3×8 — turn 14.41° (was 6.98°) · overhang 2.85w (was 7.45w) · 370/384 crossings · gaps 5.4–110 px&#10;a gap closes to 5.4 px — two 46 px laces overlapping"><b>3×8</b><i>14.41°</i><s>2.85w</s></button>
+      <span class="ax axm">m4</span>
+      <button class="cell warn" type="button" data-face="4x1" style="--s:0.557" title="4×1 — turn 29.9° (was 14°) · overhang 2.65w (was 4.8w) · 58/64 crossings · gaps 56–143.6 px&#10;6 crossings a level lost, gaps out to 143.6 px"><b>4×1</b><i>29.9°</i><s>2.65w</s></button>
+      <button class="cell crit" type="button" data-face="4x2" style="--s:0.394" title="4×2 — turn 21.45° (was 13.61°) · overhang 2.08w (was 3.71w) · 128/128 crossings · gaps 6.3–99.3 px&#10;a gap closes to 6.3 px — two 46 px laces overlapping"><b>4×2</b><i>21.45°</i><s>2.08w</s></button>
+      <button class="cell crit" type="button" data-face="4x3" style="--s:0.297" title="4×3 — turn 16.26° (was 13.25°) · overhang 1.74w (was 2.62w) · 184/192 crossings · gaps 36.6–71.1 px&#10;a gap closes to 36.6 px — two 46 px laces overlapping"><b>4×3</b><i>16.26°</i><s>1.74w</s></button>
+      <button class="cell clean" type="button" data-face="4x4" style="--s:0.234" title="4×4 — turn 12.93° (was 12.93°) · overhang 1.52w (was 1.52w) · 256/256 crossings · gaps 56–56 px&#10;every crossing real, every gap at the floor"><b>4×4</b><i>12.93°</i><s>1.52w</s></button>
+      <button class="cell warn" type="button" data-face="4x5" style="--s:0.306" title="4×5 — turn 12.64° (was 10.68°) · overhang 1.77w (was 2.71w) · 312/320 crossings · gaps 41.4–68 px&#10;8 crossings a level lost, gaps out to 68 px"><b>4×5</b><i>12.64°</i><s>1.77w</s></button>
+      <button class="cell crit" type="button" data-face="4x6" style="--s:0.377" title="4×6 — turn 12.37° (was 9.06°) · overhang 2.02w (was 3.9w) · 376/384 crossings · gaps 26.9–82.8 px&#10;a gap closes to 26.9 px — two 46 px laces overlapping"><b>4×6</b><i>12.37°</i><s>2.02w</s></button>
+      <button class="cell crit" type="button" data-face="4x7" style="--s:0.443" title="4×7 — turn 12.12° (was 7.86°) · overhang 2.25w (was 5.1w) · 440/448 crossings · gaps 12.7–97.2 px&#10;a gap closes to 12.7 px — two 46 px laces overlapping"><b>4×7</b><i>12.12°</i><s>2.25w</s></button>
+      <button class="cell crit" type="button" data-face="4x8" style="--s:0.506" title="4×8 — turn 11.89° (was 6.93°) · overhang 2.47w (was 6.3w) · 504/512 crossings · gaps 1.1–110.1 px&#10;a gap closes to 1.1 px — two 46 px laces overlapping"><b>4×8</b><i>11.89°</i><s>2.47w</s></button>
+      <span class="ax axm">m5</span>
+      <button class="cell warn" type="button" data-face="5x1" style="--s:0.677" title="5×1 — turn 27.44° (was 11.26°) · overhang 3.07w (was 6.05w) · 66/80 crossings · gaps 56–167.6 px&#10;14 crossings a level lost, gaps out to 167.6 px"><b>5×1</b><i>27.44°</i><s>3.07w</s></button>
+      <button class="cell crit" type="button" data-face="5x2" style="--s:0.497" title="5×2 — turn 20.33° (was 11.05°) · overhang 2.44w (was 4.94w) · 154/160 crossings · gaps 4.9–106.6 px&#10;a gap closes to 4.9 px — two 46 px laces overlapping"><b>5×2</b><i>20.33°</i><s>2.44w</s></button>
+      <button class="cell crit" type="button" data-face="5x3" style="--s:0.383" title="5×3 — turn 15.71° (was 10.86°) · overhang 2.04w (was 3.82w) · 232/240 crossings · gaps 19.2–89.1 px&#10;a gap closes to 19.2 px — two 46 px laces overlapping"><b>5×3</b><i>15.71°</i><s>2.04w</s></button>
+      <button class="cell warn" type="button" data-face="5x4" style="--s:0.306" title="5×4 — turn 12.64° (was 10.68°) · overhang 1.77w (was 2.71w) · 312/320 crossings · gaps 41.4–68 px&#10;8 crossings a level lost, gaps out to 68 px"><b>5×4</b><i>12.64°</i><s>1.77w</s></button>
+      <button class="cell clean" type="button" data-face="5x5" style="--s:0.254" title="5×5 — turn 10.5° (was 10.5°) · overhang 1.59w (was 1.59w) · 400/400 crossings · gaps 56–56 px&#10;every crossing real, every gap at the floor"><b>5×5</b><i>10.5°</i><s>1.59w</s></button>
+      <button class="cell warn" type="button" data-face="5x6" style="--s:0.314" title="5×6 — turn 10.34° (was 8.96°) · overhang 1.8w (was 2.77w) · 472/480 crossings · gaps 44.3–65.9 px&#10;8 crossings a level lost, gaps out to 65.9 px"><b>5×6</b><i>10.34°</i><s>1.8w</s></button>
+      <button class="cell crit" type="button" data-face="5x7" style="--s:0.371" title="5×7 — turn 10.19° (was 7.79°) · overhang 2w (was 3.96w) · 552/560 crossings · gaps 32–78.4 px&#10;a gap closes to 32 px — two 46 px laces overlapping"><b>5×7</b><i>10.19°</i><s>2w</s></button>
+      <button class="cell crit" type="button" data-face="5x8" style="--s:0.426" title="5×8 — turn 10.05° (was 6.88°) · overhang 2.19w (was 5.15w) · 632/640 crossings · gaps 19.8–90.7 px&#10;a gap closes to 19.8 px — two 46 px laces overlapping"><b>5×8</b><i>10.05°</i><s>2.19w</s></button>
+      <span class="ax axm">m6</span>
+      <button class="cell warn" type="button" data-face="6x1" style="--s:0.789" title="6×1 — turn 25.55° (was 9.42°) · overhang 3.46w (was 7.28w) · 82/96 crossings · gaps 56–189.7 px&#10;14 crossings a level lost, gaps out to 189.7 px"><b>6×1</b><i>25.55°</i><s>3.46w</s></button>
+      <button class="cell crit" type="button" data-face="6x2" style="--s:0.594" title="6×2 — turn 19.4° (was 9.29°) · overhang 2.78w (was 6.16w) · 186/192 crossings · gaps 8.1–108.4 px&#10;a gap closes to 8.1 px — two 46 px laces overlapping"><b>6×2</b><i>19.4°</i><s>2.78w</s></button>
+      <button class="cell crit" type="button" data-face="6x3" style="--s:0.463" title="6×3 — turn 15.23° (was 9.17°) · overhang 2.32w (was 5.03w) · 280/288 crossings · gaps 2.4–106.4 px&#10;a gap closes to 2.4 px — two 46 px laces overlapping"><b>6×3</b><i>15.23°</i><s>2.32w</s></button>
+      <button class="cell crit" type="button" data-face="6x4" style="--s:0.377" title="6×4 — turn 12.37° (was 9.06°) · overhang 2.02w (was 3.9w) · 376/384 crossings · gaps 26.9–82.8 px&#10;a gap closes to 26.9 px — two 46 px laces overlapping"><b>6×4</b><i>12.37°</i><s>2.02w</s></button>
+      <button class="cell warn" type="button" data-face="6x5" style="--s:0.314" title="6×5 — turn 10.34° (was 8.96°) · overhang 1.8w (was 2.77w) · 472/480 crossings · gaps 44.3–65.9 px&#10;8 crossings a level lost, gaps out to 65.9 px"><b>6×5</b><i>10.34°</i><s>1.8w</s></button>
+      <button class="cell clean" type="button" data-face="6x6" style="--s:0.269" title="6×6 — turn 8.85° (was 8.85°) · overhang 1.64w (was 1.64w) · 576/576 crossings · gaps 56–56 px&#10;every crossing real, every gap at the floor"><b>6×6</b><i>8.85°</i><s>1.64w</s></button>
+      <button class="cell warn" type="button" data-face="6x7" style="--s:0.317" title="6×7 — turn 8.76° (was 7.72°) · overhang 1.81w (was 2.82w) · 664/672 crossings · gaps 46.3–64.4 px&#10;8 crossings a level lost, gaps out to 64.4 px"><b>6×7</b><i>8.76°</i><s>1.81w</s></button>
+      <button class="cell crit" type="button" data-face="6x8" style="--s:0.369" title="6×8 — turn 8.66° (was 6.84°) · overhang 1.99w (was 4w) · 760/768 crossings · gaps 35.5–75.3 px&#10;a gap closes to 35.5 px — two 46 px laces overlapping"><b>6×8</b><i>8.66°</i><s>1.99w</s></button>
+      <span class="ax axm">m7</span>
+      <button class="cell warn" type="button" data-face="7x1" style="--s:0.889" title="7×1 — turn 24.04° (was 8.09°) · overhang 3.81w (was 8.52w) · 96/112 crossings · gaps 56–210.4 px&#10;16 crossings a level lost, gaps out to 210.4 px"><b>7×1</b><i>24.04°</i><s>3.81w</s></button>
+      <button class="cell crit" type="button" data-face="7x2" style="--s:0.683" title="7×2 — turn 18.6° (was 8.01°) · overhang 3.09w (was 7.38w) · 212/224 crossings · gaps 20.7–108.9 px&#10;a gap closes to 20.7 px — two 46 px laces overlapping"><b>7×2</b><i>18.6°</i><s>3.09w</s></button>
+      <button class="cell crit" type="button" data-face="7x3" style="--s:0.540" title="7×3 — turn 14.8° (was 7.93°) · overhang 2.59w (was 6.24w) · 328/336 crossings · gaps 5.4–109.1 px&#10;a gap closes to 5.4 px — two 46 px laces overlapping"><b>7×3</b><i>14.8°</i><s>2.59w</s></button>
+      <button class="cell crit" type="button" data-face="7x4" style="--s:0.443" title="7×4 — turn 12.12° (was 7.86°) · overhang 2.25w (was 5.1w) · 440/448 crossings · gaps 12.7–97.2 px&#10;a gap closes to 12.7 px — two 46 px laces overlapping"><b>7×4</b><i>12.12°</i><s>2.25w</s></button>
+      <button class="cell crit" type="button" data-face="7x5" style="--s:0.371" title="7×5 — turn 10.19° (was 7.79°) · overhang 2w (was 3.96w) · 552/560 crossings · gaps 32–78.4 px&#10;a gap closes to 32 px — two 46 px laces overlapping"><b>7×5</b><i>10.19°</i><s>2w</s></button>
+      <button class="cell warn" type="button" data-face="7x6" style="--s:0.317" title="7×6 — turn 8.76° (was 7.72°) · overhang 1.81w (was 2.82w) · 664/672 crossings · gaps 46.3–64.4 px&#10;8 crossings a level lost, gaps out to 64.4 px"><b>7×6</b><i>8.76°</i><s>1.81w</s></button>
+      <button class="cell clean" type="button" data-face="7x7" style="--s:0.277" title="7×7 — turn 7.66° (was 7.66°) · overhang 1.67w (was 1.67w) · 784/784 crossings · gaps 56–56 px&#10;every crossing real, every gap at the floor"><b>7×7</b><i>7.66°</i><s>1.67w</s></button>
+      <button class="cell warn" type="button" data-face="7x8" style="--s:0.323" title="7×8 — turn 7.59° (was 6.79°) · overhang 1.83w (was 2.85w) · 888/896 crossings · gaps 47.7–63.3 px&#10;8 crossings a level lost, gaps out to 63.3 px"><b>7×8</b><i>7.59°</i><s>1.83w</s></button>
+      <span class="ax axm">m8</span>
+      <button class="cell warn" type="button" data-face="8x1" style="--s:0.980" title="8×1 — turn 22.78° (was 7.09°) · overhang 4.13w (was 9.75w) · 106/128 crossings · gaps 56–229.8 px&#10;22 crossings a level lost, gaps out to 229.8 px"><b>8×1</b><i>22.78°</i><s>4.13w</s></button>
+      <button class="cell crit" type="button" data-face="8x2" style="--s:0.766" title="8×2 — turn 17.9° (was 7.04°) · overhang 3.38w (was 8.6w) · 242/256 crossings · gaps 32.7–109.3 px&#10;a gap closes to 32.7 px — two 46 px laces overlapping"><b>8×2</b><i>17.9°</i><s>3.38w</s></button>
+      <button class="cell crit" type="button" data-face="8x3" style="--s:0.614" title="8×3 — turn 14.41° (was 6.98°) · overhang 2.85w (was 7.45w) · 370/384 crossings · gaps 5.4–110 px&#10;a gap closes to 5.4 px — two 46 px laces overlapping"><b>8×3</b><i>14.41°</i><s>2.85w</s></button>
+      <button class="cell crit" type="button" data-face="8x4" style="--s:0.506" title="8×4 — turn 11.89° (was 6.93°) · overhang 2.47w (was 6.3w) · 504/512 crossings · gaps 1.1–110.1 px&#10;a gap closes to 1.1 px — two 46 px laces overlapping"><b>8×4</b><i>11.89°</i><s>2.47w</s></button>
+      <button class="cell crit" type="button" data-face="8x5" style="--s:0.426" title="8×5 — turn 10.05° (was 6.88°) · overhang 2.19w (was 5.15w) · 632/640 crossings · gaps 19.8–90.7 px&#10;a gap closes to 19.8 px — two 46 px laces overlapping"><b>8×5</b><i>10.05°</i><s>2.19w</s></button>
+      <button class="cell crit" type="button" data-face="8x6" style="--s:0.369" title="8×6 — turn 8.66° (was 6.84°) · overhang 1.99w (was 4w) · 760/768 crossings · gaps 35.5–75.3 px&#10;a gap closes to 35.5 px — two 46 px laces overlapping"><b>8×6</b><i>8.66°</i><s>1.99w</s></button>
+      <button class="cell warn" type="button" data-face="8x7" style="--s:0.323" title="8×7 — turn 7.59° (was 6.79°) · overhang 1.83w (was 2.85w) · 888/896 crossings · gaps 47.7–63.3 px&#10;8 crossings a level lost, gaps out to 63.3 px"><b>8×7</b><i>7.59°</i><s>1.83w</s></button>
+      <button class="cell clean" type="button" data-face="8x8" style="--s:0.286" title="8×8 — turn 6.75° (was 6.75°) · overhang 1.7w (was 1.7w) · 1024/1024 crossings · gaps 56–56 px&#10;every crossing real, every gap at the floor"><b>8×8</b><i>6.75°</i><s>1.7w</s></button>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--teal)"></i>paid nothing — the diagonal, where the two fans are one angle</span>
+      <span><i style="background:var(--yellow)"></i>gaps opened past the 69&nbsp;px ceiling; most also lost crossings</span>
+      <span><i style="background:var(--coral)"></i>a gap closed under 40&nbsp;px — laces overlapping</span>
+      <span>wash = overhang</span>
+    </div>
+
+    <div class="viewer">
+      <div class="vhead" id="vhead"></div>
+      <p class="hint">Top view left, orbit right. Open a picture in a new tab for the full-resolution render.</p>
+      <div class="levels" id="levels"></div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  var FACES = {"1x1":{"turn":50.03,"was":50.03,"over":0.7,"wasOver":0.7,"kept":16,"want":16,"gmin":56,"gmax":56},"1x2":{"turn":38.72,"was":27.14,"over":1.55,"wasOver":2.21,"kept":32,"want":32,"gmin":56,"gmax":87.9},"1x3":{"turn":33.33,"was":18.49,"over":2.15,"wasOver":3.53,"kept":42,"want":48,"gmin":56,"gmax":117.3},"1x4":{"turn":29.9,"was":14,"over":2.65,"wasOver":4.8,"kept":58,"want":64,"gmin":56,"gmax":143.6},"1x5":{"turn":27.44,"was":11.26,"over":3.07,"wasOver":6.05,"kept":66,"want":80,"gmin":56,"gmax":167.6},"1x6":{"turn":25.55,"was":9.42,"over":3.46,"wasOver":7.28,"kept":82,"want":96,"gmin":56,"gmax":189.7},"1x7":{"turn":24.04,"was":8.09,"over":3.81,"wasOver":8.52,"kept":96,"want":112,"gmin":56,"gmax":210.4},"1x8":{"turn":22.78,"was":7.09,"over":4.13,"wasOver":9.75,"kept":106,"want":128,"gmin":56,"gmax":229.8},"2x1":{"turn":38.72,"was":27.14,"over":1.55,"wasOver":2.21,"kept":32,"want":32,"gmin":56,"gmax":87.9},"2x2":{"turn":24.64,"was":24.64,"over":1.23,"wasOver":1.23,"kept":64,"want":64,"gmin":56,"gmax":56},"2x3":{"turn":22.84,"was":17.62,"over":1.68,"wasOver":2.48,"kept":96,"want":96,"gmin":27.3,"gmax":76.6},"2x4":{"turn":21.45,"was":13.61,"over":2.08,"wasOver":3.71,"kept":128,"want":128,"gmin":6.3,"gmax":99.3},"2x5":{"turn":20.33,"was":11.05,"over":2.44,"wasOver":4.94,"kept":154,"want":160,"gmin":4.9,"gmax":106.6},"2x6":{"turn":19.4,"was":9.29,"over":2.78,"wasOver":6.16,"kept":186,"want":192,"gmin":8.1,"gmax":108.4},"2x7":{"turn":18.6,"was":8.01,"over":3.09,"wasOver":7.38,"kept":212,"want":224,"gmin":20.7,"gmax":108.9},"2x8":{"turn":17.9,"was":7.04,"over":3.38,"wasOver":8.6,"kept":242,"want":256,"gmin":32.7,"gmax":109.3},"3x1":{"turn":33.33,"was":18.49,"over":2.15,"wasOver":3.53,"kept":42,"want":48,"gmin":56,"gmax":117.3},"3x2":{"turn":22.84,"was":17.62,"over":1.68,"wasOver":2.48,"kept":96,"want":96,"gmin":27.3,"gmax":76.6},"3x3":{"turn":16.89,"was":16.89,"over":1.42,"wasOver":1.42,"kept":144,"want":144,"gmin":56,"gmax":56},"3x4":{"turn":16.26,"was":13.25,"over":1.74,"wasOver":2.62,"kept":184,"want":192,"gmin":36.6,"gmax":71.1},"3x5":{"turn":15.71,"was":10.86,"over":2.04,"wasOver":3.82,"kept":232,"want":240,"gmin":19.2,"gmax":89.1},"3x6":{"turn":15.23,"was":9.17,"over":2.32,"wasOver":5.03,"kept":280,"want":288,"gmin":2.4,"gmax":106.4},"3x7":{"turn":14.8,"was":7.93,"over":2.59,"wasOver":6.24,"kept":328,"want":336,"gmin":5.4,"gmax":109.1},"3x8":{"turn":14.41,"was":6.98,"over":2.85,"wasOver":7.45,"kept":370,"want":384,"gmin":5.4,"gmax":110},"4x1":{"turn":29.9,"was":14,"over":2.65,"wasOver":4.8,"kept":58,"want":64,"gmin":56,"gmax":143.6},"4x2":{"turn":21.45,"was":13.61,"over":2.08,"wasOver":3.71,"kept":128,"want":128,"gmin":6.3,"gmax":99.3},"4x3":{"turn":16.26,"was":13.25,"over":1.74,"wasOver":2.62,"kept":184,"want":192,"gmin":36.6,"gmax":71.1},"4x4":{"turn":12.93,"was":12.93,"over":1.52,"wasOver":1.52,"kept":256,"want":256,"gmin":56,"gmax":56},"4x5":{"turn":12.64,"was":10.68,"over":1.77,"wasOver":2.71,"kept":312,"want":320,"gmin":41.4,"gmax":68},"4x6":{"turn":12.37,"was":9.06,"over":2.02,"wasOver":3.9,"kept":376,"want":384,"gmin":26.9,"gmax":82.8},"4x7":{"turn":12.12,"was":7.86,"over":2.25,"wasOver":5.1,"kept":440,"want":448,"gmin":12.7,"gmax":97.2},"4x8":{"turn":11.89,"was":6.93,"over":2.47,"wasOver":6.3,"kept":504,"want":512,"gmin":1.1,"gmax":110.1},"5x1":{"turn":27.44,"was":11.26,"over":3.07,"wasOver":6.05,"kept":66,"want":80,"gmin":56,"gmax":167.6},"5x2":{"turn":20.33,"was":11.05,"over":2.44,"wasOver":4.94,"kept":154,"want":160,"gmin":4.9,"gmax":106.6},"5x3":{"turn":15.71,"was":10.86,"over":2.04,"wasOver":3.82,"kept":232,"want":240,"gmin":19.2,"gmax":89.1},"5x4":{"turn":12.64,"was":10.68,"over":1.77,"wasOver":2.71,"kept":312,"want":320,"gmin":41.4,"gmax":68},"5x5":{"turn":10.5,"was":10.5,"over":1.59,"wasOver":1.59,"kept":400,"want":400,"gmin":56,"gmax":56},"5x6":{"turn":10.34,"was":8.96,"over":1.8,"wasOver":2.77,"kept":472,"want":480,"gmin":44.3,"gmax":65.9},"5x7":{"turn":10.19,"was":7.79,"over":2,"wasOver":3.96,"kept":552,"want":560,"gmin":32,"gmax":78.4},"5x8":{"turn":10.05,"was":6.88,"over":2.19,"wasOver":5.15,"kept":632,"want":640,"gmin":19.8,"gmax":90.7},"6x1":{"turn":25.55,"was":9.42,"over":3.46,"wasOver":7.28,"kept":82,"want":96,"gmin":56,"gmax":189.7},"6x2":{"turn":19.4,"was":9.29,"over":2.78,"wasOver":6.16,"kept":186,"want":192,"gmin":8.1,"gmax":108.4},"6x3":{"turn":15.23,"was":9.17,"over":2.32,"wasOver":5.03,"kept":280,"want":288,"gmin":2.4,"gmax":106.4},"6x4":{"turn":12.37,"was":9.06,"over":2.02,"wasOver":3.9,"kept":376,"want":384,"gmin":26.9,"gmax":82.8},"6x5":{"turn":10.34,"was":8.96,"over":1.8,"wasOver":2.77,"kept":472,"want":480,"gmin":44.3,"gmax":65.9},"6x6":{"turn":8.85,"was":8.85,"over":1.64,"wasOver":1.64,"kept":576,"want":576,"gmin":56,"gmax":56},"6x7":{"turn":8.76,"was":7.72,"over":1.81,"wasOver":2.82,"kept":664,"want":672,"gmin":46.3,"gmax":64.4},"6x8":{"turn":8.66,"was":6.84,"over":1.99,"wasOver":4,"kept":760,"want":768,"gmin":35.5,"gmax":75.3},"7x1":{"turn":24.04,"was":8.09,"over":3.81,"wasOver":8.52,"kept":96,"want":112,"gmin":56,"gmax":210.4},"7x2":{"turn":18.6,"was":8.01,"over":3.09,"wasOver":7.38,"kept":212,"want":224,"gmin":20.7,"gmax":108.9},"7x3":{"turn":14.8,"was":7.93,"over":2.59,"wasOver":6.24,"kept":328,"want":336,"gmin":5.4,"gmax":109.1},"7x4":{"turn":12.12,"was":7.86,"over":2.25,"wasOver":5.1,"kept":440,"want":448,"gmin":12.7,"gmax":97.2},"7x5":{"turn":10.19,"was":7.79,"over":2,"wasOver":3.96,"kept":552,"want":560,"gmin":32,"gmax":78.4},"7x6":{"turn":8.76,"was":7.72,"over":1.81,"wasOver":2.82,"kept":664,"want":672,"gmin":46.3,"gmax":64.4},"7x7":{"turn":7.66,"was":7.66,"over":1.67,"wasOver":1.67,"kept":784,"want":784,"gmin":56,"gmax":56},"7x8":{"turn":7.59,"was":6.79,"over":1.83,"wasOver":2.85,"kept":888,"want":896,"gmin":47.7,"gmax":63.3},"8x1":{"turn":22.78,"was":7.09,"over":4.13,"wasOver":9.75,"kept":106,"want":128,"gmin":56,"gmax":229.8},"8x2":{"turn":17.9,"was":7.04,"over":3.38,"wasOver":8.6,"kept":242,"want":256,"gmin":32.7,"gmax":109.3},"8x3":{"turn":14.41,"was":6.98,"over":2.85,"wasOver":7.45,"kept":370,"want":384,"gmin":5.4,"gmax":110},"8x4":{"turn":11.89,"was":6.93,"over":2.47,"wasOver":6.3,"kept":504,"want":512,"gmin":1.1,"gmax":110.1},"8x5":{"turn":10.05,"was":6.88,"over":2.19,"wasOver":5.15,"kept":632,"want":640,"gmin":19.8,"gmax":90.7},"8x6":{"turn":8.66,"was":6.84,"over":1.99,"wasOver":4,"kept":760,"want":768,"gmin":35.5,"gmax":75.3},"8x7":{"turn":7.59,"was":6.79,"over":1.83,"wasOver":2.85,"kept":888,"want":896,"gmin":47.7,"gmax":63.3},"8x8":{"turn":6.75,"was":6.75,"over":1.7,"wasOver":1.7,"kept":1024,"want":1024,"gmin":56,"gmax":56}};
+  var head = document.getElementById('vhead');
+  var box = document.getElementById('levels');
+  var cells = Array.prototype.slice.call(document.querySelectorAll('.cell'));
+
+  function stateOf(f) {
+    if (f.kept === f.want && f.gmin > 55.9 && f.gmin < 56.1 && f.gmax > 55.9 && f.gmax < 56.1) return 'clean';
+    return f.gmin < 40 ? 'crit' : 'warn';
+  }
+
+  function show(face) {
+    var f = FACES[face];
+    if (!f) return;
+    var st = stateOf(f);
+    head.innerHTML =
+      '<b>' + face.replace('x', '\u00d7') + '</b>' +
+      '<span>turn <em>' + f.turn + '\u00b0</em>' + (f.turn === f.was ? '' : ' \u2014 was ' + f.was + '\u00b0') + '</span>' +
+      '<span>overhang <em>' + f.over + 'w</em>' + (f.over === f.wasOver ? '' : ' \u2014 was ' + f.wasOver + 'w') + '</span>' +
+      '<span class="chip ' + st + '">' + f.kept + '/' + f.want + ' crossings \u00b7 gaps ' + f.gmin + '\u2013' + f.gmax + ' px</span>';
+    var html = '';
+    for (var L = 0; L <= 10; L++) {
+      var p = 'img/' + face + '/L' + (L < 10 ? '0' + L : L);
+      html += '<div class="lvl"><span class="n">level ' + L + '</span><div class="pair">' +
+        '<a href="' + p + '-top.webp" target="_blank" rel="noopener"><img loading="lazy" ' +
+        'alt="' + face + ' level ' + L + ', from the top" src="' + p + '-top.webp"></a>' +
+        '<a href="' + p + '-orb.webp" target="_blank" rel="noopener"><img loading="lazy" ' +
+        'alt="' + face + ' level ' + L + ', orbit" src="' + p + '-orb.webp"></a>' +
+        '</div><span class="cap">top \u00b7 orbit</span></div>';
+    }
+    box.innerHTML = html;
+    cells.forEach(function (c) { c.setAttribute('aria-pressed', String(c.dataset.face === face)); });
+    if (location.hash.slice(1) !== face) history.replaceState(null, '', '#' + face);
+  }
+
+  cells.forEach(function (c) { c.addEventListener('click', function () { show(c.dataset.face); }); });
+  window.addEventListener('hashchange', function () { show(location.hash.slice(1)); });
+  show(FACES[location.hash.slice(1)] ? location.hash.slice(1) : '1x5');
+})();
+</script>
+</body>
+</html>

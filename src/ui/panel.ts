@@ -675,6 +675,15 @@ export class Panel {
     body.appendChild(
       el('h4', 'browser-group', 'Twist family — the 1×n reference, every m×n face, 10 levels, both hands'),
     );
+    // Every level of every face, at full resolution, on the project site. The grid
+    // below quotes the numbers; that page shows what they look like.
+    const levels = el('p', 'browser-note');
+    levels.innerHTML =
+      'Each cell quotes its turn and its overhang. To see them — every level of every ' +
+      'face, top view and orbit, at full resolution — open ' +
+      '<a class="browser-link" href="../levels/" target="_blank" rel="noopener">' +
+      'the level gallery</a>.';
+    body.appendChild(levels);
     body.appendChild(
       el(
         'p',

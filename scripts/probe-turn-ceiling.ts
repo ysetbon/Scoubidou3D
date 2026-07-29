@@ -27,7 +27,11 @@ const seg = (a: any, b: any): boolean => {
 };
 const n180 = (a: number): number => ((a % 180) + 180) % 180;
 
-export interface FaceCost { kept: number; want: number; gmin: number; gmax: number; over: number }
+export interface FaceCost {
+  kept: number; want: number; gmin: number; gmax: number; over: number;
+  /** The shipped turn and the overhang, against what the minority fan would give. */
+  turn?: number; was?: number; wasOver?: number;
+}
 
 /** How far the majority family's loosest arm hangs past its band, in widths. */
 export function bigOvershoot(m: number, n: number, turn: number): number {
@@ -82,7 +86,12 @@ if (process.argv[1]?.includes('probe-turn')) {
   for (let m = 1; m <= TWOFAN_MAX; m++) {
     for (let n = 1; n <= TWOFAN_MAX; n++) {
       const c = faceCost(m, n);
-      snap[`${m}x${n}`] = c;
+      snap[`${m}x${n}`] = {
+        ...c,
+        turn: +columnTurn(m, n).toFixed(2),
+        was: +reachTurn(m, n).toFixed(2),
+        wasOver: +bigOvershoot(m, n, (reachTurn(m, n) * Math.PI) / 180).toFixed(2),
+      };
       if (c.kept === c.want) whole++;
       if (Math.abs(c.gmin - GAP) < 1e-6 && Math.abs(c.gmax - GAP) < 1e-6) tidy++;
       kept += c.kept; want += c.want;
