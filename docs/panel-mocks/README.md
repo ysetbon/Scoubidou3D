@@ -6,15 +6,15 @@ grotesque, hairline rules, coral / gold / teal, pill buttons with a hard offset 
 The tokens are lifted from `site/site.css` so a mock can be judged against the page that
 actually ships rather than against a fresh palette.
 
-All three obey the same two rules:
+All three obey the same rules:
 
 1. **No prose in the working panel.** Every note the shipping panel prints — the tool
    notes, the weave and level explanations, the colour legends, the storage caveat, the
-   gesture hint — moves into a single **About** area with one entry per topic.
+   gesture hint — moves into a single **About** sheet with one entry per topic.
 2. **The layer stack is the workspace,** not the sixth section of a long scroll.
-
-Each `.png` is one render: the app frame at 1440 × 900 on top, then a strip that names the
-mock, states its navigation model, and shows the About area at true panel width.
+3. **Levels are counted from 0.** Level 0 is the ground; each level above it is one whole
+   storey up. That is what `levelAt()` in `src/model/levels.ts` already returns, so the
+   panel and the model finally agree — the shipping panel labels the same storey `L1`.
 
 | Mock | Idea | The one thing it changes |
 | --- | --- | --- |
@@ -22,16 +22,50 @@ mock, states its navigation model, and shows the About area at true panel width.
 | [2 — Numbered cards](./mock-2-cards.html) | Settings collapse into `01 / 02 / 03` cards that print their own current values | You read the scene's whole setup without opening anything |
 | [3 — Layers only](./mock-3-dock.html) | Settings leave the panel for a dock over the canvas; a card per level; per-strand inspector in its row | The panel holds nothing but the stack |
 
-The mocks are static HTML — no build step, no JS. Open one in a browser, or re-render the
-PNGs with Playwright:
+## Both themes
 
-```js
-// 1440 x 900 viewport, deviceScaleFactor 2, fullPage
-for (const f of ['mock-1-tabs', 'mock-2-cards', 'mock-3-dock']) {
-  await page.goto(`file://<repo>/docs/panel-mocks/${f}.html`);
-  await page.screenshot({ path: `${f}.png`, fullPage: true });
-}
-```
+`mocks.css` carries a light and a dark palette. The dark one is not an inversion: the
+paper goes to a warm near-black with the cream's own yellow-brown cast, the stage keeps
+its dotted field as dark olive under a soft gold glow, and coral stops being an accent on
+white and becomes the fill an active control takes.
+
+What made that possible is splitting the site's single near-black three ways —
+`--ink` for text, `--edge`/`--edge2` for borders, `--shadow` for the hard offset. Only
+`--ink` flips to cream: cream borders at full strength shout, and a cream drop shadow is
+not a shadow.
+
+The theme follows the OS by default, the ◐ button overrides it either way, and the choice
+is remembered. `?theme=light` or `?theme=dark` in the URL wins over both — which is how
+the renders below are shot.
+
+## The About sheet
+
+`mocks.js` is the only script, and it is deliberately small: the theme switch, the About
+sheet, and mock 3's dock popovers. The sheet slides up over the panel it belongs to and
+takes the whole of it, so opening reads as *the panel turned over* rather than a dialog
+dropped on top. It closes on its own ✕, on Escape, and — where the ? is still uncovered —
+on a second press of the ?. Focus follows it in and back out, and Escape only ever closes
+the topmost thing, so dismissing the sheet leaves a dock popover where it was.
+
+Its text lives in one place per file: the still in the render strip is the source, and the
+working sheet is cloned from it at load, so the two cannot drift apart.
+
+## Renders
+
+Each `.png` is one shot: the app frame at 1440 × 900, then a strip that names the mock,
+states its navigation model, and shows the About area at true panel width.
+
+| File | What it shows |
+| --- | --- |
+| `mock-1-tabs.png` · `mock-1-tabs-dark.png` | mock 1, both themes |
+| `mock-2-cards.png` · `mock-2-cards-dark.png` | mock 2, both themes |
+| `mock-3-dock.png` · `mock-3-dock-dark.png` | mock 3, both themes |
+| `mock-3-dock-about.png` · `mock-3-dock-about-dark.png` | mock 3 with the About sheet open (frame only) |
+
+The mocks are static HTML — no build step. Open one in a browser, or re-render with
+Playwright at a 1440 × 900 viewport, `deviceScaleFactor: 2`, `fullPage: true`, once per
+theme via `?theme=`; the About shots click `.helpbtn [data-act="about"]` and capture
+`.frame` alone.
 
 The scene shown is the same in all three — a box stitch of 3 rounds, 9 strands, 3 masks,
 3 levels — so the panels are compared on layout alone.

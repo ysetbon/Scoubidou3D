@@ -5,6 +5,7 @@
   <meta charset="utf-8" />
   <title>Panel mock 1 — Tabbed panel</title>
   <link rel="stylesheet" href="./mocks.css" />
+  <script src="./mocks.js" defer></script>
   <style>
     /* ---- mock 1: three tabs, one pane on screen ---------------------------
        The panel stops scrolling through six stacked sections. Layers / Ribbon /
@@ -15,7 +16,7 @@
     .tabs {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      border-bottom: 1px solid var(--ink);
+      border-bottom: 1px solid var(--edge2);
     }
 
     .tabs button {
@@ -55,7 +56,7 @@
     .tabs button u {
       padding: 1px 5px;
       border-radius: 99px;
-      background: rgba(23, 23, 19, 0.1);
+      background: var(--hover);
       font-size: 9px;
       text-decoration: none;
       letter-spacing: 0.02em;
@@ -89,7 +90,7 @@
       align-items: center;
       gap: 8px;
       padding: 10px 14px;
-      border-top: 1px solid var(--ink);
+      border-top: 1px solid var(--edge2);
       background: var(--cream);
     }
 
@@ -177,7 +178,9 @@
           </svg>
           <b>Scoubidou<i>3D</i></b>
           <span class="spacer"></span>
-          <button class="round" title="About, gestures and what every tool does">?</button>
+          <button class="round" data-act="theme" title="Switch theme"></button>
+          <button class="round" data-act="about" aria-expanded="false"
+            title="About, gestures and what every tool does">?</button>
         </div>
 
         <nav class="tabs">
@@ -227,7 +230,7 @@
               <span class="acts"><button>⇅</button><button class="x">✕</button></span>
             </div>
 
-            <div class="levelrule">Level 3 <em>· +2 storeys</em></div>
+            <div class="levelrule">Level 2 <em>· +2 storeys</em></div>
 
             <div class="layer">
               <span class="swatch" style="background: var(--lace-white)"></span>
@@ -242,7 +245,7 @@
                   class="x">✕</button></span>
             </div>
 
-            <div class="levelrule">Level 2 <em>· +1 storey</em></div>
+            <div class="levelrule">Level 1 <em>· +1 storey</em></div>
 
             <div class="layer">
               <span class="swatch" style="background: var(--lace-indigo)"></span>
@@ -263,7 +266,7 @@
                   class="x">✕</button></span>
             </div>
 
-            <div class="levelrule">Level 1 <em>· ground</em></div>
+            <div class="levelrule">Level 0 <em>· ground</em></div>
 
             <div class="layer sel">
               <span class="swatch" style="background: var(--lace-teal)"></span>
@@ -333,8 +336,8 @@
         <div>
           <i>Site match</i>
           <b>Cream paper, coral rules, pill controls</b>
-          <small>Same tokens as the landing page: Georgia headings, hairline dividers, hard offset shadows
-            on hover.</small>
+          <small>Same tokens as the landing page — Georgia headings, hairline dividers, hard offset shadows —
+            and a dark theme built from the same hues.</small>
         </div>
       </div>
     </div>
@@ -343,7 +346,7 @@
       <div class="sheet">
         <div class="sheethead">
           <h3>About</h3>
-          <button class="round hot">✕</button>
+          <button class="round hot" data-act="about-close" title="Close (Esc)">✕</button>
         </div>
         <div class="sheetbody">
           <div class="entry">
@@ -353,8 +356,8 @@
           </div>
           <div class="entry">
             <h4>Levels</h4>
-            <p>A level is a step of one whole storey, so a lace up there rests <b>on</b> the woven round below
-              instead of sinking into it.</p>
+            <p><b>Level 0</b> is the ground. Every level above it is a step of one whole storey, so a lace up
+              there rests <b>on</b> the woven round below instead of sinking into it.</p>
           </div>
           <div class="entry">
             <h4>Control points</h4>

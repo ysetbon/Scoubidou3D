@@ -9,15 +9,45 @@
  * The one rule all three mocks obey: NO prose in the working panel. Every note
  * the shipping panel carries moves into an About area, reachable from a single
  * place, so the panel is controls only.
+ *
+ * ---- tokens, and why they are split the way they are ----------------------
+ * The light palette uses one near-black for text, for hairline borders and for
+ * the hard offset shadow, which is exactly why the site looks like print. That
+ * cannot survive inversion: cream text is right, but cream borders at full
+ * strength scream, and a cream drop shadow is not a shadow. So the ink is split
+ * three ways — --ink is text only, --edge / --edge2 are borders, --shadow is the
+ * offset — and only --ink flips to cream in the dark theme.
  */
 
 :root {
+  /* surfaces: --paper is the panel, --cream the fills and footers on it */
   --cream: #f5efdf;
   --paper: #fffaf0;
   --ink: #171713;
   --muted: #6f6c62;
+
+  /* borders: --line and --hair are hairlines, --edge2 the deliberate 1.5px one */
   --line: rgba(23, 23, 19, 0.2);
   --hair: rgba(23, 23, 19, 0.12);
+  --edge2: #171713;
+  --shadow: #171713;
+  --hover: rgba(23, 23, 19, 0.08);
+
+  /* the fill an active control takes, and the selected layer's border */
+  --fill: #171713;
+  --fill-ink: #ffffff;
+  --sel: #171713;
+
+  /* the scene: dotted field, the ring drawn on it, and the glow under the model */
+  --stage: #ffd447;
+  --stage-dot: rgba(23, 23, 19, 0.17);
+  --ring: rgba(23, 23, 19, 0.25);
+  --glow: transparent;
+  /* the model's own outline — a property of the ribbon, not of the theme */
+  --lace-line: #171713;
+  --lace-shade: rgba(0, 0, 0, 0.12);
+  --drop: rgba(72, 44, 18, 0.22);
+
   --coral: #ff5c35;
   --yellow: #ffd447;
   --teal: #087e8b;
@@ -28,6 +58,39 @@
   --lace-rose: #d25a6e;
   --lace-indigo: #788ce0;
   --panel-w: 352px;
+}
+
+/* ---- the dark theme -------------------------------------------------------
+   Not a grey inversion: the paper goes to a warm near-black with the same
+   yellow-brown cast the cream had, the stage keeps its dotted field but as dark
+   olive under a soft gold glow, and coral stops being the accent on white and
+   becomes the fill an active control takes — it is the one hue that holds at
+   both ends. Borders drop to low-alpha cream, and the hard offset shadow, which
+   was ink on cream, becomes real black. */
+:root[data-theme='dark'] {
+  --cream: #191410;
+  --paper: #221c15;
+  --ink: #f3e9d9;
+  --muted: #9c9284;
+
+  --line: rgba(243, 233, 217, 0.17);
+  --hair: rgba(243, 233, 217, 0.1);
+  --edge2: rgba(243, 233, 217, 0.34);
+  --shadow: rgba(0, 0, 0, 0.72);
+  --hover: rgba(243, 233, 217, 0.09);
+
+  --fill: #ff6540;
+  --fill-ink: #ffffff;
+  --sel: #ff6540;
+
+  --stage: #26200f;
+  --stage-dot: rgba(255, 212, 71, 0.16);
+  --ring: rgba(255, 212, 71, 0.3);
+  --glow: rgba(255, 196, 74, 0.09);
+  --drop: rgba(0, 0, 0, 0.45);
+
+  --coral: #ff6540;
+  --teal: #3fb0b8;
 }
 
 * {
@@ -74,10 +137,14 @@ button {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-right: 1px solid var(--ink);
-  background-color: var(--yellow);
-  background-image: radial-gradient(rgba(23, 23, 19, 0.17) 1px, transparent 1px);
-  background-size: 18px 18px;
+  border-right: 1px solid var(--edge2);
+  background-color: var(--stage);
+  /* Two layers: a glow under the model (dark theme only — it is transparent in
+     the light one) over the dotted field the site hero uses. */
+  background-image:
+    radial-gradient(circle at 46% 47%, var(--glow), transparent 62%),
+    radial-gradient(var(--stage-dot) 1px, transparent 1px);
+  background-size: auto, 18px 18px;
   perspective: 900px;
 }
 
@@ -86,7 +153,7 @@ button {
   position: absolute;
   width: 560px;
   height: 560px;
-  border: 1px solid rgba(23, 23, 19, 0.25);
+  border: 1px solid var(--ring);
   border-radius: 50%;
 }
 
@@ -97,16 +164,16 @@ button {
   height: 350px;
   transform: rotateX(58deg) rotateZ(-30deg);
   transform-style: preserve-3d;
-  filter: drop-shadow(28px 36px 15px rgba(72, 44, 18, 0.22));
+  filter: drop-shadow(28px 36px 15px var(--drop));
 }
 
 .rh,
 .rv,
 .cross {
   position: absolute;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--lace-line);
   border-radius: 17px;
-  box-shadow: inset -7px -9px 0 rgba(0, 0, 0, 0.12);
+  box-shadow: inset -7px -9px 0 var(--lace-shade);
 }
 
 .rh {
@@ -156,10 +223,10 @@ button {
   display: flex;
   gap: 4px;
   padding: 5px;
-  border: 1.5px solid var(--ink);
+  border: 1.5px solid var(--edge2);
   border-radius: 999px;
-  background: rgba(255, 250, 240, 0.94);
-  box-shadow: 4px 5px 0 var(--ink);
+  background: var(--paper);
+  box-shadow: 4px 5px 0 var(--shadow);
 }
 
 .tools button {
@@ -175,9 +242,14 @@ button {
   letter-spacing: 0.01em;
 }
 
-.tools button.on {
-  background: var(--ink);
-  color: #fff;
+.tools button:hover {
+  background: var(--hover);
+}
+
+.tools button.on,
+.tools button.on:hover {
+  background: var(--fill);
+  color: var(--fill-ink);
 }
 
 .tools svg {
@@ -193,10 +265,10 @@ button {
   bottom: 20px;
   left: 22px;
   padding: 9px 13px;
-  border: 1px solid var(--ink);
+  border: 1px solid var(--edge2);
   border-radius: 999px;
-  background: rgba(255, 250, 240, 0.92);
-  box-shadow: 3px 3px var(--ink);
+  background: var(--paper);
+  box-shadow: 3px 3px var(--shadow);
   font-size: 10px;
   font-weight: 750;
   letter-spacing: 0.08em;
@@ -206,11 +278,13 @@ button {
 /* ---- the panel shell ------------------------------------------------------ */
 
 .panel {
+  position: relative;
   flex: 0 0 var(--panel-w);
   width: var(--panel-w);
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
   background: var(--paper);
 }
 
@@ -219,7 +293,7 @@ button {
   align-items: center;
   gap: 10px;
   padding: 16px 18px;
-  border-bottom: 1px solid var(--ink);
+  border-bottom: 1px solid var(--edge2);
 }
 
 .mark {
@@ -230,7 +304,7 @@ button {
 }
 
 .mark path {
-  stroke: var(--ink);
+  stroke: var(--lace-line);
   stroke-width: 2.2px;
 }
 
@@ -254,7 +328,7 @@ button {
 }
 
 /* The round icon button the site uses on its sample cards — here it is the one
-   door to every word of explanation. */
+   door to every word of explanation, plus the theme switch next to it. */
 .round {
   display: inline-flex;
   align-items: center;
@@ -262,21 +336,32 @@ button {
   width: 32px;
   height: 32px;
   flex: 0 0 auto;
-  border: 1.5px solid var(--ink);
+  padding: 0;
+  border: 1.5px solid var(--edge2);
   border-radius: 50%;
   background: var(--paper);
   font-size: 14px;
   font-weight: 750;
+  line-height: 1;
   transition: 0.2s;
 }
 
 .round:hover {
-  background: var(--ink);
-  color: #fff;
+  background: var(--fill);
+  color: var(--fill-ink);
 }
 
-.round.hot {
+.round.hot,
+.round.hot:hover {
   background: var(--coral);
+  color: #fff;
+  border-color: var(--coral);
+}
+
+.round svg {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
 }
 
 /* A kicker, same as the site's, minus the outer margin. */
@@ -291,8 +376,8 @@ button {
 
 .kicker.dotted::before {
   content: '';
-  display: inline-block
-;  width: 6px;
+  display: inline-block;
+  width: 6px;
   height: 6px;
   margin-right: 8px;
   border-radius: 50%;
@@ -315,7 +400,7 @@ button {
   gap: 7px;
   min-height: 36px;
   padding: 0 12px;
-  border: 1.5px solid var(--ink);
+  border: 1.5px solid var(--edge2);
   border-radius: 999px;
   background: transparent;
   font-size: 11.5px;
@@ -326,16 +411,19 @@ button {
 
 .pill:hover {
   transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0 var(--ink);
+  box-shadow: 3px 3px 0 var(--shadow);
 }
 
 .pill.on {
-  background: var(--ink);
-  color: #fff;
+  background: var(--fill);
+  color: var(--fill-ink);
+  border-color: var(--fill);
 }
 
 .pill.coral {
   background: var(--coral);
+  border-color: var(--coral);
+  color: #fff;
 }
 
 .pill svg {
@@ -395,13 +483,13 @@ button {
   width: 15px;
   height: 15px;
   margin: -7.5px 0 0 -7.5px;
-  border: 1.5px solid var(--ink);
+  border: 1.5px solid var(--edge2);
   border-radius: 50%;
   background: var(--coral);
 }
 
-/* A checkbox as a small square with an ink tick — matches the geometry of the
-   page far better than a rounded switch. */
+/* A checkbox as a small square with a tick — matches the geometry of the page
+   far better than a rounded switch. */
 .check {
   display: inline-flex;
   align-items: center;
@@ -417,19 +505,20 @@ button {
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
-  border: 1.5px solid var(--ink);
+  border: 1.5px solid var(--edge2);
   background: var(--paper);
 }
 
 .check.on i {
-  background: var(--ink);
+  background: var(--fill);
+  border-color: var(--fill);
 }
 
 .check.on i::after {
   content: '';
   width: 8px;
   height: 4px;
-  border: 1.6px solid #fff;
+  border: 1.6px solid var(--fill-ink);
   border-top: 0;
   border-right: 0;
   transform: rotate(-45deg) translate(1px, -1px);
@@ -448,7 +537,7 @@ button {
   width: 100%;
   min-height: 40px;
   padding: 0 12px;
-  border: 1.5px solid var(--ink);
+  border: 1.5px solid var(--edge2);
   background: var(--paper);
   font-size: 12.5px;
   font-weight: 700;
@@ -484,19 +573,26 @@ button {
 }
 
 .layer:hover {
-  border-color: var(--ink);
+  border-color: var(--edge2);
 }
 
 .layer.sel {
-  border: 1.5px solid var(--ink);
+  border: 1.5px solid var(--sel);
   box-shadow: 3px 3px 0 var(--coral);
+}
+
+/* In the dark theme the selected row already carries a coral border; a coral
+   slab behind it as well is one signal too many. */
+:root[data-theme='dark'] .layer.sel {
+  box-shadow: none;
+  background: color-mix(in srgb, var(--coral) 9%, transparent);
 }
 
 .swatch {
   width: 24px;
   height: 24px;
   flex: 0 0 auto;
-  border: 1.5px solid var(--ink);
+  border: 1.5px solid var(--edge2);
   border-radius: 50%;
 }
 
@@ -554,7 +650,7 @@ button {
 }
 
 .acts button:hover {
-  background: rgba(23, 23, 19, 0.08);
+  background: var(--hover);
   color: var(--ink);
 }
 
@@ -572,7 +668,7 @@ button {
   width: 24px;
   height: 24px;
   flex: 0 0 auto;
-  border: 1.5px solid var(--ink);
+  border: 1.5px solid var(--edge2);
   border-radius: 50%;
   overflow: hidden;
 }
@@ -604,7 +700,11 @@ button {
   letter-spacing: 0.06em;
 }
 
-/* ---- the About sheet ------------------------------------------------------ */
+/* ---- the About sheet ------------------------------------------------------
+   Slides up over the panel it belongs to and takes the whole of it, so the
+   opening reads as "the panel turned over" rather than as a dialog dropped on
+   top. `visibility` rather than `display` is what lets it animate both ways,
+   and it is what keeps it out of the tab order while shut. */
 
 .sheet {
   position: absolute;
@@ -613,6 +713,33 @@ button {
   display: flex;
   flex-direction: column;
   background: var(--cream);
+  border-left: 1px solid var(--hair);
+  transform: translateY(14px);
+  opacity: 0;
+  visibility: hidden;
+  transition: transform 0.26s cubic-bezier(0.22, 0.8, 0.28, 1), opacity 0.22s ease,
+    visibility 0.26s;
+}
+
+.sheet.open {
+  transform: none;
+  opacity: 1;
+  visibility: visible;
+}
+
+/* In the render strip the sheet is shown as a still, with no toggle to press. */
+.aboutHost .sheet {
+  transform: none;
+  opacity: 1;
+  visibility: visible;
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    transition: opacity 0.1s linear, visibility 0.1s;
+    transform: none;
+  }
 }
 
 .sheethead {
@@ -620,7 +747,7 @@ button {
   align-items: center;
   gap: 12px;
   padding: 16px 18px;
-  border-bottom: 1px solid var(--ink);
+  border-bottom: 1px solid var(--edge2);
 }
 
 .sheethead h3 {
@@ -652,7 +779,8 @@ button {
   font-family: Georgia, serif;
   font-size: 12.5px;
   line-height: 1.6;
-  color: #45433c;
+  color: var(--ink);
+  opacity: 0.86;
 }
 
 .entry p b {
@@ -664,41 +792,6 @@ button {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-}
-
-/* Caption strip identifying the mock, outside the app frame in the render. */
-.plate {
-  position: absolute;
-  z-index: 60;
-  bottom: 20px;
-  right: calc(var(--panel-w) + 22px);
-  max-width: 430px;
-  padding: 14px 18px;
-  border: 1.5px solid var(--ink);
-  background: var(--paper);
-  box-shadow: 5px 6px 0 var(--ink);
-}
-
-.plate b {
-  display: block;
-  font-family: Georgia, serif;
-  font-size: 18px;
-  font-weight: 400;
-  letter-spacing: -0.04em;
-}
-
-.plate span {
-  display: block;
-  margin-top: 5px;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--muted);
-}
-
-.plate u {
-  color: var(--coral);
-  text-decoration: none;
-  font-weight: 750;
 }
 
 /* ---- the render strip below the app frame --------------------------------- */
@@ -715,7 +808,7 @@ body.sheetview {
   position: relative;
   height: 900px;
   overflow: hidden;
-  border-bottom: 1px solid var(--ink);
+  border-bottom: 1px solid var(--edge2);
 }
 
 .frame .app {
@@ -731,7 +824,7 @@ body.sheetview {
 
 .stripCopy {
   padding: 30px 34px 34px;
-  border-right: 1px solid var(--ink);
+  border-right: 1px solid var(--edge2);
 }
 
 .stripCopy h2 {
@@ -745,7 +838,8 @@ body.sheetview {
   font-family: Georgia, serif;
   font-size: 14px;
   line-height: 1.65;
-  color: #45433c;
+  color: var(--ink);
+  opacity: 0.88;
 }
 
 .points {
@@ -757,7 +851,7 @@ body.sheetview {
 
 .points div {
   padding-top: 12px;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--edge2);
 }
 
 .points b {
@@ -765,6 +859,15 @@ body.sheetview {
   font-family: Georgia, serif;
   font-size: 15px;
   font-weight: 400;
+}
+
+/* `.points b` below is the title; a <b> inside the copy is just emphasis. */
+.points small b {
+  display: inline;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 750;
+  color: var(--coral);
 }
 
 .points small {

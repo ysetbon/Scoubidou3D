@@ -5,6 +5,7 @@
   <meta charset="utf-8" />
   <title>Panel mock 3 — Layers only, settings in a dock</title>
   <link rel="stylesheet" href="./mocks.css" />
+  <script src="./mocks.js" defer></script>
   <style>
     /* ---- mock 3: the panel is the layer stack, nothing else ----------------
        The most direct answer to "make it easy to navigate": take the settings
@@ -25,10 +26,17 @@
       display: flex;
       gap: 4px;
       padding: 5px;
-      border: 1.5px solid var(--ink);
+      border: 1.5px solid var(--edge2);
       border-radius: 999px;
-      background: rgba(255, 250, 240, 0.94);
-      box-shadow: 4px 5px 0 var(--ink);
+      background: var(--paper);
+      box-shadow: 4px 5px 0 var(--shadow);
+    }
+
+    /* Each pill carries its own popover, so the card is centred over the control
+       that opened it however the labels are sized. */
+    .dockItem {
+      position: relative;
+      display: flex;
     }
 
     .dock button {
@@ -43,8 +51,14 @@
       font-weight: 750;
     }
 
-    .dock button.on {
+    .dock button:hover {
+      background: var(--hover);
+    }
+
+    .dock button.on,
+    .dock button.on:hover {
       background: var(--coral);
+      color: #fff;
     }
 
     .dock button u {
@@ -59,15 +73,25 @@
        directly above its pill. */
     .pop {
       position: absolute;
-      z-index: 7;
-      bottom: 86px;
+      z-index: 8;
+      bottom: calc(100% + 15px);
       left: 50%;
-      transform: translateX(-58%);
       width: 320px;
       padding: 16px 18px 18px;
-      border: 1.5px solid var(--ink);
+      border: 1.5px solid var(--edge2);
       background: var(--paper);
-      box-shadow: 6px 7px 0 var(--ink);
+      box-shadow: 6px 7px 0 var(--shadow);
+      transform: translate(-50%, 8px);
+      opacity: 0;
+      visibility: hidden;
+      transition: transform 0.2s cubic-bezier(0.22, 0.8, 0.28, 1), opacity 0.16s ease,
+        visibility 0.2s;
+    }
+
+    .pop.open {
+      transform: translate(-50%, 0);
+      opacity: 1;
+      visibility: visible;
     }
 
     .pop h4 {
@@ -93,14 +117,31 @@
       content: '';
       position: absolute;
       bottom: -8px;
-      left: 84px;
+      left: 50%;
       width: 13px;
       height: 13px;
-      border: 1.5px solid var(--ink);
+      margin-left: -6.5px;
+      border: 1.5px solid var(--edge2);
       border-top: 0;
       border-left: 0;
       background: var(--paper);
       transform: rotate(45deg);
+    }
+
+    .pop .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .pop .row .kicker {
+      margin-right: auto;
+    }
+
+    .pop .name {
+      font-family: Georgia, serif;
+      font-size: 15px;
     }
 
     .helpbtn {
@@ -108,13 +149,15 @@
       z-index: 7;
       top: 22px;
       right: 22px;
+      display: flex;
+      gap: 8px;
     }
 
     .helpbtn .round {
       width: 40px;
       height: 40px;
       font-size: 16px;
-      box-shadow: 3px 4px 0 var(--ink);
+      box-shadow: 3px 4px 0 var(--shadow);
       background: var(--paper);
     }
 
@@ -160,7 +203,7 @@
     /* A level is a card, not a divider line: everything resting on that storey
        is inside it, and the card's own header moves or deletes the storey. */
     .levelcard {
-      border: 1.5px solid var(--ink);
+      border: 1.5px solid var(--edge2);
       background: var(--paper);
     }
 
@@ -174,7 +217,7 @@
       gap: 8px;
       padding: 9px 10px;
       background: var(--cream);
-      border-bottom: 1px solid var(--ink);
+      border-bottom: 1px solid var(--edge2);
     }
 
     .levelcard > header .badge {
@@ -184,9 +227,11 @@
       width: 24px;
       height: 24px;
       flex: 0 0 auto;
-      border: 1.5px solid var(--ink);
+      border: 1.5px solid var(--edge2);
       border-radius: 50%;
       background: var(--yellow);
+      /* Gold disc in both themes, so the number does not follow the text ink. */
+      color: #171713;
       font-family: Georgia, serif;
       font-size: 12px;
     }
@@ -218,7 +263,7 @@
     .insp {
       margin-top: 5px;
       padding: 12px 11px 13px;
-      border: 1.5px solid var(--ink);
+      border: 1.5px solid var(--edge2);
       border-top-width: 0;
       border-left: 3px solid var(--coral);
       background: var(--cream);
@@ -243,12 +288,12 @@
     .insp .chips i {
       width: 19px;
       height: 19px;
-      border: 1.5px solid var(--ink);
+      border: 1.5px solid var(--edge2);
       border-radius: 50%;
     }
 
     .insp .chips i.on {
-      box-shadow: 0 0 0 2px var(--paper), 0 0 0 3.5px var(--ink);
+      box-shadow: 0 0 0 2px var(--paper), 0 0 0 3.5px var(--edge2);
     }
 
     .insp .pill {
@@ -259,7 +304,7 @@
     /* Masks live in their own card at the foot of the stack. */
     .maskcard {
       margin-top: 12px;
-      border: 1.5px dashed var(--ink);
+      border: 1.5px dashed var(--edge2);
       background: var(--paper);
     }
 
@@ -268,7 +313,7 @@
       align-items: center;
       gap: 8px;
       padding: 9px 10px;
-      border-bottom: 1px dashed var(--ink);
+      border-bottom: 1px dashed var(--edge2);
     }
 
     .maskcard > header b {
@@ -315,7 +360,11 @@
             </svg>Weave</button>
         </div>
 
-        <span class="helpbtn"><button class="round">?</button></span>
+        <span class="helpbtn">
+          <button class="round" data-act="theme" title="Switch theme"></button>
+          <button class="round" data-act="about" aria-expanded="false"
+            title="About: the tools, levels, masks, camera and files">?</button>
+        </span>
 
         <div class="weave">
           <i class="rh h1"></i><i class="rh h2"></i><i class="rh h3"></i>
@@ -324,33 +373,92 @@
             class="cross c5"></b>
         </div>
 
-        <!-- The settings, next to what they change. -->
-        <div class="pop">
-          <h4>Ribbon <small>global</small></h4>
-          <div class="slider">
-            <div class="head"><span>Thickness</span><var>46</var></div>
-            <div class="track">
-              <i style="width: 37%"></i><b style="left: 37%"></b>
-            </div>
-          </div>
-          <div class="slider">
-            <div class="head"><span>Width scale</span><var>1.00</var></div>
-            <div class="track">
-              <i style="width: 29%"></i><b style="left: 29%"></b>
-            </div>
-          </div>
-          <div class="checkrow" style="margin-top: 12px">
-            <span class="check on"><i></i>Outline</span>
-            <span class="check on"><i></i>Round ends</span>
-            <span class="check"><i></i>Grid</span>
-          </div>
-        </div>
-
+        <!-- The settings, next to what they change: one pill, one popover. -->
         <div class="dock">
-          <button class="on">Ribbon <u>46</u></button>
-          <button>Weave <u>on</u></button>
-          <button>View</button>
-          <button>Scene <u>box stitch</u></button>
+          <span class="dockItem">
+            <button class="on" data-pop="ribbon" aria-expanded="true">Ribbon <u>46</u></button>
+            <div class="pop open" data-pop="ribbon">
+              <h4>Ribbon <small>global</small></h4>
+              <div class="slider">
+                <div class="head"><span>Thickness</span><var>46</var></div>
+                <div class="track">
+                  <i style="width: 37%"></i><b style="left: 37%"></b>
+                </div>
+              </div>
+              <div class="slider">
+                <div class="head"><span>Width scale</span><var>1.00</var></div>
+                <div class="track">
+                  <i style="width: 29%"></i><b style="left: 29%"></b>
+                </div>
+              </div>
+              <div class="checkrow" style="margin-top: 12px">
+                <span class="check on"><i></i>Outline</span>
+                <span class="check on"><i></i>Round ends</span>
+                <span class="check"><i></i>Grid</span>
+              </div>
+            </div>
+          </span>
+
+          <span class="dockItem">
+            <button data-pop="weave" aria-expanded="false">Weave <u>on</u></button>
+            <div class="pop" data-pop="weave">
+              <h4>Weave <small>over / under</small></h4>
+              <div class="row"><span class="check on"><i></i>Interlock at crossings</span></div>
+              <div class="slider">
+                <div class="head"><span>Depth</span><var>42</var></div>
+                <div class="track">
+                  <i style="width: 35%"></i><b style="left: 35%"></b>
+                </div>
+              </div>
+              <div class="slider">
+                <div class="head"><span>Span</span><var>1.20</var></div>
+                <div class="track">
+                  <i style="width: 31%"></i><b style="left: 31%"></b>
+                </div>
+              </div>
+              <div class="slider">
+                <div class="head"><span>Layer lift</span><var>18</var></div>
+                <div class="track">
+                  <i style="width: 22%"></i><b style="left: 22%"></b>
+                </div>
+              </div>
+            </div>
+          </span>
+
+          <span class="dockItem">
+            <button data-pop="view" aria-expanded="false">View</button>
+            <div class="pop" data-pop="view" style="width: 250px">
+              <h4>View <small>camera</small></h4>
+              <div class="pillrow" style="margin-bottom: 12px">
+                <button class="pill">Fit</button>
+                <button class="pill">Top</button>
+                <button class="pill">Front</button>
+              </div>
+              <div class="checkrow">
+                <span class="check"><i></i>Grid</span>
+                <span class="check on"><i></i>Shadows</span>
+              </div>
+            </div>
+          </span>
+
+          <span class="dockItem">
+            <button data-pop="scene" aria-expanded="false">Scene <u>box stitch</u></button>
+            <div class="pop" data-pop="scene" style="width: 290px">
+              <h4>Scene</h4>
+              <div class="row">
+                <span class="name">Box stitch, 3 rounds</span>
+                <span class="tag teal">9 strands</span>
+              </div>
+              <div class="pillrow" style="margin-bottom: 6px">
+                <button class="pill coral">Browse samples…</button>
+              </div>
+              <div class="pillrow">
+                <button class="pill">Import</button>
+                <button class="pill">Save</button>
+                <button class="pill">Copy JSON</button>
+              </div>
+            </div>
+          </span>
         </div>
       </div>
 
@@ -381,8 +489,8 @@
 
           <div class="levelcard">
             <header>
-              <span class="badge">3</span>
-              <b>Level 3</b>
+              <span class="badge">2</span>
+              <b>Level 2</b>
               <small>+2 storeys · 2 layers</small>
               <span class="acts"><button>▲</button><button>▼</button><button class="x">✕</button></span>
             </header>
@@ -402,8 +510,8 @@
 
           <div class="levelcard">
             <header>
-              <span class="badge">2</span>
-              <b>Level 2</b>
+              <span class="badge">1</span>
+              <b>Level 1</b>
               <small>+1 storey · 3 layers</small>
               <span class="acts"><button>▲</button><button>▼</button><button class="x">✕</button></span>
             </header>
@@ -455,8 +563,8 @@
 
           <div class="levelcard">
             <header>
-              <span class="badge">1</span>
-              <b>Level 1</b>
+              <span class="badge">0</span>
+              <b>Level 0</b>
               <small>ground · 4 layers</small>
               <span class="acts"><button>▲</button><button>▼</button></span>
             </header>
@@ -534,7 +642,7 @@
         <div>
           <i>Navigation</i>
           <b>A card per storey</b>
-          <small>The stack stops being one long list — you move a whole level, or fold it, from its own
+          <small>Numbered from <b>0</b>, the ground. You move a whole storey — or fold it — from its own
             header.</small>
         </div>
         <div>
@@ -545,8 +653,8 @@
         <div>
           <i>Site match</i>
           <b>Popovers as paper cards</b>
-          <small>Hard offset shadows, gold storey badges, dashed border on the mask card — the site's whole
-            kit.</small>
+          <small>Hard offset shadows, gold storey badges, dashed border on the mask card — in both themes; the
+            ◐ over the canvas switches.</small>
         </div>
       </div>
     </div>
@@ -555,7 +663,7 @@
       <div class="sheet">
         <div class="sheethead">
           <h3>About</h3>
-          <button class="round hot">✕</button>
+          <button class="round hot" data-act="about-close" title="Close (Esc)">✕</button>
         </div>
         <div class="sheetbody">
           <div class="entry">
@@ -565,8 +673,8 @@
           </div>
           <div class="entry">
             <h4>Levels</h4>
-            <p>One whole storey — the strand thickness plus the band the weave needs — so a lace up there rests
-              on the round below instead of sinking into it.</p>
+            <p>Counted from <b>0</b>, the ground. One level up is one whole storey — the strand thickness plus the
+              band the weave needs — so a lace there rests on the round below, not in it.</p>
           </div>
           <div class="entry">
             <h4>Masks</h4>

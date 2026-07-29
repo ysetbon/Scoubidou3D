@@ -5,6 +5,7 @@
   <meta charset="utf-8" />
   <title>Panel mock 2 — Numbered cards</title>
   <link rel="stylesheet" href="./mocks.css" />
+  <script src="./mocks.js" defer></script>
   <style>
     /* ---- mock 2: numbered cards over a permanent layer stack ---------------
        The panel splits in two. The top half is the settings, as numbered cards
@@ -15,7 +16,7 @@
 
     .cards {
       flex: 0 0 auto;
-      border-bottom: 1px solid var(--ink);
+      border-bottom: 1px solid var(--edge2);
     }
 
     .card + .card {
@@ -125,7 +126,7 @@
       align-items: center;
       gap: 8px;
       padding: 11px 16px;
-      border-top: 1px solid var(--ink);
+      border-top: 1px solid var(--edge2);
       background: var(--cream);
     }
 
@@ -136,7 +137,7 @@
       gap: 7px;
       margin-right: auto;
       padding-bottom: 3px;
-      border-bottom: 1px solid var(--ink);
+      border-bottom: 1px solid var(--edge2);
       color: inherit;
       font-size: 11.5px;
       font-weight: 750;
@@ -200,7 +201,8 @@
           </svg>
           <b>Scoubidou<i>3D</i></b>
           <span class="spacer"></span>
-          <button class="round">?</button>
+          <button class="round" data-act="theme" title="Switch theme"></button>
+          <button class="round" data-act="about" aria-expanded="false" title="About &amp; gestures">?</button>
         </div>
 
         <div class="cards">
@@ -270,7 +272,7 @@
         <div class="scroll">
           <div class="stackBody">
 
-            <div class="levelrule">Level 3 <em>· 2 layers, +2 storeys</em></div>
+            <div class="levelrule">Level 2 <em>· 2 layers, +2 storeys</em></div>
 
             <div class="layer">
               <span class="swatch" style="background: var(--lace-white)"></span>
@@ -285,7 +287,7 @@
                   class="x">✕</button></span>
             </div>
 
-            <div class="levelrule">Level 2 <em>· 3 layers, +1 storey</em></div>
+            <div class="levelrule">Level 1 <em>· 3 layers, +1 storey</em></div>
 
             <div class="layer">
               <span class="swatch" style="background: var(--lace-indigo)"></span>
@@ -306,7 +308,7 @@
                   class="x">✕</button></span>
             </div>
 
-            <div class="levelrule">Level 1 <em>· 4 layers, ground</em></div>
+            <div class="levelrule">Level 0 <em>· 4 layers, ground</em></div>
 
             <div class="layer sel">
               <span class="swatch" style="background: var(--lace-teal)"></span>
@@ -361,7 +363,7 @@
         </div>
 
         <div class="foot">
-          <a href="#">About &amp; gestures
+          <a href="#" data-act="about" aria-expanded="false">About &amp; gestures
             <svg class="chev" viewBox="0 0 20 20">
               <path d="M4 10h11M11 5l5 5-5 5" />
             </svg>
@@ -398,8 +400,8 @@
         <div>
           <i>Site match</i>
           <b>Serif numerals and titles</b>
-          <small>Georgia over the grotesque controls, coral numerals, cream fill on whichever card is
-            open.</small>
+          <small>Georgia over the grotesque controls, coral numerals, cream fill on whichever card is open —
+            in the light theme or the dark one.</small>
         </div>
       </div>
     </div>
@@ -408,7 +410,7 @@
       <div class="sheet">
         <div class="sheethead">
           <h3>About &amp; gestures</h3>
-          <button class="round hot">✕</button>
+          <button class="round hot" data-act="about-close" title="Close (Esc)">✕</button>
         </div>
         <div class="sheetbody">
           <div class="entry">
@@ -428,8 +430,8 @@
           </div>
           <div class="entry">
             <h4>Layers</h4>
-            <p>Top is front. A <b>level</b> is a step of one whole storey, so a lace up there rests on the
-              woven round below instead of sinking into it.</p>
+            <p>Top is front. <b>Level 0</b> is the ground; each level above it is one whole storey up, so a
+              lace there rests on the woven round below instead of sinking into it.</p>
           </div>
           <div class="entry">
             <h4>Camera</h4>
