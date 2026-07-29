@@ -2,8 +2,11 @@ import { defineConfig } from 'vite';
 import { fileURLToPath } from 'node:url';
 
 // Two static pages:
-//   index.html      the project site (styles in site/site.css) — root of the build
-//   app/index.html  the 3D editor itself, served at /app/
+//   index.html         the project site (styles in site/site.css) — root of the build
+//   app/index.html     the 3D editor itself, served at /app/
+//   levels/index.html  every level of every m x n twist face, at /levels/. An entry
+//                      rather than a public/ file so its <link> picks up the same
+//                      hashed site.css; its images are in public/levels/img/.
 //
 // Base is set for GitHub Pages project-site hosting (ysetbon.github.io/Scoubidou3D/).
 // Override with `vite build --base=/` for root hosting.
@@ -14,7 +17,11 @@ export default defineConfig({
   server: { open: true },
   build: {
     rollupOptions: {
-      input: { site: page('index.html'), app: page('app/index.html') },
+      input: {
+        site: page('index.html'),
+        app: page('app/index.html'),
+        levels: page('levels/index.html'),
+      },
     },
   },
 });
