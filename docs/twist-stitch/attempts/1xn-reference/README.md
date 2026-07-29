@@ -141,19 +141,42 @@ majority family gets handed the same 287 to cross 28, and the extra 6 widths is
 what hangs out the side.
 
 So it is not a slack that a better turn removes; it is the same length being
-right for one family and six widths too long for the other.
+right for one family and six widths too long for the other. The turn is already
+against the gap floor — see the ceiling result below.
 
-**What was measured against it, on a 1×5:**
+**What the column ships at, and what it costs.**
 
-| | 5-side overshoot | crossings a level |
+A lopsided face has two candidate turns and they cannot both be had. The
+**minority fan's** keeps every crossing real and every gap at the floor, and leaves
+the majority family — the one you see, `2·max(m,n)` strands against `2·min` — with
+six widths of arm bundling up on two sides of every level. The **majority fan's**
+lays that family tight. That is what ships, and it is a decision about which
+failure is worse to look at, not a derivation.
+
+| 1×5 | minority fan, 11.26° | majority fan, 27.44° |
 | --- | --- | --- |
-| the derived turn, 11.26° | 6.05 w | **200 / 200** |
-| the 5 side's own fan, 27.44° | 3.07 w | 162 / 200 |
-| letting the 5 side climb 3 storeys | 2.87 w | — |
+| majority overhang | 6.05 w | **3.07 w** |
+| crossings a level | **200 / 200** | 162 / 200 |
+| gaps in a level | **all 56 px** | 56 … 167.6 px |
 
-Both halve the overshoot and neither closes it. The 27.44° column costs 38
-crossings a level — the lone lace stops reaching across. `twoFanColumn` takes an
-optional turn override so this comparison can be re-run rather than believed.
+Over all 64 faces, measured by `npm run probe:turn` and asserted face by face by
+`npm run check:twofan` against [`scripts/twofan-cost.json`](../../../../scripts/twofan-cost.json):
+
+| | before | after |
+| --- | --- | --- |
+| mean majority overhang | 4.56 w | **2.30 w** |
+| crossings kept | 20736 / 20736 | 20252 / 20736 |
+| faces weaving whole | 64 / 64 | 14 / 64 |
+| faces with every gap at 56 | 64 / 64 | 8 / 64 |
+| tightest gap anywhere | 56 px | **1.1 px** |
+
+The eight faces that pay nothing are the diagonal, where the reference's two fans
+are the same angle — the check fails if any of them moves.
+
+The last row is the part to keep in view. Gaps do not only open (167.6 px on a 1×5
+against a ceiling of 69); on a 4×8 one closes to **1.1 px**, which is two 46 px
+laces almost exactly on top of each other. `reachTurn()` is the angle that costs
+none of this, kept for comparison.
 
 The k-storey figure also corrects an earlier claim in
 [attempts/README](../README.md), which put a 1×6 at k = 5 at +0.05 widths. That

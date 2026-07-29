@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "probe:turn": "esbuild scripts/probe-turn-ceiling.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/probe-turn.mjs --log-level=warning && node node_modules/.cache/probe-turn.mjs",
     "check:twofan": "esbuild scripts/check-twofan.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-twofan.mjs --log-level=warning && node node_modules/.cache/check-twofan.mjs",
     "art": "esbuild scripts/sample-art.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/sample-art.mjs --log-level=warning && node node_modules/.cache/sample-art.mjs"
   },
