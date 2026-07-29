@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Panel mock 2 — Numbered cards</title>
+  <link rel="stylesheet" href="./mocks.css" />
+  <style>
+    /* ---- mock 2: numbered cards over a permanent layer stack ---------------
+       The panel splits in two. The top half is the settings, as numbered cards
+       in the same idiom as the landing page's "01 / 02 / 03" band — collapsed,
+       each one states its own current value on its header, so you read the whole
+       scene's setup without opening anything. The bottom half is the layer
+       stack, which never collapses and never scrolls away. */
+
+    .cards {
+      flex: 0 0 auto;
+      border-bottom: 1px solid var(--ink);
+    }
+
+    .card + .card {
+      border-top: 1px solid var(--hair);
+    }
+
+    .cardHead {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 13px;
+      width: 100%;
+      padding: 13px 16px;
+      border: 0;
+      background: transparent;
+      text-align: left;
+    }
+
+    .card.open .cardHead {
+      background: var(--cream);
+    }
+
+    .cardHead > b {
+      font-family: Georgia, serif;
+      font-size: 15px;
+      font-weight: 400;
+      color: var(--coral);
+    }
+
+    .cardHead .t {
+      min-width: 0;
+    }
+
+    .cardHead .t span {
+      display: block;
+      font-family: Georgia, serif;
+      font-size: 16px;
+      letter-spacing: -0.03em;
+    }
+
+    /* The value read-out: what this card is set to, without opening it. */
+    .cardHead .t small {
+      display: block;
+      margin-top: 3px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card.open .cardHead .t small {
+      color: var(--coral);
+    }
+
+    .chev {
+      width: 13px;
+      height: 13px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      transition: 0.2s;
+    }
+
+    .card.open .chev {
+      transform: rotate(90deg);
+    }
+
+    .cardBody {
+      padding: 4px 16px 16px;
+      background: var(--cream);
+      border-top: 1px solid var(--hair);
+    }
+
+    /* ---- the stack half ---- */
+
+    .stackHead {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 13px 16px 11px;
+      border-bottom: 1px solid var(--hair);
+    }
+
+    .stackHead h3 {
+      margin-right: auto;
+      font-size: 17px;
+    }
+
+    .stackHead .pill {
+      flex: 0 0 auto;
+      min-height: 31px;
+      padding: 0 11px;
+      font-size: 10.5px;
+    }
+
+    .stackBody {
+      padding: 6px 16px 18px;
+    }
+
+    .foot {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 16px;
+      border-top: 1px solid var(--ink);
+      background: var(--cream);
+    }
+
+    /* The one door to the prose, worded as the site words its links. */
+    .foot a {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin-right: auto;
+      padding-bottom: 3px;
+      border-bottom: 1px solid var(--ink);
+      color: inherit;
+      font-size: 11.5px;
+      font-weight: 750;
+      text-decoration: none;
+    }
+
+    .foot .pill {
+      flex: 0 0 auto;
+      min-height: 31px;
+      font-size: 11px;
+    }
+  </style>
+</head>
+
+<body class="sheetview">
+
+  <div class="frame">
+    <div class="app">
+
+      <div class="stage">
+        <div class="tools">
+          <button><svg viewBox="0 0 24 24">
+              <path d="M18.5 8.2c-.3 0-.6.07-.85.2V6.1a1.65 1.65 0 0 0-2.5-1.42A1.65 1.65 0 0 0 12 3.6a1.63 1.63 0 0 0-.9.27V2.9a1.65 1.65 0 1 0-3.3 0v7.72l-.62-.75a1.75 1.75 0 0 0-2.7 2.22l3.5 4.75A5.9 5.9 0 0 0 12.7 20h1.6a5.85 5.85 0 0 0 5.85-5.85V9.85c0-.91-.74-1.65-1.65-1.65Z" />
+            </svg>Pan</button>
+          <button><svg viewBox="0 0 24 24">
+              <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16Z" />
+              <circle cx="12" cy="12" r="3.2" />
+            </svg>Orbit</button>
+          <button class="on"><svg viewBox="0 0 24 24">
+              <path d="M12 1.6 8.4 5.2h2.4v4.6H6.2V7.4L2.6 11l3.6 3.6v-2.4h4.6v4.6H8.4L12 20.4l3.6-3.6h-2.4v-4.6h4.6v2.4L21.4 11l-3.6-3.6v2.4h-4.6V5.2h2.4Z" />
+            </svg>Move</button>
+          <button><svg viewBox="0 0 24 24">
+              <circle cx="5.6" cy="18.4" r="3" />
+              <path d="M6.5 15.6a10.4 10.4 0 0 1 9.1-9.1V3.2l5 4.4-5 4.4V9a7.4 7.4 0 0 0-6.1 6.1Z" />
+            </svg>Attach</button>
+          <button><svg viewBox="0 0 24 24">
+              <g transform="rotate(-45 12 12)">
+                <rect x="-1.5" y="9.5" width="10" height="5" rx="2.5" />
+                <rect x="15.5" y="9.5" width="10" height="5" rx="2.5" />
+              </g>
+              <rect x="-1.5" y="9.5" width="27" height="5" rx="2.5" transform="rotate(45 12 12)" />
+            </svg>Weave</button>
+        </div>
+
+        <div class="weave">
+          <i class="rh h1"></i><i class="rh h2"></i><i class="rh h3"></i>
+          <i class="rv v1"></i><i class="rv v2"></i><i class="rv v3"></i>
+          <b class="cross c1"></b><b class="cross c2"></b><b class="cross c3"></b><b class="cross c4"></b><b
+            class="cross c5"></b>
+        </div>
+
+        <div class="gesture">Drag to orbit · scroll to zoom</div>
+      </div>
+
+      <div class="panel">
+        <div class="brandbar">
+          <svg class="mark" viewBox="0 0 72 72" aria-hidden="true">
+            <path d="M9 16h54v16H9z" class="ma" />
+            <path d="M28 8h16v56H28z" class="mb" />
+            <path d="M28 16h16v16H28z" class="mt" />
+          </svg>
+          <b>Scoubidou<i>3D</i></b>
+          <span class="spacer"></span>
+          <button class="round">?</button>
+        </div>
+
+        <div class="cards">
+
+          <div class="card">
+            <button class="cardHead">
+              <b>01</b>
+              <span class="t"><span>Scene</span><small>BOX STITCH, 3 ROUNDS · 9 STRANDS</small></span>
+              <svg class="chev" viewBox="0 0 20 20">
+                <path d="M7 4l6 6-6 6" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="card open">
+            <button class="cardHead">
+              <b>02</b>
+              <span class="t"><span>Ribbon</span><small>46 THICK · ×1.00 WIDE · OUTLINED</small></span>
+              <svg class="chev" viewBox="0 0 20 20">
+                <path d="M7 4l6 6-6 6" />
+              </svg>
+            </button>
+            <div class="cardBody">
+              <div class="slider">
+                <div class="head"><span>Thickness</span><var>46</var></div>
+                <div class="track">
+                  <i style="width: 37%"></i><b style="left: 37%"></b>
+                </div>
+              </div>
+              <div class="slider">
+                <div class="head"><span>Width scale</span><var>1.00</var></div>
+                <div class="track">
+                  <i style="width: 29%"></i><b style="left: 29%"></b>
+                </div>
+              </div>
+              <div class="checkrow" style="margin-top: 10px">
+                <span class="check on"><i></i>Outline</span>
+                <span class="check on"><i></i>Round ends</span>
+                <span class="check"><i></i>Grid</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <button class="cardHead">
+              <b>03</b>
+              <span class="t"><span>Weave</span><small>ON · DEPTH 42 · SPAN 1.20 · LIFT 18</small></span>
+              <svg class="chev" viewBox="0 0 20 20">
+                <path d="M7 4l6 6-6 6" />
+              </svg>
+            </button>
+          </div>
+
+        </div>
+
+        <div class="stackHead">
+          <h3>Layers</h3>
+          <button class="pill coral">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 3 22 9.2 12 15.4 2 9.2Z" />
+              <path d="M12 17.7 3.7 12.5 2 13.6 12 19.8 22 13.6 20.3 12.5Z" />
+            </svg>Level
+          </button>
+          <button class="pill">Reset</button>
+        </div>
+
+        <div class="scroll">
+          <div class="stackBody">
+
+            <div class="levelrule">Level 3 <em>· 2 layers, +2 storeys</em></div>
+
+            <div class="layer">
+              <span class="swatch" style="background: var(--lace-white)"></span>
+              <span class="name"><span class="id">3_2</span><span class="tag">↳ 3_1</span></span>
+              <span class="acts"><button>↺</button><button>●</button><button>▲</button><button>▼</button><button
+                  class="x">✕</button></span>
+            </div>
+            <div class="layer">
+              <span class="swatch" style="background: var(--lace-gold)"></span>
+              <span class="name"><span class="id">3_1</span></span>
+              <span class="acts"><button>↺</button><button>●</button><button>▲</button><button>▼</button><button
+                  class="x">✕</button></span>
+            </div>
+
+            <div class="levelrule">Level 2 <em>· 3 layers, +1 storey</em></div>
+
+            <div class="layer">
+              <span class="swatch" style="background: var(--lace-indigo)"></span>
+              <span class="name"><span class="id">2_3</span><span class="tag">↳ 2_2</span></span>
+              <span class="acts"><button>↺</button><button>●</button><button>▲</button><button>▼</button><button
+                  class="x">✕</button></span>
+            </div>
+            <div class="layer">
+              <span class="swatch" style="background: var(--lace-rose)"></span>
+              <span class="name"><span class="id">2_2</span><span class="tag">↳ 2_1</span></span>
+              <span class="acts"><button>↺</button><button>●</button><button>▲</button><button>▼</button><button
+                  class="x">✕</button></span>
+            </div>
+            <div class="layer">
+              <span class="swatch" style="background: var(--lace-teal)"></span>
+              <span class="name"><span class="id">2_1</span></span>
+              <span class="acts"><button>↺</button><button>●</button><button>▲</button><button>▼</button><button
+                  class="x">✕</button></span>
+            </div>
+
+            <div class="levelrule">Level 1 <em>· 4 layers, ground</em></div>
+
+            <div class="layer sel">
+              <span class="swatch" style="background: var(--lace-teal)"></span>
+              <span class="name"><span class="id">1_4</span><span class="tag">↳ 1_3</span></span>
+              <span class="acts"><button>↺</button><button>●</button><button>▲</button><button>▼</button><button
+                  class="x">✕</button></span>
+            </div>
+            <div class="layer">
+              <span class="swatch" style="background: var(--lace-white)"></span>
+              <span class="name"><span class="id">1_3</span></span>
+              <span class="acts"><button>↺</button><button class="off">○</button><button>▲</button><button>▼</button><button
+                  class="x">✕</button></span>
+            </div>
+            <div class="layer">
+              <span class="swatch" style="background: var(--lace-orange)"></span>
+              <span class="name"><span class="id">1_2</span><span class="tag">↳ 1_1</span></span>
+              <span class="acts"><button>↺</button><button>●</button><button>▲</button><button>▼</button><button
+                  class="x">✕</button></span>
+            </div>
+            <div class="layer">
+              <span class="swatch" style="background: var(--lace-gold)"></span>
+              <span class="name"><span class="id">1_1</span></span>
+              <span class="acts"><button>↺</button><button>●</button><button>▲</button><button>▼</button><button
+                  class="x">✕</button></span>
+            </div>
+
+            <div class="levelrule">Masks <em>· 3 crossings</em></div>
+
+            <div class="layer">
+              <span class="maskdisc"
+                style="background: linear-gradient(180deg, var(--lace-white) 50%, var(--lace-indigo) 50%)"></span>
+              <span class="name"><span class="id">3_1</span><span class="tag coral">over</span><span
+                  class="id">2_3</span></span>
+              <span class="acts"><button>⇅</button><button class="x">✕</button></span>
+            </div>
+            <div class="layer">
+              <span class="maskdisc"
+                style="background: linear-gradient(180deg, var(--lace-teal) 50%, var(--lace-rose) 50%)"></span>
+              <span class="name"><span class="id">2_1</span><span class="tag coral">over</span><span
+                  class="id">2_2</span></span>
+              <span class="acts"><button>⇅</button><button class="x">✕</button></span>
+            </div>
+            <div class="layer">
+              <span class="maskdisc"
+                style="background: linear-gradient(180deg, var(--lace-orange) 50%, var(--lace-white) 50%)"></span>
+              <span class="name"><span class="id">1_2</span><span class="tag coral">over</span><span
+                  class="id">1_3</span></span>
+              <span class="acts"><button>⇅</button><button class="x">✕</button></span>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="foot">
+          <a href="#">About &amp; gestures
+            <svg class="chev" viewBox="0 0 20 20">
+              <path d="M4 10h11M11 5l5 5-5 5" />
+            </svg>
+          </a>
+          <button class="pill">Fit</button>
+          <button class="pill">Top</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="strip">
+    <div class="stripCopy">
+      <p class="kicker dotted">Mock 2 of 3</p>
+      <h2>Numbered cards</h2>
+      <p>
+        The landing page's <b>01 / 02 / 03</b> band, brought into the panel. Settings collapse into three
+        numbered cards and each one prints its own current value on its header — so the whole setup of a scene
+        reads at a glance, and you only open the one you mean to change. Below a hard rule, the layer stack is
+        permanent: it is the workspace, not a section.
+      </p>
+      <div class="points">
+        <div>
+          <i>Navigation</i>
+          <b>State on the header, not inside</b>
+          <small>“46 thick · ×1.00 wide · outlined” answers the question most openings were for.</small>
+        </div>
+        <div>
+          <i>Prose</i>
+          <b>One underlined link, bottom left</b>
+          <small>Reads like the site's own links, and it is the only sentence left in the panel.</small>
+        </div>
+        <div>
+          <i>Site match</i>
+          <b>Serif numerals and titles</b>
+          <small>Georgia over the grotesque controls, coral numerals, cream fill on whichever card is
+            open.</small>
+        </div>
+      </div>
+    </div>
+
+    <div class="aboutHost">
+      <div class="sheet">
+        <div class="sheethead">
+          <h3>About &amp; gestures</h3>
+          <button class="round hot">✕</button>
+        </div>
+        <div class="sheetbody">
+          <div class="entry">
+            <h4>01 &nbsp;Scene</h4>
+            <p>Opens OpenStrand Studio and OpenStrandJS saves. <b>Save</b> keeps a scene in this browser;
+              <b>Copy JSON</b> gives you the text to share.</p>
+          </div>
+          <div class="entry">
+            <h4>02 &nbsp;Ribbon</h4>
+            <p>Thickness is the lace itself; width scale stretches it sideways. Both are global — every strand
+              in the scene moves together.</p>
+          </div>
+          <div class="entry">
+            <h4>03 &nbsp;Weave</h4>
+            <p><b>Depth</b> is how far a lace lifts over or dips under a crossing — the same either way,
+              however far apart the two layers are.</p>
+          </div>
+          <div class="entry">
+            <h4>Layers</h4>
+            <p>Top is front. A <b>level</b> is a step of one whole storey, so a lace up there rests on the
+              woven round below instead of sinking into it.</p>
+          </div>
+          <div class="entry">
+            <h4>Camera</h4>
+            <p>Drag to orbit · scroll to zoom · right-drag to pan.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+
+</html>
