@@ -141,7 +141,8 @@ majority family gets handed the same 287 to cross 28, and the extra 6 widths is
 what hangs out the side.
 
 So it is not a slack that a better turn removes; it is the same length being
-right for one family and six widths too long for the other.
+right for one family and six widths too long for the other. The turn is already
+against the gap floor — see the ceiling result below.
 
 **What was measured against it, on a 1×5:**
 
@@ -152,8 +153,23 @@ right for one family and six widths too long for the other.
 | letting the 5 side climb 3 storeys | 2.87 w | — |
 
 Both halve the overshoot and neither closes it. The 27.44° column costs 38
-crossings a level — the lone lace stops reaching across. `twoFanColumn` takes an
-optional turn override so this comparison can be re-run rather than believed.
+crossings a level — the lone lace stops reaching across.
+
+And it costs more than that, which a first pass on crossings alone missed.
+**Past the shipped turn the fan stops being a fan.** The arms that no longer reach
+get extended to compensate, and the level's gaps stop being equal: on a 1×5 at
+27.44° they run **56 to 167.6 px**, against the reference's floor of 56 and
+ceiling of 69. That is holes, not a weave.
+
+Which settles the question the whole file has been circling:
+
+> **The shipped turn is already the largest a two-fan column can take.**
+> Searching on crossings alone reports headroom on **64 of 64** faces — 11.26° →
+> 23.70° on a 1×5, 50.03° → 79.38° on a 1×1. Add *"and the gaps are still `g`"* and
+> the headroom is **0 of 64**. Every degree of it was the fan coming apart.
+
+`npm run probe:turn` re-runs both searches. `twoFanColumn` takes an optional turn
+override so any of this can be re-measured rather than believed.
 
 The k-storey figure also corrects an earlier claim in
 [attempts/README](../README.md), which put a 1×6 at k = 5 at +0.05 widths. That

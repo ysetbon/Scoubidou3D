@@ -350,9 +350,7 @@ export function twoFanColumn(
   // while being the wrong angle: it is very nearly this one. The two coincide at
   // m = n, where the reference has a single angle anyway — 50.03° at a 1×1, which
   // is the number the old law got wrong.
-  const hi = Math.max(m, n);
-  const lo = Math.min(m, n);
-  const TURN = turnOverride ?? fan(lo, (2 * hi - 1) * g + 2 * POKE).turn;
+  const TURN = turnOverride ?? columnTurnRad(m, n);
   const c = Math.cos(TURN);
   const s = Math.sin(TURN);
 
@@ -468,10 +466,25 @@ export function twoFanColumn(
   return hand === 'rh' ? mirrored(built, cx) : built;
 }
 
-/** The turn a two-fan column of this shape runs at, in degrees — the minority fan. */
+/**
+ * The turn a two-fan column of this shape runs at, in radians — the minority fan's.
+ *
+ * This is also the LARGEST turn available, which is not obvious and was checked
+ * rather than assumed. Turning further keeps every crossing real for another 3° to
+ * 29° depending on the face, so a search on crossings alone reports headroom on all
+ * 64 — and every degree of it is bought by breaking the fan. Past this turn the
+ * minority arms stop reaching across the majority band, they get extended to
+ * compensate, and the level's gaps stop being equal: on a 1×5 at the majority
+ * family's own 27.44° they run 56 to 167.6 px against a floor of 56 and a ceiling
+ * of 69. Holes, not a weave. See `scripts/probe-turn-ceiling.ts`.
+ */
+export function columnTurnRad(m: number, n: number): number {
+  return fan(Math.min(m, n), (2 * Math.max(m, n) - 1) * GAP + 2 * POKE).turn;
+}
+
+/** The same, in degrees — what the browser cells quote. */
 export function columnTurn(m: number, n: number): number {
-  const t = fan(Math.min(m, n), (2 * Math.max(m, n) - 1) * GAP + 2 * POKE).turn;
-  return (t * 180) / Math.PI;
+  return (columnTurnRad(m, n) * 180) / Math.PI;
 }
 
 export interface TwoFanColumnShape {
