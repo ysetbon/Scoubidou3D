@@ -76,19 +76,19 @@ off the start.
 ### Getting back to the default
 
 Parking the handles back on the start by hand is fiddly at the best of times and
-worse once a strand has been bent in three places, so the layer panel does it for
-you. Every strand row carries a **↺**, which puts that one strand back on the
-control points it was born with — both on the start, no centre, nothing flagged as
-touched — and straightens the run. It is greyed out, not hidden, on a strand
-already there, so the row keeps the same controls in the same places whatever
-state the strand is in.
+worse once a strand has been bent in three places, so the panel does it for you.
+Press a strand's row to open its inspector and it carries **Straighten**, which
+puts that one strand back on the control points it was born with — both on the
+start, no centre, nothing flagged as touched. It is greyed out, not hidden, on a
+strand already there, so the inspector keeps the same controls in the same places
+whatever state the strand is in.
 
-The header of the Layers section carries the same thing for the whole stack:
-**Reset curves** straightens every strand at once. There is no undo in the app, so
-it takes two clicks — the first arms it and names the count (`Reset 4? Click
-again`), the second does it, and the arming lapses on its own after four seconds.
-(A `confirm()` would be the obvious guard, but modal dialogs are refused in a
-sandboxed frame, which is where the published page runs.)
+The **Scene** card in the dock carries the same thing for the whole scene:
+**Straighten all** straightens every strand at once. There is no undo in the app,
+so it takes two presses — the first arms it and names the count (`Straighten 4?
+Press again`), the second does it, and the arming lapses on its own after four
+seconds. (A `confirm()` would be the obvious guard, but modal dialogs are refused
+in a sandboxed frame, which is where the published page runs.)
 
 Both go through `resetControlPoints` in `src/model/controlPoints.ts` — the same
 function that normalises a straight strand on load, so a reset strand is

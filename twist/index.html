@@ -6,7 +6,18 @@
 <title>The twist stitch, all 64 faces — Scoubidou3D</title>
 <meta name="description" content="Every m x n twist face measured: the turn each one runs at, what the retune bought, what it cost, and every level of every one.">
 <link rel="icon" href="../favicon.svg">
+<!-- Set the theme before first paint: anything deferred or bundled lands after
+     the page has already painted, and a dark-theme visitor sees a cream flash.
+     Shares its key with the studio (src/ui/panel.ts) and site/theme.js. -->
+<script>
+  try {
+    var t = localStorage.getItem('scoubidou3d-theme');
+  } catch (e) {}
+  document.documentElement.dataset.theme =
+    t || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+</script>
 <link rel="stylesheet" href="../site/site.css">
+<script type="module" src="../site/theme.js"></script>
 <style>
   /* The site's tokens carry this; only the two-up card row is local. */
   .st { max-width: 1180px; margin: 0 auto; padding: 36px 24px 92px; }
@@ -60,9 +71,12 @@
       <a href="../#how">How it works</a>
       <a href="https://github.com/ysetbon/Scoubidou3D">GitHub</a>
     </nav>
-    <a class="btn dark" href="../app/">Open the studio
-      <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5l5 5-5 5" /></svg>
-    </a>
+    <span class="headEnd">
+      <button class="themeBtn" type="button" data-theme-toggle aria-label="Switch theme"></button>
+      <a class="btn dark" href="../app/">Open the studio
+        <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5l5 5-5 5" /></svg>
+      </a>
+    </span>
   </header>
 
   <div class="st">

@@ -1,14 +1,90 @@
+/* Scoubidou3D — the studio.
+ *
+ * Same design language as the project site (site/site.css): cream paper, Georgia
+ * headlines over a grotesque, hairline rules, coral / gold / teal, pill buttons
+ * that jump into a hard offset shadow. The app used to be a generic grey-blue
+ * tool panel bolted to the side of that site; it is now the same object.
+ *
+ * The layout, from docs/panel-mocks (mock 3):
+ *
+ *   #scene    the canvas, edge to edge
+ *   #toolbar  the tool switch, a strip along the top of the canvas
+ *   #dock     the settings — Ribbon / Weave / View / Scene — along the bottom.
+ *             Wide: a pill opens a popover next to what it changes. Narrow: it
+ *             swaps the PANEL to that card instead, because a floating card on a
+ *             phone covers the very thing the slider is changing
+ *   #corner   the theme switch and the About ?, top right
+ *   #status   one line: the camera gesture, or the weave's half-made pick
+ *   #panel    the layer stack, and nothing else
+ *   .sheet    About, sliding up over the panel
+ *
+ * ---- why the ink is split three ways --------------------------------------
+ * The site paints text, hairline borders and the hard offset shadow all in one
+ * near-black, which is what makes it look like print. That cannot survive
+ * inversion: cream text is right, cream borders at full strength shout, and a
+ * cream drop shadow is not a shadow. So --ink is text only, --edge / --edge2 are
+ * borders, --shadow is the offset, and only --ink flips.
+ */
+
 :root {
-  --panel-w: 320px;
-  --bg: #eef1f4;
-  --panel-bg: #ffffff;
-  --ink: #1d2530;
-  --muted: #6a7686;
-  --line: #e2e7ee;
-  --accent: #2f7bd6;
-  --accent-ink: #ffffff;
+  /* surfaces: --paper is the panel, --cream the fills and headers on it */
+  --cream: #f5efdf;
+  --paper: #fffaf0;
+  --ink: #171713;
+  --muted: #6f6c62;
+
+  /* borders: --line and --hair are hairlines, --edge2 the deliberate 1.5px one */
+  --line: rgba(23, 23, 19, 0.2);
+  --hair: rgba(23, 23, 19, 0.12);
+  --edge2: #171713;
+  --shadow: #171713;
+  --hover: rgba(23, 23, 19, 0.08);
+
+  /* the fill an active control takes, and the selected row's border */
+  --fill: #171713;
+  --fill-ink: #ffffff;
+  --sel: #171713;
+
+  --coral: #ff5c35;
+  --yellow: #ffd447;
+  --teal: #087e8b;
   --danger: #cc4b4b;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+  --panel-w: 344px;
+  /* How much of the bottom of the screen the panel occupies. Zero on a desktop,
+     where the panel is a column beside the canvas; a fixed slice on a phone,
+     where it is a bottom sheet — and back to zero when that sheet is folded away.
+     The floating chrome measures from it, so the dock never lands on the panel. */
+  --sheet-h: 0px;
+  /* Range tracks, the colour picker, select menus and scrollbars are drawn by the
+     browser, and they only follow the page if it says which way it is. */
+  color-scheme: light;
+  font-family: 'Avenir Next', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
+    Arial, sans-serif;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --cream: #191410;
+  --paper: #221c15;
+  --ink: #f3e9d9;
+  --muted: #9c9284;
+
+  --line: rgba(243, 233, 217, 0.17);
+  --hair: rgba(243, 233, 217, 0.1);
+  --edge2: rgba(243, 233, 217, 0.34);
+  --shadow: rgba(0, 0, 0, 0.72);
+  --hover: rgba(243, 233, 217, 0.09);
+
+  --fill: #ff6540;
+  /* Ink, not white: coral carries ink text in both themes — white on coral is
+     2.9:1, and the site's own coral button has always been ink. */
+  --fill-ink: #171713;
+  --sel: #ff6540;
+
+  --coral: #ff6540;
+  --teal: #3fb0b8;
+  --danger: #ff6b6b;
 }
 
 * {
@@ -21,7 +97,22 @@ body {
   height: 100%;
   overflow: hidden;
   color: var(--ink);
-  background: var(--bg);
+  background: var(--cream);
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 400;
+  letter-spacing: -0.04em;
+}
+
+button {
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
 }
 
 #app {
@@ -56,299 +147,334 @@ body {
   cursor: grabbing;
 }
 
+/* ---- the panel: the layer stack, and nothing else ------------------------- */
+
 #panel {
+  position: relative;
   flex: 0 0 var(--panel-w);
   width: var(--panel-w);
   height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--paper);
+  border-left: 1px solid var(--edge2);
+}
+
+.brandbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--edge2);
+}
+
+.brand-home {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  margin-right: auto;
+  color: inherit;
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: -0.045em;
+  text-decoration: none;
+}
+
+.brand-home i {
+  font-style: normal;
+  color: var(--coral);
+}
+
+/* The wordmark gives way before the count does. */
+.brand-home span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brand-home:hover span {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.mark {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.mark path {
+  stroke: #171713;
+  stroke-width: 2.2px;
+}
+
+.mark .ma { fill: var(--yellow); }
+.mark .mb,
+.mark .mt { fill: var(--coral); }
+
+.stackbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.stack-title {
+  margin-right: auto;
+  font-size: 19px;
+}
+
+.stack-title u {
+  margin-left: 7px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--muted);
+}
+
+.stackbar .pill {
+  flex: 0 0 auto;
+  min-height: 31px;
+  padding: 0 11px;
+  font-size: 10.5px;
+}
+
+.stack {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
-  background: var(--panel-bg);
-  border-left: 1px solid var(--line);
-  padding: 16px 16px 40px;
+  padding: 12px 14px 16px;
   /* Scrolls vertically; horizontal drags and pinches stay inert, and a scroll that
      hits the end doesn't chain out to the page behind it. */
   touch-action: pan-y;
   overscroll-behavior: contain;
 }
 
-.brand {
-  margin-bottom: 14px;
+/* The stack is built bottom-up — level 0 is the ground — so a panel with room to
+   spare hangs its rows from the FLOOR rather than the ceiling: the ground sits at
+   the bottom of the panel, where it sits in the model.
+   `margin-top: auto` on the first child rather than `justify-content: flex-end`,
+   because the latter makes overflowing content unreachable at the top in every
+   browser that has ever shipped it. An auto margin just resolves to 0 instead. */
+.stack.from-bottom > :first-child {
+  margin-top: auto;
 }
 
-.brand-title {
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
+/* ---- a storey is a bar, under the box of layers it carries ----------------- */
+/* The bar sits BELOW its layers because that is what a storey is: the floor they
+   rest on. Level 0's bar is therefore the last thing in the panel — the ground,
+   under everything — and it carries no controls, the ground being not a break but
+   what is left below the lowest one. Every other bar carries ▲▼✕, which walk that
+   storey through the stack past the rows either side of it. */
 
-.brand-sub {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
-}
-
-.brand-home {
-  display: inline-block;
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--accent);
-  text-decoration: none;
-}
-
-.brand-home:hover {
-  text-decoration: underline;
-}
-
-.panel-section {
-  border-top: 1px solid var(--line);
-  padding: 14px 0 4px;
-}
-
-.section-title {
-  margin: 0 0 10px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-}
-
-.btn-row {
+.level-bar {
   display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.btn {
-  flex: 1 1 auto;
-  padding: 8px 10px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink);
-  background: #f4f6f9;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.btn:hover {
-  background: #e9eef5;
-}
-
-.btn:disabled,
-.btn:disabled:hover {
-  opacity: 0.42;
-  background: #f4f6f9;
-  cursor: default;
-}
-
-/* A whole-scene button that has been armed and is waiting on the second click
-   that confirms it ("Reset curves"). */
-.btn-armed,
-.btn-armed:hover {
-  color: var(--danger);
-  border-color: var(--danger);
-  background: #fbe9e9;
-}
-
-.tool-btn.active,
-.tool-btn.active:hover {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border-color: var(--accent);
-}
-
-/* A button that leads with an icon (e.g. "New level"). */
-.btn-icon {
-  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 7px;
-}
-
-.icon-svg {
-  width: 15px;
-  height: 15px;
-  fill: currentColor;
+  gap: 8px;
   flex: 0 0 auto;
+  padding: 7px 9px;
+  border: 1.5px solid var(--edge2);
+  background: var(--cream);
 }
 
-.field {
-  margin-bottom: 10px;
-}
-
-.field-label {
-  display: block;
-  font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 4px;
-}
-
-.select {
-  width: 100%;
+.level-group,
+.mask-card {
+  flex: 0 0 auto;
   padding: 8px;
-  font-size: 13px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
+  border: 1.5px solid var(--edge2);
+  background: var(--paper);
 }
 
-.slider {
-  margin-bottom: 12px;
+/* A bar hugs the layers standing on it; the next storey down sits clear of it, so
+   the grouping reads without needing a label to say where one storey ends. */
+.level-group + .level-bar {
+  margin-top: 6px;
 }
 
-.slider-head {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  margin-bottom: 2px;
+.level-bar + .level-group,
+.level-bar + .level-bar {
+  margin-top: 16px;
 }
 
-.slider-label {
-  color: var(--muted);
-}
-
-.slider-val {
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.slider input[type='range'] {
-  width: 100%;
-  accent-color: var(--accent);
-}
-
-.toggle-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 14px;
-  margin: 4px 0 8px;
-}
-
-.toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--ink);
-  cursor: pointer;
-}
-
-.note {
-  font-size: 11px;
-  color: var(--muted);
-  line-height: 1.4;
-  margin-top: 4px;
-}
-
-.layers {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.layer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fbfcfe;
-}
-
-/* Masks are real layers now (they drive the weave), so they read as a distinct
-   kind of row rather than a dimmed one. */
-.layer-mask {
+/* Masks are a kind of their own, not a storey — so the card says so, and it sits
+   above the stack proper rather than in it. */
+.mask-card {
+  margin: 0 0 16px;
   border-style: dashed;
 }
 
-/* A level row: not a strand at all but a step in the stack, so it reads as a rule
-   drawn across the panel — accented, with the layers mark where a swatch goes. */
-.layer-level {
-  background: #eaf2fd;
-  border-color: var(--accent);
+.mask-card > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 1px 1px 8px;
+}
+
+.level-bar b,
+.mask-card > header b {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.level-bar small,
+.mask-card > header small {
+  margin-right: auto;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
 }
 
 .level-badge {
-  flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent);
-}
-
-.level-badge .icon-svg {
-  width: 18px;
-  height: 18px;
-}
-
-/* The storey a strand rests on, shown on its row once any level exists. */
-.level-tag {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-.swatch {
+  width: 23px;
+  height: 23px;
   flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: none;
-  cursor: pointer;
+  border: 1.5px solid var(--edge2);
+  border-radius: 50%;
+  background: var(--yellow);
+  /* A gold disc in both themes, so the number does not follow the text ink. */
+  color: #171713;
+  font-family: Georgia, serif;
+  font-size: 12px;
 }
 
-.layer-name {
+.empty {
+  margin: 2px 0 1px;
+  font-size: 11px;
+  font-style: italic;
+  color: var(--muted);
+}
+
+/* ---- a layer row --------------------------------------------------------- */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 7px;
+  border: 1px solid var(--hair);
+  background: var(--paper);
+}
+
+.row + .row,
+.row + .inspector + .row {
+  margin-top: 5px;
+}
+
+.row:hover {
+  border-color: var(--edge2);
+}
+
+.row.sel {
+  border: 1.5px solid var(--sel);
+}
+
+:root:not([data-theme='dark']) .row.sel {
+  box-shadow: 3px 3px 0 var(--coral);
+}
+
+:root[data-theme='dark'] .row.sel {
+  background: color-mix(in srgb, var(--coral) 9%, transparent);
+}
+
+.row-mask {
+  border-style: dashed;
+}
+
+.swatch,
+.mask-disc {
+  width: 23px;
+  height: 23px;
+  flex: 0 0 auto;
+  border: 1.5px solid var(--edge2);
+  border-radius: 50%;
+}
+
+/* The row's name is the select target — one press opens that strand's own
+   controls under it, another puts them away. */
+.row-name {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 3px 0;
+  border: 0;
+  background: none;
+  text-align: left;
 }
 
-.layer-id {
-  font-size: 13px;
-  font-weight: 600;
+.row-id {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.layer-tag {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
+.tag {
+  flex: 0 0 auto;
+  padding: 1px 5px;
   border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0 4px;
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
-.layer-controls {
+.tag.coral {
+  border-color: var(--coral);
+  color: var(--coral);
+}
+
+.tag.teal {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.row-acts {
   display: flex;
-  gap: 2px;
+  gap: 1px;
+  flex: 0 0 auto;
 }
 
 .icon-btn {
-  width: 24px;
-  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 4px;
   background: transparent;
-  color: var(--ink);
-  cursor: pointer;
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .icon-btn:hover {
-  background: #eef2f7;
+  background: var(--hover);
+  color: var(--ink);
 }
 
 .icon-btn:disabled {
@@ -357,130 +483,642 @@ body {
 }
 
 .icon-btn.danger:hover {
-  background: #fbe9e9;
+  background: var(--coral);
+  color: #171713;
+}
+
+/* ---- the inspector: a strand's own controls, in its row ------------------ */
+
+.inspector {
+  margin-top: 5px;
+  padding: 11px 10px 12px;
+  border: 1.5px solid var(--edge2);
+  border-top-width: 0;
+  border-left: 3px solid var(--coral);
+  background: var(--cream);
+}
+
+.insp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.insp-label {
+  margin-right: auto;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.chips {
+  display: flex;
+  gap: 4px;
+}
+
+.chip,
+.swatch-input {
+  width: 19px;
+  height: 19px;
+  padding: 0;
+  flex: 0 0 auto;
+  border: 1.5px solid var(--edge2);
+  border-radius: 50%;
+  background: none;
+}
+
+.chip.on {
+  box-shadow: 0 0 0 2px var(--cream), 0 0 0 3.5px var(--edge2);
+}
+
+.swatch-input {
+  /* Dashed, so it reads as "any colour" rather than as a seventh lace. */
+  border-style: dashed;
+  /* The native swatch draws its own inset; strip it so the ring is the border. */
+  overflow: hidden;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.swatch-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.swatch-input::-webkit-color-swatch,
+.swatch-input::-moz-color-swatch {
+  border: 0;
+  border-radius: 50%;
+}
+
+.inspector .slider {
+  padding: 0 0 10px;
+}
+
+.inspector .pill {
+  min-height: 30px;
+  font-size: 10.5px;
+}
+
+/* ---- controls ------------------------------------------------------------ */
+
+.pill-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.pill-row:last-child {
+  margin-bottom: 0;
+}
+
+.pill {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1.5px solid var(--edge2);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 11.5px;
+  font-weight: 750;
+  white-space: nowrap;
+  transition: transform 0.16s, box-shadow 0.16s;
+}
+
+.pill:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--shadow);
+}
+
+.pill:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pill.coral {
+  background: var(--coral);
+  border-color: var(--coral);
+  color: #171713;
+}
+
+.pill.ghost {
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+/* A whole-scene edit that has been armed and is waiting on the press that
+   confirms it ("Straighten all"). */
+.pill.armed,
+.pill.armed:hover {
+  border-color: var(--coral);
+  color: var(--coral);
+}
+
+.pill.square {
+  flex: 0 0 auto;
+  width: 34px;
+  padding: 0;
+}
+
+/* The bin. Bordered in danger rather than filled, so it does not shout from a row
+   of ordinary controls — and fills only under the pointer, where the press is
+   about to land. */
+.pill.danger {
+  border-color: var(--danger);
   color: var(--danger);
 }
 
-/* Transient confirmation under the Scene controls (e.g. "JSON copied"). */
-.flash {
-  color: var(--accent);
-  font-weight: 600;
+.pill.danger:hover:not(:disabled) {
+  background: var(--danger);
+  color: var(--paper);
+  box-shadow: 3px 3px 0 var(--shadow);
 }
 
+.pill.danger .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.icon {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+  flex: 0 0 auto;
+}
+
+/* The round button the site uses on its sample cards: here it is the theme
+   switch and the one door to the prose. */
+.round {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1.5px solid var(--edge2);
+  border-radius: 50%;
+  background: var(--paper);
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1;
+  transition: 0.18s;
+}
+
+.round:hover {
+  background: var(--fill);
+  color: var(--fill-ink);
+}
+
+.round.hot,
+.round.hot:hover {
+  background: var(--coral);
+  border-color: var(--coral);
+  color: #171713;
+}
+
+.round .icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* Sliders: the value sits on the label line, the track is a hairline, and the
+   thumb is a coral dot. */
+.slider {
+  padding: 8px 0;
+}
+
+.slider-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.slider-head var {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.slider input[type='range'] {
+  display: block;
+  width: 100%;
+  height: 16px;
+  margin: 0;
+  background: none;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+/* The track: a hairline groove, coral up to --pct, which the panel writes on every
+   input — a UA-drawn accent does not follow a themed page.
+   The two engines' pseudo-elements need SEPARATE rules: a selector list holding a
+   pseudo-element the engine does not know is invalid, and the whole rule is
+   dropped, which is how both tracks came to vanish in Chromium at once. */
+.slider input[type='range']::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--coral) 0 var(--pct, 50%),
+    var(--hair) var(--pct, 50%) 100%
+  );
+}
+
+.slider input[type='range']::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--coral) 0 var(--pct, 50%),
+    var(--hair) var(--pct, 50%) 100%
+  );
+}
+
+.slider input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  margin-top: -6px;
+  border: 1.5px solid var(--edge2);
+  border-radius: 50%;
+  background: var(--coral);
+}
+
+.slider input[type='range']::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid var(--edge2);
+  border-radius: 50%;
+  background: var(--coral);
+}
+
+/* A checkbox as a small square with a tick — the page is geometric, and a
+   rounded switch reads as a different kit. */
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.check input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.check i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border: 1.5px solid var(--edge2);
+  background: var(--paper);
+}
+
+.check.on i {
+  background: var(--fill);
+  border-color: var(--fill);
+}
+
+.check.on i::after {
+  content: '';
+  width: 8px;
+  height: 4px;
+  border: 1.6px solid var(--fill-ink);
+  border-top: 0;
+  border-right: 0;
+  transform: rotate(-45deg) translate(1px, -1px);
+}
+
+.check input:focus-visible + i {
+  outline: 2px solid var(--coral);
+  outline-offset: 2px;
+}
+
+.check-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px 14px;
+  margin-top: 8px;
+}
+
+.field {
+  margin: 10px 0;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.select,
 .text-input,
 .json-box {
   width: 100%;
-  padding: 8px;
-  font-size: 12px;
+  padding: 9px 10px;
   color: var(--ink);
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  background: var(--paper);
+  border: 1.5px solid var(--edge2);
+  border-radius: 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
 }
 
-/* The scene-as-text box. Monospace and scrollable: it is meant to be selected and
+/* The scene as text. Monospace and scrollable: it is meant to be selected and
    copied, which is the one export route a sandboxed frame can never refuse. */
 .json-box {
-  height: 150px;
+  height: 130px;
   margin: 6px 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 400;
   line-height: 1.35;
   resize: vertical;
   white-space: pre;
   overflow: auto;
 }
 
-/* A mask layer: the two-tone badge shows the over strand's color above the
-   under strand's, so the row states the relationship without being read. */
-.mask-badge {
-  flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--line);
-}
+/* ---- chrome over the canvas ---------------------------------------------- */
+/* All of this is built by the panel and lives in <body>, over the scene. */
 
-.hint {
-  margin-top: 18px;
-  font-size: 11px;
-  color: var(--muted);
-  text-align: center;
-}
-
-/* ---- Chrome floating over the scene --------------------------------------
-   All of this is built by the panel and lives in <body>, over the canvas. */
-
-/* The tool switch: one horizontal strip along the top of the scene, the way
-   OpenStrand Studio keeps its modes above the drawing. Centred on the CANVAS
-   rather than the window — the side panel takes a fixed slice off the right, and
-   centring on the window would push the strip visibly off-centre over the work.
-   It is also what keeps the tools reachable on a phone, where the panel is a
-   bottom sheet you fold away to get room to edit. */
-#toolbar {
-  display: flex;
+#toolbar,
+#dock {
   position: fixed;
-  z-index: 5;
-  top: calc(12px + env(safe-area-inset-top));
-  left: 12px;
-  right: calc(var(--panel-w) + 12px);
+  z-index: 6;
+  display: flex;
+  gap: 4px;
+  padding: 5px;
+  border: 1.5px solid var(--edge2);
+  border-radius: 999px;
+  background: var(--paper);
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: 4px 5px 0 var(--shadow);
+}
+
+/* Centred on the CANVAS rather than the window — the panel takes a fixed slice
+   off the right, and centring on the window would push both strips visibly
+   off-centre over the work. */
+#toolbar {
+  top: calc(14px + env(safe-area-inset-top));
+  left: 14px;
+  right: calc(var(--panel-w) + 14px);
   width: fit-content;
   margin-inline: auto;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-radius: 13px;
-  background: var(--panel-bg);
-  background: color-mix(in srgb, var(--panel-bg) 90%, transparent);
-  backdrop-filter: blur(8px);
-  box-shadow: 0 4px 18px rgb(0 0 0 / 14%);
 }
 
-#toolbar .btn {
+#dock {
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  left: 14px;
+  right: calc(var(--panel-w) + 14px);
+  width: fit-content;
+  margin-inline: auto;
+}
+
+.tool-btn,
+.dock-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   flex: 0 0 auto;
-  padding: 8px 12px;
-  font-size: 12.5px;
-  border-color: transparent;
-  background: transparent;
-  border-radius: 10px;
-}
-
-#toolbar .btn:hover {
-  background: #e9eef5;
-}
-
-/* The transparent-button rule above outranks .tool-btn.active on its own (an id
-   beats a class), so the live tool restates its fill here. */
-#toolbar .tool-btn.active,
-#toolbar .tool-btn.active:hover {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border-color: var(--accent);
-}
-
-/* Which tool the notes below belong to — the toolbar itself is over the scene,
-   so the panel has to say. */
-.tool-live {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-  padding: 5px 10px 5px 8px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  padding: 9px 14px;
+  border: 0;
   border-radius: 999px;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.tool-btn:hover,
+.dock-btn:hover {
+  background: var(--hover);
+}
+
+.tool-btn.on,
+.tool-btn.on:hover {
+  background: var(--fill);
+  color: var(--fill-ink);
+}
+
+/* The live dock pill is coral in both themes: it is holding a popover open, which
+   is a different kind of "on" from the tool that is armed. */
+.dock-btn.on,
+.dock-btn.on:hover {
+  background: var(--coral);
+  color: #171713;
+}
+
+.dock-btn u {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration: none;
+  opacity: 0.62;
+}
+
+/* The open dock card lives here rather than inside the dock: the dock clips its
+   children (it scrolls when four pills no longer fit) and its backdrop-filter
+   would make it the containing block for a fixed child. The layer has neither, so
+   a card can sit anywhere on screen. Its own box is inert. */
+#popover-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+}
+
+#popover-layer > * {
+  pointer-events: auto;
+}
+
+.pop {
+  position: fixed;
+  /* left / bottom are measured and set by the panel: the card is centred over the
+     pill that opened it, clamped to the screen. */
+  width: 310px;
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 15px 16px 16px;
+  border: 1.5px solid var(--edge2);
+  background: var(--paper);
+  box-shadow: 6px 7px 0 var(--shadow);
+  animation: pop-in 0.18s cubic-bezier(0.22, 0.8, 0.28, 1);
+}
+
+.pop-scene {
+  width: 320px;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.pop h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-bottom: 10px;
+  font-size: 18px;
+}
+
+.pop h3 small {
+  margin-left: auto;
+  font-family: 'Avenir Next', Arial, sans-serif;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--coral);
+}
+
+.pop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.pop-name {
+  min-width: 0;
+  font-family: Georgia, serif;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The nub pointing down at the pill that opened the card. Hidden while the card
+   scrolls, because a nub halfway up a scrolled box points at nothing. */
+.pop::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: var(--nub, 50%);
+  width: 13px;
+  height: 13px;
+  margin-left: -6.5px;
+  border: 1.5px solid var(--edge2);
+  border-top: 0;
+  border-left: 0;
+  background: var(--paper);
+  transform: rotate(45deg);
+}
+
+/* The same card, rendered into the panel instead of floating over the canvas:
+   it is the panel's whole content now, so it gives up the frame, the shadow, the
+   nub and its own title (the bar above it carries that). */
+.pop.inline {
+  position: static;
+  width: auto;
+  max-width: none;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  animation: none;
+}
+
+.pop.inline::after {
+  display: none;
+}
+
+.pop.inline > h3 {
+  display: none;
+}
+
+#corner {
+  position: fixed;
+  z-index: 7;
+  top: calc(14px + env(safe-area-inset-top));
+  right: calc(var(--panel-w) + 14px);
+  display: flex;
+  gap: 8px;
+}
+
+#corner .round {
+  width: 38px;
+  height: 38px;
+  font-size: 15px;
+  background: var(--paper);
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: 3px 4px 0 var(--shadow);
+}
+
+/* The one line of text over the canvas: the camera gesture, or the weave's
+   half-made pick. */
+#status {
+  position: fixed;
+  z-index: 5;
+  /* Clear of the dock, which owns the bottom of the canvas. */
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  left: 16px;
+  max-width: min(34vw, 380px);
+  padding: 8px 12px;
+  border: 1px solid var(--edge2);
+  border-radius: 999px;
+  background: var(--paper);
+  background: color-mix(in srgb, var(--paper) 90%, transparent);
+  backdrop-filter: blur(6px);
+  box-shadow: 3px 3px var(--shadow);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+#status.live {
+  border-color: var(--coral);
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-size: 11.5px;
+}
+
+#status.live b {
+  color: var(--coral);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
 }
 
 /* The weave tool names the layer under the pointer, at the pointer. It must
    never eat the click it is describing. */
 #hover-chip {
   position: fixed;
-  z-index: 7;
+  z-index: 9;
   top: 0;
   left: 0;
   display: none;
@@ -500,53 +1138,215 @@ body {
 }
 
 #hover-chip.under {
-  background: var(--accent);
+  background: #2f7bd6;
 }
 
 #panel-toggle {
   display: none;
   position: fixed;
-  z-index: 6;
-  top: calc(8px + env(safe-area-inset-top));
-  right: calc(8px + env(safe-area-inset-right));
-  padding: 9px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ink);
-  background: var(--panel-bg);
-  background: color-mix(in srgb, var(--panel-bg) 88%, transparent);
+  z-index: 7;
+  top: calc(10px + env(safe-area-inset-top));
+  right: calc(10px + env(safe-area-inset-right));
+  padding: 10px 13px;
+  border: 1.5px solid var(--edge2);
+  border-radius: 999px;
+  background: var(--paper);
+  background: color-mix(in srgb, var(--paper) 90%, transparent);
   backdrop-filter: blur(8px);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgb(0 0 0 / 14%);
-  cursor: pointer;
+  box-shadow: 3px 4px 0 var(--shadow);
+  font-size: 11.5px;
+  font-weight: 750;
 }
 
-/* A finger is a ~9mm target with no cursor to aim it: the icon buttons in the
-   layer rows are 24px, which is half of what a thumb can reliably hit. */
+/* A confirmation that has nowhere else to go now the Scene section is a popover
+   that may already have been closed over it. */
+.toast {
+  position: fixed;
+  z-index: 50;
+  left: 50%;
+  bottom: calc(var(--sheet-h) + 84px + env(safe-area-inset-bottom));
+  max-width: min(72vw, 460px);
+  padding: 11px 16px;
+  border: 1.5px solid var(--edge2);
+  background: var(--paper);
+  box-shadow: 5px 6px 0 var(--shadow);
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0;
+  transform: translate(-50%, 10px);
+  transition: opacity 0.22s, transform 0.22s;
+}
+
+.toast.on {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.toast.warn {
+  border-color: var(--coral);
+  color: var(--coral);
+}
+
+/* ---- About ---------------------------------------------------------------
+   Slides up over the panel and takes the whole of it, so the opening reads as
+   the panel turned over rather than a dialog dropped on top. `visibility` rather
+   than `display` is what lets it animate both ways, and it is what keeps it out
+   of the tab order while shut. */
+
+.sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: var(--cream);
+  transform: translateY(14px);
+  opacity: 0;
+  visibility: hidden;
+  transition: transform 0.26s cubic-bezier(0.22, 0.8, 0.28, 1), opacity 0.22s ease,
+    visibility 0.26s;
+}
+
+.sheet.open {
+  transform: none;
+  opacity: 1;
+  visibility: visible;
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--edge2);
+}
+
+.sheet-head h2 {
+  margin-right: auto;
+  font-size: 21px;
+}
+
+.sheet-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 16px 24px;
+}
+
+.entry {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--hair);
+}
+
+.entry:last-child {
+  border-bottom: 0;
+}
+
+.entry h3 {
+  margin-bottom: 5px;
+  font-size: 16px;
+}
+
+.entry p {
+  margin: 0;
+  font-family: Georgia, serif;
+  font-size: 12.5px;
+  line-height: 1.6;
+  opacity: 0.88;
+}
+
+.entry p b {
+  font-weight: 400;
+  color: var(--coral);
+}
+
+/* The marks the scene actually draws: OpenStrand's green control points, the blue
+   move endpoint, the gray occupied junction. About names them, so About has to
+   show them — lifted just enough in the dark theme to stay legible on near-black
+   while still reading as the same three colours. */
+.c-cp,
+.c-free {
+  color: #008000;
+}
+
+.c-end {
+  color: #2f7bd6;
+}
+
+.c-occ {
+  color: #9099a6;
+}
+
+:root[data-theme='dark'] .c-cp,
+:root[data-theme='dark'] .c-free {
+  color: #4fd483;
+}
+
+:root[data-theme='dark'] .c-end {
+  color: #6ba9ee;
+}
+
+.sheet-link {
+  display: inline-block;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--edge2);
+  color: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+/* ---- touch --------------------------------------------------------------- */
+/* A finger is a ~9mm target with no cursor to aim it, and the row buttons are
+   24px — half of what a thumb can reliably hit. */
+
 @media (pointer: coarse) {
-  .btn {
-    padding: 11px 10px;
-  }
   .icon-btn {
-    width: 34px;
-    height: 34px;
+    width: 33px;
+    height: 33px;
   }
-  .swatch,
-  .level-badge,
-  .mask-badge {
-    width: 30px;
-    height: 30px;
+  .pill {
+    min-height: 40px;
   }
-  .toggle {
+  .stackbar .pill,
+  .inspector .pill {
+    min-height: 34px;
+  }
+  .chip,
+  .swatch-input {
+    width: 24px;
+    height: 24px;
+  }
+  .check {
     font-size: 13px;
   }
+  .check i {
+    width: 19px;
+    height: 19px;
+  }
+  .swatch,
+  .mask-disc,
+  .level-badge {
+    width: 26px;
+    height: 26px;
+  }
 }
 
-/* Narrow screen: the side panel becomes a bottom sheet. It used to keep its
-   fixed 320px, which on a 390px-wide phone left the canvas about 70px across —
-   there was barely a scene to press on, let alone a handle to hit. */
+/* ---- narrow screens ------------------------------------------------------ */
+/* The side panel becomes a bottom sheet you can fold away; the dock and the tool
+   strip lose the panel's slice and go full width. */
+
 @media (max-width: 860px) {
+  :root {
+    --sheet-h: 46dvh;
+  }
+
+  /* Folded away, the sheet takes no room and the chrome drops to the bottom. */
+  body.panel-collapsed {
+    --sheet-h: 0px;
+  }
+
   #app {
     flex-direction: column;
   }
@@ -561,33 +1361,79 @@ body {
   }
 
   #panel {
-    flex: 0 0 auto;
+    /* A known height, not `auto` with a cap: the floating chrome sits on top of
+       this sheet and has to know how tall it is. */
+    flex: 0 0 var(--sheet-h);
     width: 100%;
-    height: auto;
-    max-height: 46dvh;
+    height: var(--sheet-h);
     border-left: none;
-    border-top: 1px solid var(--line);
-    padding: 14px 14px calc(28px + env(safe-area-inset-bottom));
+    border-top: 1.5px solid var(--edge2);
   }
 
-  /* Folded away: the scene gets the whole viewport, the floating tool bar keeps
-     Move/Attach/Weave reachable. */
+  /* Folded away: the scene gets the whole viewport, and the floating strips keep
+     every tool and every setting reachable. */
   body.panel-collapsed #panel {
     display: none;
   }
 
-  /* No side panel to sit clear of, and the fold toggle owns the right-hand
-     corner — so the strip goes left rather than centred, and drops its labels
-     if the four tools would otherwise reach the toggle. */
   #toolbar {
-    top: calc(8px + env(safe-area-inset-top));
-    left: calc(8px + env(safe-area-inset-left));
+    top: calc(10px + env(safe-area-inset-top));
+    /* No panel to sit clear of, and the fold toggle owns the right-hand corner. */
+    left: calc(10px + env(safe-area-inset-left));
     right: auto;
     margin-inline: 0;
   }
 
-  #toolbar .btn {
-    padding: 9px 10px;
+  /* The fold toggle owns the top-right corner on a phone, so the theme switch and
+     the ? move down beside the dock — over the canvas, above the sheet. */
+  #corner {
+    top: auto;
+    right: calc(10px + env(safe-area-inset-right));
+    bottom: calc(var(--sheet-h) + 66px + env(safe-area-inset-bottom));
+  }
+
+  #dock {
+    left: 10px;
+    right: 10px;
+    bottom: calc(var(--sheet-h) + 10px + env(safe-area-inset-bottom));
+    width: auto;
+    /* Four labelled pills do not fit a phone's width, so the dock scrolls rather
+       than wrapping into a two-line bar that would eat the scene. */
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  #dock::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Full width rather than centred on one pill: on a scrolling bar the pill may
+     have moved out from under it, and a card wider than the screen cannot be
+     centred on anything. The panel sets `bottom` from the dock's real position. */
+  .pop {
+    left: 10px !important;
+    right: 10px;
+    width: auto;
+    max-width: none;
+    max-height: min(58dvh, calc(100dvh - var(--sheet-h) - 150px));
+  }
+
+  .pop::after {
+    display: none;
+  }
+
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+
+  #status {
+    /* The dock has the bottom of the canvas on a phone. */
+    bottom: calc(var(--sheet-h) + 66px + env(safe-area-inset-bottom));
+    left: 10px;
+    max-width: calc(100vw - 130px);
   }
 
   #panel-toggle {
@@ -596,58 +1442,39 @@ body {
 }
 
 @media (max-width: 560px) {
-  #toolbar .btn span {
+  #toolbar .tool-btn span {
     display: none;
   }
 
-  #toolbar .btn {
+  #toolbar .tool-btn {
     padding: 10px;
   }
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #14171c;
-    --panel-bg: #1b1f26;
-    --ink: #e7ecf3;
-    --muted: #97a1b0;
-    --line: #2a303a;
-  }
-  .btn {
-    background: #232933;
-  }
-  .btn:hover {
-    background: #2b323d;
-  }
-  .btn:disabled,
-  .btn:disabled:hover {
-    background: #232933;
-  }
-  .btn-armed,
-  .btn-armed:hover {
-    background: #3a2226;
-  }
-  .select,
-  .layer,
-  .text-input,
-  .json-box {
-    background: #20252e;
-  }
-  .icon-btn:hover {
-    background: #2a313c;
-  }
-  .layer-level {
-    background: #1c2a3c;
-  }
-  #toolbar .btn:hover {
-    background: #2b323d;
+  /* The gesture line is the first thing to go: the tools and the dock are what
+     make the app usable one-handed, and it repeats what About says. */
+  #status:not(.live) {
+    display: none;
   }
 }
 
-/* The sample browser — a dozen named scenes are a dropdown, sixty-four m x n twist
-   faces are a table, so this is where the table lives. Sits over the whole app
-   rather than inside the panel, because on a phone the panel is a bottom sheet
-   and there is no room for a grid in it. */
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    transition: opacity 0.12s linear, visibility 0.12s;
+    transform: none;
+  }
+  .pill:hover:not(:disabled) {
+    transform: none;
+  }
+  .pop {
+    animation: none;
+  }
+}
+
+/* ---- the sample browser --------------------------------------------------
+   A dozen named scenes are a dropdown; sixty-four m x n twist faces are a table,
+   so this is where the table lives. Sits over the whole app rather than inside
+   the Scene card, because that card is 320px wide and this is a grid. */
+
 .browser-back {
   position: fixed;
   inset: 0;
@@ -656,7 +1483,7 @@ body {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(18, 24, 33, 0.45);
+  background: color-mix(in srgb, var(--ink) 45%, transparent);
 }
 
 .browser {
@@ -664,9 +1491,9 @@ body {
   flex-direction: column;
   width: min(760px, 100%);
   max-height: 100%;
-  border-radius: 14px;
-  background: var(--panel-bg);
-  box-shadow: 0 24px 60px rgba(18, 24, 33, 0.3);
+  border: 1.5px solid var(--edge2);
+  background: var(--paper);
+  box-shadow: 8px 10px 0 var(--shadow);
   overflow: hidden;
 }
 
@@ -676,16 +1503,15 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 14px 16px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--edge2);
 }
 
 .browser-head h3 {
-  margin: 0;
-  font-size: 15px;
   margin-right: auto;
+  font-size: 19px;
 }
 
-.browser-head .btn {
+.browser-head .pill {
   flex: 0 0 auto;
   min-width: 84px;
 }
@@ -697,9 +1523,10 @@ body {
 
 .browser-group {
   margin: 18px 0 8px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-family: 'Avenir Next', Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
 }
@@ -709,51 +1536,45 @@ body {
 .browser-subgroup {
   margin: 14px 0 6px;
   padding-left: 9px;
-  border-left: 2px solid var(--line, rgba(128, 128, 128, 0.35));
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  border-left: 2px solid var(--line);
+  font-family: 'Avenir Next', Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
   color: var(--muted);
 }
 
-/* The way out of the browser and into the twist study — three links that read as
-   buttons, so they are not mistaken for another row of samples. */
+/* The way out of the browser and into the twist study — three links drawn as
+   tiles, so they are not mistaken for another row of samples. Same hairline and
+   hover-shadow as a face cell, one step lighter. */
 .browser-doors {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 0 0 12px;
+  margin: 2px 0 14px;
 }
 
 .browser-door {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 8px 12px;
+  padding: 8px 13px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f4f6f9;
+  background: var(--cream);
+  /* The app paints links coral and underlined; a tile is not a line of prose. */
   color: var(--ink);
   text-decoration: none;
+  transition: 0.15s;
 }
 
 .browser-door:hover {
-  border-color: var(--accent);
-  background: #e9eef5;
-}
-
-@media (prefers-color-scheme: dark) {
-  .browser-door {
-    background: #232933;
-  }
-  .browser-door:hover {
-    background: #2b323d;
-  }
+  border-color: var(--coral);
+  box-shadow: 2px 2px 0 var(--shadow);
 }
 
 .browser-door b {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .browser-door b::after {
@@ -762,23 +1583,23 @@ body {
 }
 
 .browser-door small {
-  font-size: 10.5px;
+  font-size: 10px;
+  font-weight: 700;
   color: var(--muted);
 }
 
-/* A link out of the browser — the level gallery on the project site. */
+/* A link out of the browser, inside a line of prose. */
 .browser-link {
-  color: var(--accent);
+  color: var(--coral);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.browser-link:hover {
-  color: var(--text);
-}
 
 .browser-note {
-  margin: -4px 0 10px;
+  margin: -2px 0 10px;
+  font-family: Georgia, serif;
   font-size: 12px;
+  line-height: 1.55;
   color: var(--muted);
 }
 
@@ -788,6 +1609,10 @@ body {
   gap: 6px;
 }
 
+.browser-list .pill {
+  flex: 0 0 auto;
+}
+
 .browser-grid {
   display: grid;
   gap: 4px;
@@ -795,21 +1620,29 @@ body {
 }
 
 .browser-axis {
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: 700;
   color: var(--muted);
   text-align: center;
 }
 
 .browser-cell {
-  display: flex;
   flex-direction: column;
   gap: 1px;
+  min-height: 0;
   padding: 6px 2px;
+  border-radius: 0;
+  border-width: 1px;
   line-height: 1.15;
   /* --slack runs 0 (tight) to 1 (six widths of free arm or more). A tight face
      reads as a solid tile; a loose one fades towards the page, because a
      lopsided stitch really is mostly air. */
-  background: color-mix(in srgb, var(--accent) calc((1 - var(--slack, 0)) * 13%), transparent);
+  background: color-mix(in srgb, var(--coral) calc((1 - var(--slack, 0)) * 15%), transparent);
+}
+
+.browser-cell:hover {
+  transform: none;
+  box-shadow: 2px 2px 0 var(--shadow);
 }
 
 .browser-cell b {
@@ -817,7 +1650,8 @@ body {
 }
 
 .browser-cell small {
-  font-size: 10px;
+  font-size: 9.5px;
+  font-weight: 700;
   color: var(--muted);
 }
 
@@ -828,8 +1662,8 @@ body {
 
 .browser-on,
 .browser-on:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--coral);
+  color: var(--coral);
 }
 
 @media (max-width: 640px) {
@@ -848,4 +1682,11 @@ body {
   .browser-cell small {
     font-size: 9px;
   }
+}
+
+/* Focus, once, for everything: the app is full of small round and pill buttons
+   and the default ring disappears against a coral fill. */
+:focus-visible {
+  outline: 2px solid var(--coral);
+  outline-offset: 2px;
 }
