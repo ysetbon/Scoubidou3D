@@ -1,0 +1,18 @@
+{
+  "title": "1×1 twist, level 9 — orbit the fix",
+  "description": "Orbit the 1×1 twist column at level 9 and toggle between the broken lace and the fixed one — real geometry baked out of the app.",
+  "favicon": "🧵",
+  "sample": { "m": 1, "n": 1, "hand": "lh", "levels": [8, 9, 10] },
+  "show": "L9",
+  "variants": [
+    {
+      "id": "after",
+      "label": "Fixed"
+    },
+    {
+      "id": "before",
+      "label": "Before the fix",
+      "swap": { "src/model/connections.ts": "639941a" }
+    }
+  ]
+}
