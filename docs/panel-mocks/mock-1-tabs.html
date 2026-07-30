@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Panel mock 1 — Tabbed panel</title>
+  <link rel="stylesheet" href="./mocks.css" />
+  <script src="./mocks.js" defer></script>
+  <style>
+    /* ---- mock 1: three tabs, one pane on screen ---------------------------
+       The panel stops scrolling through six stacked sections. Layers / Ribbon /
+       Scene are peers on one row, one is open at a time, and the open one gets
+       the whole height — so the layer stack, the thing you actually work in,
+       never has to be scrolled past anything. */
+
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border-bottom: 1px solid var(--edge2);
+    }
+
+    .tabs button {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 13px 4px 12px;
+      border: 0;
+      background: transparent;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .tabs button + button {
+      border-left: 1px solid var(--hair);
+    }
+
+    .tabs button.on {
+      color: var(--ink);
+      background: var(--cream);
+    }
+
+    /* The live tab is underlined in coral, hard against the rule below it. */
+    .tabs button.on::after {
+      content: '';
+      position: absolute;
+      inset: auto 0 -1px;
+      height: 3px;
+      background: var(--coral);
+    }
+
+    .tabs button u {
+      padding: 1px 5px;
+      border-radius: 99px;
+      background: var(--hover);
+      font-size: 9px;
+      text-decoration: none;
+      letter-spacing: 0.02em;
+    }
+
+    .tabs button.on u {
+      background: var(--coral);
+      color: #fff;
+    }
+
+    /* The one fixed strip in the pane: whatever acts on the whole stack. */
+    .paneTop {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--hair);
+    }
+
+    .paneTop .pill {
+      flex: 0 1 auto;
+    }
+
+    .paneBody {
+      padding: 4px 14px 16px;
+    }
+
+    /* The footer: scene identity and the two camera shots, always in reach. */
+    .foot {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-top: 1px solid var(--edge2);
+      background: var(--cream);
+    }
+
+    .foot .who {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .foot .who b {
+      display: block;
+      font-family: Georgia, serif;
+      font-size: 13px;
+      font-weight: 400;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .foot .who small {
+      display: block;
+      margin-top: 2px;
+      font-size: 9.5px;
+      font-weight: 750;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .foot .pill {
+      flex: 0 0 auto;
+      min-height: 32px;
+      font-size: 11px;
+    }
+  </style>
+</head>
+
+<body class="sheetview">
+
+  <div class="frame">
+    <div class="app">
+
+      <!-- ---- the scene ------------------------------------------------- -->
+      <div class="stage">
+        <div class="tools">
+          <button><svg viewBox="0 0 24 24">
+              <path d="M18.5 8.2c-.3 0-.6.07-.85.2V6.1a1.65 1.65 0 0 0-2.5-1.42A1.65 1.65 0 0 0 12 3.6a1.63 1.63 0 0 0-.9.27V2.9a1.65 1.65 0 1 0-3.3 0v7.72l-.62-.75a1.75 1.75 0 0 0-2.7 2.22l3.5 4.75A5.9 5.9 0 0 0 12.7 20h1.6a5.85 5.85 0 0 0 5.85-5.85V9.85c0-.91-.74-1.65-1.65-1.65Z" />
+            </svg>Pan</button>
+          <button><svg viewBox="0 0 24 24">
+              <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16Z" />
+              <circle cx="12" cy="12" r="3.2" />
+            </svg>Orbit</button>
+          <button><svg viewBox="0 0 24 24">
+              <path d="M12 1.6 8.4 5.2h2.4v4.6H6.2V7.4L2.6 11l3.6 3.6v-2.4h4.6v4.6H8.4L12 20.4l3.6-3.6h-2.4v-4.6h4.6v2.4L21.4 11l-3.6-3.6v2.4h-4.6V5.2h2.4Z" />
+            </svg>Move</button>
+          <button><svg viewBox="0 0 24 24">
+              <circle cx="5.6" cy="18.4" r="3" />
+              <path d="M6.5 15.6a10.4 10.4 0 0 1 9.1-9.1V3.2l5 4.4-5 4.4V9a7.4 7.4 0 0 0-6.1 6.1Z" />
+            </svg>Attach</button>
+          <button class="on"><svg viewBox="0 0 24 24">
+              <g transform="rotate(-45 12 12)">
+                <rect x="-1.5" y="9.5" width="10" height="5" rx="2.5" />
+                <rect x="15.5" y="9.5" width="10" height="5" rx="2.5" />
+              </g>
+              <rect x="-1.5" y="9.5" width="27" height="5" rx="2.5" transform="rotate(45 12 12)" />
+            </svg>Weave</button>
+        </div>
+
+        <div class="weave">
+          <i class="rh h1"></i><i class="rh h2"></i><i class="rh h3"></i>
+          <i class="rv v1"></i><i class="rv v2"></i><i class="rv v3"></i>
+          <b class="cross c1"></b><b class="cross c2"></b><b class="cross c3"></b><b class="cross c4"></b><b
+            class="cross c5"></b>
+        </div>
+
+        <div class="gesture">Drag to orbit · scroll to zoom</div>
+      </div>
+
+      <!-- ---- the panel ------------------------------------------------- -->
+      <div class="panel">
+        <div class="brandbar">
+          <svg class="mark" viewBox="0 0 72 72" aria-hidden="true">
+            <path d="M9 16h54v16H9z" class="ma" />
+            <path d="M28 8h16v56H28z" class="mb" />
+            <path d="M28 16h16v16H28z" class="mt" />
+          </svg>
+          <b>Scoubidou<i>3D</i></b>
+          <span class="spacer"></span>
+          <button class="round" data-act="theme" title="Switch theme"></button>
+          <button class="round" data-act="about" aria-expanded="false"
+            title="About, gestures and what every tool does">?</button>
+        </div>
+
+        <nav class="tabs">
+          <button class="on">Layers <u>12</u></button>
+          <button>Ribbon</button>
+          <button>Scene</button>
+        </nav>
+
+        <div class="paneTop">
+          <button class="pill coral">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 3 22 9.2 12 15.4 2 9.2Z" />
+              <path d="M12 17.7 3.7 12.5 2 13.6 12 19.8 22 13.6 20.3 12.5Z" />
+            </svg>New level
+          </button>
+          <button class="pill">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7Z" />
+            </svg>Reset curves
+          </button>
+        </div>
+
+        <div class="scroll">
+          <div class="paneBody">
+
+            <div class="levelrule">Masks <em>· 3 crossings</em></div>
+
+            <div class="layer">
+              <span class="maskdisc"
+                style="background: linear-gradient(180deg, var(--lace-white) 50%, var(--lace-indigo) 50%)"></span>
+              <span class="name"><span class="id">3_1</span><span class="tag coral">over</span><span
+                  class="id">2_3</span></span>
+              <span class="acts"><button>⇅</button><button class="x">✕</button></span>
+            </div>
+            <div class="layer">
+              <span class="maskdisc"
+                style="background: linear-gradient(180deg, var(--lace-teal) 50%, var(--lace-rose) 50%)"></span>
+              <span class="name"><span class="id">2_1</span><span class="tag coral">over</span><span
+                  class="id">2_2</span></span>
+              <span class="acts"><button>⇅</button><button class="x">✕</button></span>
+            </div>
+            <div class="layer">
+              <span class="maskdisc"
+                style="background: linear-gradient(180deg, var(--lace-orange) 50%, var(--lace-white) 50%)"></span>
+              <span class="name"><span class="id">1_2</span><span class="tag coral">over</span><span
+                  class="id">1_3</span></span>
+              <span class="acts"><button>⇅</button><button class="x">✕</button></span>
+            </div>
+
+            <div class="levelrule">Level 2 <em>· +2 storeys</em></div>
+
+            <div class="layer">
+              <span class="swatch" style="background: var(--lace-white)"></span>
+              <span class="name"><span class="id">3_2</span><span class="tag">↳ 3_1</span></span>
+              <span class="acts"><button>↺</button><button>●</button><button>▲</button><button>▼</button><button
+                  class="x">✕</button></span>
+            </div>
+            <div class="layer">
+              <span class="swatch" style="background: var(--lace-gold)"></span>
+              <span class="name"><span class="id">3_1</span></span>
+              <span class="acts"><button>↺</button><button>●</button><button>▲</button><button>▼</button><button
+                  class="x">✕</button></span>
+            </div>
+
+            <div class="levelrule">Level 1 <em>· +1 storey</em></div>
+
+            <div class="layer">
+              <span class="swatch" style="background: var(--lace-indigo)"></span>
+              <span class="name"><span class="id">2_3</span><span class="tag">↳ 2_2</span></span>
+              <span class="acts"><button>↺</button><button>●</button><button>▲</button><button>▼</button><button
+                  class="x">✕</button></span>
+            </div>
+            <div class="layer">
+              <span class="swatch" style="background: var(--lace-rose)"></span>
+              <span class="name"><span class="id">2_2</span><span class="tag">↳ 2_1</span></span>
+              <span class="acts"><button>↺</button><button>●</button><button>▲</button><button>▼</button><button
+                  class="x">✕</button></span>
+            </div>
+            <div class="layer">
+              <span class="swatch" style="background: var(--lace-teal)"></span>
+              <span class="name"><span class="id">2_1</span></span>
+              <span class="acts"><button>↺</button><button>●</button><button>▲</button><button>▼</button><button
+                  class="x">✕</button></span>
+            </div>
+
+            <div class="levelrule">Level 0 <em>· ground</em></div>
+
+            <div class="layer sel">
+              <span class="swatch" style="background: var(--lace-teal)"></span>
+              <span class="name"><span class="id">1_4</span><span class="tag">↳ 1_3</span></span>
+              <span class="acts"><button>↺</button><button>●</button><button>▲</button><button>▼</button><button
+                  class="x">✕</button></span>
+            </div>
+            <div class="layer">
+              <span class="swatch" style="background: var(--lace-white)"></span>
+              <span class="name"><span class="id">1_3</span></span>
+              <span class="acts"><button>↺</button><button class="off">○</button><button>▲</button><button>▼</button><button
+                  class="x">✕</button></span>
+            </div>
+            <div class="layer">
+              <span class="swatch" style="background: var(--lace-orange)"></span>
+              <span class="name"><span class="id">1_2</span><span class="tag">↳ 1_1</span></span>
+              <span class="acts"><button>↺</button><button>●</button><button>▲</button><button>▼</button><button
+                  class="x">✕</button></span>
+            </div>
+            <div class="layer">
+              <span class="swatch" style="background: var(--lace-gold)"></span>
+              <span class="name"><span class="id">1_1</span></span>
+              <span class="acts"><button>↺</button><button>●</button><button>▲</button><button>▼</button><button
+                  class="x">✕</button></span>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="foot">
+          <span class="who">
+            <b>Box stitch, 3 rounds</b>
+            <small>9 strands · 3 masks · 3 levels</small>
+          </span>
+          <button class="pill">Fit</button>
+          <button class="pill">Top</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ---- what the render is showing ----------------------------------- -->
+  <div class="strip">
+    <div class="stripCopy">
+      <p class="kicker dotted">Mock 1 of 3</p>
+      <h2>Tabbed panel</h2>
+      <p>
+        Six stacked sections become three peer tabs, and only one is on screen at a time — so the layer
+        stack gets the panel's whole height instead of living below a scroll of sliders. The footer keeps
+        the scene's name and the two camera shots pinned. Every note, hint and colour legend the panel
+        used to print moves behind the <b>?</b> in the header.
+      </p>
+      <div class="points">
+        <div>
+          <i>Navigation</i>
+          <b>Three doors, no scrolling to find one</b>
+          <small>Layers, Ribbon, Scene. The count on the Layers tab means you never open it to see whether
+            anything is in there.</small>
+        </div>
+        <div>
+          <i>Prose</i>
+          <b>All of it behind one round button</b>
+          <small>The tool notes, the weave explanation, the level definition and the gesture list — one
+            sheet, one entry per topic.</small>
+        </div>
+        <div>
+          <i>Site match</i>
+          <b>Cream paper, coral rules, pill controls</b>
+          <small>Same tokens as the landing page — Georgia headings, hairline dividers, hard offset shadows —
+            and a dark theme built from the same hues.</small>
+        </div>
+      </div>
+    </div>
+
+    <div class="aboutHost">
+      <div class="sheet">
+        <div class="sheethead">
+          <h3>About</h3>
+          <button class="round hot" data-act="about-close" title="Close (Esc)">✕</button>
+        </div>
+        <div class="sheetbody">
+          <div class="entry">
+            <h4>Weave</h4>
+            <p>Click the strand that goes <b>over</b>, then the one it goes under. They interlock at their
+              crossing — the 3D version of an OpenStrand mask.</p>
+          </div>
+          <div class="entry">
+            <h4>Levels</h4>
+            <p><b>Level 0</b> is the ground. Every level above it is a step of one whole storey, so a lace up
+              there rests <b>on</b> the woven round below instead of sinking into it.</p>
+          </div>
+          <div class="entry">
+            <h4>Control points</h4>
+            <p>Pull the green triangle to bend a strand; that brings out the circle and the square. Park the
+              circle back on the start to fold them away.</p>
+          </div>
+          <div class="entry">
+            <h4>Camera</h4>
+            <p>Drag to orbit · scroll to zoom · right-drag to pan. On a touch screen: one finger orbits,
+              pinch zooms, two fingers pan.</p>
+          </div>
+          <div class="entry">
+            <h4>Files</h4>
+            <p>Opens OpenStrand Studio and OpenStrandJS saves. Save keeps a scene in this browser; Copy JSON
+              gives you the text to share.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+
+</html>
