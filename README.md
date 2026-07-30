@@ -104,6 +104,15 @@ The three layouts this was chosen from, as clickable mocks and renders:
   end cross-section into the child's start across the gap, banking gently — the join reads as one
   continuous lace stepping between layers. Derived from coincident endpoints, so imported files
   reconnect too.
+- 🎨 **Colour a layer, or the whole lace.** A layer name is `set_length`: `1_2` is the second length
+  of lace `1`. So a picked colour has two places it can land, and a switch under the palette says
+  which — **This layer** paints `1_2` alone, **`1_x`** paints *every* length of that lace at once,
+  and either way it is one press of undo. A lace worked through a ten-round column is twenty-odd
+  layers of one set; recolouring it used to be twenty-odd presses and twenty-odd undos. The set is
+  read off the **name** rather than the attach graph, exactly as OSS writes it, so it survives a
+  file being saved, reopened and hand-edited. The switch is offered only where it means something —
+  a lace with a single length has nothing to spread to — and the choice is remembered between
+  visits. ([`src/model/colour.ts`](src/model/colour.ts), checked by `npm run check:colour`)
 - 📚 **Layer stacking = default depth.** The layer order sets the *default* over/under (higher layer
   rides over); masks override specific crossings, just like in OSS. Reorder a layer and it restacks
   live.
