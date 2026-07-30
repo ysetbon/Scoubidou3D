@@ -253,50 +253,73 @@ button {
 .stack {
   flex: 1 1 auto;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
-  padding: 12px 14px 20px;
+  padding: 12px 14px 16px;
   /* Scrolls vertically; horizontal drags and pinches stay inert, and a scroll that
      hits the end doesn't chain out to the page behind it. */
   touch-action: pan-y;
   overscroll-behavior: contain;
 }
 
-/* ---- a level is a card, not a divider line ------------------------------- */
-/* Everything resting on that storey is inside it, and the card's own header is
-   what moves or removes the storey. */
+/* The stack is built bottom-up — level 0 is the ground — so a panel with room to
+   spare hangs its rows from the FLOOR rather than the ceiling: the ground sits at
+   the bottom of the panel, where it sits in the model.
+   `margin-top: auto` on the first child rather than `justify-content: flex-end`,
+   because the latter makes overflowing content unreachable at the top in every
+   browser that has ever shipped it. An auto margin just resolves to 0 instead. */
+.stack.from-bottom > :first-child {
+  margin-top: auto;
+}
 
-.level-card,
+/* ---- a storey is a bar, and its layers are the box under it --------------- */
+/* The bar is detached from the group on purpose: a storey is a thing you MOVE
+   (▲▼ slide it through the stack, ✕ removes it), and a bar standing on its own
+   above the layers reads as the handle for that. Level 0 is the ground — not a
+   break, just what is left below the lowest one — so its bar carries no
+   controls. */
+
+.level-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 7px 9px;
+  border: 1.5px solid var(--edge2);
+  background: var(--cream);
+}
+
+.level-group,
 .mask-card {
+  flex: 0 0 auto;
+  margin-top: 6px;
+  padding: 8px;
   border: 1.5px solid var(--edge2);
   background: var(--paper);
 }
 
-.level-card + .level-card,
-.mask-card {
-  margin-top: 12px;
+/* The gap between one storey and the next: bigger than the gap between a bar and
+   its own layers, so the grouping reads without a label. */
+.level-group + .level-bar {
+  margin-top: 16px;
 }
 
-/* Masks are a kind of their own, not a storey — so the card says so. */
+/* Masks are a kind of their own, not a storey — so the card says so, and it sits
+   above the stack proper rather than in it. */
 .mask-card {
+  margin: 0 0 16px;
   border-style: dashed;
 }
 
-.level-card > header,
 .mask-card > header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 9px;
-  background: var(--cream);
-  border-bottom: 1px solid var(--edge2);
+  padding: 1px 1px 8px;
 }
 
-.mask-card > header {
-  background: none;
-  border-bottom-style: dashed;
-}
-
-.level-card > header b,
+.level-bar b,
 .mask-card > header b {
   font-size: 10.5px;
   font-weight: 800;
@@ -304,7 +327,7 @@ button {
   text-transform: uppercase;
 }
 
-.level-card > header small,
+.level-bar small,
 .mask-card > header small {
   margin-right: auto;
   font-size: 10px;
@@ -326,10 +349,6 @@ button {
   color: #171713;
   font-family: Georgia, serif;
   font-size: 12px;
-}
-
-.level-rows {
-  padding: 8px;
 }
 
 .empty {

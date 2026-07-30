@@ -26,7 +26,7 @@ All three obey the same rules:
 ## What shipped
 
 **Mock 3.** The studio now works this way for real — `src/ui/panel.ts` is the layer
-stack alone, a card per storey; the settings live in the dock over the canvas; every
+stack alone; the settings live in the dock over the canvas; every
 note is behind the `?`; levels count from 0; and the dark theme here became the
 app's, and then the whole site's (`site/theme.js` shares its stored choice with the
 studio, so opening one from the other does not change the lights).
@@ -37,6 +37,13 @@ the canvas is the strip above it, and a 310px card over that strip hides the ver
 thing the slider is changing. So below 860px the app does what mock 1 does instead —
 the dock swaps the panel to that card, and the bar names it with a way back to
 Layers. Same four pills, same four cards, in the one place there is room for them.
+
+**A second divergence, from use.** The mocks draw a storey as a card whose header
+names it. In the app the bar is *detached*, standing above a box of its layers,
+because a level is a thing you move and a bar reads as the handle for it — and the
+stack hangs from the bottom of the panel, since level 0 is the ground. Both came
+straight out of a hand sketch of the panel, which is worth more than a mock here:
+it is what someone reaches for when they want to move a storey.
 
 The three mocks stay in the repo as the record of the choice — and as the place to
 try the next panel idea before touching the app.

@@ -32,8 +32,9 @@ No install, nothing uploaded: it runs in your browser and your files stay on you
 
 ## The studio
 
-The panel is the **layer stack and nothing else** — one card per storey, masks in a card of their
-own, and a strand's colour, width and *Straighten* opening inside its own row. The settings live in
+The panel is the **layer stack and nothing else** — a bar per storey with its layers boxed under it,
+masks in a card of their own above them, and a strand's colour, width and *Straighten* opening inside
+its own row. The stack hangs from the bottom, because that is where the ground is. The settings live in
 a **dock** along the bottom of the canvas (Ribbon / Weave / View / Scene), one card at a time, each
 pill printing its own value so a scene's whole setup reads without opening anything. Every note the
 panel used to print — what each tool does, what a level is, what a mask is, the gestures — is behind
@@ -108,9 +109,9 @@ The three layouts this was chosen from, as clickable mocks and renders:
   rests **one storey** higher — two strand thicknesses, the height of a woven round (a lace over
   plus a lace under), which is what it takes for the next round to sit *on* it instead of sinking
   into it. Because the storey goes in at the top, nothing already drawn moves — but every strand you
-  add next is born a storey up. Each level is a card holding the strands that rest on it, numbered
-  from **0** (the ground); slide it down with ▲▼ to drop the layers it passes back a level.
-  ([how it works](docs/layer-levels.md))
+  add next is born a storey up. Each storey is a bar of its own, numbered from **0** (the ground),
+  with the layers resting on it boxed underneath; slide the bar down with ▲▼ to drop the layers it
+  passes back a level. ([how it works](docs/layer-levels.md))
 - 🔗 **Attach & Move — OpenStrand's editing, in 3D.** A **Tool** bar across the top of the scene
   (Pan / Orbit / Move / Attach / Weave), where OpenStrand Studio keeps its modes, turns the strand
   endpoints into grab handles:
