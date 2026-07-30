@@ -679,16 +679,52 @@ header > .btn {
 .projectArt.yellow { background: #f3ca3f; }
 .projectArt.teal { background: #72c6b9; }
 
-/* The thumbnails are generated SVGs, one per sample — scripts/sample-art.ts. */
+/* The pictures are SCREENSHOTS of the studio's own 3D canvas, one per sample per
+   theme — scripts/site-shots.mjs. They keep the tile's coloured ground and sit on
+   it as a framed photograph would, which is the same composition the generated
+   drawings had; what changed is that the picture is now the real render.
+
+   The hairline is the page's own --edge, so the frame is the same rule that runs
+   between every band on this site. */
 .projectArt img {
-  width: 82%;
-  max-height: 84%;
+  width: 84%;
+  max-height: 86%;
+  border: 1px solid var(--edge);
   filter: drop-shadow(11px 14px 9px rgba(23, 23, 19, 0.17));
   transition: 0.3s;
 }
 
 .projectGrid article:hover img {
-  transform: scale(1.05) rotate(-2deg);
+  transform: scale(1.04);
+}
+
+/* One shot per theme, because a screenshot carries the canvas background with it
+   and a cream canvas dropped into the dark page is a hole in it. The two files
+   are shot on exactly the --cream of each theme (PALETTE in
+   src/scene/StrandScene.ts), so the picture and the page agree.
+
+   Swapped with display, not opacity or visibility: the hidden one has to leave
+   the accessibility tree as well, or a screen reader reads both alt texts. */
+/* The shot's own ground, stated rather than left transparent. Wherever the
+   picture is letterboxed — `contain` in a box that is not 780x722 — the bars are
+   the image element's background, and under `color-scheme: dark` that computes to
+   a pale colour no rule in this file asks for. Painting it --cream makes the bars
+   the same colour as the canvas in the picture, so the seam disappears in both
+   themes instead of framing the shot in light bands after dark. */
+.shot {
+  background: var(--cream);
+}
+
+.shot.dark {
+  display: none;
+}
+
+:root[data-theme='dark'] .shot.light {
+  display: none;
+}
+
+:root[data-theme='dark'] .shot.dark {
+  display: block;
 }
 
 /* Bottom-left chip: the sample's key — what the dropdown in the app calls it,
@@ -1150,9 +1186,14 @@ header > .btn {
   background: var(--cream);
 }
 
+/* Full-bleed here, and no frame: the box behind is already --cream, which is the
+   exact colour the shot was taken on, so the picture melts into the card instead
+   of sitting on it. `contain` rather than `cover` because a note's picture is
+   often a tall column and cover would behead it. */
 .lessons article > div img {
-  width: 84%;
-  max-height: 84%;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .lessons h3 {
