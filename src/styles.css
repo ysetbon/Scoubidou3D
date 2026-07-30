@@ -273,12 +273,12 @@ button {
   margin-top: auto;
 }
 
-/* ---- a storey is a bar, and its layers are the box under it --------------- */
-/* The bar is detached from the group on purpose: a storey is a thing you MOVE
-   (▲▼ slide it through the stack, ✕ removes it), and a bar standing on its own
-   above the layers reads as the handle for that. Level 0 is the ground — not a
-   break, just what is left below the lowest one — so its bar carries no
-   controls. */
+/* ---- a storey is a bar, under the box of layers it carries ----------------- */
+/* The bar sits BELOW its layers because that is what a storey is: the floor they
+   rest on. Level 0's bar is therefore the last thing in the panel — the ground,
+   under everything — and it carries no controls, the ground being not a break but
+   what is left below the lowest one. Every other bar carries ▲▼✕, which walk that
+   storey through the stack past the rows either side of it. */
 
 .level-bar {
   display: flex;
@@ -293,15 +293,19 @@ button {
 .level-group,
 .mask-card {
   flex: 0 0 auto;
-  margin-top: 6px;
   padding: 8px;
   border: 1.5px solid var(--edge2);
   background: var(--paper);
 }
 
-/* The gap between one storey and the next: bigger than the gap between a bar and
-   its own layers, so the grouping reads without a label. */
+/* A bar hugs the layers standing on it; the next storey down sits clear of it, so
+   the grouping reads without needing a label to say where one storey ends. */
 .level-group + .level-bar {
+  margin-top: 6px;
+}
+
+.level-bar + .level-group,
+.level-bar + .level-bar {
   margin-top: 16px;
 }
 
