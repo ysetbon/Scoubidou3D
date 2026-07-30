@@ -126,10 +126,11 @@
       </a>
     </section>
 
-    <!-- Every card below is a real built-in. The picture is drawn from that
-         sample's own geometry by scripts/sample-art.ts, the counts are that
-         scene's own strands / masks / levels, and the link opens exactly that
-         scene in the studio. -->
+    <!-- Every card below is a real built-in. The picture is a SCREENSHOT of that
+         scene in the studio's own 3D canvas, shot by scripts/site-shots.mjs, the
+         counts are that scene's own strands / masks / levels, and the link opens
+         exactly that scene. Two files per card, one per theme, swapped by CSS on
+         [data-theme] — see .projectArt img in site/site.css. -->
     <section class="section projects" id="samples">
       <div class="heading">
         <div>
@@ -138,8 +139,8 @@
         </div>
         <p>
           Each one loads in a click and can be pulled apart from there — drag an endpoint, restack a
-          layer, flip a crossing. The thumbnails are not illustrations: they are drawn from the same
-          coordinates the 3D ribbons are swept along.
+          layer, flip a crossing. The pictures are not illustrations and not drawings: each one is a
+          screenshot of that scene in the studio's own 3D canvas, grid and all.
         </p>
       </div>
 
@@ -154,7 +155,12 @@
       <div class="projectGrid">
         <article data-category="Basics">
           <a class="projectArt coral" href="./app/?sample=two-crossing">
-            <img src="./site/art/two-crossing.svg" alt="Two crossing strands, seen from above" />
+            <img class="shot light" src="./site/shots/two-crossing-light.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="Two laces crossing in the studio: the gold ribbon lifts over the orange one and dips back down" />
+            <img class="shot dark" src="./site/shots/two-crossing-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="Two laces crossing in the studio: the gold ribbon lifts over the orange one and dips back down" />
             <span>two-crossing</span><b aria-hidden="true">↗</b>
           </a>
           <div class="projectName">
@@ -167,7 +173,12 @@
 
         <article data-category="Stitches">
           <a class="projectArt yellow" href="./app/?sample=box-stitch">
-            <img src="./site/art/box-stitch.svg" alt="The box stitch at its starting stitch" />
+            <img class="shot light" src="./site/shots/box-stitch-light.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="The box stitch's starting stitch in the studio: four folded arms locked over a square" />
+            <img class="shot dark" src="./site/shots/box-stitch-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="The box stitch's starting stitch in the studio: four folded arms locked over a square" />
             <span>box-stitch</span><b aria-hidden="true">↗</b>
           </a>
           <div class="projectName">
@@ -180,7 +191,12 @@
 
         <article data-category="Weaves">
           <a class="projectArt teal" href="./app/?sample=woven-mat">
-            <img src="./site/art/woven-mat.svg" alt="A woven mat of four laces each way" />
+            <img class="shot light" src="./site/shots/woven-mat-light.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A woven mat in the studio, four laces each way, every crossing alternating over and under" />
+            <img class="shot dark" src="./site/shots/woven-mat-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A woven mat in the studio, four laces each way, every crossing alternating over and under" />
             <span>woven-mat</span><b aria-hidden="true">↗</b>
           </a>
           <div class="projectName">
@@ -193,7 +209,12 @@
 
         <article data-category="Braids">
           <a class="projectArt coral" href="./app/?sample=braid-3">
-            <img src="./site/art/braid-3.svg" alt="A three-strand braid" />
+            <img class="shot light" src="./site/shots/braid-3-light.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A three-strand braid in the studio, the plait running across the canvas" />
+            <img class="shot dark" src="./site/shots/braid-3-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A three-strand braid in the studio, the plait running across the canvas" />
             <span>braid-3</span><b aria-hidden="true">↗</b>
           </a>
           <div class="projectName">
@@ -206,7 +227,12 @@
 
         <article data-category="Stitches">
           <a class="projectArt yellow" href="./app/?sample=box-stitch-10">
-            <img src="./site/art/box-stitch-10.svg" alt="A box stitch worked for ten rounds, tipped to show the column" />
+            <img class="shot light" src="./site/shots/box-stitch-10-light.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A box stitch worked for ten rounds in the studio, standing as a column that bands in pairs" />
+            <img class="shot dark" src="./site/shots/box-stitch-10-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A box stitch worked for ten rounds in the studio, standing as a column that bands in pairs" />
             <span>box-stitch-10</span><b aria-hidden="true">↗</b>
           </a>
           <div class="projectName">
@@ -219,7 +245,12 @@
 
         <article data-category="Weaves">
           <a class="projectArt teal" href="./app/?sample=diagonal">
-            <img src="./site/art/diagonal.svg" alt="A diagonal basket, the mat turned 45 degrees" />
+            <img class="shot light" src="./site/shots/diagonal-light.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A diagonal basket in the studio: the mat turned forty-five degrees, twenty-five crossings deep" />
+            <img class="shot dark" src="./site/shots/diagonal-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A diagonal basket in the studio: the mat turned forty-five degrees, twenty-five crossings deep" />
             <span>diagonal</span><b aria-hidden="true">↗</b>
           </a>
           <div class="projectName">
@@ -232,7 +263,12 @@
 
         <article data-category="Weaves">
           <a class="projectArt coral" href="./app/?sample=curved-stack">
-            <img src="./site/art/curved-stack.svg" alt="A basket of bowed ribbons" />
+            <img class="shot light" src="./site/shots/curved-stack-light.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A weave of bowed ribbons in the studio, each lace curved by its control points" />
+            <img class="shot dark" src="./site/shots/curved-stack-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A weave of bowed ribbons in the studio, each lace curved by its control points" />
             <span>curved-stack</span><b aria-hidden="true">↗</b>
           </a>
           <div class="projectName">
@@ -245,7 +281,12 @@
 
         <article data-category="Stitches">
           <a class="projectArt yellow" href="./app/?sample=round-stitch-10">
-            <img src="./site/art/round-stitch-10.svg" alt="A round stitch worked for ten rounds, corkscrewing upward" />
+            <img class="shot light" src="./site/shots/round-stitch-10-light.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A round stitch worked for ten rounds in the studio, the column corkscrewing straight upward" />
+            <img class="shot dark" src="./site/shots/round-stitch-10-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A round stitch worked for ten rounds in the studio, the column corkscrewing straight upward" />
             <span>round-stitch-10</span><b aria-hidden="true">↗</b>
           </a>
           <div class="projectName">
@@ -258,7 +299,12 @@
 
         <article data-category="Braids">
           <a class="projectArt teal" href="./app/?sample=braid-4">
-            <img src="./site/art/braid-4.svg" alt="A four-strand flat braid" />
+            <img class="shot light" src="./site/shots/braid-4-light.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A four-strand flat braid in the studio, wider and flatter than the three-strand plait" />
+            <img class="shot dark" src="./site/shots/braid-4-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A four-strand flat braid in the studio, wider and flatter than the three-strand plait" />
             <span>braid-4</span><b aria-hidden="true">↗</b>
           </a>
           <div class="projectName">
@@ -271,7 +317,12 @@
 
         <article data-category="Stitches">
           <a class="projectArt coral" href="./app/?sample=box-stitch-15">
-            <img src="./site/art/box-stitch-15.svg" alt="A box stitch worked for fifteen rounds" />
+            <img class="shot light" src="./site/shots/box-stitch-15-light.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A box stitch worked for fifteen rounds in the studio, a taller column of the same stitch" />
+            <img class="shot dark" src="./site/shots/box-stitch-15-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A box stitch worked for fifteen rounds in the studio, a taller column of the same stitch" />
             <span>box-stitch-15</span><b aria-hidden="true">↗</b>
           </a>
           <div class="projectName">
@@ -284,7 +335,12 @@
 
         <article data-category="Stitches">
           <a class="projectArt teal" href="./app/?sample=twist-stitch-10">
-            <img src="./site/art/twist-stitch-10.svg" alt="Three laces worked as a twist stitch, the column winding as it climbs" />
+            <img class="shot light" src="./site/shots/twist-stitch-10-light.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="Three laces worked as a twist stitch in the studio, the column winding as it climbs" />
+            <img class="shot dark" src="./site/shots/twist-stitch-10-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="Three laces worked as a twist stitch in the studio, the column winding as it climbs" />
             <span>twist-stitch-10</span><b aria-hidden="true">↗</b>
           </a>
           <div class="projectName">
@@ -296,26 +352,36 @@
         </article>
 
         <article data-category="Stitches">
-          <a class="projectArt yellow" href="./app/?sample=twist-3x1-10">
-            <img src="./site/art/twist-3x1-10.svg" alt="A twist stitch on a 3x1 face, four laces" />
-            <span>twist-3x1-10</span><b aria-hidden="true">↗</b>
+          <a class="projectArt yellow" href="./app/?sample=twofan-col-lh-1x3-10">
+            <img class="shot light" src="./site/shots/twofan-col-lh-1x3-10-light.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A two-fan column on a 1×3 face in the studio: four laces, ten levels, the face turning 33° a round" />
+            <img class="shot dark" src="./site/shots/twofan-col-lh-1x3-10-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A two-fan column on a 1×3 face in the studio: four laces, ten levels, the face turning 33° a round" />
+            <span>twofan-col-lh-1x3-10</span><b aria-hidden="true">↗</b>
           </a>
           <div class="projectName">
             <div><small>Stitches</small>
-              <h3>Twist stitch — 3×1, 10 twists</h3>
+              <h3>Two-fan column — 1×3, 10 levels</h3>
             </div>
           </div>
           <div class="meta"><span>92 strands</span><span>66 masks</span><span>11 levels</span></div>
         </article>
 
         <article data-category="Stitches">
-          <a class="projectArt coral" href="./app/?sample=twist-2x2-10">
-            <img src="./site/art/twist-2x2-10.svg" alt="A twist stitch on a 2x2 face, four laces" />
-            <span>twist-2x2-10</span><b aria-hidden="true">↗</b>
+          <a class="projectArt coral" href="./app/?sample=twofan-col-lh-2x2-10">
+            <img class="shot light" src="./site/shots/twofan-col-lh-2x2-10-light.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A two-fan column on a 2×2 face in the studio: the square face, eighty-eight crossings, ten levels" />
+            <img class="shot dark" src="./site/shots/twofan-col-lh-2x2-10-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A two-fan column on a 2×2 face in the studio: the square face, eighty-eight crossings, ten levels" />
+            <span>twofan-col-lh-2x2-10</span><b aria-hidden="true">↗</b>
           </a>
           <div class="projectName">
             <div><small>Stitches</small>
-              <h3>Twist stitch — 2×2, 10 twists</h3>
+              <h3>Two-fan column — 2×2, 10 levels</h3>
             </div>
           </div>
           <div class="meta"><span>92 strands</span><span>88 masks</span><span>11 levels</span></div>
@@ -499,7 +565,12 @@
       <div class="lessons">
         <article>
           <span>01 · Layer levels</span>
-          <div><img src="./site/art/box-stitch-10.svg" alt="" /></div>
+          <div>
+            <img class="shot light" src="./site/shots/box-stitch-10-light.webp" width="780" height="722"
+              loading="lazy" decoding="async" alt="" />
+            <img class="shot dark" src="./site/shots/box-stitch-10-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async" alt="" />
+          </div>
           <h3>Storeys in the stack</h3>
           <p>A level break makes everything above it rest a full storey higher — two strand thicknesses,
             the height of a woven round — so a lace sits on the round below instead of through it.</p>
@@ -511,7 +582,12 @@
         </article>
         <article>
           <span>02 · Control points</span>
-          <div><img src="./site/art/curved-stack.svg" alt="" /></div>
+          <div>
+            <img class="shot light" src="./site/shots/curved-stack-light.webp" width="780" height="722"
+              loading="lazy" decoding="async" alt="" />
+            <img class="shot dark" src="./site/shots/curved-stack-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async" alt="" />
+          </div>
           <h3>The curve, faithfully</h3>
           <p>The centerline is a port of OpenStrand's own eased two-segment curve, with the same marks
             and the same staging — which is why an imported file keeps its shape.</p>
@@ -523,7 +599,12 @@
         </article>
         <article>
           <span>03 · The box stitch</span>
-          <div><img src="./site/art/box-stitch.svg" alt="" /></div>
+          <div>
+            <img class="shot light" src="./site/shots/box-stitch-light.webp" width="780" height="722"
+              loading="lazy" decoding="async" alt="" />
+            <img class="shot dark" src="./site/shots/box-stitch-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async" alt="" />
+          </div>
           <h3>Nine crossings, one mask</h3>
           <p>The arms are folded in layer order, so the stacking already tells the truth at eight of the
             nine crossings. The ninth is the move that locks the stitch.</p>
@@ -535,7 +616,12 @@
         </article>
         <article>
           <span>04 · The twist stitch</span>
-          <div><img src="./site/art/twist-stitch-10.svg" alt="" /></div>
+          <div>
+            <img class="shot light" src="./site/shots/twist-stitch-10-light.webp" width="780" height="722"
+              loading="lazy" decoding="async" alt="" />
+            <img class="shot dark" src="./site/shots/twist-stitch-10-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async" alt="" />
+          </div>
           <h3>A face that turns</h3>
           <p>Three laces on a 2×1 face, 26° further round every stitch. Grown from a stitch built by
             hand rather than derived — an idealised one reaches every fold the same and comes out a cylinder.</p>
@@ -597,12 +683,13 @@ npm install
 npm run dev      <span class="cmt"># http://localhost:5173</span></code></pre>
         </div>
         <div>
-          <h3>Build &amp; redraw</h3>
+          <h3>Build &amp; reshoot</h3>
           <pre class="code"><code>npm run build    <span class="cmt"># site at /, app at /app/</span>
-npm run art      <span class="cmt"># redraw site/art/*.svg</span></code></pre>
+npm run shots    <span class="cmt"># reshoot site/shots/*.webp</span></code></pre>
           <p class="runNote">
-            <code>npm run art</code> regenerates every thumbnail on this page from
-            <code>src/model/samples.ts</code>, so a sample cannot drift away from its own picture.
+            <code>npm run shots</code> drives the running app and screenshots every picture on this
+            page — both themes — from the real 3D canvas, so a sample cannot drift away from its own
+            photograph. Needs <code>npm run dev</code> up in another shell.
           </p>
         </div>
       </div>

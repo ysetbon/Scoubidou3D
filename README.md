@@ -144,9 +144,10 @@ The three layouts this was chosen from, as clickable mocks and renders:
   worked as a 10- or 15-round column, the **round stitch** — the same four folds without the
   reversal, so the column repeats every round instead of every two
   ([the difference](docs/box-stitch-levels/README.md#the-round-stitch)) — the **twist stitch**,
-  three laces on a 2×1 face that turns 26° a stitch ([how it is built](docs/twist-stitch/)), and the
-  same stitch derived for a **3×1** and a **2×2** face
-  ([the law](docs/twist-stitch/deriving-the-turn.md)), three- and four-strand braids, a truly-woven
+  three laces on a 2×1 face that turns 26° a stitch ([how it is built](docs/twist-stitch/)), and
+  **two-fan columns** on a **1×3** and a **2×2** face, ten levels each, derived from the reference
+  stitch rather than idealised ([the law](docs/twist-stitch/deriving-the-turn.md)), three- and
+  four-strand braids, a truly-woven
   mat (a checkerboard of masks), a diagonal basket, and a curved ribbon weave. Each is listed with
   its own picture on [the project site](https://ysetbon.github.io/Scoubidou3D/), and
   `?sample=<key>` opens one directly — e.g.
@@ -277,17 +278,25 @@ The build has three pages — the project site at `/`, the studio at `/app/` and
 `BASE_PATH=/ npm run build`.
 
 ```sh
+npm run shots    # reshoot site/shots/*.webp from the running app (needs npm run dev)
 npm run art      # redraw site/art/*.svg from src/model/samples.ts
 ```
 
-Every picture of a sample on the project site is *drawn from that sample*. The generator
-([`scripts/sample-art.ts`](scripts/sample-art.ts)) takes each scene's own strands, runs their
-centerlines through the same curve math the 3D ribbon is swept along, and paints the over/unders
-from the scene's own mask list — top-down for a flat scene, tipped into an oblique for one worked in
-storeys, because ten rounds of a box stitch land on the same square from straight above. It also
-prints each scene's strand / mask / level / junction counts, which are the numbers the site quotes.
-Change a sample and re-run it; the pictures and the counts follow, so neither can drift from the
-code.
+Every picture of a sample on the project site is *that sample*, screenshotted. `npm run shots`
+([`scripts/site-shots.mjs`](scripts/site-shots.mjs)) drives the studio in a real browser, loads each
+scene, frames it by projecting the ribbons themselves and correcting until the model fills the frame,
+and reads the WebGL canvas back — so what the card shows is the render, grid and all, not a drawing
+of it. Two files per sample, one per canvas skin (`<key>-light.webp` / `<key>-dark.webp`), because a
+screenshot carries its background with it and a cream canvas dropped into the dark theme is a hole in
+the page; the site swaps them on `[data-theme]`. It needs `npm run dev` up in another shell, since
+the handle it drives is stripped from production builds.
+
+`npm run art` is the older, flat generator ([`scripts/sample-art.ts`](scripts/sample-art.ts)): it
+takes each scene's own strands, runs their centerlines through the same curve math the 3D ribbon is
+swept along, and paints the over/unders from the scene's own mask list. The site no longer shows its
+output, but it stays for two reasons — it prints each scene's strand / mask / level / junction
+counts, which are the numbers the cards quote, and because it is deterministic, `site/art`
+re-rendering byte-identical is how the geometry notes check that nothing moved.
 
 ## How it's built
 
@@ -295,11 +304,14 @@ code.
 index.html      # the project site (the landing page you get at /)
 site/site.css   #   its stylesheet — light and dark, the palette both pages share
 site/theme.js   #   the theme switch, sharing its stored choice with the studio
-site/art/       #   one thumbnail per sample, GENERATED — see above
+site/shots/     #   the pictures the site shows: one screenshot of the app's 3D
+                #   canvas per sample per theme, GENERATED — see above
+site/art/       #   the older flat drawing per sample, GENERATED — see above
 app/index.html  # the studio's page, served at /app/
 levels/         # the level gallery: every level of every m x n face
 public/         # copied verbatim to the site root (favicon, level renders)
 scripts/
+  site-shots.mjs # screenshots site/shots/*.webp from the running app (`npm run shots`)
   sample-art.ts # draws site/art/*.svg from the samples themselves (`npm run art`)
 src/
   geometry/
