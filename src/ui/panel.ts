@@ -463,7 +463,8 @@ export class Panel {
   // ---- The settings dock ---------------------------------------------------
   // Four pills over the canvas, one popover at a time. Each pill states its own
   // value, so the whole setup of a scene reads off the dock without opening
-  // anything — which is what most of the old panel's scrolling was for.
+  // anything — which is what most of the old panel's scrolling was for. And a
+  // card that has been used shuts itself: see commitDock for which presses count.
   private dockHost: HTMLElement | null = null;
   private popHost: HTMLElement | null = null;
   private dockOpen: DockKey | null = null;
@@ -488,6 +489,35 @@ export class Panel {
       this.disarmResetAll();
     }
     this.renderDock();
+  }
+
+  /**
+   * Close the open card, the way pressing its own pill again would.
+   *
+   * A floating card sits over the very scene it is changing, so once a press has
+   * committed — Fit, a sample loaded, Grid ticked — the card has nothing left to
+   * say and is only in the way. So every control that finishes something calls
+   * this, and the toast reports what happened over the closed card (see flash).
+   *
+   * Two kinds of control deliberately do NOT: the sliders, which you hold and
+   * tune rather than commit and which would be undraggable if the card went
+   * with the first pixel; and the Scene card's own expanders — Save, JSON,
+   * Paste — which reveal a field INSIDE this card, so closing over them would
+   * be closing over the thing they just opened. Their follow-up press commits.
+   *
+   * Only the floating case. On a narrow screen the card IS the panel body (see
+   * renderPanelBody), where it covers nothing and there is nothing to get out
+   * of the way of — closing there would throw you back to the layer stack on
+   * every tick.
+   *
+   * @returns whether the card was closed — a caller that also has to redraw the
+   * dock can skip its own render when this one has already done it.
+   */
+  private commitDock(): boolean {
+    if (!this.dockOpen || isNarrow()) return false;
+    // openDock(null) always closes: null can never be the already-open key.
+    this.openDock(null);
+    return true;
   }
 
   private renderDock(): void {
@@ -600,8 +630,14 @@ export class Panel {
     );
     const toggles = el('div', 'check-row');
     toggles.append(
-      check('Outline', p.outline, (v) => this.view.setParams({ outline: v })),
-      check('Round ends', p.roundCaps, (v) => this.view.setParams({ roundCaps: v })),
+      check('Outline', p.outline, (v) => {
+        this.view.setParams({ outline: v });
+        this.commitDock();
+      }),
+      check('Round ends', p.roundCaps, (v) => {
+        this.view.setParams({ roundCaps: v });
+        this.commitDock();
+      }),
     );
     pop.appendChild(toggles);
     return pop;
@@ -614,7 +650,8 @@ export class Panel {
     toggles.appendChild(
       check('Interlock at crossings', p.weave, (v) => {
         this.view.setParams({ weave: v });
-        this.syncDockValues();
+        // Closing redraws the pill's on/off with it; on a phone it stays open.
+        if (!this.commitDock()) this.syncDockValues();
       }),
     );
     pop.appendChild(toggles);
@@ -628,13 +665,26 @@ export class Panel {
     const pop = this.popover('View', 'camera');
     const p = this.view.getParams();
     const shots = el('div', 'pill-row');
+    // Both of these move the camera to show you the whole scene, which is the one
+    // thing the card is standing in front of — so they take it away with them.
     shots.append(
-      pill('Fit', () => this.view.fitView()),
-      pill('Top', () => this.view.topView()),
+      pill('Fit', () => {
+        this.view.fitView();
+        this.commitDock();
+      }),
+      pill('Top', () => {
+        this.view.topView();
+        this.commitDock();
+      }),
     );
     pop.appendChild(shots);
     const toggles = el('div', 'check-row');
-    toggles.appendChild(check('Grid', p.showGrid, (v) => this.view.setParams({ showGrid: v })));
+    toggles.appendChild(
+      check('Grid', p.showGrid, (v) => {
+        this.view.setParams({ showGrid: v });
+        this.commitDock();
+      }),
+    );
     // OSS's `enable_third_control_point`: with it off a strand has the classic
     // two handles, and a centre already placed by hand is ignored — by the
     // handles and by the curve alike — rather than lost. It belongs to Move, so
@@ -643,7 +693,7 @@ export class Panel {
       toggles.appendChild(
         check('Middle handle', p.thirdControlPoint, (v) => {
           this.view.setParams({ thirdControlPoint: v });
-          this.renderDock();
+          if (!this.commitDock()) this.renderDock();
         }),
       );
     }
@@ -706,18 +756,29 @@ export class Panel {
       select.appendChild(mine);
     }
     select.value = this.sceneSource;
-    select.addEventListener('change', () => this.loadSource(select.value));
+    select.addEventListener('change', () => {
+      this.commitDock();
+      this.loadSource(select.value);
+    });
     sampleRow.appendChild(select);
     pop.appendChild(sampleRow);
 
     // The dropdown names a dozen scenes; the m x n twist family is 64 more, which
     // is a grid rather than a list. Browse… opens both.
     const browse = el('div', 'pill-row');
-    const browseBtn = pill('Browse samples…', () => this.openBrowser());
+    // The browser is a full overlay, so the card would only be sitting behind it
+    // waiting to be found again once a scene had been picked.
+    const browseBtn = pill('Browse samples…', () => {
+      this.commitDock();
+      this.openBrowser();
+    });
     browseBtn.classList.add('coral');
     browse.appendChild(browseBtn);
     pop.appendChild(browse);
 
+    // None of these three commits anything — Import raises the file picker, and
+    // Save and JSON reveal a field further down this same card. So none of them
+    // closes it; what they lead to does. See commitDock.
     const row = el('div', 'pill-row');
     row.append(
       pill('Import .json', () => fileInput.click()),
@@ -823,6 +884,7 @@ export class Panel {
             const scene = parseSceneText(text, 'pasted scene');
             this.pasteOpen = false;
             this.sceneSource = 'imported';
+            this.commitDock();
             this.setScene(scene);
           } catch (e) {
             this.flash('Could not read that: ' + (e as Error).message, true);
@@ -839,6 +901,7 @@ export class Panel {
         pill(`Delete “${shortName(current.scene.name)}”`, () => {
           deleteCustom(current.id);
           this.sceneSource = 'two-crossing';
+          this.commitDock();
           this.setScene(makeSample('two-crossing'));
         }),
       );
@@ -854,8 +917,12 @@ export class Panel {
       if (!f) return;
       try {
         const text = await f.text();
+        // Parse first: a file that cannot be read leaves the card up, with the
+        // toast next to the button that would try again.
+        const scene = parseSceneText(text, f.name.replace(/\.json$/i, ''));
         this.sceneSource = 'imported';
-        this.setScene(parseSceneText(text, f.name.replace(/\.json$/i, '')));
+        this.commitDock();
+        this.setScene(scene);
       } catch (e) {
         this.flash('Could not read that file: ' + (e as Error).message, true);
       }
@@ -891,7 +958,9 @@ export class Panel {
     this.resetAllArmed = false;
     for (const st of this.scene.strands) resetControlPoints(st);
     this.apply(false);
-    this.renderDock();
+    // Only this second press commits, so only this one closes: the first press
+    // arms and returns above, and the card has to stay for the press that answers it.
+    if (!this.commitDock()) this.renderDock();
     this.flash('Every strand straightened.');
   }
 
@@ -1128,9 +1197,10 @@ export class Panel {
       return;
     }
     this.sceneSource = entry.id;
-    // render() redraws the dock with the Scene card still open, so the saved name
-    // appears in the dropdown under the press that saved it. openDock('scene')
-    // here would TOGGLE that card shut instead.
+    // The save is what the naming field was opened for, so the card goes: the
+    // toast below carries the name it went under. On a phone the card stays and
+    // render() redraws it with the new name already in the dropdown.
+    this.commitDock();
     this.render();
     this.flash(`Saved as “${name}”.`);
   }
