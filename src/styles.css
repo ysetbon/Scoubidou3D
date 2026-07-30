@@ -626,6 +626,25 @@ button {
   padding: 0;
 }
 
+/* The bin. Bordered in danger rather than filled, so it does not shout from a row
+   of ordinary controls — and fills only under the pointer, where the press is
+   about to land. */
+.pill.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.pill.danger:hover:not(:disabled) {
+  background: var(--danger);
+  color: var(--paper);
+  box-shadow: 3px 3px 0 var(--shadow);
+}
+
+.pill.danger .icon {
+  width: 15px;
+  height: 15px;
+}
+
 .icon {
   width: 13px;
   height: 13px;
