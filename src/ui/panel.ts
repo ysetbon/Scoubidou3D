@@ -1402,11 +1402,15 @@ export class Panel {
         this.apply(false);
       }),
     );
-    const up = iconBtn('▲', 'Move up (toward front)', () => this.reorder(index, +1));
-    up.disabled = index === this.scene.strands.length - 1;
+    const up = iconBtn('▲', 'Move up — over the row or the level above', () =>
+      this.reorder(index, +1),
+    );
+    up.disabled = !this.canMove(index, +1);
     controls.appendChild(up);
-    const down = iconBtn('▼', 'Move down (toward back)', () => this.reorder(index, -1));
-    down.disabled = index === 0;
+    const down = iconBtn('▼', 'Move down — under the row or the level below', () =>
+      this.reorder(index, -1),
+    );
+    down.disabled = !this.canMove(index, -1);
     controls.appendChild(down);
     row.appendChild(controls);
     return row;
@@ -1468,23 +1472,74 @@ export class Panel {
       : 'Reset control points (straighten this strand)';
     acts.appendChild(straighten);
     acts.appendChild(
-      pill('Hide', () => {
+      pill(strand.visible ? 'Hide' : 'Show', () => {
         strand.visible = !strand.visible;
         this.apply(false);
       }, 'Show / hide this strand'),
     );
-    const del = pill('✕', () => {
+
+    // A bin for deleting and a ✕ for closing. They were the same button before,
+    // which is the one pairing you cannot have: ✕ reads as "put this away" on
+    // every panel ever built, and it was throwing the strand away instead.
+    const del = el('button', 'pill square danger') as HTMLButtonElement;
+    del.type = 'button';
+    del.innerHTML = BIN_ICON;
+    del.title = `Delete strand ${strand.id}`;
+    del.setAttribute('aria-label', `Delete strand ${strand.id}`);
+    del.addEventListener('click', () => {
       removeStrandAt(this.scene, index);
       this.selectedId = null;
       this.apply(false);
-    }, 'Delete this strand');
-    del.classList.add('ghost', 'square');
+    });
     acts.appendChild(del);
+
+    const close = pill('✕', () => {
+      this.selectedId = null;
+      this.renderPanelBody();
+    }, 'Close these controls — the strand stays');
+    close.classList.add('ghost', 'square');
+    close.setAttribute('aria-label', 'Close these controls');
+    acts.appendChild(close);
+
     box.appendChild(acts);
     return box;
   }
 
+  /**
+   * Which level bar, if any, is immediately next to this row in the direction it
+   * is about to travel. Going down (-1) that is a break at the row's own position
+   * — the bar drawn under it; going up (+1), the break one above.
+   */
+  private barBeside(index: number, dir: 1 | -1): number {
+    return this.scene.levelBreaks.indexOf(dir === -1 ? index : index + 1);
+  }
+
+  /** Is there anything for this row to step past — a strand, or a bar? */
+  private canMove(index: number, dir: 1 | -1): boolean {
+    const j = index + dir;
+    if (j >= 0 && j < this.scene.strands.length) return true;
+    return this.barBeside(index, dir) !== -1;
+  }
+
+  /**
+   * One step down (or up) the stack — and the stack contains level bars as well
+   * as strands, so a bar is a step of its own.
+   *
+   * With a bar directly below it, pressing ▼ used to swap the strand with the
+   * strand BEYOND the bar: it changed storey and jumped a neighbour at the same
+   * time. Stepping past the bar instead moves the bar up over this strand, which
+   * drops the strand a storey and leaves it exactly where it was in the stack —
+   * under the level, still over the row below. Which is what the arrow looks like
+   * it should do.
+   */
   private reorder(index: number, dir: 1 | -1): void {
+    const b = this.barBeside(index, dir);
+    if (b !== -1) {
+      // The row goes one way, so the bar goes the other.
+      moveLevelBreak(this.scene, b, dir === -1 ? 1 : -1);
+      this.apply(false);
+      return;
+    }
     const j = index + dir;
     if (j < 0 || j >= this.scene.strands.length) return;
     const arr = this.scene.strands;
@@ -1740,6 +1795,14 @@ const TOOL_ICONS: Record<EditMode, string> = {
       '<rect x="-1.5" y="9.5" width="27" height="5" rx="2.5" transform="rotate(45 12 12)" />',
   ),
 };
+
+// A bin: lid, body, and two staves. Unmistakably "this is thrown away", which is
+// the whole point of it not being another ✕.
+const BIN_ICON = svg(
+  '<path d="M9.2 2.5h5.6l1 1.4H20v2.2H4V3.9h4.2Z" />' +
+    '<path d="M5.6 8h12.8l-.9 12.2a1.8 1.8 0 0 1-1.8 1.7H8.3a1.8 1.8 0 0 1-1.8-1.7Z' +
+    'm4 2.6v8.2h1.7v-8.2Zm3 0v8.2h1.7v-8.2Z" />',
+);
 
 const MOON_ICON = svg('<path d="M12.6 2.1A9.9 9.9 0 1 0 21.9 15 8 8 0 0 1 12.6 2.1Z" />');
 
