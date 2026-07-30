@@ -39,11 +39,13 @@ the dock swaps the panel to that card, and the bar names it with a way back to
 Layers. Same four pills, same four cards, in the one place there is room for them.
 
 **A second divergence, from use.** The mocks draw a storey as a card whose header
-names it. In the app the bar is *detached*, standing above a box of its layers,
-because a level is a thing you move and a bar reads as the handle for it — and the
-stack hangs from the bottom of the panel, since level 0 is the ground. Both came
-straight out of a hand sketch of the panel, which is worth more than a mock here:
-it is what someone reaches for when they want to move a storey.
+names it. In the app the bar is *detached* and sits **under** the layers it
+carries, because that is what a storey is — the floor they rest on — which makes
+level 0's bar the last thing in the panel and makes `▲▼` read as walking that bar
+through the stack past the rows either side of it. The stack hangs from the bottom
+of the panel for the same reason: the ground belongs on the floor. Both came out of
+a hand sketch, which was worth more than a mock here — it is what someone reaches
+for when they want to move a storey.
 
 The three mocks stay in the repo as the record of the choice — and as the place to
 try the next panel idea before touching the app.

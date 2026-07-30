@@ -5,14 +5,15 @@
 //   * The PANEL is the layer stack and nothing else. Everything that used to
 //     scroll above the stack — Ribbon, Weave, View, Scene — has left, so the
 //     thing you actually work in is never below anything.
-//   * A storey is a BAR of its own with its layers boxed under it, rather than a
-//     card whose header happens to name it. A level is a thing you MOVE — ▲▼
-//     slide it through the stack, ✕ removes it — and a detached bar reads as the
-//     handle for that, the way it is drawn when you sketch the panel by hand.
-//     Level 0 is the ground: not a break at all, just what is left below the
-//     lowest one, so its bar carries no controls. Masks are crossings rather than
-//     storeys, so they sit in a card above the stack — where OpenStrand's own
-//     layer panel keeps them.
+//   * A storey is a BAR OF ITS OWN, sitting UNDER the layers it carries, because
+//     that is what a storey is: the floor they rest on. So level 0's bar is the
+//     last thing in the panel — the ground, under everything — and ▲▼ on a bar
+//     walk it through the stack past the rows next to it, which is the whole of
+//     what a level does. A card whose header names it could not say any of that;
+//     a bar you can move can. Level 0 carries no controls: the ground is not a
+//     break, just what is left below the lowest one. Masks are crossings rather
+//     than storeys, so they sit in a card above the stack — where OpenStrand's
+//     own layer panel keeps them.
 //   * The stack HANGS FROM THE BOTTOM. It is built bottom-up (level 0 is the
 //     ground, strands[0] is the lowest layer), so a panel with room to spare puts
 //     the ground on its floor rather than its ceiling.
@@ -1235,14 +1236,15 @@ export class Panel {
       for (let i = this.scene.strands.length - 1; i >= 0; i--) {
         if (levelAt(this.scene, i) === level) rows.push(i);
       }
-      // The bar is its own row above the group rather than the group's header:
-      // a storey is a thing you MOVE, and a detached bar reads as the handle for
-      // it. A break parked at the very top (or stacked on another) holds no
-      // strands yet — every layer added from now on is born up there — so its bar
-      // shows over an empty group, which is also the one you press ✕ on if you
-      // added it by accident.
+      // The bar goes UNDER the layers it carries, because that is what a storey
+      // is: the floor they rest on. Level 0's bar is therefore the last thing in
+      // the panel — the ground, under everything — and pressing ▼ on a bar walks
+      // it down past the row below, which is exactly the layer that then joins
+      // the storey above it. A break parked at the very top holds no layers yet,
+      // so its bar stands alone with nothing over it; every layer added from now
+      // on is born up there, above that bar.
+      if (rows.length) host.appendChild(this.levelGroup(level, rows));
       host.appendChild(this.levelBar(level, rows.length));
-      host.appendChild(this.levelGroup(level, rows));
     }
   }
 
@@ -1306,13 +1308,11 @@ export class Panel {
     return bar;
   }
 
-  /** The layers resting on one storey, top of the stack first. */
+  /** The layers resting on one storey, top of the stack first. Only drawn when
+   *  the storey has any: an empty one is just its bar, with nothing over it. */
   private levelGroup(level: number, rows: number[]): HTMLElement {
     const group = el('div', 'level-group');
     group.setAttribute('aria-label', `Level ${level}`);
-    if (!rows.length) {
-      group.appendChild(el('p', 'empty', 'Empty — new layers are born here'));
-    }
     for (const i of rows) {
       group.appendChild(this.layerRow(i));
       if (this.scene.strands[i].id === this.selectedId) {
