@@ -15,6 +15,7 @@
 //      with another strand's endpoint — a junction. Only FREE endpoints accept a
 //      new attachment.
 
+import { levelAt } from './levels';
 import { Point, Scene3D, Strand3D } from './types';
 
 /** Source-unit tolerance for "these two points are the same" (~OSS's 1px snap). */
@@ -101,6 +102,15 @@ function isJunction(strands: Strand3D[], index: number, side: 0 | 1): boolean {
  * column they routinely do, and picking by lowest index then bridges an arm to
  * the wrong lace several levels down. The declaration is the author's answer to
  * a question the projection cannot answer.
+ *
+ * Where there is no declaration to go on, the STOREY answers it instead: a
+ * coincidence between two different storeys is that same projection artefact,
+ * and the two ends are a level break apart in space. So the search is confined
+ * to the storey the child sits on. Only the free root of a lace reaches this
+ * path at all — everything grown from it declares its parent — and a root is
+ * exactly the end a turning column eventually brings one of its own arms back
+ * onto: a 1x1 comes round to within 0.3 px of its base bars by level 8, and the
+ * bottom of the orange lace was being adopted by the top of the blue one.
  */
 export interface Junction {
   childIndex: number;
@@ -130,13 +140,16 @@ export function collectJunctions(scene: Scene3D): Junction[] {
         best = { index: pi, side: child.parentSide };
       }
     }
-    // Otherwise find coincident endpoints on other strands; prefer a parent END
-    // (a real chain) over a parent START (two strands sharing a head).
+    // Otherwise find coincident endpoints on other strands, ON THIS STOREY;
+    // prefer a parent END (a real chain) over a parent START (two strands
+    // sharing a head).
     if (best === null) {
+      const storey = levelAt(scene, ci);
       for (let pi = 0; pi < strands.length; pi++) {
         if (pi === ci) continue;
         const p = strands[pi];
         if (p.isMask) continue;
+        if (levelAt(scene, pi) !== storey) continue;
         ([1, 0] as const).forEach((side) => {
           if (!pointsClose(endpoint(p, side), anchor)) return;
           if (!best || (side === 1 && best.side === 0)) best = { index: pi, side };
