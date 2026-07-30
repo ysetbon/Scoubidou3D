@@ -17,7 +17,18 @@
   <meta property="og:url" content="https://ysetbon.github.io/Scoubidou3D/" />
   <meta name="twitter:card" content="summary" />
 
+  <!-- Set the theme before first paint: anything deferred or bundled lands after
+       the page has already painted, and a dark-theme visitor sees a cream flash.
+       Shares its key with the studio (src/ui/panel.ts) and site/theme.js. -->
+  <script>
+    try {
+      var t = localStorage.getItem('scoubidou3d-theme');
+    } catch (e) {}
+    document.documentElement.dataset.theme =
+      t || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  </script>
   <link rel="stylesheet" href="./site/site.css" />
+  <script type="module" src="./site/theme.js"></script>
 </head>
 
 <body>
@@ -49,11 +60,14 @@
       <a href="#learn">Notes</a>
       <a href="https://github.com/ysetbon/Scoubidou3D">GitHub</a>
     </nav>
-    <a class="btn dark" href="./app/">Open the studio
-      <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true">
-        <path d="M4 10h11M11 5l5 5-5 5" />
-      </svg>
-    </a>
+    <span class="headEnd">
+      <button class="themeBtn" type="button" data-theme-toggle aria-label="Switch theme"></button>
+      <a class="btn dark" href="./app/">Open the studio
+        <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M4 10h11M11 5l5 5-5 5" />
+        </svg>
+      </a>
+    </span>
   </header>
 
   <main>

@@ -61,6 +61,15 @@ const COLOR_CP = 0x008000; // control points — OSS's green (strand_drawing_can
 const COLOR_FREE = 0x2fb862; // attach-mode free endpoint (green — attachable)
 const COLOR_OCC = 0x9099a6; // attach-mode occupied endpoint (gray — junction)
 
+// The two skins the canvas wears, matching the page's own themes in styles.css:
+// the site's cream paper, and the warm near-black it inverts to. Only the ground
+// the model sits on changes — the laces keep their own colours, and the handle
+// marks keep OpenStrand's.
+const PALETTE = {
+  light: { bg: '#f5efdf', gridMajor: 0xcfc6ae, gridMinor: 0xe2dbc6 },
+  dark: { bg: '#191410', gridMajor: 0x4a4133, gridMinor: 0x322b21 },
+} as const;
+
 // A drag shorter than this (source units) counts as a click, not an attach, and
 // the just-created strand is discarded — the analogue of OSS's min_length guard.
 const MIN_ATTACH_LEN = 4;
@@ -181,6 +190,7 @@ export class StrandScene {
   // wide enough to swallow the handles it points at).
   private controlLines = new THREE.Group();
   private grid: THREE.GridHelper | null = null;
+  private theme: 'light' | 'dark' = 'light';
   private current: Scene3D = { strands: [], masks: [], levelBreaks: [], name: 'empty' };
   private params: RenderParams = { ...DEFAULT_PARAMS };
   private center: Vec2 = { x: 0, y: 0 };
@@ -239,7 +249,7 @@ export class StrandScene {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color('#eef1f4');
+    this.scene.background = new THREE.Color(PALETTE.light.bg);
 
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.01, 1000);
     this.camera.up.set(0, 0, 1); // Z is up: layers stack toward the sky
@@ -987,6 +997,18 @@ export class StrandScene {
     return h;
   }
 
+  /**
+   * Follow the page's theme. The canvas is the biggest surface in the app, so it
+   * cannot stay cream while the panel goes dark — and the grid has to come with
+   * it: lines picked to read on cream are invisible on near-black.
+   */
+  setTheme(theme: 'light' | 'dark'): void {
+    if (theme === this.theme) return;
+    this.theme = theme;
+    (this.scene.background as THREE.Color).set(PALETTE[theme].bg);
+    this.updateGrid();
+  }
+
   /** One storey's height in source units, for the layer panel to quote. */
   getLevelStep(): number {
     return this.levelStepSource();
@@ -1667,7 +1689,8 @@ export class StrandScene {
     }
     if (!this.params.showGrid) return;
     const size = Math.ceil(this.contentRadius * 2.6);
-    const grid = new THREE.GridHelper(size * 2, size * 2, 0xb8c0cc, 0xd4dae2);
+    const skin = PALETTE[this.theme];
+    const grid = new THREE.GridHelper(size * 2, size * 2, skin.gridMajor, skin.gridMinor);
     grid.rotation.x = Math.PI / 2; // lie in the XY (drawing) plane
     // Sit clear below the lowest resting plane AND below anything the weave dips.
     const drop = Math.max(this.params.thickness, this.params.weaveDepth) * SCALE * 1.6;
