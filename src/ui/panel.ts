@@ -49,6 +49,7 @@ import {
 } from '../model/levels';
 import { deleteCustom, getCustom, listCustom, saveCustom, storageAvailable } from '../model/customSamples';
 import { controlsAtDefault, resetControlPoints } from '../model/controlPoints';
+import { ColourScope, recolour, setMembers, setOf } from '../model/colour';
 
 // Where the numbers in the reference folder come from. All three live outside the
 // studio bundle, so they are plain links rather than samples: relative ones so the
@@ -1670,10 +1671,7 @@ export class Panel {
       chip.style.background = hex(c);
       chip.title = hex(c);
       if (hex(c) === hex(strand.color)) chip.classList.add('on');
-      chip.addEventListener('click', () => {
-        strand.color = { ...c, a: strand.color.a };
-        this.apply('recolour a strand', `colour:${strand.id}`);
-      });
+      chip.addEventListener('click', () => this.paint(strand, c));
       chips.appendChild(chip);
     }
     // The palette is six laces; anything else comes out of the picker, which is
@@ -1683,12 +1681,14 @@ export class Panel {
     custom.value = hex(strand.color);
     custom.title = 'Any colour';
     custom.addEventListener('input', () => {
-      strand.color = rgbaFromHex(custom.value, strand.color.a);
-      this.apply('recolour a strand', `colour:${strand.id}`);
+      this.paint(strand, rgbaFromHex(custom.value, strand.color.a));
     });
     chips.appendChild(custom);
     colours.appendChild(chips);
     box.appendChild(colours);
+
+    const scope = this.scopeRow(strand);
+    if (scope) box.appendChild(scope);
 
     box.appendChild(
       slider('Width', strand.width, 6, 140, 1, (v) => {
@@ -1742,6 +1742,72 @@ export class Panel {
 
     box.appendChild(acts);
     return box;
+  }
+
+  /**
+   * Where the next colour lands: on this layer alone, or on its whole set.
+   *
+   * The choice is the panel's, not the strand's — it is how you are working, so
+   * it stays put as you move down the stack rather than resetting on every row —
+   * and it is remembered between visits, like the theme.
+   */
+  private colourScope: ColourScope = loadColourScope();
+
+  /** Spend a colour under the current scope, and name the edit for what it did.
+   *  Tagged by scope AND target, so scrubbing the picker is one undo but
+   *  switching scope mid-scrub starts a step of its own — the second edit is a
+   *  different edit, and stepping back should land between them. */
+  private paint(strand: Strand3D, colour: RGBA): void {
+    const n = recolour(this.scene, strand.id, colour, this.colourScope);
+    const set = setOf(strand.id);
+    this.apply(
+      n > 1 ? `recolour set ${set}` : 'recolour a strand',
+      `colour:${this.colourScope}:${strand.id}`,
+    );
+  }
+
+  /**
+   * The layer / set switch, drawn under the palette — and only when there is a
+   * choice to make. A strand whose name is outside the `N_M` convention has no
+   * set, and one that is the only length of its own has a set of one: either way
+   * both halves would do the same thing, so the row stays away.
+   */
+  private scopeRow(strand: Strand3D): HTMLElement | null {
+    const set = setOf(strand.id);
+    const mates = set === null ? [] : setMembers(this.scene, strand.id);
+    if (mates.length < 2) return null;
+
+    const row = el('div', 'insp-row');
+    row.appendChild(el('span', 'insp-label', 'Applies to'));
+    const group = el('span', 'scope-toggle');
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', 'What a colour applies to');
+
+    const choice = (key: ColourScope, label: string, title: string): void => {
+      const b = el('button', 'scope-btn', label) as HTMLButtonElement;
+      b.type = 'button';
+      b.title = title;
+      b.setAttribute('aria-pressed', String(this.colourScope === key));
+      b.addEventListener('click', () => {
+        if (this.colourScope === key) return;
+        this.colourScope = key;
+        saveColourScope(key);
+        // No scene edit here: nothing is recoloured until a colour is picked, so
+        // this redraws the panel and stays out of the history.
+        this.renderStack();
+      });
+      group.appendChild(b);
+    };
+
+    choice('layer', 'This layer', `Colour ${strand.id} alone`);
+    choice(
+      'set',
+      `${set}_x · ${mates.length}`,
+      `Colour the whole set — all ${mates.length} layers of ${set}_x, this one included`,
+    );
+
+    row.appendChild(group);
+    return row;
   }
 
   /**
@@ -1908,6 +1974,14 @@ const ABOUT: Array<[string, string]> = [
       '<b>Straighten</b> on a row does the same in one press.',
   ],
   [
+    'Colour',
+    'A layer name is <b>set_length</b>: <b>1_2</b> is the second length of lace <b>1</b>. So a ' +
+      'picked colour has two places to land, and the switch under the palette says which: ' +
+      '<b>This layer</b> paints <b>1_2</b> alone, <b>1_x</b> paints every length of that lace at ' +
+      'once. Either way it is one press of undo. The choice is remembered, and it is offered ' +
+      'only where it means something — a lace with one length has nothing to spread to.',
+  ],
+  [
     'Masks',
     'Click the strand that goes <b>over</b>, then the one it goes under: they interlock at their ' +
       'crossing, which is the 3D version of an OpenStrand mask. Hovering lights <b>one layer</b>, ' +
@@ -1935,6 +2009,32 @@ const ABOUT: Array<[string, string]> = [
       'share or paste into a source file. Nothing leaves your machine.',
   ],
 ];
+
+// ---- the colour scope ------------------------------------------------------
+// Layer or set (see model/colour.ts). Remembered for the same reason the theme
+// is: it is a way of working rather than a property of a scene, so it belongs to
+// the person and not to the file — and someone recolouring lace by lace should
+// not have to say so again on every strand, or after every refresh.
+
+const SCOPE_KEY = 'scoubidou3d-colour-scope';
+
+function loadColourScope(): ColourScope {
+  try {
+    return localStorage.getItem(SCOPE_KEY) === 'set' ? 'set' : 'layer';
+  } catch {
+    // A sandboxed frame can refuse storage; the layer is the safer default
+    // anyway, being the smaller of the two edits.
+    return 'layer';
+  }
+}
+
+function saveColourScope(scope: ColourScope): void {
+  try {
+    localStorage.setItem(SCOPE_KEY, scope);
+  } catch {
+    // Not fatal: the choice still holds for this session.
+  }
+}
 
 // ---- theme -----------------------------------------------------------------
 // The site is cream paper; a dark canvas is a real need at night and the panel

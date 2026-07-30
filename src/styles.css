@@ -554,6 +554,44 @@ button {
   border-radius: 50%;
 }
 
+/* Layer or set — where the palette above it spends a colour. A segmented pair
+   rather than a checkbox, because neither half is an option "on" the other:
+   they are two places the same press can land, and the lit one says which. */
+.scope-toggle {
+  display: flex;
+  border: 1.5px solid var(--edge2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.scope-btn {
+  min-height: 22px;
+  padding: 0 9px;
+  border: 0;
+  background: transparent;
+  /* Not upper-cased, unlike the label beside it: half of what these two say is a
+     layer name, and `1_X` is not one. */
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.scope-btn + .scope-btn {
+  border-left: 1.5px solid var(--edge2);
+}
+
+.scope-btn:hover[aria-pressed='false'] {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.scope-btn[aria-pressed='true'] {
+  background: var(--coral);
+  color: var(--fill-ink);
+}
+
 .inspector .slider {
   padding: 0 0 10px;
 }
@@ -1343,6 +1381,11 @@ button {
   .swatch-input {
     width: 24px;
     height: 24px;
+  }
+  .scope-btn {
+    min-height: 30px;
+    padding: 0 11px;
+    font-size: 10.5px;
   }
   .check {
     font-size: 13px;
