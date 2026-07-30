@@ -84,10 +84,10 @@ strand already there, so the inspector keeps the same controls in the same place
 whatever state the strand is in.
 
 The **Scene** card in the dock carries the same thing for the whole scene:
-**Straighten all** straightens every strand at once. There is no undo in the app,
-so it takes two presses — the first arms it and names the count (`Straighten 4?
-Press again`), the second does it, and the arming lapses on its own after four
-seconds. (A `confirm()` would be the obvious guard, but modal dialogs are refused
+**Straighten all** straightens every strand at once. Undo takes it back — but a
+press that silently rebuilds forty strands still deserves to be asked about, so it
+takes two — the first arms it and names the count (`Straighten 4? Press again`),
+the second does it, and the arming lapses on its own after four seconds. (A `confirm()` would be the obvious guard, but modal dialogs are refused
 in a sandboxed frame, which is where the published page runs.)
 
 Both go through `resetControlPoints` in `src/model/controlPoints.ts` — the same

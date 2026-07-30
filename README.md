@@ -39,8 +39,8 @@ Masks get a card of their own above it all, and a strand's colour, width and *St
 its own row. The settings live in
 a **dock** along the bottom of the canvas (Ribbon / Weave / View / Scene), one card at a time, each
 pill printing its own value so a scene's whole setup reads without opening anything. Every note the
-panel used to print — what each tool does, what a level is, what a mask is, the gestures — is behind
-the **?**. What is left over the canvas is one status line: the camera gesture for the device you
+panel used to print — what each tool does, what undo covers, what a level is, what a mask is, the
+gestures — is behind the **?**. What is left over the canvas is one status line: the camera gesture for the device you
 are on, or the weave's half-made pick.
 
 <table>
@@ -115,8 +115,8 @@ The three layouts this was chosen from, as clickable mocks and renders:
   sitting under the layers resting on it — so `▲▼` walk that bar through the stack like any other
   layer, and whichever rows it passes change storey. ([how it works](docs/layer-levels.md))
 - 🔗 **Attach & Move — OpenStrand's editing, in 3D.** A **Tool** bar across the top of the scene
-  (Pan / Orbit / Move / Attach / Weave), where OpenStrand Studio keeps its modes, turns the strand
-  endpoints into grab handles:
+  (the undo pair, then Pan / Orbit / Move / Attach / Weave), where OpenStrand Studio keeps its
+  modes, turns the strand endpoints into grab handles:
   - **Attach**: pull from a *free* (green) endpoint and a new strand is born there — glued to the
     parent, inheriting its look, joining the same layer *set* (`1_1` → `1_2`), stacked on top, and
     bridged by a connector. Occupied junctions show gray and refuse new attachments, exactly like
@@ -129,6 +129,16 @@ The three layouts this was chosen from, as clickable mocks and renders:
     it off; the square tracks the midpoint until you drag it, then locks — and unlocks itself if you
     drop it back. Put every mark home and the set folds away again.
     ([the full behaviour, and the one place it differs](docs/control-points.md))
+- ↩️ **Undo, recorded off the scene's own JSON.** A scene whose JSON does not look like the one last
+  recorded is a new recording; one that looks alike is not. That single test is the whole mechanism:
+  no edit has to declare what it changed or describe an inverse, so a drag on the canvas, a slider
+  in a row and a mask picked with **Weave** all land in the same history — and an edit that ends
+  where it began (arming a weave pick and cancelling it, dropping a handle back where you picked it
+  up) writes the same text and records nothing, because there is nothing there to undo. **The camera
+  is the exception the rule makes for itself:** orbit, pan, zoom and *Fit* change no strand, no mask
+  and no level, so they never record — which is also why undo never moves the camera back. The
+  arrows sit at the head of the tool bar, behind a rule, and `⌘/Ctrl+Z` / `⇧⌘/Ctrl+Shift+Z` do the
+  same. ([`src/model/history.ts`](src/model/history.ts), checked by `npm run check:history`)
 - 🎥 **Full 3D camera.** Orbit, pan, zoom (Three.js `OrbitControls`). One click snaps back to the
   familiar top-down OpenStrand view. Panning is always on the right button and on two fingers; the
   **Pan** tool puts it on a plain drag too, for a trackpad with no second button and for a phone,
@@ -355,6 +365,8 @@ exactly like the original editor.
 - ✅ **Really-connected attachments** — a lofted connector bridges the layer gap (`connector.ts`).
 - ✅ **Direct 3D editing** — Move / Attach / Weave tools in the scene. Next: snap-to-grid and
   dragging in a tilted view.
+- ✅ **Undo / redo** — recorded off the scene's JSON, so every edit is covered and the camera is not
+  (`history.ts`).
 - **Deletion rectangles** — honour OSS's partial-mask edits (`mask_grid_dialog`) so a mask that only
   covers part of a crossing weaves partially.
 - **Round-trip** back to OpenStrand `.json` (write `MaskedStrand` records from the weave), and

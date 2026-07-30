@@ -126,6 +126,13 @@ type DragState =
   | { kind: 'move-endpoint'; plane: THREE.Plane; targets: MoveTarget[] }
   | { kind: 'move-control'; plane: THREE.Plane; strand: Strand3D; handle: ControlHandle };
 
+/** What each finished gesture is called in the undo history. */
+const EDIT_NAMES: Record<DragState['kind'], string> = {
+  attach: 'attach a strand',
+  'move-endpoint': 'move a strand',
+  'move-control': 'bend a strand',
+};
+
 export interface RenderParams {
   thickness: number; // default ribbon depth, source units
   layerGap: number; // base lift between consecutive layers, source units (small)
@@ -170,10 +177,17 @@ export class StrandScene {
   readonly camera: THREE.PerspectiveCamera;
   readonly controls: OrbitControls;
 
-  /** Called after an edit changes the strand list (attach create / finalize), so
-   *  the layer panel can re-render. Movement doesn't fire it — it changes no
-   *  layer, only geometry. */
-  onSceneChanged: (() => void) | null = null;
+  /**
+   * Called after a gesture on the canvas changes the scene, so the layer panel
+   * can re-render.
+   *
+   * The argument names the edit for the panel's undo history — or is null while
+   * one is still IN FLIGHT. An attach fires twice: once on the press, which puts
+   * a zero-length child in the scene and passes null (the panel has to redraw,
+   * but a half-pulled strand is not a state anyone would step back to), and
+   * again on release with the name of what landed.
+   */
+  onSceneChanged: ((committed: string | null) => void) | null = null;
 
   /** Called with the strand LAYER under the pointer in the weave tool (null when
    *  the pointer is over nothing), so the UI can name what a click would take. */
@@ -391,7 +405,10 @@ export class StrandScene {
     // An abandoned gesture still leaves the scene changed — the attach is undone,
     // but a control point that moved before the cancel keeps where it got to — so
     // the panel hears about this one too. See onPointerUp for why that matters.
-    if (st) this.onSceneChanged?.();
+    // Which of the two it was decides whether there is anything to record: the
+    // cancelled attach writes the JSON it started from and so is no step, while
+    // the half-finished move is a real edit and lands as one.
+    if (st) this.onSceneChanged?.(st.kind === 'attach' ? 'abandon an attach' : EDIT_NAMES[st.kind]);
   }
 
   /** Rebuild all ribbon meshes, connectors and edit handles from the current
@@ -1369,7 +1386,9 @@ export class StrandScene {
       this.weavePendingOverId = null;
     }
     this.rebuild();
-    this.onSceneChanged?.();
+    // Arming a pick, and cancelling it by clicking the same strand again, both
+    // leave the scene alone — the panel sees the same JSON and records no step.
+    this.onSceneChanged?.('weave a crossing');
   }
 
   // ---- masks (over/under) --------------------------------------------------
@@ -1387,7 +1406,7 @@ export class StrandScene {
     );
     this.current.masks.push({ overId, underId });
     this.rebuild();
-    this.onSceneChanged?.();
+    this.onSceneChanged?.('weave a crossing');
   }
 
   flipMask(index: number): void {
@@ -1395,14 +1414,14 @@ export class StrandScene {
     if (!m) return;
     this.current.masks[index] = { overId: m.underId, underId: m.overId };
     this.rebuild();
-    this.onSceneChanged?.();
+    this.onSceneChanged?.('flip a mask');
   }
 
   removeMask(index: number): void {
     if (index < 0 || index >= this.current.masks.length) return;
     this.current.masks.splice(index, 1);
     this.rebuild();
-    this.onSceneChanged?.();
+    this.onSceneChanged?.('delete a mask');
   }
 
   private rayToSrc(e: PointerEvent, plane: THREE.Plane): Point | null {
@@ -1474,7 +1493,10 @@ export class StrandScene {
       parent.hasCircles[side] = true;
       this.dragState = { kind: 'attach', child, plane };
       this.rebuild();
-      this.onSceneChanged?.();
+      // null: the child is still being pulled out and is zero-length. The panel
+      // redraws, but a half-made strand is not a state to step back to — the
+      // release below records the one that lands.
+      this.onSceneChanged?.(null);
     } else if (ud.kind === 'endpoint') {
       const index = ud.index as number;
       const side = ud.side as 0 | 1;
@@ -1590,7 +1612,9 @@ export class StrandScene {
     // the panel. Left unsaid, bending a strand by hand kept the ↺ it was drawn
     // with: greyed out, insisting the control points were already at their
     // default, with no way to put the strand back short of reloading the scene.
-    this.onSceneChanged?.();
+    // This is also the point an edit becomes a recording: one step per gesture,
+    // not one per pointermove.
+    this.onSceneChanged?.(EDIT_NAMES[st.kind]);
     this.setCursor(this.defaultCursor());
   };
 
