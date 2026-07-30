@@ -14,7 +14,8 @@
  *             swaps the PANEL to that card instead, because a floating card on a
  *             phone covers the very thing the slider is changing
  *   #corner   the theme switch and the About ?, top right
- *   #status   one line: the camera gesture, or the weave's half-made pick
+ *   #status   one line: the camera gesture on a mouse, or the weave's half-made
+ *             pick. Silent on a touch screen unless a pick is waiting
  *   #panel    the layer stack, and nothing else
  *   .sheet    About, sliding up over the panel
  *
@@ -1475,8 +1476,13 @@ button {
     padding: 10px;
   }
 
-  /* The gesture line is the first thing to go: the tools and the dock are what
-     make the app usable one-handed, and it repeats what About says. */
+}
+
+/* The gesture line never appears on a touch screen — width has nothing to do
+   with it, a landscape phone is wide. The canvas is the scarce thing there, the
+   touch gestures are the standard ones, and About states them in words. The
+   weave's half-made pick still gets the space: it is live state, not a note. */
+@media (pointer: coarse) {
   #status:not(.live) {
     display: none;
   }

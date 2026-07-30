@@ -26,8 +26,9 @@
 //   * NO PROSE anywhere in the working chrome. Every note the panel used to
 //     print — what each tool does, what a level is, what a mask is, the gestures,
 //     the storage caveat — lives in one About sheet behind the ?. What is left
-//     over the canvas is a single status pill: the camera gesture normally, and
-//     the weave's pending pick when there is one.
+//     over the canvas is a single status pill: the camera gesture on a mouse,
+//     the weave's pending pick when there is one, and nothing at all on a touch
+//     screen until that pick exists.
 //
 // The panel owns the working Scene3D and pushes changes into the StrandScene.
 // Reordering a layer here restacks it in Z — the direct 3D analogue of moving a
@@ -228,6 +229,8 @@ export class Panel {
 
     const status = el('div');
     status.id = 'status';
+    // Empty until syncStatus fills it, and on a touch screen it stays that way.
+    status.hidden = true;
     this.statusHost = status;
     document.body.appendChild(status);
 
@@ -333,10 +336,12 @@ export class Panel {
   }
 
   /**
-   * The one line of text over the canvas. It states the camera gesture for the
-   * device you are on — a phone has no scroll wheel and no right button — and
-   * gives that space up to the weave whenever a pick is half-made, which is the
-   * only moment in the app where a mode is holding something for you.
+   * The one line of text over the canvas. On a mouse it states the camera
+   * gesture; on a touch screen it says nothing at all, because the canvas is the
+   * scarce thing there and the gestures are the ones every 3D view on a phone
+   * already uses — About states them for anyone who wants them in words. Either
+   * way it gives the space up to the weave whenever a pick is half-made, which
+   * is the only moment in the app where a mode is holding something for you.
    */
   private syncStatus(): void {
     const host = this.statusHost;
@@ -345,12 +350,17 @@ export class Panel {
     if (pending) {
       host.innerHTML = `<b>${pending}</b> rides over — now click the strand it crosses`;
       host.classList.add('live');
+      host.hidden = false;
       return;
     }
     host.classList.remove('live');
-    host.textContent = matchMedia('(pointer: coarse)').matches
-      ? 'One finger orbits · pinch zooms · two fingers pan'
-      : 'Drag to orbit · scroll to zoom · right-drag to pan';
+    if (matchMedia('(pointer: coarse)').matches) {
+      host.textContent = '';
+      host.hidden = true;
+      return;
+    }
+    host.textContent = 'Drag to orbit · scroll to zoom · right-drag to pan';
+    host.hidden = false;
   }
 
   setScene(scene: Scene3D, label = 'open a scene'): void {
@@ -1876,6 +1886,13 @@ const ABOUT: Array<[string, string]> = [
       'back and forward through them, and so do <b>⌘/Ctrl+Z</b> and <b>⇧⌘/Ctrl+Shift+Z</b>. The ' +
       'camera is not an edit — orbiting, panning, zooming and <b>Fit</b> change nothing in the ' +
       'scene, so they are never recorded and undo leaves you looking from wherever you got to.',
+  ],
+  [
+    'The camera',
+    'With a mouse: <b>drag</b> to orbit · <b>scroll</b> to zoom · <b>right-drag</b> to pan. On a ' +
+      'touch screen, where there is no wheel and no right button: <b>one finger</b> orbits · ' +
+      '<b>pinch</b> zooms · <b>two fingers</b> pan. <b>Pan</b> and <b>Orbit</b> in the toolbar put ' +
+      'the same two on a plain drag, so either is reachable one-handed.',
   ],
   [
     'Attaching',
