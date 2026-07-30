@@ -1528,15 +1528,23 @@ function currentTheme(): 'light' | 'dark' {
 
 function initTheme(view: StrandScene): void {
   themedView = view;
-  let stored: string | null = null;
-  try {
-    stored = localStorage.getItem(THEME_KEY);
-  } catch {
-    // A sandboxed frame can refuse storage; the OS preference still applies.
+  // app/index.html sets the attribute inline, before the first paint — otherwise a
+  // dark-theme visitor gets a flash of cream while this module loads. Trust it if
+  // it is there, and work it out only if the page was opened without it.
+  let name = document.documentElement.dataset.theme;
+  if (name !== 'dark' && name !== 'light') {
+    let stored: string | null = null;
+    try {
+      stored = localStorage.getItem(THEME_KEY);
+    } catch {
+      // A sandboxed frame can refuse storage; the OS preference still applies.
+    }
+    name = stored === 'dark' || stored === 'light'
+      ? stored
+      : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = name;
   }
-  const dark = stored ? stored === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-  view.setTheme(dark ? 'dark' : 'light');
+  view.setTheme(name === 'dark' ? 'dark' : 'light');
 }
 
 function setTheme(name: 'light' | 'dark'): void {

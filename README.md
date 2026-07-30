@@ -90,7 +90,10 @@ crossing, so one lace weaves over-and-under just like a real basket.
 - 🌗 **Light and dark**, both built from the project site's own palette: cream paper
   and coral, or the warm near-black it inverts to. It follows the OS, the ◐ button
   overrides it either way, and the choice is remembered — the 3D canvas and its
-  grid follow too.
+  grid follow too. **The site wears it as well**, and both share the one stored
+  choice, so opening the studio from the site never changes the lights. What does
+  *not* follow it is the artwork: the gold stage, the laces woven across it and the
+  drawings on the sample cards are the product, and they look the same on any page.
 - 🔗 **Attach & Move — OpenStrand's editing, in 3D.** A **Tool** bar across the
   top of the scene (Pan / Orbit / Move / Attach / Weave), where OpenStrand Studio keeps
   its modes, turns the strand endpoints into grab handles:

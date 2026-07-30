@@ -13,14 +13,26 @@ All three obey the same rules:
    gesture hint — moves into a single **About** sheet with one entry per topic.
 2. **The layer stack is the workspace,** not the sixth section of a long scroll.
 3. **Levels are counted from 0.** Level 0 is the ground; each level above it is one whole
-   storey up. That is what `levelAt()` in `src/model/levels.ts` already returns, so the
-   panel and the model finally agree — the shipping panel labels the same storey `L1`.
+   storey up. That is what `levelAt()` in `src/model/levels.ts` already returned, while the
+   panel of the time labelled the same storey `L1` — so the numbering was the thing that
+   was wrong, not the model. The app counts from 0 now.
 
 | Mock | Idea | The one thing it changes |
 | --- | --- | --- |
 | [1 — Tabbed panel](./mock-1-tabs.html) | Layers / Ribbon / Scene as three peer tabs, one pane on screen | The stack gets the panel's whole height |
 | [2 — Numbered cards](./mock-2-cards.html) | Settings collapse into `01 / 02 / 03` cards that print their own current values | You read the scene's whole setup without opening anything |
 | [3 — Layers only](./mock-3-dock.html) | Settings leave the panel for a dock over the canvas; a card per level; per-strand inspector in its row | The panel holds nothing but the stack |
+
+## What shipped
+
+**Mock 3.** The studio now works this way for real — `src/ui/panel.ts` is the layer
+stack alone, a card per storey; the settings live in the dock over the canvas; every
+note is behind the `?`; levels count from 0; and the dark theme here became the
+app's, and then the whole site's (`site/theme.js` shares its stored choice with the
+studio, so opening one from the other does not change the lights).
+
+The three mocks stay in the repo as the record of the choice — and as the place to
+try the next panel idea before touching the app.
 
 ## Both themes
 

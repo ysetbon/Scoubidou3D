@@ -24,12 +24,57 @@
   --coral: #ff5c35;
   --yellow: #ffd447;
   --teal: #087e8b;
+
+  /* Borders and the hard offset shadow are drawn in the same near-black as the
+     text, which is what makes the page look like print — and exactly what cannot
+     survive inversion: cream text is right, cream hairlines at full strength
+     shout, and a cream drop shadow is not a shadow. So they get their own tokens
+     and only --ink flips. The app's stylesheet splits them the same way. */
+  --edge: #171713;
+  --shadow: #171713;
+  /* The band and the button that invert the page: ink on cream, cream on ink. */
+  --invert-bg: #171713;
+  --invert-ink: #fffaf0;
+  /* The full-bleed teal band. Deepened in the dark theme rather than dropped —
+     it is one of the site's three colours. */
+  --band-teal: #087e8b;
+  --body-ink: #44423c;
   /* The lace colours, straight out of src/model/samples.ts, so a swatch on this
      page is the same gold or orange the ribbon is built with in the app. */
   --lace-gold: #f5c837;
   --lace-orange: #e27a26;
   --lace-white: #f0f0f0;
   --lace-teal: #3caaaf;
+}
+
+/* ---- the dark theme -------------------------------------------------------
+   The same palette after dark, not a grey inversion: the cream paper goes to a
+   warm near-black that keeps its yellow-brown cast, and coral and gold carry
+   over untouched.
+
+   The ARTWORK does not follow. The hero's gold stage, the laces woven across it,
+   the coloured tiles behind the sample drawings and the lace swatches are the
+   product being shown, and they look the same on any page — so only the paper
+   they sit on changes. That is also why the marks on them keep their ink
+   outlines: they are drawn ON gold, in both themes. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --cream: #191410;
+  --paper: #221c15;
+  --ink: #f3e9d9;
+  --muted: #9c9284;
+  --line: rgba(243, 233, 217, 0.18);
+  --edge: rgba(243, 233, 217, 0.34);
+  --shadow: rgba(0, 0, 0, 0.72);
+  --invert-bg: #f3e9d9;
+  --invert-ink: #191410;
+  --band-teal: #0a5c65;
+  --body-ink: #d9d0c2;
+  --coral: #ff6540;
+}
+
+:root {
+  color-scheme: light;
 }
 
 * {
@@ -107,8 +152,8 @@ code {
   top: 12px;
   z-index: 90;
   padding: 12px 18px;
-  background: var(--ink);
-  color: #fff;
+  background: var(--invert-bg);
+  color: var(--invert-ink);
   font-size: 13px;
   font-weight: 750;
 }
@@ -132,7 +177,7 @@ code {
   gap: 18px;
   min-height: 49px;
   padding: 0 23px;
-  border: 1.5px solid var(--ink);
+  border: 1.5px solid var(--edge);
   border-radius: 999px;
   font-size: 13px;
   font-weight: 750;
@@ -141,12 +186,13 @@ code {
 
 .btn:hover {
   transform: translate(-2px, -2px);
-  box-shadow: 4px 5px 0 var(--ink);
+  box-shadow: 4px 5px 0 var(--shadow);
 }
 
 .dark {
-  background: var(--ink);
-  color: #fff;
+  background: var(--invert-bg);
+  color: var(--invert-ink);
+  border-color: var(--invert-bg);
 }
 
 .coral {
@@ -169,8 +215,8 @@ code {
   justify-content: center;
   min-height: 38px;
   padding: 8px 24px;
-  background: var(--ink);
-  color: #fff;
+  background: var(--invert-bg);
+  color: var(--invert-ink);
   font-size: 12px;
   font-weight: 650;
 }
@@ -180,7 +226,7 @@ code {
   align-items: center;
   gap: 5px;
   margin-left: 15px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+  border-bottom: 1px solid color-mix(in srgb, currentColor 50%, transparent);
 }
 
 /* ---- header --------------------------------------------------------------- */
@@ -192,10 +238,13 @@ header {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
+  /* With the nav hidden on a narrow screen the wordmark and the theme switch end
+     up in adjacent columns, and without this they touch. */
+  gap: 16px;
   min-height: 82px;
   padding: 0 4.5vw;
   border-bottom: 1px solid var(--line);
-  background: rgba(245, 239, 223, 0.91);
+  background: color-mix(in srgb, var(--cream) 91%, transparent);
   backdrop-filter: blur(14px);
 }
 
@@ -255,6 +304,42 @@ header > .btn {
   justify-self: end;
 }
 
+/* The header's right-hand pair: the theme switch, then the CTA. */
+.headEnd {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  justify-self: end;
+}
+
+/* The round button the sample cards use, at header size — the site's own kit, so
+   the switch does not read as a widget bolted on. */
+.themeBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1.5px solid var(--edge);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.themeBtn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 5px 0 var(--shadow);
+}
+
+.themeBtn svg {
+  width: 17px;
+  height: 17px;
+  fill: currentColor;
+}
+
 /* ---- hero ----------------------------------------------------------------- */
 
 .hero {
@@ -275,7 +360,7 @@ header > .btn {
 .lead {
   max-width: 610px;
   margin: 32px 0;
-  color: #44423c;
+  color: var(--body-ink);
   font-family: Georgia, serif;
   font-size: 18px;
   line-height: 1.65;
@@ -312,7 +397,7 @@ header > .btn {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-left: 1px solid var(--ink);
+  border-left: 1px solid var(--edge);
   background-color: var(--yellow);
   background-image: radial-gradient(rgba(23, 23, 19, 0.17) 1px, transparent 1px);
   background-size: 18px 18px;
@@ -400,8 +485,11 @@ header > .btn {
   padding: 9px 13px;
   border: 1px solid;
   border-radius: 99px;
-  background: var(--cream);
-  box-shadow: 3px 3px var(--ink);
+  /* Pinned, not themed: this chip is drawn ON the gold stage, and the stage is
+     artwork. Same for the swatch box and the chips on the sample tiles below. */
+  background: #f5efdf;
+  color: #171713;
+  box-shadow: 3px 3px #171713;
   font-size: 10px;
   font-weight: 750;
   letter-spacing: 0.08em;
@@ -431,6 +519,7 @@ header > .btn {
   padding: 10px;
   border: 1px solid;
   background: rgba(255, 250, 240, 0.91);
+  color: #171713; /* on the gold stage — see .pill */
 }
 
 .swatches i {
@@ -456,8 +545,8 @@ header > .btn {
 .paths {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  border-top: 1px solid;
-  border-bottom: 1px solid;
+  border-top: 1px solid var(--edge);
+  border-bottom: 1px solid var(--edge);
 }
 
 .paths > a {
@@ -470,7 +559,7 @@ header > .btn {
 }
 
 .paths > a + a {
-  border-left: 1px solid;
+  border-left: 1px solid var(--edge);
 }
 
 .paths > a:hover {
@@ -546,7 +635,7 @@ header > .btn {
 
 .filters button {
   padding: 10px 17px;
-  border: 1px solid;
+  border: 1px solid var(--edge);
   border-radius: 99px;
   background: transparent;
   cursor: pointer;
@@ -556,8 +645,9 @@ header > .btn {
 
 .filters button.active,
 .filters button:hover {
-  background: var(--ink);
-  color: #fff;
+  background: var(--invert-bg);
+  color: var(--invert-ink);
+  border-color: var(--invert-bg);
 }
 
 .projectGrid {
@@ -577,7 +667,7 @@ header > .btn {
   justify-content: center;
   overflow: hidden;
   aspect-ratio: 1.08;
-  border: 1px solid;
+  border: 1px solid var(--edge);
 }
 
 .projectArt.coral { background: #ef9aab; }
@@ -597,14 +687,16 @@ header > .btn {
 }
 
 /* Bottom-left chip: the sample's key — what the dropdown in the app calls it,
-   and what goes in the ?sample= link this card points at. */
+   and what goes in the ?sample= link this card points at. Pinned to the light
+   palette: it sits on the tile's artwork, which does not change with the theme. */
 .projectArt > span {
   position: absolute;
   bottom: 14px;
   left: 14px;
   padding: 8px 10px;
-  border: 1px solid;
-  background: var(--paper);
+  border: 1px solid #171713;
+  background: #fffaf0;
+  color: #171713;
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   font-size: 9px;
   font-weight: 700;
@@ -620,9 +712,10 @@ header > .btn {
   justify-content: center;
   width: 40px;
   height: 40px;
-  border: 1px solid;
+  border: 1px solid #171713;
   border-radius: 50%;
-  background: var(--paper);
+  background: #fffaf0;
+  color: #171713; /* on the tile artwork — see .projectArt > span */
   font-size: 17px;
   font-weight: 400;
 }
@@ -679,7 +772,7 @@ header > .btn {
   display: grid;
   grid-template-columns: 0.75fr 1.25fr;
   gap: 8vw;
-  background: var(--teal);
+  background: var(--band-teal);
   color: #fff;
 }
 
@@ -811,8 +904,8 @@ header > .btn {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 1px;
-  border: 1px solid var(--ink);
-  background: var(--ink);
+  border: 1px solid var(--edge);
+  background: var(--edge);
 }
 
 .mapGrid > div {
@@ -861,7 +954,7 @@ header > .btn {
 
 .notes article {
   padding: 30px 28px 34px;
-  border: 1px solid var(--ink);
+  border: 1px solid var(--edge);
   background: var(--paper);
 }
 
@@ -900,7 +993,7 @@ header > .btn {
   display: grid;
   grid-template-columns: 0.8fr 1.2fr;
   min-height: 650px;
-  border: 1px solid;
+  border: 1px solid var(--edge);
   background: var(--paper);
 }
 
@@ -930,7 +1023,7 @@ header > .btn {
 
 .segments button {
   padding: 11px;
-  border: 1px solid;
+  border: 1px solid var(--edge);
   background: transparent;
   cursor: pointer;
   font-size: 11px;
@@ -942,8 +1035,8 @@ header > .btn {
 }
 
 .segments button.active {
-  background: var(--ink);
-  color: #fff;
+  background: var(--invert-bg);
+  color: var(--invert-ink);
 }
 
 .paletteBtns {
@@ -1028,7 +1121,7 @@ header > .btn {
   display: flex;
   flex-direction: column;
   padding: 12px 12px 24px;
-  border: 1px solid;
+  border: 1px solid var(--edge);
 }
 
 .lessons article > span {
@@ -1134,7 +1227,7 @@ header > .btn {
 .runGrid > div {
   min-width: 0;
   padding: 28px;
-  border: 1px solid var(--ink);
+  border: 1px solid var(--edge);
   background: var(--cream);
 }
 
@@ -1194,7 +1287,8 @@ header > .btn {
 }
 
 .closing .kicker::before {
-  background: var(--ink);
+  /* The band is coral in both themes, so this dot is drawn on coral either way. */
+  background: #171713;
 }
 
 .closing h2 {
@@ -1222,17 +1316,17 @@ footer {
   align-items: center;
   min-height: 150px;
   padding: 30px 5vw;
-  background: var(--ink);
-  color: #fff;
+  background: var(--invert-bg);
+  color: var(--invert-ink);
 }
 
 footer .mark path {
-  stroke: #fff;
+  stroke: var(--invert-ink);
 }
 
 footer p {
   justify-self: center;
-  color: rgba(255, 255, 255, 0.62);
+  color: color-mix(in srgb, currentColor 62%, transparent);
   font-family: Georgia, serif;
   font-size: 14px;
 }
@@ -1245,7 +1339,7 @@ footer nav {
 }
 
 footer small {
-  color: rgba(255, 255, 255, 0.45);
+  color: color-mix(in srgb, currentColor 45%, transparent);
   font-size: 9px;
 }
 
@@ -1267,7 +1361,7 @@ footer small {
   .heroStage {
     min-height: 620px;
     border-left: 0;
-    border-top: 1px solid;
+    border-top: 1px solid var(--edge);
   }
 
   .how {
@@ -1297,7 +1391,7 @@ footer small {
   .miniStage {
     min-height: 620px;
     border-left: 0;
-    border-top: 1px solid;
+    border-top: 1px solid var(--edge);
   }
 
   .values {
@@ -1394,7 +1488,7 @@ footer small {
 
   .paths > a + a {
     border-left: 0;
-    border-top: 1px solid;
+    border-top: 1px solid var(--edge);
   }
 
   .section {
