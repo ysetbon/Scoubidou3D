@@ -85,6 +85,8 @@ crossing, so one lace weaves over-and-under just like a real basket.
   wide screen the card opens as a popover next to what it changes; **on a phone it
   swaps the panel** to that card instead, so the canvas stays clear — you can watch
   the ribbon fatten while you drag Thickness.
+- 🔗 **[Every link in one place](docs/links.md)** — the three pages, the thirteen samples, and
+  one link per m×n face that opens all eleven of its levels at once.
 - 🗂️ **The panel is the layer stack**, and nothing else: a card per storey, masks in
   a card of their own, and a strand's colour, width and **Straighten** opening
   inside its own row. Every note the panel used to print — what each tool does,
