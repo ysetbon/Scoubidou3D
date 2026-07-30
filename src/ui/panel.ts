@@ -5,12 +5,17 @@
 //   * The PANEL is the layer stack and nothing else. Everything that used to
 //     scroll above the stack — Ribbon, Weave, View, Scene — has left, so the
 //     thing you actually work in is never below anything.
-//   * The stack is a CARD PER LEVEL rather than one flat list with divider rows.
-//     A storey is a real grouping in the model (levels.ts), so it reads as a
-//     container: its header carries the controls that move or remove that
-//     storey, and the strands resting on it are inside. Masks get their own card
-//     at the foot. Levels are numbered from 0 — level 0 is the ground, which is
-//     what levelAt() has always returned.
+//   * A storey is a BAR of its own with its layers boxed under it, rather than a
+//     card whose header happens to name it. A level is a thing you MOVE — ▲▼
+//     slide it through the stack, ✕ removes it — and a detached bar reads as the
+//     handle for that, the way it is drawn when you sketch the panel by hand.
+//     Level 0 is the ground: not a break at all, just what is left below the
+//     lowest one, so its bar carries no controls. Masks are crossings rather than
+//     storeys, so they sit in a card above the stack — where OpenStrand's own
+//     layer panel keeps them.
+//   * The stack HANGS FROM THE BOTTOM. It is built bottom-up (level 0 is the
+//     ground, strands[0] is the lowest layer), so a panel with room to spare puts
+//     the ground on its floor rather than its ceiling.
 //   * Selecting a row opens an INSPECTOR inside it: that strand's colour, width
 //     and straighten, next to the row they belong to instead of in a section
 //     somewhere else.
@@ -314,9 +319,10 @@ export class Panel {
     // Only the strand count: a 42-strand, 10-level scene ran the full line off the
     // panel's edge, and the cards below already state their own counts — the level
     // headers their layers, the mask card its crossings.
-    const name = el('span', 'tag teal', plural(this.scene.strands.length, 'strand'));
-    name.title = `${this.scene.name} — ${sceneTag(this.scene)}`;
+    const name = el('span', 'tag teal');
+    this.brandTag = name;
     brand.appendChild(name);
+    this.syncBrand();
     this.root.appendChild(brand);
 
     this.barHost = el('div', 'stackbar');
@@ -352,6 +358,13 @@ export class Panel {
     host.innerHTML = '';
 
     this.syncFoldToggle();
+
+    this.syncBrand();
+
+    // The stack reads bottom-up — level 0 is the ground — so an under-filled
+    // panel hangs from the bottom and the ground row sits on the panel's floor.
+    // A dock card rendered in here is not a stack and starts at the top.
+    host.classList.toggle('from-bottom', !this.inlineDock());
 
     const section = this.inlineDock();
     if (section) {
@@ -1187,6 +1200,16 @@ export class Panel {
   // ---- The layer stack -----------------------------------------------------
   private stackHost: HTMLElement | null = null;
   private barHost: HTMLElement | null = null;
+  private brandTag: HTMLElement | null = null;
+
+  /** The scene's own line in the brand bar. Refreshed with the stack rather than
+   *  only on a full render: adding a strand used to leave the count stale. */
+  private syncBrand(): void {
+    const tag = this.brandTag;
+    if (!tag) return;
+    tag.textContent = plural(this.scene.strands.length, 'strand');
+    tag.title = `${this.scene.name} — ${sceneTag(this.scene)}`;
+  }
 
   /**
    * A card per storey, highest first, then the masks in a card of their own.
@@ -1202,45 +1225,56 @@ export class Panel {
     if (!host) return;
     host.innerHTML = '';
 
+    // Masks are crossings rather than storeys, so they sit above the stack proper
+    // — which is also where OpenStrand's own layer panel keeps them.
+    if (this.scene.masks.length) host.appendChild(this.maskCard());
+
     const top = this.scene.levelBreaks.length;
     for (let level = top; level >= 0; level--) {
       const rows: number[] = [];
       for (let i = this.scene.strands.length - 1; i >= 0; i--) {
         if (levelAt(this.scene, i) === level) rows.push(i);
       }
-      // A break parked at the very top (or stacked on another) holds no strands
-      // yet — every layer added from now on is born up there. Show it anyway:
-      // it is a real thing in the model, and it is the one you press ✕ on if you
+      // The bar is its own row above the group rather than the group's header:
+      // a storey is a thing you MOVE, and a detached bar reads as the handle for
+      // it. A break parked at the very top (or stacked on another) holds no
+      // strands yet — every layer added from now on is born up there — so its bar
+      // shows over an empty group, which is also the one you press ✕ on if you
       // added it by accident.
-      host.appendChild(this.levelCard(level, rows));
+      host.appendChild(this.levelBar(level, rows.length));
+      host.appendChild(this.levelGroup(level, rows));
     }
-
-    if (this.scene.masks.length) host.appendChild(this.maskCard());
   }
 
-  private levelCard(level: number, rows: number[]): HTMLElement {
-    const card = el('section', 'level-card');
-    const head = el('header');
+  /**
+   * The storey marker: a bar of its own, above the layers resting on it.
+   *
+   * Level N is break N-1, so the bar carries that break's ▲▼✕. Level 0 is the
+   * ground — not a break at all, just what is left below the lowest one — so its
+   * bar has nothing to move and says so by carrying no controls.
+   */
+  private levelBar(level: number, count: number): HTMLElement {
+    const bar = el('div', 'level-bar' + (level === 0 ? ' ground' : ''));
 
-    const badge = el('span', 'level-badge', String(level));
-    head.appendChild(badge);
-    head.appendChild(el('b', undefined, `Level ${level}`));
+    bar.appendChild(el('span', 'level-badge', String(level)));
+    bar.appendChild(el('b', undefined, `Level ${level}`));
 
     const step = fmt(this.view.getLevelStep());
-    const count = plural(rows.length, 'layer');
-    head.appendChild(
+    const layers = plural(count, 'layer');
+    bar.appendChild(
       el(
         'small',
         undefined,
-        level === 0 ? `ground · ${count}` : `+${level} ${level === 1 ? 'storey' : 'storeys'} · ${count}`,
+        level === 0
+          ? `ground · ${layers}`
+          : `+${level} ${level === 1 ? 'storey' : 'storeys'} · ${layers}`,
       ),
     );
-    card.title =
+    bar.title =
       level === 0
         ? 'The ground storey — everything here rests on the base plane.'
         : `Rests ${level} × ${step} above the ground — the strand thickness plus the band the weave lifts and dips through.`;
 
-    // Level N is break N-1; the ground has no break, so nothing to move.
     if (level > 0) {
       const index = level - 1;
       const at = this.scene.levelBreaks[index];
@@ -1267,23 +1301,25 @@ export class Panel {
       del.classList.add('danger');
       controls.appendChild(del);
 
-      head.appendChild(controls);
+      bar.appendChild(controls);
     }
+    return bar;
+  }
 
-    card.appendChild(head);
-
-    const body = el('div', 'level-rows');
+  /** The layers resting on one storey, top of the stack first. */
+  private levelGroup(level: number, rows: number[]): HTMLElement {
+    const group = el('div', 'level-group');
+    group.setAttribute('aria-label', `Level ${level}`);
     if (!rows.length) {
-      body.appendChild(el('p', 'empty', 'Empty — new layers are born here'));
+      group.appendChild(el('p', 'empty', 'Empty — new layers are born here'));
     }
     for (const i of rows) {
-      body.appendChild(this.layerRow(i));
+      group.appendChild(this.layerRow(i));
       if (this.scene.strands[i].id === this.selectedId) {
-        body.appendChild(this.inspector(this.scene.strands[i], i));
+        group.appendChild(this.inspector(this.scene.strands[i], i));
       }
     }
-    card.appendChild(body);
-    return card;
+    return group;
   }
 
   private maskCard(): HTMLElement {
@@ -1292,7 +1328,7 @@ export class Panel {
     head.appendChild(el('b', undefined, 'Masks'));
     head.appendChild(el('small', undefined, plural(this.scene.masks.length, 'crossing')));
     card.appendChild(head);
-    const body = el('div', 'level-rows');
+    const body = el('div');
     // OSS appends a MaskedStrand to the end of the strand list, which is the top
     // of the layer panel; here they are a kind of their own, so they keep their
     // own order and their own card.
