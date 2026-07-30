@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The twist stitch, all 64 faces — Scoubidou3D</title>
+<meta name="description" content="Every m x n twist face measured: the turn each one runs at, what the retune bought, what it cost, and every level of every one.">
+<link rel="icon" href="../favicon.svg">
+<link rel="stylesheet" href="../site/site.css">
+<style>
+  /* The site's tokens carry this; only the two-up card row is local. */
+  .st { max-width: 1180px; margin: 0 auto; padding: 36px 24px 92px; }
+  .st-head { display: flex; flex-direction: column; gap: 16px; padding-bottom: 30px;
+    border-bottom: 1px solid var(--line); }
+  .st-head h1 { font-family: Georgia, serif; font-size: clamp(31px, 4.8vw, 50px); line-height: 1.07;
+    margin: 0; letter-spacing: -0.02em; max-width: 26ch; }
+  .st-head p { margin: 0; max-width: 64ch; color: var(--muted); font-size: 16.5px; line-height: 1.6; }
+  .figures { display: flex; flex-wrap: wrap; gap: 34px; margin-top: 8px; }
+  .fig b { display: block; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 25px;
+    letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .fig span { font-family: ui-monospace, monospace; font-size: 11px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--muted); }
+  .doors { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+    margin-top: 34px; }
+  .door { background: var(--paper); border: 1px solid var(--line); border-radius: 4px;
+    padding: 24px 24px 26px; display: flex; flex-direction: column; gap: 12px; }
+  .door h2 { font-family: Georgia, serif; font-size: 22px; margin: 0; }
+  .door p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.55; flex: 1; }
+  .door .btn { align-self: flex-start; margin-top: 6px; }
+  .st h3 { font-family: Georgia, serif; font-size: 23px; margin: 46px 0 8px; }
+  .st h3 + p { margin: 0 0 16px; color: var(--muted); max-width: 64ch; line-height: 1.6; }
+  .scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); }
+  table { border-collapse: collapse; width: 100%; min-width: 560px;
+    font-family: ui-monospace, monospace; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 9px 16px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+  th:first-child, td:first-child { text-align: left; }
+  td { color: var(--muted); }
+  td b { color: var(--ink); }
+  tbody tr:last-child td { border-bottom: none; }
+  .caveat { border-left: 3px solid var(--coral); padding: 4px 0 4px 18px; margin-top: 34px;
+    max-width: 62ch; color: var(--muted); line-height: 1.6; }
+  .caveat strong { color: var(--ink); }
+</style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="../">
+      <svg class="mark small" viewBox="0 0 72 72" aria-hidden="true">
+        <path d="M9 16h54v16H9z" class="ma" />
+        <path d="M28 8h16v56H28z" class="mb" />
+        <path d="M28 16h16v16H28z" class="mt" />
+      </svg>
+      <span>Scoubidou<strong>3D</strong></span>
+    </a>
+    <nav aria-label="Primary">
+      <a href="../#samples">Samples</a>
+      <a href="./" aria-current="page">The twist stitch</a>
+      <a href="../levels/">Levels</a>
+      <a href="../#how">How it works</a>
+      <a href="https://github.com/ysetbon/Scoubidou3D">GitHub</a>
+    </nav>
+    <a class="btn dark" href="../app/">Open the studio
+      <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5l5 5-5 5" /></svg>
+    </a>
+  </header>
+
+  <div class="st">
+    <div class="st-head">
+      <p class="kicker">The twist study</p>
+      <h1>The twist stitch, all 64 faces.</h1>
+      <p>An m&nbsp;×&nbsp;n twist column is a woven block whose every loose end is carried out and
+        re-paired. There are 64 faces from 1&nbsp;×&nbsp;1 to 8&nbsp;×&nbsp;8, and none of them was
+        guessed: each one's turn comes out of a lace's own clearance, and what that costs is measured
+        face by face rather than asserted.</p>
+      <div class="figures">
+        <div class="fig"><b>64</b><span>faces</span></div>
+        <div class="fig"><b>4.56 → 2.30w</b><span>mean overhang</span></div>
+        <div class="fig"><b>1,408</b><span>level views</span></div>
+        <div class="fig"><b>14 / 64</b><span>weaving whole</span></div>
+      </div>
+    </div>
+
+    <div class="doors">
+      <div class="door">
+        <h2>The write-up</h2>
+        <p>What the reference fixes, why our old angle was the right one for the wrong fan, all 64
+          faces as a matrix, and the trade the retune makes — with every level of every face inline.</p>
+        <a class="btn coral" href="https://claude.ai/code/artifact/dd01aab8-db95-4b72-bcc3-4f2faf6da48b"
+           target="_blank" rel="noopener">Read the study
+          <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5l5 5-5 5" /></svg>
+        </a>
+      </div>
+      <div class="door">
+        <h2>The level gallery</h2>
+        <p>Eleven levels of each face, top view and orbit, shot from the studio's own 3D view. Open
+          any picture for the full-resolution render.</p>
+        <a class="btn light" href="../levels/">Browse the levels
+          <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5l5 5-5 5" /></svg>
+        </a>
+      </div>
+      <div class="door">
+        <h2>The stitches themselves</h2>
+        <p>All 64 faces are live samples in the studio, in both hands. Open one and pull it apart —
+          drag an endpoint, flip a crossing, step through the levels.</p>
+        <a class="btn outline" href="../app/?sample=twofan-col-lh-1x5-10">Open a 1×5
+          <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5l5 5-5 5" /></svg>
+        </a>
+      </div>
+    </div>
+
+    <h3>What the retune bought, and what it cost</h3>
+    <p>Each face has two candidate angles, one per family of laces, and they agree only when
+      m&nbsp;=&nbsp;n. The family you see is now laid at its own angle instead of the one that suited
+      the few. That is a choice about which flaw is worse to look at, not a derivation.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th></th><th>before</th><th>after</th></tr></thead>
+        <tbody>
+          <tr><td>mean majority overhang</td><td>4.56 w</td><td><b>2.30 w</b></td></tr>
+          <tr><td>crossings kept</td><td>20736 / 20736</td><td><b>20252 / 20736</b></td></tr>
+          <tr><td>faces weaving whole</td><td>64 / 64</td><td><b>14 / 64</b></td></tr>
+          <tr><td>faces with every gap at the floor</td><td>64 / 64</td><td><b>8 / 64</b></td></tr>
+          <tr><td>tightest gap anywhere</td><td>56 px</td><td><b>1.1 px</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="caveat"><strong>The last row is the honest one.</strong> Gaps do not only open — on a
+      4&nbsp;×&nbsp;8 one closes to 1.1&nbsp;px, which is two 46&nbsp;px laces almost exactly on top of
+      each other. The overhang is roughly halved everywhere and that is the visible win; what it is
+      traded against is real, and it is recorded per face in the repository so it cannot drift
+      unnoticed.</p>
+  </div>
+</body>
+</html>

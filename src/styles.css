@@ -716,6 +716,56 @@ body {
   color: var(--muted);
 }
 
+/* The way out of the browser and into the twist study — three links that read as
+   buttons, so they are not mistaken for another row of samples. */
+.browser-doors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.browser-door {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f4f6f9;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.browser-door:hover {
+  border-color: var(--accent);
+  background: #e9eef5;
+}
+
+@media (prefers-color-scheme: dark) {
+  .browser-door {
+    background: #232933;
+  }
+  .browser-door:hover {
+    background: #2b323d;
+  }
+}
+
+.browser-door b {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.browser-door b::after {
+  content: ' ↗';
+  color: var(--muted);
+}
+
+.browser-door small {
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
 /* A link out of the browser — the level gallery on the project site. */
 .browser-link {
   color: var(--accent);
