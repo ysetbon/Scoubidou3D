@@ -1544,6 +1544,51 @@ button {
   color: var(--muted);
 }
 
+/* The way out of the browser and into the twist study — three links drawn as
+   tiles, so they are not mistaken for another row of samples. Same hairline and
+   hover-shadow as a face cell, one step lighter. */
+.browser-doors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px 0 14px;
+}
+
+.browser-door {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 13px;
+  border: 1px solid var(--line);
+  background: var(--cream);
+  /* The app paints links coral and underlined; a tile is not a line of prose. */
+  color: var(--ink);
+  text-decoration: none;
+  transition: 0.15s;
+}
+
+.browser-door:hover {
+  border-color: var(--coral);
+  box-shadow: 2px 2px 0 var(--shadow);
+}
+
+.browser-door b {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.browser-door b::after {
+  content: ' ↗';
+  color: var(--muted);
+}
+
+.browser-door small {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* A link out of the browser, inside a line of prose. */
 .browser-link {
   color: var(--coral);
   text-decoration: underline;

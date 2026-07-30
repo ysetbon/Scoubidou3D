@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 //   levels/index.html  every level of every m x n twist face, at /levels/. An entry
 //                      rather than a public/ file so its <link> picks up the same
 //                      hashed site.css; its images are in public/levels/img/.
+//   twist/index.html   the twist study's front door at /twist/ — the stable link to
+//                      hand out, pointing at the write-up, the gallery and the app.
 //
 // Base is set for GitHub Pages project-site hosting (ysetbon.github.io/Scoubidou3D/).
 // Override with `vite build --base=/` for root hosting.
@@ -21,6 +23,7 @@ export default defineConfig({
         site: page('index.html'),
         app: page('app/index.html'),
         levels: page('levels/index.html'),
+        twist: page('twist/index.html'),
       },
     },
   },

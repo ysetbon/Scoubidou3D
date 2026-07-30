@@ -48,6 +48,30 @@ import {
 import { deleteCustom, getCustom, listCustom, saveCustom, storageAvailable } from '../model/customSamples';
 import { controlsAtDefault, resetControlPoints } from '../model/controlPoints';
 
+// Where the numbers in the reference folder come from. All three live outside the
+// studio bundle, so they are plain links rather than samples: relative ones so the
+// dev server, a preview build and the project site all resolve them the same way.
+const TWIST_DOORS: { href: string; label: string; note: string; title: string }[] = [
+  {
+    href: '../twist/',
+    label: 'All 64 faces',
+    note: 'the study',
+    title: 'The twist stitch, all 64 faces — what was measured, and what it cost',
+  },
+  {
+    href: '../levels/',
+    label: 'The level gallery',
+    note: '1,408 views',
+    title: 'Every level of every face, top view and orbit, at full resolution',
+  },
+  {
+    href: 'https://claude.ai/code/artifact/dd01aab8-db95-4b72-bcc3-4f2faf6da48b',
+    label: 'The write-up',
+    note: 'all 64, all levels',
+    title: 'The full write-up: every face, every level, with the numbers beside them',
+  },
+];
+
 /**
  * Whether the sample browser shows the ORIGINAL m x n twist family — the grid
  * built on the single-turn law, `atan(1/max(m,n))`.
@@ -1091,15 +1115,28 @@ export class Panel {
     body.appendChild(
       el('h4', 'browser-group', 'Twist family — the 1×n reference, every m×n face, 10 levels, both hands'),
     );
-    // Every level of every face, at full resolution, on the project site. The grid
-    // below quotes the numbers; that page shows what they look like.
-    const levels = el('p', 'browser-note');
-    levels.innerHTML =
-      'Each cell quotes its turn and its overhang. To see them — every level of every ' +
-      'face, top view and orbit, at full resolution — open ' +
-      '<a class="browser-link" href="../levels/" target="_blank" rel="noopener">' +
-      'the level gallery</a>.';
-    body.appendChild(levels);
+    // The grid below quotes the numbers. These three are what the numbers came from:
+    // the write-up, the 1,408 renders behind it, and the study's own front door.
+    body.appendChild(
+      el(
+        'p',
+        'browser-note',
+        'Each cell quotes its turn and its overhang. To see them — every level of ' +
+          'every face, top view and orbit, at full resolution — take one of these:',
+      ),
+    );
+    const doors = el('div', 'browser-doors');
+    for (const d of TWIST_DOORS) {
+      const a = el('a', 'browser-door');
+      a.href = d.href;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.title = d.title;
+      a.appendChild(el('b', undefined, d.label));
+      a.appendChild(el('small', undefined, d.note));
+      doors.appendChild(a);
+    }
+    body.appendChild(doors);
     body.appendChild(
       el(
         'p',

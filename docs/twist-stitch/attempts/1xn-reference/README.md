@@ -112,6 +112,12 @@ the reference's.
 Four orbits and a top view of each, shot from the app's own 3D view rather than
 redrawn — `scripts/orbit-shots.mjs`, then `scripts/orbit-sheet.py`.
 
+On the project site the study has a front door of its own at
+[`/twist/`](../../../../twist/index.html), which is also where the sample browser's
+reference folder and the site's samples section both point. It carries the three
+ways in: the write-up, the level gallery at [`/levels/`](../../../../levels/index.html),
+and the live samples in the studio.
+
 | | |
 | --- | --- |
 | ![1×1, two-fan](../../fig/orbit-twofan-col-1x1-10.png) | **1×1 at 50.03°** — two laces, the plain scoubidou spiral |

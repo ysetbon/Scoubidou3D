@@ -190,6 +190,7 @@ TEMPLATE = '''<!doctype html>
     </a>
     <nav aria-label="Primary">
       <a href="../#samples">Samples</a>
+      <a href="../twist/">The twist stitch</a>
       <a href="../#how">How it works</a>
       <a href="../#learn">Notes</a>
       <a href="https://github.com/ysetbon/Scoubidou3D">GitHub</a>
