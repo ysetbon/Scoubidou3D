@@ -197,6 +197,11 @@ code {
 
 .coral {
   background: var(--coral);
+  /* Coral is coral in both themes, so the text on it is ink in both. In the light
+     theme this button inherited ink anyway; after dark it inherited cream, which
+     is 2.4:1 on coral. */
+  color: #171713;
+  border-color: var(--coral);
 }
 
 .light {
@@ -1103,6 +1108,8 @@ header > .btn {
   position: absolute;
   right: 25px;
   bottom: 24px;
+  /* Drawn on the mini stage, which keeps its cream ground in both themes. */
+  color: #171713;
   font-family: ui-monospace, Menlo, monospace;
   font-size: 10px;
   font-weight: 800;
@@ -1167,6 +1174,33 @@ header > .btn {
   margin: auto 0 0 3px;
   font-size: 11px;
   font-weight: 800;
+}
+
+/* ---- bands painted in a brand colour -------------------------------------
+   Gold and coral are the same after dark, so a band or card filled with one keeps
+   its ink text in both themes. Letting these follow --ink put cream on gold, which
+   cannot be read at all. Same principle as the artwork: what does not change
+   cannot have the text on it change either. */
+.values,
+.callout,
+.closing {
+  color: #171713;
+}
+
+/* An outlined button inside one of those bands follows the band's text, not the
+   page's border token — otherwise its ring goes pale cream on coral. */
+.closing .btn.outline,
+.values .btn.outline {
+  border-color: currentColor;
+}
+
+/* The teal band is teal in both themes, so the pale button on it is pinned the
+   same way. It also fixes a plain bug: .light gave it a cream fill while the band
+   handed down `color: #fff`, so in the light theme it was white text on cream. */
+.how .btn.light {
+  background: #f5efdf;
+  border-color: #f5efdf;
+  color: #171713;
 }
 
 /* ---- values --------------------------------------------------------------- */
@@ -1339,7 +1373,8 @@ footer nav {
 }
 
 footer small {
-  color: color-mix(in srgb, currentColor 45%, transparent);
+  /* 9px legal text; the original 45% was 3.2:1 either way. */
+  color: color-mix(in srgb, currentColor 62%, transparent);
   font-size: 9px;
 }
 

@@ -25,7 +25,9 @@
      yellow "watch it" wash. Dark olive on the light theme's, gold on the dark
      theme's — the wash itself is far darker there. */
   :root { --warn-ink: #6b5200; }
-  :root[data-theme='dark'] { --warn-ink: var(--yellow); }
+  /* Lighter than the band's own gold: on the dark theme's wash, --yellow itself
+     lands at 3.7:1 and this text is 11px. */
+  :root[data-theme='dark'] { --warn-ink: #fff0c4; }
   .lv { max-width: 1180px; margin: 0 auto; padding: 34px 24px 90px; }
   .lv-head { display: flex; flex-direction: column; gap: 14px; padding-bottom: 26px;
     border-bottom: 1px solid var(--line); }

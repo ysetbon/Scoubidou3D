@@ -75,7 +75,9 @@
   --hover: rgba(243, 233, 217, 0.09);
 
   --fill: #ff6540;
-  --fill-ink: #ffffff;
+  /* Ink, not white: coral carries ink text in both themes — white on coral is
+     2.9:1, and the site's own coral button has always been ink. */
+  --fill-ink: #171713;
   --sel: #ff6540;
 
   --coral: #ff6540;
@@ -457,7 +459,7 @@ button {
 
 .icon-btn.danger:hover {
   background: var(--coral);
-  color: #fff;
+  color: #171713;
 }
 
 /* ---- the inspector: a strand's own controls, in its row ------------------ */
@@ -577,7 +579,7 @@ button {
 .pill.coral {
   background: var(--coral);
   border-color: var(--coral);
-  color: #fff;
+  color: #171713;
 }
 
 .pill.ghost {
@@ -634,7 +636,7 @@ button {
 .round.hot:hover {
   background: var(--coral);
   border-color: var(--coral);
-  color: #fff;
+  color: #171713;
 }
 
 .round .icon {
@@ -886,7 +888,7 @@ button {
 .dock-btn.on,
 .dock-btn.on:hover {
   background: var(--coral);
-  color: #fff;
+  color: #171713;
 }
 
 .dock-btn u {
