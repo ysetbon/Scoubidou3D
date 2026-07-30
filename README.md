@@ -70,10 +70,10 @@ crossing, so one lace weaves over-and-under just like a real basket.
   right button and on two fingers; the **Pan** tool puts it on a plain drag too,
   for a trackpad with no second button and for a phone, where two fingers are
   already a pinch.
-- 📱 **Works on a phone.** The panel becomes a bottom sheet you can fold away, the
-  Tool bar and the settings dock stay over the scene so Move, Attach and every
-  slider are one tap away (the tools drop to icons alone when the screen is too
-  narrow for labels), and the
+- 📱 **Works on a phone.** The panel becomes a bottom sheet you can fold away and
+  the dock's cards open inside it rather than over the scene; the Tool bar and the
+  dock stay over the canvas so Move, Attach and every slider are one tap away (the
+  tools drop to icons alone when the screen is too narrow for labels), and the
   handles carry OpenStrand's generous invisible grab areas (`move_mode.py`'s 120px
   endpoint square, `attach_mode.py`'s 120px attach circle) scaled for a fingertip —
   so a press that lands *near* a handle still takes it. One finger orbits, pinch
@@ -81,7 +81,10 @@ crossing, so one lace weaves over-and-under just like a real basket.
 - 🎚️ **Live controls** for thickness, width scale, weave depth/span, layer lift,
   outline, rounded ends, and a reference grid — in a **dock** along the bottom of
   the scene (Ribbon / Weave / View / Scene), one card at a time, each pill printing
-  its own current value so the whole setup reads without opening anything.
+  its own current value so the whole setup reads without opening anything. On a
+  wide screen the card opens as a popover next to what it changes; **on a phone it
+  swaps the panel** to that card instead, so the canvas stays clear — you can watch
+  the ribbon fatten while you drag Thickness.
 - 🗂️ **The panel is the layer stack**, and nothing else: a card per storey, masks in
   a card of their own, and a strand's colour, width and **Straighten** opening
   inside its own row. Every note the panel used to print — what each tool does,

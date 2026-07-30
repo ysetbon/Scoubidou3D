@@ -9,8 +9,10 @@
  *
  *   #scene    the canvas, edge to edge
  *   #toolbar  the tool switch, a strip along the top of the canvas
- *   #dock     the settings — Ribbon / Weave / View / Scene — along the bottom,
- *             each pill opening one popover next to what it changes
+ *   #dock     the settings — Ribbon / Weave / View / Scene — along the bottom.
+ *             Wide: a pill opens a popover next to what it changes. Narrow: it
+ *             swaps the PANEL to that card instead, because a floating card on a
+ *             phone covers the very thing the slider is changing
  *   #corner   the theme switch and the About ?, top right
  *   #status   one line: the camera gesture, or the weave's half-made pick
  *   #panel    the layer stack, and nothing else
@@ -989,6 +991,30 @@ button {
   border-left: 0;
   background: var(--paper);
   transform: rotate(45deg);
+}
+
+/* The same card, rendered into the panel instead of floating over the canvas:
+   it is the panel's whole content now, so it gives up the frame, the shadow, the
+   nub and its own title (the bar above it carries that). */
+.pop.inline {
+  position: static;
+  width: auto;
+  max-width: none;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  animation: none;
+}
+
+.pop.inline::after {
+  display: none;
+}
+
+.pop.inline > h3 {
+  display: none;
 }
 
 #corner {

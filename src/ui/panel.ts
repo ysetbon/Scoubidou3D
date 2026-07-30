@@ -65,8 +65,26 @@ function rgbaFromHex(hexStr: string, a: number): RGBA {
   return { r: (int >> 16) & 255, g: (int >> 8) & 255, b: int & 255, a };
 }
 
-/** Which dock popover is open, if any. */
+/** Which dock card is open, if any. */
 type DockKey = 'ribbon' | 'weave' | 'view' | 'scene';
+
+const DOCK_KEYS: DockKey[] = ['ribbon', 'weave', 'view', 'scene'];
+
+const DOCK_LABELS: Record<DockKey, string> = {
+  ribbon: 'Ribbon',
+  weave: 'Weave',
+  view: 'View',
+  scene: 'Scene',
+};
+
+/** The width at which the panel stops being a column beside the canvas and
+ *  becomes a bottom sheet under it — the same breakpoint styles.css uses, and
+ *  the point where a floating card would cover the scene it belongs to. */
+const NARROW = '(max-width: 860px)';
+
+function isNarrow(): boolean {
+  return matchMedia(NARROW).matches;
+}
 
 export class Panel {
   private scene: Scene3D;
@@ -87,7 +105,7 @@ export class Panel {
     // land in the layer stack, and the status pill tracks the pending weave pick.
     this.view.onSceneChanged = () => {
       this.scene = this.view.getScene();
-      this.renderStack();
+      this.renderPanelBody();
       this.syncToolbar();
       this.syncStatus();
     };
@@ -181,17 +199,19 @@ export class Panel {
     const toggle = el('button', undefined, '') as HTMLButtonElement;
     toggle.id = 'panel-toggle';
     toggle.type = 'button';
-    const sync = (): void => {
-      const open = !document.body.classList.contains('panel-collapsed');
-      toggle.textContent = open ? 'Hide layers' : 'Layers';
-      toggle.setAttribute('aria-expanded', String(open));
-    };
+    this.foldToggle = toggle;
     toggle.addEventListener('click', () => {
       document.body.classList.toggle('panel-collapsed');
-      sync();
+      this.syncFoldToggle();
     });
-    sync();
+    this.syncFoldToggle();
     document.body.appendChild(toggle);
+
+    // Crossing the breakpoint moves the open card between the panel and the
+    // canvas, so it has to be redrawn — a rotated phone would otherwise leave the
+    // Ribbon controls in a panel that is now a column, or a popover pointing at a
+    // pill that has moved.
+    matchMedia(NARROW).addEventListener('change', () => this.renderDock());
 
     // Escape closes the topmost thing: the About sheet if it is up, else the
     // open dock popover.
@@ -211,6 +231,18 @@ export class Panel {
   private hoverChip: HTMLElement | null = null;
   private statusHost: HTMLElement | null = null;
   private helpBtn: HTMLButtonElement | null = null;
+  private foldToggle: HTMLButtonElement | null = null;
+
+  /** The fold toggle names whatever the sheet is actually holding — which is the
+   *  layer stack most of the time, but a dock card whenever one is open. */
+  private syncFoldToggle(): void {
+    const b = this.foldToggle;
+    if (!b) return;
+    const open = !document.body.classList.contains('panel-collapsed');
+    const what = this.inlineDock() ? DOCK_LABELS[this.inlineDock()!] : 'layers';
+    b.textContent = open ? `Hide ${what.toLowerCase()}` : what;
+    b.setAttribute('aria-expanded', String(open));
+  }
 
   /** Name the layer under the pointer next to the cursor, or clear the chip. */
   private showHoverChip(id: string | null): void {
@@ -265,7 +297,7 @@ export class Panel {
 
   private apply(refit = false): void {
     this.view.setScene(this.scene, refit);
-    this.renderStack();
+    this.renderPanelBody();
   }
 
   /** The panel proper: brand, stack header, stack. Plus the chrome's contents. */
@@ -287,7 +319,55 @@ export class Panel {
     brand.appendChild(name);
     this.root.appendChild(brand);
 
-    const bar = el('div', 'stackbar');
+    this.barHost = el('div', 'stackbar');
+    this.root.appendChild(this.barHost);
+
+    this.stackHost = el('div', 'stack');
+    this.root.appendChild(this.stackHost);
+
+    this.buildAbout();
+    this.renderDock();
+    this.syncToolbar();
+    this.syncStatus();
+  }
+
+  /**
+   * The panel's bar and body, which are a swappable pair.
+   *
+   * Wide: the panel is always the layer stack, and a dock card opens as a popover
+   * over the canvas next to the pill that opened it.
+   *
+   * Narrow: it CANNOT be a popover. The panel is a bottom sheet, the canvas is the
+   * strip above it, and a 310px card floating over that strip covers the very
+   * thing the slider is changing — you drag Thickness and cannot see the ribbon.
+   * So on a phone the dock swaps the panel instead: tap Ribbon and the stack
+   * becomes the Ribbon controls, with the canvas left alone. Same four pills, same
+   * four cards, in the one place there is room for them.
+   */
+  private renderPanelBody(): void {
+    const bar = this.barHost;
+    const host = this.stackHost;
+    if (!bar || !host) return;
+    bar.innerHTML = '';
+    host.innerHTML = '';
+
+    this.syncFoldToggle();
+
+    const section = this.inlineDock();
+    if (section) {
+      const title = el('h2', 'stack-title', DOCK_LABELS[section]);
+      bar.appendChild(title);
+      // The way back, next to the title rather than only on the dock pill: this is
+      // the panel's own content, so the panel says how to leave it.
+      const back = iconPill(LAYERS_ICON, 'Layers', () => this.openDock(section));
+      back.title = 'Back to the layer stack';
+      bar.appendChild(back);
+      const card = this.cardFor(section);
+      card.classList.add('inline');
+      host.appendChild(card);
+      return;
+    }
+
     const title = el('h2', 'stack-title', 'Layers');
     title.appendChild(el('u', undefined, 'top = front'));
     bar.appendChild(title);
@@ -303,16 +383,13 @@ export class Panel {
     bar.appendChild(
       pill('Strand', () => this.addStrand(), 'Drop a new straight strand into the scene'),
     );
-    this.root.appendChild(bar);
-
-    this.stackHost = el('div', 'stack');
-    this.root.appendChild(this.stackHost);
-
-    this.buildAbout();
-    this.renderDock();
     this.renderStack();
-    this.syncToolbar();
-    this.syncStatus();
+  }
+
+  /** Which dock card the PANEL is showing, if any — only ever set on a narrow
+   *  screen, where a popover would cover the scene it belongs to. */
+  private inlineDock(): DockKey | null {
+    return this.dockOpen && isNarrow() ? this.dockOpen : null;
   }
 
   // ---- Tool (Pan / Orbit / Move / Attach / Weave) --------------------------
@@ -373,6 +450,9 @@ export class Panel {
 
   private openDock(key: DockKey | null): void {
     this.dockOpen = this.dockOpen === key ? null : key;
+    // On a phone the card is the panel's content, so a folded-away panel would
+    // swallow it: the pill would light up and nothing would appear.
+    if (this.dockOpen && isNarrow()) document.body.classList.remove('panel-collapsed');
     if (this.dockOpen !== 'scene') {
       this.dataOpen = false;
       this.pasteOpen = false;
@@ -388,44 +468,45 @@ export class Panel {
     host.innerHTML = '';
     const p = this.view.getParams();
 
-    const items: Array<{ key: DockKey; label: string; value: string; body: () => HTMLElement }> = [
-      {
-        key: 'ribbon',
-        label: 'Ribbon',
-        value: String(p.thickness),
-        body: () => this.ribbonCard(),
-      },
-      {
-        key: 'weave',
-        label: 'Weave',
-        value: p.weave ? 'on' : 'off',
-        body: () => this.weaveCard(),
-      },
-      { key: 'view', label: 'View', value: '', body: () => this.viewCard() },
-      {
-        key: 'scene',
-        label: 'Scene',
-        value: shortName(this.scene.name),
-        body: () => this.sceneCard(),
-      },
-    ];
+    const values: Record<DockKey, string> = {
+      ribbon: String(p.thickness),
+      weave: p.weave ? 'on' : 'off',
+      view: '',
+      scene: shortName(this.scene.name),
+    };
 
     if (this.popHost) this.popHost.innerHTML = '';
+    // On a narrow screen the open card lives in the panel, so nothing floats.
+    const floating = this.dockOpen && !isNarrow();
 
-    for (const item of items) {
-      const b = el('button', 'dock-btn' + (this.dockOpen === item.key ? ' on' : '')) as HTMLButtonElement;
+    for (const key of DOCK_KEYS) {
+      const open = this.dockOpen === key;
+      const b = el('button', 'dock-btn' + (open ? ' on' : '')) as HTMLButtonElement;
       b.type = 'button';
-      b.innerHTML = item.value
-        ? `${item.label} <u>${item.value}</u>`
-        : item.label;
-      b.setAttribute('aria-expanded', String(this.dockOpen === item.key));
-      b.addEventListener('click', () => this.openDock(item.key));
+      b.innerHTML = values[key] ? `${DOCK_LABELS[key]} <u>${values[key]}</u>` : DOCK_LABELS[key];
+      b.setAttribute('aria-expanded', String(open));
+      b.addEventListener('click', () => this.openDock(key));
       host.appendChild(b);
-      if (this.dockOpen === item.key && this.popHost) {
-        const card = item.body();
+      if (open && floating && this.popHost) {
+        const card = this.cardFor(key);
         this.popHost.appendChild(card);
         this.placePop(card, b);
       }
+    }
+
+    this.renderPanelBody();
+  }
+
+  private cardFor(key: DockKey): HTMLElement {
+    switch (key) {
+      case 'ribbon':
+        return this.ribbonCard();
+      case 'weave':
+        return this.weaveCard();
+      case 'view':
+        return this.viewCard();
+      case 'scene':
+        return this.sceneCard();
     }
   }
 
@@ -1105,6 +1186,7 @@ export class Panel {
 
   // ---- The layer stack -----------------------------------------------------
   private stackHost: HTMLElement | null = null;
+  private barHost: HTMLElement | null = null;
 
   /**
    * A card per storey, highest first, then the masks in a card of their own.
