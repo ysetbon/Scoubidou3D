@@ -56,29 +56,41 @@ crossing, so one lace weaves over-and-under just like a real basket.
 - 📚 **Layer stacking = default depth.** The layer order sets the *default*
   over/under (higher layer rides over); masks override specific crossings, just
   like in OSS. Reorder a layer and it restacks live.
-- 🪜 **Levels — storeys in the layer stack.** The **New level** button drops a
-  layers-icon row into the panel; everything above it rests **one storey** higher
+- 🪜 **Levels — storeys in the layer stack.** The **Level** button adds a storey to
+  the panel; everything above it rests **one storey** higher
   — two strand thicknesses, the height of a woven round (a lace over plus a lace
   under), which is what it takes for the next round to sit *on* it instead of
   sinking into it. Because the row goes in at the top, nothing
-  already drawn moves — but every strand you add next is born a storey up. Slide
-  the row down with ▲▼ to drop the layers it passes back a level.
-  ([how it works](docs/layer-levels.md))
+  already drawn moves — but every strand you add next is born a storey up. Each
+  level is a card in the panel holding the strands that rest on it, numbered from
+  **0** (the ground); slide it down with ▲▼ to drop the layers it passes back a
+  level. ([how it works](docs/layer-levels.md))
 - 🎥 **Full 3D camera.** Orbit, pan, zoom (Three.js `OrbitControls`). One click
   snaps back to the familiar top-down OpenStrand view. Panning is always on the
   right button and on two fingers; the **Pan** tool puts it on a plain drag too,
   for a trackpad with no second button and for a phone, where two fingers are
   already a pinch.
 - 📱 **Works on a phone.** The panel becomes a bottom sheet you can fold away, the
-  Tool bar stays over the scene so Move and Attach are one tap away (it drops to
-  icons alone when the screen is too narrow for labels), and the
+  Tool bar and the settings dock stay over the scene so Move, Attach and every
+  slider are one tap away (the tools drop to icons alone when the screen is too
+  narrow for labels), and the
   handles carry OpenStrand's generous invisible grab areas (`move_mode.py`'s 120px
   endpoint square, `attach_mode.py`'s 120px attach circle) scaled for a fingertip —
   so a press that lands *near* a handle still takes it. One finger orbits, pinch
   zooms, two fingers pan.
 - 🎚️ **Live controls** for thickness, width scale, weave depth/span, layer lift,
-  outline, rounded ends, and a reference grid.
-- 🗂️ **Layer panel** to recolor, hide, reorder, delete, and add strands.
+  outline, rounded ends, and a reference grid — in a **dock** along the bottom of
+  the scene (Ribbon / Weave / View / Scene), one card at a time, each pill printing
+  its own current value so the whole setup reads without opening anything.
+- 🗂️ **The panel is the layer stack**, and nothing else: a card per storey, masks in
+  a card of their own, and a strand's colour, width and **Straighten** opening
+  inside its own row. Every note the panel used to print — what each tool does,
+  what a level is, what a mask is, the gestures — lives in one **About** sheet
+  behind the `?`. ([the three layouts this was chosen from](docs/panel-mocks/))
+- 🌗 **Light and dark**, both built from the project site's own palette: cream paper
+  and coral, or the warm near-black it inverts to. It follows the OS, the ◐ button
+  overrides it either way, and the choice is remembered — the 3D canvas and its
+  grid follow too.
 - 🔗 **Attach & Move — OpenStrand's editing, in 3D.** A **Tool** bar across the
   top of the scene (Pan / Orbit / Move / Attach / Weave), where OpenStrand Studio keeps
   its modes, turns the strand endpoints into grab handles:
@@ -255,7 +267,7 @@ src/
   scene/
     StrandScene.ts # Three.js scene: weave, connectors, lights, orbit camera, handles
   ui/
-    panel.ts       # control panel + tool switcher + weave/mask list + layer stack
+    panel.ts       # the layer stack, the tool strip, the settings dock, About
   main.ts
 ```
 

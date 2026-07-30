@@ -1,13 +1,21 @@
-# Layer levels — the “New level” button
+# Layer levels — the **Level** button
 
 This is the written-out version of the request, so the behaviour is pinned down
 before the code exists. Short form:
 
-> Add a button to the layer panel that drops a **layers icon row** into the
-> stack. Everything above that row rests **one full strand thickness higher** in
-> Z — so every layer you add after pressing it sits on a new storey.
+> Add a button to the layer panel that drops a **level** into the stack.
+> Everything above it rests **one full strand thickness higher** in Z — so every
+> layer you add after pressing it sits on a new storey.
 
 ![the button and the row it adds](layer-levels-panel.svg)
+
+> **The sketch above is the original spec**, drawn when a level was a *row* in one
+> flat list. The panel has since been rebuilt to the mock-3 layout in
+> [docs/panel-mocks](panel-mocks/) and a level is now a **card** holding the
+> strands that rest on it: the rules below are unchanged, but where the doc says
+> “the level row”, read “the level card's header”. Levels are also numbered from
+> **0** — the ground — which is what `levelAt()` returns and what the panel now
+> prints; earlier drafts of this file counted from 1.
 
 ## Why it is needed
 
@@ -43,11 +51,11 @@ nothing above or below to stay clear of.
 
 ## The instruction
 
-1. **The button.** The Layers section gets a button showing the stacked-layers
-   icon, labelled **New level**.
-2. **What it adds.** Pressing it inserts a **level row** at the *top* of the
-   layer stack. The row shows the same layers icon, is named `level N` (counting
-   up from the bottom) and is tagged `+1 storey`.
+1. **The button.** The Layers header gets a button showing the stacked-layers
+   icon, labelled **Level**.
+2. **What it adds.** Pressing it inserts a level at the *top* of the layer stack.
+   The panel shows it as a card, badged with its number — counting up from `0`,
+   the ground — and headed `+N storeys · M layers`.
 3. **What it means.** Every strand **above** a level row rests one strand
    thickness (the Ribbon ▸ **Thickness** value) higher in Z than it otherwise
    would. Levels add up: two rows above a lace means two thicknesses.
@@ -56,9 +64,10 @@ nothing above or below to stay clear of.
    both of which push onto the top of the stack) lands above it, one storey up.
    That is the point of the button: press it, and the next thing you draw is on
    a new level.
-5. **It is a real layer.** The row moves with `▲` / `▼` like any other layer, so
-   you can push it down through the stack and watch the strands it passes drop a
-   level. `✕` removes it and everything settles back.
+5. **It is a real layer.** The card's own header carries `▲` / `▼`, so you can
+   push the storey down through the stack and watch the strands it passes drop a
+   level. `✕` removes it and everything settles back. Level 0 has no controls:
+   the ground is not a break, it is what is left below the lowest one.
 6. **A cord may climb.** Strands glued end to end share one *rank* — that is what
    stops a stitch from climbing a staircase along its own length just because of
    the order it happened to be drawn in. Levels are not like that: pressing **New
