@@ -2,6 +2,7 @@
 """Build public/levels/ — every level of every m x n face, at full resolution.
 
     python3 scripts/build-levels.py <render-dir>
+    python3 scripts/build-levels.py <render-dir> --page-only
 
 `render-dir` holds one folder per face (`1x5/`) of `L00-top.png` .. `L10-orb.png`,
 as `scripts/level-shots.mjs` leaves them. Each is cropped to the model, resized to
@@ -52,12 +53,19 @@ def crop(im, pad=18):
                    min(w, int(cx + half)), min(h, int(cy + half))))
 
 
-def main(src):
+def main(src, page_only=False):
     faces = json.load(open(os.path.join(ROOT, 'scripts', 'twofan-cost.json')))['faces']
     os.makedirs(os.path.join(OUT, 'img'), exist_ok=True)
     os.makedirs(PAGE, exist_ok=True)
     total = 0
     written = 0
+    # The page is generated from the same source as the images and is the ONLY
+    # copy: edit levels/index.html by hand and the next build silently reverts it.
+    # --page-only rewrites it without re-cropping 1408 pictures to do it.
+    if page_only:
+        open(os.path.join(PAGE, 'index.html'), 'w').write(page(faces))
+        print('index.html only')
+        return
     for m in range(1, 9):
         for n in range(1, 9):
             key = f'{m}x{n}'
@@ -116,10 +124,28 @@ TEMPLATE = '''<!doctype html>
 <title>Twist stitch levels — Scoubidou3D</title>
 <meta name="description" content="Every level of every m x n twist face, top and orbit, at full resolution.">
 <link rel="icon" href="../favicon.svg">
+<!-- Set the theme before first paint: anything deferred or bundled lands after
+     the page has already painted, and a dark-theme visitor sees a cream flash.
+     Shares its key with the studio (src/ui/panel.ts) and site/theme.js. -->
+<script>
+  try {
+    var t = localStorage.getItem('scoubidou3d-theme');
+  } catch (e) {}
+  document.documentElement.dataset.theme =
+    t || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+</script>
 <link rel="stylesheet" href="../site/site.css">
+<script type="module" src="../site/theme.js"></script>
 <style>
   /* The site's tokens carry the page; only what the site has no component for
      lives here — the face matrix and the level viewer. */
+  /* The one colour this page needs that the site has no token for: text on the
+     yellow "watch it" wash. Dark olive on the light theme's, gold on the dark
+     theme's — the wash itself is far darker there. */
+  :root { --warn-ink: #6b5200; }
+  /* Lighter than the band's own gold: on the dark theme's wash, --yellow itself
+     lands at 3.7:1 and this text is 11px. */
+  :root[data-theme='dark'] { --warn-ink: #fff0c4; }
   .lv { max-width: 1180px; margin: 0 auto; padding: 34px 24px 90px; }
   .lv-head { display: flex; flex-direction: column; gap: 14px; padding-bottom: 26px;
     border-bottom: 1px solid var(--line); }
@@ -161,7 +187,7 @@ TEMPLATE = '''<!doctype html>
   .vhead em { font-style: normal; color: var(--ink); font-weight: 600; }
   .chip { padding: 3px 10px; border-radius: 12px; font-size: 11px; }
   .chip.clean { background: color-mix(in srgb, var(--teal) 15%, transparent); color: var(--teal); }
-  .chip.warn { background: color-mix(in srgb, var(--yellow) 42%, transparent); color: #6b5200; }
+  .chip.warn { background: color-mix(in srgb, var(--yellow) 42%, transparent); color: var(--warn-ink); }
   .chip.crit { background: color-mix(in srgb, var(--coral) 16%, transparent); color: var(--coral); }
   .hint { padding: 12px 20px 0; font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted); }
   .levels { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
@@ -169,8 +195,11 @@ TEMPLATE = '''<!doctype html>
   .lvl { display: flex; flex-direction: column; gap: 6px; }
   .lvl .n { font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted);
     letter-spacing: 0.06em; text-transform: uppercase; }
+  /* Not themed on purpose: every level render has the studio's own ground baked
+     into the image, so the tile behind it has to match the picture, not the page.
+     Re-shoot the sheet in another palette and this moves with it. */
   .lvl a { display: block; border: 1px solid var(--line); border-radius: 2px; overflow: hidden;
-    background: #eef0f4; }
+    background: #f5efdf; }
   .lvl a:hover { border-color: var(--ink); }
   .lvl img { display: block; width: 100%; height: auto; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -195,9 +224,12 @@ TEMPLATE = '''<!doctype html>
       <a href="../#learn">Notes</a>
       <a href="https://github.com/ysetbon/Scoubidou3D">GitHub</a>
     </nav>
+    <span class="headEnd">
+      <button class="themeBtn" type="button" data-theme-toggle aria-label="Switch theme"></button>
     <a class="btn dark" href="../app/">Open the studio
       <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5l5 5-5 5" /></svg>
     </a>
+    </span>
   </header>
 
   <div class="lv">
@@ -276,4 +308,5 @@ TEMPLATE = '''<!doctype html>
 '''
 
 if __name__ == '__main__':
-    main(sys.argv[1] if len(sys.argv) > 1 else 'renders')
+    args = [a for a in sys.argv[1:] if not a.startswith('--')]
+    main(args[0] if args else 'renders', '--page-only' in sys.argv)

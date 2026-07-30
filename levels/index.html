@@ -77,10 +77,11 @@
   .lvl { display: flex; flex-direction: column; gap: 6px; }
   .lvl .n { font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted);
     letter-spacing: 0.06em; text-transform: uppercase; }
-  /* Not themed on purpose: every level render has this pale ground baked into the
-     image, so the tile behind it has to match the picture, not the page. */
+  /* Not themed on purpose: every level render has the studio's own ground baked
+     into the image, so the tile behind it has to match the picture, not the page.
+     Re-shoot the sheet in another palette and this moves with it. */
   .lvl a { display: block; border: 1px solid var(--line); border-radius: 2px; overflow: hidden;
-    background: #eef0f4; }
+    background: #f5efdf; }
   .lvl a:hover { border-color: var(--ink); }
   .lvl img { display: block; width: 100%; height: auto; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
