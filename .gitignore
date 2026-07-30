@@ -3,3 +3,6 @@ dist/
 .DS_Store
 *.local
 .vite/
+
+# artifact build scratch (see artifacts/README.md)
+artifacts/*/.work/

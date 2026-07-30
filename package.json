@@ -12,7 +12,8 @@
     "check:history": "esbuild scripts/check-history.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-history.mjs --log-level=warning && node node_modules/.cache/check-history.mjs",
     "check:twofan": "esbuild scripts/check-twofan.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-twofan.mjs --log-level=warning && node node_modules/.cache/check-twofan.mjs",
     "art": "esbuild scripts/sample-art.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/sample-art.mjs --log-level=warning && node node_modules/.cache/sample-art.mjs",
-    "shots": "node scripts/site-shots.mjs"
+    "shots": "node scripts/site-shots.mjs",
+    "artifact": "node artifacts/build.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",

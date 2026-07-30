@@ -8,6 +8,8 @@ import {
   twoFanStitch, twoFanColumn, columnTurn, stitchKey, columnKey,
   TWOFAN_FAMILY, TWOFAN_MAX, HANDS, GAP, W,
 } from '../src/model/twofan';
+import { collectJunctions } from '../src/model/connections';
+import { levelAt } from '../src/model/levels';
 import { faceCost } from './probe-turn-ceiling';
 import COST from './twofan-cost.json';
 
@@ -165,6 +167,45 @@ console.log(`  largest angle error over all 8 sizes: ${handErr.toFixed(3)} deg`)
 const handBad = handErr > 0.03;
 console.log(handBad ? '  FAIL' : '  all clear');
 
+// ---- and the joints, level by level --------------------------------------
+// A column comes back round onto itself. At 1x1 the turn is 50.03 deg, so nine
+// levels is 450.30 deg — 90.30 deg from where it started, and the arms of level
+// 8 land within 0.32 px of the base bars in PLAN while sitting eight storeys
+// above them. Only the free root of a lace has no declared parent, so only a
+// root can be adopted by that coincidence, and being adopted splices two laces
+// of different colours into one chain: the lace stops meshing as one ribbon and
+// a connector is lofted the length of the column. `collectJunctions` confines
+// the undeclared search to one storey; this is the assertion that it does.
+let stray = 0;
+for (const { hand } of HANDS) {
+  for (let m = 1; m <= TWOFAN_MAX; m++) {
+    for (let n = 1; n <= TWOFAN_MAX; n++) {
+      const full = twoFanColumn(m, n, 10, `${m}x${n}`, hand);
+      for (let L = 0; L <= 10; L++) {
+        const cut = L === 10 ? full.strands.length : full.levelBreaks[L];
+        const ids = new Set(full.strands.slice(0, cut).map((s) => s.id));
+        const scene = {
+          name: 'x',
+          strands: full.strands.slice(0, cut),
+          masks: full.masks.filter((k) => ids.has(k.overId) && ids.has(k.underId)),
+          levelBreaks: full.levelBreaks.filter((b) => b < cut),
+        };
+        for (const j of collectJunctions(scene)) {
+          const child = scene.strands[j.childIndex];
+          const parent = scene.strands[j.parentIndex];
+          if (child.parentId === parent.id || parent.parentId === child.id) continue;
+          if (levelAt(scene, j.childIndex) === levelAt(scene, j.parentIndex)) continue;
+          stray++;
+          console.log(`  STRAY ${hand} ${m}x${n} L${L}: ${child.id} <- ${parent.id}`);
+        }
+      }
+    }
+  }
+}
+console.log(`\njoints, all 64 faces x 11 levels x both hands:`);
+console.log(`  joints bridging a level break, undeclared  ${stray}`);
+console.log(stray ? '  FAIL' : '  all clear');
+
 // every sample the browser can reach must build
 let built = 0;
 for (const { hand } of HANDS) {
@@ -174,4 +215,4 @@ for (const { hand } of HANDS) {
 }
 console.log(`\n${built} browser samples built, both hands.`);
 
-if (bad > 0 || colBad || handBad) process.exit(1);
+if (bad > 0 || colBad || handBad || stray > 0) process.exit(1);
