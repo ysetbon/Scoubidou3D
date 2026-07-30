@@ -39,6 +39,7 @@ import { MaskLink, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, TWIST_FAMILY, TWIST_MAX, makeSample } from '../model/samples';
 import { HANDS, TWOFAN_COLUMN_FAMILY, TWOFAN_MAX, columnKey } from '../model/twofan';
 import { parseSceneText, sceneFromFile, sceneToJson } from '../model/sceneIO';
+import { History } from '../model/history';
 import {
   addLevelBreak,
   levelAt,
@@ -142,14 +143,21 @@ export class Panel {
   // notion of a selection, and this one exists to put a row's own controls in
   // the row rather than in a section of their own.
   private selectedId: string | null = null;
+  // Every state the scene has been in, recorded off its own JSON. See history.ts
+  // for the rule; every edit in this file reaches it through `record` below.
+  private history = new History();
 
   constructor(private root: HTMLElement, private view: StrandScene, openKey = 'two-crossing') {
     this.sceneSource = openKey;
     this.scene = view.getScene();
+    this.history.reset({ scene: this.scene, source: this.sceneSource });
     // Attach/finalize adds a strand layer, a weave pick adds a mask layer — both
     // land in the layer stack, and the status pill tracks the pending weave pick.
-    this.view.onSceneChanged = () => {
+    // `committed` names the gesture for the history, or is null while one is
+    // still in flight; see StrandScene.onSceneChanged.
+    this.view.onSceneChanged = (committed) => {
       this.scene = this.view.getScene();
+      if (committed) this.record(committed);
       this.renderPanelBody();
       this.syncToolbar();
       this.syncStatus();
@@ -270,6 +278,19 @@ export class Panel {
       }
       if (this.dockOpen) this.openDock(null);
     });
+
+    // The shortcuts every editor has, on the same history the arrows drive.
+    // Ctrl+Y is here because Windows still expects it as redo.
+    document.addEventListener('keydown', (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const key = e.key.toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+      // Not while typing: the JSON box and the name field have an undo of their
+      // own, and taking it off them to step the scene back would be a trap.
+      if (isTypingIn(e.target)) return;
+      e.preventDefault();
+      this.travel(key === 'y' || e.shiftKey ? 1 : -1);
+    });
   }
 
   // Last known pointer position, for placing the hover chip.
@@ -342,16 +363,73 @@ export class Panel {
     host.hidden = false;
   }
 
-  setScene(scene: Scene3D): void {
+  setScene(scene: Scene3D, label = 'open a scene'): void {
     this.scene = scene;
     this.selectedId = null;
     this.view.setScene(scene, true);
+    this.record(label);
     this.render();
   }
 
-  private apply(refit = false): void {
+  /**
+   * Push the working scene into the view, record what it was, and redraw the
+   * panel — the one funnel every panel-side edit goes through.
+   *
+   * @param label what the edit is called in the history
+   * @param tag groups a RUN of edits from a single control into one step; see
+   *   History.record. The width slider and the colour well both fire on every
+   *   `input` event, and without this a drag would be forty presses of undo.
+   */
+  private apply(label: string, tag?: string, refit = false): void {
     this.view.setScene(this.scene, refit);
+    this.record(label, tag);
     this.renderPanelBody();
+  }
+
+  /** Offer the scene as it now stands to the history. Whether that is a step is
+   *  the history's call, not this one's: it records only what does not look like
+   *  what it already holds. */
+  private record(label: string, tag?: string): void {
+    this.history.record({ scene: this.scene, source: this.sceneSource }, label, tag);
+    this.syncHistory();
+  }
+
+  /**
+   * One step back (-1) or forward (+1) through the recordings.
+   *
+   * The camera stays exactly where it is — `setScene(…, false)` skips the refit —
+   * because orbiting was never an edit and undo has no business un-orbiting it.
+   * And this is a full redraw short of `render()`: the About sheet may be open
+   * over the panel, and rebuilding the root would pull it out from under itself.
+   */
+  private travel(dir: -1 | 1): void {
+    const step = dir < 0 ? this.history.undo() : this.history.redo();
+    if (!step) return;
+    this.scene = step.scene;
+    this.sceneSource = step.source;
+    // The row whose inspector was open need not exist in the state we land in.
+    if (!this.scene.strands.some((s) => s.id === this.selectedId)) this.selectedId = null;
+    this.view.setScene(this.scene, false);
+    this.renderDock(); // -> renderPanelBody -> the brand line and the stack
+    this.syncToolbar();
+    this.syncStatus();
+    this.flash(`${dir < 0 ? 'Undone' : 'Redone'}: ${step.label}.`);
+  }
+
+  /** Just the two arrows. An edit changes what they can do a great deal more
+   *  often than it changes the tools beside them, and rebuilding the whole strip
+   *  for that would take the button out from under the pointer. */
+  private syncHistory(): void {
+    const back = this.history.undoLabel();
+    const forward = this.history.redoLabel();
+    if (this.undoBtn) {
+      this.undoBtn.disabled = !back;
+      this.undoBtn.title = back ? `Undo ${back} — ⌘/Ctrl+Z` : 'Nothing to undo';
+    }
+    if (this.redoBtn) {
+      this.redoBtn.disabled = !forward;
+      this.redoBtn.title = forward ? `Redo ${forward} — ⇧⌘/Ctrl+Shift+Z` : 'Nothing to redo';
+    }
   }
 
   /** The panel proper: brand, stack header, stack. Plus the chrome's contents. */
@@ -437,7 +515,7 @@ export class Panel {
     // added from here on rests a full storey higher. See levels.ts.
     const addLevel = iconPill(LAYERS_ICON, 'Level', () => {
       addLevelBreak(this.scene);
-      this.apply(false);
+      this.apply('add a level');
     });
     addLevel.classList.add('coral');
     addLevel.title = 'Add a level: from now on, new layers rest one storey higher';
@@ -469,12 +547,23 @@ export class Panel {
     { key: 'weave', label: 'Weave', hint: 'Mask one strand over another at their crossing' },
   ];
 
-  /** The toolbar's buttons, wired to the current mode. */
+  // The undo pair, held so an edit can grey them out without redrawing the strip.
+  private undoBtn: HTMLButtonElement | null = null;
+  private redoBtn: HTMLButtonElement | null = null;
+
+  /** The toolbar's buttons, wired to the current mode — with the undo pair ahead
+   *  of them, behind a rule. They are not tools (nothing is armed by pressing
+   *  one, and neither is ever "on"), so they read as a group of their own, and
+   *  they go FIRST because that is where every editor keeps them. */
   private syncToolbar(): void {
     const bar = this.toolbarHost;
     if (!bar) return;
     const mode = this.view.getMode();
     bar.innerHTML = '';
+    this.undoBtn = actBtn(UNDO_ICON, 'Undo', () => this.travel(-1));
+    this.redoBtn = actBtn(REDO_ICON, 'Redo', () => this.travel(+1));
+    bar.append(this.undoBtn, this.redoBtn, el('span', 'tool-sep'));
+    this.syncHistory();
     for (const t of Panel.TOOLS) {
       const active = mode === t.key;
       const b = el('button', 'tool-btn' + (active ? ' on' : '')) as HTMLButtonElement;
@@ -506,8 +595,9 @@ export class Panel {
   private dataOpen = false;
   private pasteOpen = false;
   private namingOpen = false;
-  // "Straighten all" hits every layer at once and there is no undo in this app,
-  // so it takes two presses: the first arms it, the second does it.
+  // "Straighten all" hits every layer at once, so it takes two presses: the first
+  // arms it, the second does it. Undo will now take it back, but a press that
+  // silently rebuilds forty strands still deserves to be asked about first.
   private resetAllArmed = false;
   private resetAllTimer = 0;
 
@@ -884,7 +974,7 @@ export class Panel {
       this.resetAllArmed ? `Straighten ${bent}? Press again` : 'Straighten all',
       () => this.resetAllControls(),
       this.resetAllArmed
-        ? 'Press again to straighten every strand — this cannot be undone'
+        ? 'Press again to straighten every strand — undo takes it back'
         : bent
           ? `Put every strand's control points back to their default (${bent} bent)`
           : 'Every strand is already on its default control points',
@@ -919,7 +1009,7 @@ export class Panel {
             this.pasteOpen = false;
             this.sceneSource = 'imported';
             this.commitDock();
-            this.setScene(scene);
+            this.setScene(scene, 'paste a scene');
           } catch (e) {
             this.flash('Could not read that: ' + (e as Error).message, true);
           }
@@ -936,7 +1026,10 @@ export class Panel {
           deleteCustom(current.id);
           this.sceneSource = 'two-crossing';
           this.commitDock();
-          this.setScene(makeSample('two-crossing'));
+          // Named for the scene that lands, not for the delete: undo can put the
+          // strands back on screen, but nothing brings the saved entry back.
+          const fallback = makeSample('two-crossing');
+          this.setScene(fallback, `open “${fallback.name}”`);
         }),
       );
       pop.appendChild(delRow);
@@ -956,7 +1049,7 @@ export class Panel {
         const scene = parseSceneText(text, f.name.replace(/\.json$/i, ''));
         this.sceneSource = 'imported';
         this.commitDock();
-        this.setScene(scene);
+        this.setScene(scene, `open “${scene.name}”`);
       } catch (e) {
         this.flash('Could not read that file: ' + (e as Error).message, true);
       }
@@ -991,7 +1084,7 @@ export class Panel {
     }
     this.resetAllArmed = false;
     for (const st of this.scene.strands) resetControlPoints(st);
-    this.apply(false);
+    this.apply('straighten every strand');
     // Only this second press commits, so only this one closes: the first press
     // arms and returns above, and the card has to stay for the press that answers it.
     if (!this.commitDock()) this.renderDock();
@@ -1220,13 +1313,14 @@ export class Panel {
     const custom = getCustom(key);
     if (custom) {
       try {
-        this.setScene(sceneFromFile(custom.scene, custom.scene.name));
+        this.setScene(sceneFromFile(custom.scene, custom.scene.name), `open “${custom.scene.name}”`);
         return;
       } catch (e) {
         this.flash('That saved sample could not be opened: ' + (e as Error).message, true);
       }
     }
-    this.setScene(makeSample(key));
+    const scene = makeSample(key);
+    this.setScene(scene, `open “${scene.name}”`);
   }
 
   private saveSample(rawName: string): void {
@@ -1237,13 +1331,16 @@ export class Panel {
     this.namingOpen = false;
     if (!entry) {
       // Storage refused (sandboxed or private-mode view, or a full quota). Don't
-      // pretend it saved — open the JSON so the work can still be kept.
+      // pretend it saved — open the JSON so the work can still be kept. The name
+      // did land on the scene, and the name is in the JSON, so it is a step.
       this.dataOpen = true;
+      this.record(`name it “${name}”`);
       this.renderDock();
       this.flash('Could not save here — local storage is blocked. Copy the JSON instead.', true);
       return;
     }
     this.sceneSource = entry.id;
+    this.record(`name it “${name}”`);
     // The save is what the naming field was opened for, so the card goes: the
     // toast below carries the name it went under. On a phone the card stays and
     // render() redraws it with the new name already in the dropdown.
@@ -1335,7 +1432,7 @@ export class Panel {
     // New strand goes on top of the stack (highest layer).
     this.scene.strands.push(s);
     this.selectedId = s.id;
-    this.apply(false);
+    this.apply('add a strand');
   }
 
   // ---- The layer stack -----------------------------------------------------
@@ -1424,21 +1521,21 @@ export class Panel {
 
       const up = iconBtn('▲', 'Move up (fewer layers lifted)', () => {
         moveLevelBreak(this.scene, index, +1);
-        this.apply(false);
+        this.apply('move a level up');
       });
       up.disabled = at >= this.scene.strands.length;
       controls.appendChild(up);
 
       const down = iconBtn('▼', 'Move down (lift one more layer)', () => {
         moveLevelBreak(this.scene, index, -1);
-        this.apply(false);
+        this.apply('move a level down');
       });
       down.disabled = at <= 0;
       controls.appendChild(down);
 
       const del = iconBtn('✕', 'Remove this level', () => {
         removeLevelBreak(this.scene, index);
-        this.apply(false);
+        this.apply('remove a level');
       });
       del.classList.add('danger');
       controls.appendChild(del);
@@ -1539,7 +1636,7 @@ export class Panel {
     controls.appendChild(
       iconBtn(strand.visible ? '●' : '○', 'Show / hide', () => {
         strand.visible = !strand.visible;
-        this.apply(false);
+        this.apply(strand.visible ? 'show a strand' : 'hide a strand');
       }),
     );
     const up = iconBtn('▲', 'Move up — over the row or the level above', () =>
@@ -1575,7 +1672,7 @@ export class Panel {
       if (hex(c) === hex(strand.color)) chip.classList.add('on');
       chip.addEventListener('click', () => {
         strand.color = { ...c, a: strand.color.a };
-        this.apply(false);
+        this.apply('recolour a strand', `colour:${strand.id}`);
       });
       chips.appendChild(chip);
     }
@@ -1587,7 +1684,7 @@ export class Panel {
     custom.title = 'Any colour';
     custom.addEventListener('input', () => {
       strand.color = rgbaFromHex(custom.value, strand.color.a);
-      this.apply(false);
+      this.apply('recolour a strand', `colour:${strand.id}`);
     });
     chips.appendChild(custom);
     colours.appendChild(chips);
@@ -1596,7 +1693,9 @@ export class Panel {
     box.appendChild(
       slider('Width', strand.width, 6, 140, 1, (v) => {
         strand.width = v;
-        this.apply(false);
+        // Tagged: a drag arrives as a run of `input` events, and the whole run is
+        // one step rather than one per pixel the handle travelled.
+        this.apply('change a strand’s width', `width:${strand.id}`);
       }),
     );
 
@@ -1604,7 +1703,7 @@ export class Panel {
     const atDefault = controlsAtDefault(strand);
     const straighten = pill('Straighten', () => {
       resetControlPoints(strand);
-      this.apply(false);
+      this.apply('straighten a strand');
     });
     straighten.disabled = atDefault;
     straighten.title = atDefault
@@ -1614,7 +1713,7 @@ export class Panel {
     acts.appendChild(
       pill(strand.visible ? 'Hide' : 'Show', () => {
         strand.visible = !strand.visible;
-        this.apply(false);
+        this.apply(strand.visible ? 'show a strand' : 'hide a strand');
       }, 'Show / hide this strand'),
     );
 
@@ -1629,7 +1728,7 @@ export class Panel {
     del.addEventListener('click', () => {
       removeStrandAt(this.scene, index);
       this.selectedId = null;
-      this.apply(false);
+      this.apply('delete a strand');
     });
     acts.appendChild(del);
 
@@ -1677,14 +1776,14 @@ export class Panel {
     if (b !== -1) {
       // The row goes one way, so the bar goes the other.
       moveLevelBreak(this.scene, b, dir === -1 ? 1 : -1);
-      this.apply(false);
+      this.apply('move a layer past a level');
       return;
     }
     const j = index + dir;
     if (j < 0 || j >= this.scene.strands.length) return;
     const arr = this.scene.strands;
     [arr[index], arr[j]] = [arr[j], arr[index]];
-    this.apply(false);
+    this.apply(dir === 1 ? 'move a layer up' : 'move a layer down');
   }
 
   // ---- The About sheet -----------------------------------------------------
@@ -1780,6 +1879,13 @@ const ABOUT: Array<[string, string]> = [
     '<b>Pan</b> slides the camera · <b>Orbit</b> turns it · <b>Move</b> drags endpoints and ' +
       'control points, and connected strands follow · <b>Attach</b> grows a new strand from a ' +
       'free endpoint · <b>Weave</b> masks one strand over another.',
+  ],
+  [
+    'Undo',
+    'Every edit that changes the scene is recorded: the <b>↩ ↪</b> pair on the toolbar steps ' +
+      'back and forward through them, and so do <b>⌘/Ctrl+Z</b> and <b>⇧⌘/Ctrl+Shift+Z</b>. The ' +
+      'camera is not an edit — orbiting, panning, zooming and <b>Fit</b> change nothing in the ' +
+      'scene, so they are never recorded and undo leaves you looking from wherever you got to.',
   ],
   [
     'The camera',
@@ -1951,6 +2057,18 @@ const BIN_ICON = svg(
     'm4 2.6v8.2h1.7v-8.2Zm3 0v8.2h1.7v-8.2Z" />',
 );
 
+// Undo, and redo as its mirror image so the pair is exactly symmetrical: a flat
+// arrowhead pointing back, and the band it came along hooking round and under.
+// Two subpaths rather than one — the head is solid, the hook is a band with a
+// hole, and keeping them apart means neither has to wind around the other.
+const UNDO_ARROW =
+  '<path d="M8.6 3.4 1.5 9.9l7.1 6.5Z" />' +
+  '<path d="M8 8.4h4.6a6.4 6.4 0 0 1 0 12.8H8.8v-3h3.8a3.4 3.4 0 0 0 0-6.8H8Z" />';
+
+const UNDO_ICON = svg(UNDO_ARROW);
+// Mirrored about the middle of the 24-box, so redo is undo seen the other way.
+const REDO_ICON = svg(`<g transform="translate(24 0) scale(-1 1)">${UNDO_ARROW}</g>`);
+
 const MOON_ICON = svg('<path d="M12.6 2.1A9.9 9.9 0 1 0 21.9 15 8 8 0 0 1 12.6 2.1Z" />');
 
 const SUN_ICON = svg(
@@ -1985,6 +2103,29 @@ function iconPill(icon: string, label: string, onClick: () => void): HTMLButtonE
   b.innerHTML = `${icon}<span>${label}</span>`;
   b.addEventListener('click', onClick);
   return b;
+}
+
+/** A toolbar button that DOES something rather than arming a mode: the undo pair.
+ *  Icon only — they carry no label because nothing about ↩ needs one, and the
+ *  strip already holds five named tools. */
+function actBtn(icon: string, label: string, onClick: () => void): HTMLButtonElement {
+  const b = el('button', 'tool-btn tool-act') as HTMLButtonElement;
+  b.type = 'button';
+  b.innerHTML = icon;
+  b.setAttribute('aria-label', label);
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+/** Fields the browser gives an undo of its own — the JSON paste box, the name
+ *  field. A range or a colour well is not one of them: Ctrl+Z with a slider
+ *  focused means the scene. */
+const TYPED_INPUTS = new Set(['text', 'search', 'url', 'email', 'password', 'number', 'tel']);
+
+function isTypingIn(target: EventTarget | null): boolean {
+  if (target instanceof HTMLTextAreaElement) return true;
+  if (target instanceof HTMLInputElement) return TYPED_INPUTS.has(target.type);
+  return target instanceof HTMLElement && target.isContentEditable;
 }
 
 function iconBtn(glyph: string, title: string, onClick: () => void): HTMLButtonElement {

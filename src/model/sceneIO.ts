@@ -45,6 +45,25 @@ export function sceneToJson(scene: Scene3D): string {
   return JSON.stringify(sceneToFile(scene), null, 2);
 }
 
+/**
+ * The inverse of `sceneToFile`, for a snapshot WE made: a deep copy straight
+ * back, with nothing re-derived and nothing tidied away.
+ *
+ * `sceneFromFile` below cannot do this job, because it is written for untrusted
+ * input — it re-derives endpoint occupancy, drops `isMask`, and normalises a
+ * strand that is carrying the leftovers of a drag. All of that is right for a
+ * file someone hands us and wrong for undo, where the state going in has to be
+ * the state coming out or a step would quietly change the scene it restores.
+ */
+export function sceneFromSnapshot(file: SceneFile): Scene3D {
+  return {
+    strands: file.strands.map(cloneStrand),
+    masks: file.masks.map((m) => ({ overId: m.overId, underId: m.underId })),
+    levelBreaks: [...file.levelBreaks],
+    name: file.name,
+  };
+}
+
 function cloneStrand(s: Strand3D): Strand3D {
   return {
     ...s,

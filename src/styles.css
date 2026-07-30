@@ -928,6 +928,31 @@ button {
   color: var(--fill-ink);
 }
 
+/* The undo pair. Square rather than pill-shaped padding, because they carry an
+   icon and no word — and never `.on`: pressing one does something and hands the
+   toolbar straight back, so there is no state for them to be lit in. */
+.tool-act {
+  padding: 9px;
+}
+
+.tool-act:disabled {
+  opacity: 0.3;
+}
+
+.tool-act:disabled:hover {
+  background: transparent;
+}
+
+/* A hairline between what acts and what arms, so the strip reads as two groups
+   rather than seven buttons in a row. */
+.tool-sep {
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 1.5px;
+  margin: 3px;
+  background: var(--edge2);
+}
+
 /* The live dock pill is coral in both themes: it is holding a popover open, which
    is a different kind of "on" from the tool that is armed. */
 .dock-btn.on,
