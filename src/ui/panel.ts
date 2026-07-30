@@ -48,6 +48,20 @@ import {
 import { deleteCustom, getCustom, listCustom, saveCustom, storageAvailable } from '../model/customSamples';
 import { controlsAtDefault, resetControlPoints } from '../model/controlPoints';
 
+/**
+ * Whether the sample browser shows the ORIGINAL m x n twist family — the grid
+ * built on the single-turn law, `atan(1/max(m,n))`.
+ *
+ * Off: the browser shows only the 1xn reference folder. Nothing is deleted —
+ * `TWIST_FAMILY` still generates all 64, `makeSample('twist-3x2-10')` still
+ * builds them, and `?sample=` links to them still open. Only the grid is
+ * hidden. Flip this back to `true` to put the folder back.
+ *
+ * Typed `boolean` on purpose: a literal `false` would narrow the block to
+ * unreachable code and take the family's own rendering out of type-checking.
+ */
+const SHOW_ORIGINAL_TWIST_FAMILY: boolean = false;
+
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   cls?: string,
@@ -950,55 +964,61 @@ export class Panel {
 
     // The family. Rows are m, columns are n, and the two are interchangeable — an
     // m x n stitch is an n x m one looked at sideways — so the grid is symmetric.
-    body.appendChild(
-      el('h4', 'browser-group', 'Twist family — the original, every m×n face, 10 twists'),
-    );
-    body.appendChild(
-      el(
-        'p',
-        'browser-note',
-        'Rows m, columns n, and each cell quotes its turn. The shading is how far the ' +
-          'loosest arm hangs past the weave: a square face pulls tight, a lopsided one ' +
-          'cannot. Off the diagonal one turn has to serve two bands of different depth, ' +
-          'so the shallower side is left with arm it does not need — and the smaller ' +
-          'family carries the binding alone. Pale cells are ribbons round a spine, not ' +
-          'woven columns. Nothing is broken in them; they are just loose by construction.',
-      ),
-    );
-    const grid = el('div', 'browser-grid');
-    grid.style.gridTemplateColumns = `auto repeat(${TWIST_MAX}, 1fr)`;
-    grid.appendChild(el('span', 'browser-axis', ''));
-    for (let n = 1; n <= TWIST_MAX; n++) grid.appendChild(el('span', 'browser-axis', `n=${n}`));
-    for (let m = 1; m <= TWIST_MAX; m++) {
-      grid.appendChild(el('span', 'browser-axis', `m=${m}`));
-      for (let n = 1; n <= TWIST_MAX; n++) {
-        const s = TWIST_FAMILY.find((x) => x.m === m && x.n === n)!;
-        const b = pill('', () => pick(s.key));
-        b.classList.add('browser-cell');
-        // Fade with the slack, so the usable region of the family is visible at a
-        // glance rather than hidden behind 64 identical buttons.
-        b.style.setProperty('--slack', String(Math.min(1, s.slack / 6)));
-        b.appendChild(el('b', undefined, `${m}×${n}`));
-        b.appendChild(el('small', undefined, `${s.turn.toFixed(1)}°`));
-        b.appendChild(el('small', 'browser-slack', s.slack < 1 ? 'tight' : `+${s.slack.toFixed(1)}w`));
-        const crossings = 4 * m * n;
-        const most = 4 * Math.max(m, n);
-        b.title =
-          `${m}×${n} — ${m + n} laces, ${2 * (m + n)} arms a level, turn ${s.turn.toFixed(2)}°\n` +
-          `loosest arm hangs ${s.slack.toFixed(2)} widths past the weave\n` +
-          (s.load === 1
-            ? `every lace is in ${most} of the ${crossings} crossings a level — balanced`
-            : `a ${Math.min(m, n) === m ? 'warp' : 'weft'} lace is in ${most} of the ${crossings} ` +
-              `crossings a level against ${4 * Math.min(m, n)} for the others — ${s.load.toFixed(1)}× the load`);
-        if (s.key === this.sceneSource) b.classList.add('browser-on');
-        grid.appendChild(b);
+    // Hidden while SHOW_ORIGINAL_TWIST_FAMILY is off; the scenes themselves stay
+    // reachable by key, this is only the folder that lists them.
+    if (SHOW_ORIGINAL_TWIST_FAMILY) {
+      body.appendChild(
+        el('h4', 'browser-group', 'Twist family — the original, every m×n face, 10 twists'),
+      );
+      body.appendChild(
+        el(
+          'p',
+          'browser-note',
+          'Rows m, columns n, and each cell quotes its turn. The shading is how far the ' +
+            'loosest arm hangs past the weave: a square face pulls tight, a lopsided one ' +
+            'cannot. Off the diagonal one turn has to serve two bands of different depth, ' +
+            'so the shallower side is left with arm it does not need — and the smaller ' +
+            'family carries the binding alone. Pale cells are ribbons round a spine, not ' +
+            'woven columns. Nothing is broken in them; they are just loose by construction.',
+        ),
+      );
+      const grid = el('div', 'browser-grid');
+      grid.style.gridTemplateColumns = `auto repeat(${TWIST_MAX}, 1fr)`;
+      grid.appendChild(el('span', 'browser-axis', ''));
+      for (let n = 1; n <= TWIST_MAX; n++) grid.appendChild(el('span', 'browser-axis', `n=${n}`));
+      for (let m = 1; m <= TWIST_MAX; m++) {
+        grid.appendChild(el('span', 'browser-axis', `m=${m}`));
+        for (let n = 1; n <= TWIST_MAX; n++) {
+          const s = TWIST_FAMILY.find((x) => x.m === m && x.n === n)!;
+          const b = pill('', () => pick(s.key));
+          b.classList.add('browser-cell');
+          // Fade with the slack, so the usable region of the family is visible at a
+          // glance rather than hidden behind 64 identical buttons.
+          b.style.setProperty('--slack', String(Math.min(1, s.slack / 6)));
+          b.appendChild(el('b', undefined, `${m}×${n}`));
+          b.appendChild(el('small', undefined, `${s.turn.toFixed(1)}°`));
+          b.appendChild(
+            el('small', 'browser-slack', s.slack < 1 ? 'tight' : `+${s.slack.toFixed(1)}w`),
+          );
+          const crossings = 4 * m * n;
+          const most = 4 * Math.max(m, n);
+          b.title =
+            `${m}×${n} — ${m + n} laces, ${2 * (m + n)} arms a level, turn ${s.turn.toFixed(2)}°\n` +
+            `loosest arm hangs ${s.slack.toFixed(2)} widths past the weave\n` +
+            (s.load === 1
+              ? `every lace is in ${most} of the ${crossings} crossings a level — balanced`
+              : `a ${Math.min(m, n) === m ? 'warp' : 'weft'} lace is in ${most} of the ${crossings} ` +
+                `crossings a level against ${4 * Math.min(m, n)} for the others — ${s.load.toFixed(1)}× the load`);
+          if (s.key === this.sceneSource) b.classList.add('browser-on');
+          grid.appendChild(b);
+        }
       }
+      body.appendChild(grid);
     }
-    body.appendChild(grid);
 
-    // Folder two: the same 64 faces built to the 1xn reference, in both hands.
-    // Hand is a real distinction here and not a label -- the reference tabulates
-    // every size in both, and one is the exact mirror of the other.
+    // The 1xn reference's own 64 faces, in both hands. Hand is a real distinction
+    // here and not a label -- the reference tabulates every size in both, and one
+    // is the exact mirror of the other.
     body.appendChild(
       el('h4', 'browser-group', 'Twist family — the 1×n reference, every m×n face, 10 levels, both hands'),
     );
@@ -1015,14 +1035,17 @@ export class Panel {
       el(
         'p',
         'browser-note',
-        'The same 64 faces built to the 1×n reference. Two things change. Laces now ' +
+        (SHOW_ORIGINAL_TWIST_FAMILY
+          ? 'The same 64 faces built to the 1×n reference. '
+          : 'All 64 m×n faces, built to the 1×n reference. ') +
+          'Two things change from the original single-turn law. Laces now ' +
           'sit a tenth of a width apart instead of touching, so the weave is no longer ' +
           'jammed against itself; and the turn comes out of that clearance rather than ' +
           'being assumed — 50.03° at a 1×1, where the original says 45°, and 45° turns ' +
           'out to overlap the laces. Each cell quotes its turn, and its tooltip what the ' +
           "reference's larger fan wants. A column cannot have that larger angle: its few " +
           'laces would no longer reach across the wide band, and the weave comes apart. ' +
-          'That is why the shading off the diagonal is unchanged — the slack is real, and ' +
+          'That is why the shading off the diagonal survives the new angles — the slack is real, and ' +
           'it is not the turn that causes it.',
       ),
     );
