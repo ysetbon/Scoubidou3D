@@ -53,10 +53,11 @@ the panel already was (`Layers`) and a note you read once and then read forever
 (`TOP = FRONT`), while the masks rode in a dashed card wedged above a stack they are
 not part of — a mask is a crossing, not a storey. Both went, and the space became a
 switch: **Layers | Masks**, a filled thumb sliding between two marks the app already
-uses (the Level button's stacked slabs, and one band crossing over another). The mask
-count rides on the Masks side, so putting the crossings out of sight does not put out
-of sight that there are any, and `TOP = FRONT` moved into the About sheet where the
-rest of the prose lives.
+uses (the Level button's stacked slabs, and one band crossing over another). Two words
+and two marks, and nothing else — the Masks side carried the crossing count for a day,
+which is three digits on a woven mat and pushed the switch into the Level and Strand
+pills beside it, so the number lives in the tooltip instead. `TOP = FRONT` moved into
+the About sheet, where the rest of the prose lives.
 
 Mock 4 is drawn against `../../src/styles.css` rather than `mocks.css` — it changes one
 strip of a panel that already ships, so it is judged in the shipping palette, at the
