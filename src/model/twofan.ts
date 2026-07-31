@@ -41,6 +41,26 @@ export const GAP = 56;
  */
 export const POKE = 32;
 
+/**
+ * HOW MUCH OF THE MAJORITY FAN'S TURN A COLUMN TAKES.
+ *
+ * A lopsided face cannot have the turn its majority fan wants AND the reference's
+ * 56 px offsets: past a certain angle the minority family's arms are no longer
+ * long enough to reach across the majority band. It can have any point on the
+ * line between the two, and this is which point.
+ *
+ *   0 — the minority fan's angle, the ceiling. Nothing opens; the column lays
+ *       shallower than the family you see would.
+ *   1 — the majority fan's angle in full, bought by opening the gap inside each
+ *       lace as far as it takes: 6.28 lace widths at a 1×8.
+ *
+ * 0.67 keeps most of the turn on the near-square faces, where it is nearly free
+ * (7×8 opens to 1.35 widths), and stops the lopsided ones running away (1×8 to
+ * 3.04 rather than 6.28). At m = n the two ends are the same angle and this
+ * number does nothing at all — a 1×1 is untouched at any setting.
+ */
+export const COLUMN_DIAL = 0.67;
+
 const STROKE: RGBA = { r: 30, g: 30, b: 30, a: 255 };
 const INDIGO: RGBA = { r: 61, g: 58, b: 140, a: 255 };
 const WEFT: RGBA[] = [
@@ -332,7 +352,6 @@ export function twoFanColumn(
    *  see docs/twist-stitch/attempts/1xn-reference/. Omit for the derived turn. */
   turnOverride?: number,
 ): Scene3D {
-  const g = GAP;
   const cx = 400;
   const cy = 300;
 
@@ -354,15 +373,28 @@ export function twoFanColumn(
   const c = Math.cos(TURN);
   const s = Math.sin(TURN);
 
+  // AND WHAT THE TURN COSTS: the gap inside a lace.
+  //
+  // The landing law fixes an arm's length from the turn and the two offsets, so
+  // the only way to make a steeper turn reachable is to move the offsets. Open
+  // the gap between a lace's OWN two arms — leaving the gap between laces at the
+  // reference's floor — and those arms get longer for free. `columnGaps` solves
+  // for the least opening this turn needs, which is none at all on the diagonal.
+  const inner = columnGaps(m, n, TURN);
+
   interface Slot {
     warp: boolean;
     off: number;
     dir: number;
   }
+  const weftOff = famOffsets(n, inner.weft);
+  const warpOff = famOffsets(m, inner.warp);
   const slots: Slot[] = [];
-  for (let i = 0; i < 2 * n; i++) slots.push({ warp: false, off: (n - 0.5 - i) * g, dir: 0 });
-  for (let j = 0; j < 2 * m; j++) slots.push({ warp: true, off: (m - 0.5 - j) * g, dir: 0 });
+  for (let i = 0; i < 2 * n; i++) slots.push({ warp: false, off: weftOff[i], dir: 0 });
+  for (let j = 0; j < 2 * m; j++) slots.push({ warp: true, off: warpOff[j], dir: 0 });
   const NW = 2 * n;
+  const weftBand = halfSpan(weftOff);
+  const warpBand = halfSpan(warpOff);
 
   const sib: number[] = [];
   const laces: Array<{ set: number; pair: [number, number] }> = [];
@@ -379,8 +411,9 @@ export function twoFanColumn(
     const sl = slots[k];
     return sl.warp ? { x: cx + sl.off, y: cy + along } : { x: cx + along, y: cy + sl.off };
   };
-  /** Half the perpendicular band this arm crosses — the reference's, in gaps. */
-  const band = (k: number): number => (slots[k].warp ? n - 0.5 : m - 0.5) * g;
+  /** Half the perpendicular band this arm crosses: the other family's own half
+   *  span, which now depends on how far that family had to open. */
+  const band = (k: number): number => (slots[k].warp ? weftBand : warpBand);
   /** The landing law: the length that puts this tip on its sibling's line one level up. */
   const solved = (k: number): number =>
     (slots[sib[k]].off - slots[k].off * c) / ((slots[k].warp ? 1 : -1) * s);
@@ -390,13 +423,26 @@ export function twoFanColumn(
     sl.dir = reach[k] >= 0 ? 1 : -1;
     reach[k] = Math.abs(reach[k]);
   });
-  // The reference's third rule, as a guard: an arm runs to whichever is further,
-  // where the landing law puts it or POKE past the band it has to cross. At this
-  // turn it never fires — and that is the check that the turn is the right one.
-  // At the majority family's angle it fires on every lopsided shape, and the fan
-  // stops being parallel when it does.
-  slots.forEach((_, k) => {
-    reach[k] = Math.max(reach[k], band(k) + POKE);
+  // The reference's third rule, as an assertion rather than a repair.
+  //
+  // This used to read `reach[k] = max(reach[k], band(k) + POKE)`, quietly
+  // lengthening any arm the landing law left short. That extension is what broke
+  // the fold: an arm pushed past where the law put it lands OFF its sibling's
+  // line, so the next strand starts off its own fan line, the level's gaps stop
+  // being equal, and the outermost crossings stop happening. It fired on all 56
+  // lopsided faces and cost 1276 crossings across the family.
+  //
+  // With the gaps solved for the turn there is nothing left to repair, so a short
+  // arm is now a bug in the solver and says so instead of hiding.
+  slots.forEach((sl, k) => {
+    if (reach[k] < band(k) + POKE - 1e-6) {
+      throw new Error(
+        `twoFanColumn ${m}x${n}: ${sl.warp ? 'warp' : 'weft'} slot ${k} reaches ` +
+          `${reach[k].toFixed(2)} but must span ${(band(k) + POKE).toFixed(2)} — ` +
+          `columnGaps did not open far enough for a turn of ` +
+          `${((TURN * 180) / Math.PI).toFixed(3)}°`,
+      );
+    }
   });
   const TAIL = 1.5 * Math.max(...reach);
 
@@ -467,37 +513,131 @@ export function twoFanColumn(
 }
 
 /**
- * The turn a two-fan column of this shape runs at, in radians — the MAJORITY fan's.
+ * The turn a two-fan column of this shape runs at, in radians.
  *
- * This is a chosen trade, not a derivation, and it is worth being plain about which.
+ * A lopsided face has two angles it would like and cannot have both of.
  *
- * The majority family is the one you see: 2·max(m,n) strands against the minority's
- * 2·min. At the minority fan's angle it is handed an arm several widths longer than
- * the shallow band it crosses, and the leftover hangs off the side of every level —
- * six widths on a 1×5. Its own fan angle is the one that lays it tight, and that is
- * what a lopsided face is judged on by eye.
+ * The MAJORITY family is the one you see: 2·max(m,n) strands against the
+ * minority's 2·min. Its own fan angle is what lays it tight, and it is what a
+ * lopsided face is judged on by eye. But the MINORITY family's few laces have to
+ * reach clear across the wide band the majority makes, and reach goes as 1/sin θ,
+ * so past the minority fan's own angle — the CEILING — they no longer span it.
  *
- * WHAT IT COSTS, per face, measured rather than estimated by
- * `npm run probe:turn` and asserted by `npm run check:twofan`:
+ * This used to ship the majority's angle and extend the short arms to cover the
+ * difference. The extension is not free: an arm pushed past where the landing law
+ * put it misses its sibling's line, so the fold breaks, the level's gaps stop
+ * being equal, and the outermost crossings stop happening. It cost 1276 of 51840
+ * crossings across the family and left gaps as tight as 1.1 px between two 46 px
+ * laces. Every one of those was on a lopsided face; the diagonal paid nothing.
  *
- *   - crossings stop being real. A 1×5 keeps 162 of 200 a level, a 1×8 80 of 96.
- *     The minority arms no longer reach clear across the majority band.
- *   - the fan stops having equal gaps. Arms that fall short get extended to
- *     compensate, and on a 1×5 the level's gaps run 56 to 167.6 px against the
- *     reference's floor of 56 and ceiling of 69.
+ * There is a third thing to spend instead, and it is the gap INSIDE a lace. The
+ * spacing between one lace and the next is the reference's floor and stays there,
+ * but a lace's own two arms are only 56 px apart because nothing said otherwise.
+ * Open that and the landing law hands those arms more length for nothing. Enough
+ * of it and any angle up to the majority's is reachable with the fold intact.
  *
- * Faces on the diagonal pay nothing: at m = n the reference's two fans coincide, so
- * this IS the minority fan and every crossing and gap is untouched.
+ * So the turn is a dial between the two, `COLUMN_DIAL` says where it sits, and
+ * `columnGaps` solves the least opening that setting needs. At 0.67, every one of
+ * the 64 faces weaves whole — 20736 of 20736 crossings over four levels — with no
+ * gap below the reference's 56 px floor anywhere. What a face pays now is width
+ * rather than crossings: `npm run probe:turn` records it and `npm run
+ * check:twofan` asserts it.
  *
- * `reachTurn` is the angle that keeps a face whole, for comparison.
+ * `ceilingTurnRad` and `majorityTurnRad` are the two ends of the dial.
  */
 export function columnTurnRad(m: number, n: number): number {
+  const lo = ceilingTurnRad(m, n);
+  const hi = majorityTurnRad(m, n);
+  return lo + COLUMN_DIAL * (hi - lo);
+}
+
+/** The steepest turn the reference's own 56 px offsets can carry: the MINORITY
+ *  fan's angle. Below it nothing has to open. */
+export function ceilingTurnRad(m: number, n: number): number {
+  return fan(Math.min(m, n), (2 * Math.max(m, n) - 1) * GAP + 2 * POKE).turn;
+}
+
+/** What the majority fan wants — the angle that lays the family you see tight,
+ *  and the most a column can ever be asked to turn. */
+export function majorityTurnRad(m: number, n: number): number {
   return fan(Math.max(m, n), (2 * Math.min(m, n) - 1) * GAP + 2 * POKE).turn;
 }
 
 /** The turn that keeps every crossing real and every gap at the floor. */
 export function reachTurn(m: number, n: number): number {
-  return (fan(Math.min(m, n), (2 * Math.max(m, n) - 1) * GAP + 2 * POKE).turn * 180) / Math.PI;
+  return (ceilingTurnRad(m, n) * 180) / Math.PI;
+}
+
+/** One family's 2*`count` slot offsets: `inner` between a lace's own two arms,
+ *  the reference's GAP between one lace and the next, centred on zero. With
+ *  `inner === GAP` this is the plain ladder of multiples the column used to lay. */
+export function famOffsets(count: number, inner: number): number[] {
+  const pos: number[] = [];
+  let x = 0;
+  for (let i = 0; i < count; i++) {
+    pos.push(x);
+    pos.push(x - inner);
+    x -= inner + GAP;
+  }
+  const mid = (pos[0] + pos[pos.length - 1]) / 2;
+  return pos.map((p) => p - mid);
+}
+
+const halfSpan = (off: number[]): number => Math.max(...off.map(Math.abs));
+
+/** Does every arm of this family span the band it has to cross, at this turn,
+ *  with the landing law honoured exactly? A strand runs from where the previous
+ *  level's fold left it to where the law puts its own tip, and BOTH ends have to
+ *  clear the band — a tip that reaches while its root sits inside the band still
+ *  misses the crossings on that side. */
+function famSpans(off: number[], turn: number, band: number, warp: boolean): boolean {
+  const c = Math.cos(turn);
+  const s = Math.sin(turn);
+  const sib = (k: number): number => (k % 2 === 0 ? k + 1 : k - 1);
+  const arm = off.map((_, k) => (off[sib(k)] - off[k] * c) / ((warp ? 1 : -1) * s));
+  const need = band + POKE;
+  const TOL = 1e-4; // a ten-thousandth of a pixel; the diagonal is exact and lands here
+  for (let k = 0; k < off.length; k++) {
+    const root = c * arm[k] + (warp ? -s : s) * off[k];
+    const lo = Math.min(root, arm[sib(k)]);
+    const hi = Math.max(root, arm[sib(k)]);
+    if (lo > -need + TOL || hi < need - TOL) return false;
+  }
+  return true;
+}
+
+/** The least `inner` this family needs to span `band` at this turn. */
+function leastInner(count: number, turn: number, band: number, warp: boolean): number {
+  for (let inner = GAP; inner <= 8000; inner++) {
+    if (famSpans(famOffsets(count, inner), turn, band, warp)) return inner;
+  }
+  throw new Error(`no lace gap spans a band of ${band.toFixed(1)} at ${turn.toFixed(4)} rad`);
+}
+
+/**
+ * The least each family has to open, for this face at this turn.
+ *
+ * The two are coupled: opening the weft block widens the band the WARP arms have
+ * to cross, which may force the warp open, which widens the band the weft arms
+ * cross. Widening one alone never works — on a 6×4 the shortfall bottoms out at
+ * −42 px around a 69 px weft gap and gets worse from there. So this walks the
+ * pair up together to the least fixed point, which is the componentwise smallest
+ * answer there is.
+ *
+ * At or below the ceiling the first pass already succeeds at GAP and it returns
+ * the reference's own spacing untouched. On the diagonal that is every turn.
+ */
+export function columnGaps(m: number, n: number, turn: number): { weft: number; warp: number } {
+  let weft = GAP;
+  let warp = GAP;
+  for (let i = 0; i < 64; i++) {
+    const nextWeft = leastInner(n, turn, halfSpan(famOffsets(m, warp)), false);
+    const nextWarp = leastInner(m, turn, halfSpan(famOffsets(n, nextWeft)), true);
+    if (nextWeft === weft && nextWarp === warp) return { weft, warp };
+    weft = nextWeft;
+    warp = nextWarp;
+  }
+  return { weft, warp };
 }
 
 /** The same, in degrees — what the browser cells quote. */
@@ -515,29 +655,35 @@ export interface TwoFanColumnShape {
   slack: number;
   /** `max(m,n)/min(m,n)` — how much more binding one lace does than another. */
   load: number;
-  /** What the reference's majority fan wants, and a column cannot have. */
+  /** What the reference's majority fan wants: the top of the dial. */
   wanted: number;
+  /** The minority fan's angle: the bottom of the dial, where nothing opens. */
+  ceiling: number;
+  /** Gap inside one weft lace, px. `GAP` when the turn costs that family nothing. */
+  innerWeft: number;
+  /** Gap inside one warp lace, px. */
+  innerWarp: number;
 }
 
 export const TWOFAN_COLUMN_FAMILY: TwoFanColumnShape[] = (() => {
   const out: TwoFanColumnShape[] = [];
   for (let m = 1; m <= TWOFAN_MAX; m++) {
     for (let n = 1; n <= TWOFAN_MAX; n++) {
-      const t = (columnTurn(m, n) * Math.PI) / 180;
+      const t = columnTurnRad(m, n);
       const c = Math.cos(t);
       const s = Math.sin(t);
+      const inner = columnGaps(m, n, t);
+      const off = { weft: famOffsets(n, inner.weft), warp: famOffsets(m, inner.warp) };
       let slack = 0;
       for (const warp of [false, true]) {
-        const cnt = warp ? m : n;
-        const band = (warp ? n - 0.5 : m - 0.5) * GAP;
-        for (let i = 0; i < 2 * cnt; i++) {
-          const off = (cnt - 0.5 - i) * GAP;
-          const sib = (cnt - 0.5 - (i % 2 === 0 ? i + 1 : i - 1)) * GAP;
-          const reach = Math.abs((sib - off * c) / ((warp ? 1 : -1) * s));
+        const mine = warp ? off.warp : off.weft;
+        const band = Math.max(...(warp ? off.weft : off.warp).map(Math.abs));
+        for (let i = 0; i < mine.length; i++) {
+          const sib = mine[i % 2 === 0 ? i + 1 : i - 1];
+          const reach = Math.abs((sib - mine[i] * c) / ((warp ? 1 : -1) * s));
           slack = Math.max(slack, (reach - band) / W);
         }
       }
-      const wanted = (fan(Math.max(m, n), (2 * Math.min(m, n) - 1) * GAP + 2 * POKE).turn * 180) / Math.PI;
       out.push({
         key: `twofan-col-${m}x${n}-10`,
         m,
@@ -545,7 +691,10 @@ export const TWOFAN_COLUMN_FAMILY: TwoFanColumnShape[] = (() => {
         turn: columnTurn(m, n),
         slack,
         load: Math.max(m, n) / Math.min(m, n),
-        wanted,
+        wanted: (majorityTurnRad(m, n) * 180) / Math.PI,
+        ceiling: (ceilingTurnRad(m, n) * 180) / Math.PI,
+        innerWeft: inner.weft,
+        innerWarp: inner.warp,
       });
     }
   }

@@ -6,7 +6,7 @@
 // (docs/twist-stitch/attempts/1xn-reference/measured.json).
 import {
   twoFanStitch, twoFanColumn, columnTurn, stitchKey, columnKey,
-  TWOFAN_FAMILY, TWOFAN_MAX, HANDS, GAP, W,
+  TWOFAN_FAMILY, TWOFAN_MAX, HANDS, GAP, W, COLUMN_DIAL,
 } from '../src/model/twofan';
 import { collectJunctions } from '../src/model/connections';
 import { levelAt } from '../src/model/levels';
@@ -89,10 +89,11 @@ console.log(
 );
 
 // ---- and the column, over the whole family -------------------------------
-// The shipped turn is the MAJORITY fan's, which lays the family you see tight and
-// costs crossings and gap regularity to do it. That cost is a decision, so it is
-// asserted rather than tolerated: scripts/twofan-cost.json records it face by face
-// and any drift names the face that moved.
+// The shipped turn sits COLUMN_DIAL of the way from the minority fan's angle to the
+// majority's, and is paid for by opening the gap inside a lace rather than by
+// extending an arm. So there is no loss left to tolerate: every face must weave
+// whole, and what it cost in width is what scripts/twofan-cost.json records, face
+// by face, so any drift names the face that moved.
 const expected = (COST as { faces: Record<string, { kept: number; want: number; gmin: number; gmax: number }> }).faces;
 let drift = 0;
 let kept = 0;
@@ -114,18 +115,32 @@ for (let m = 1; m <= TWOFAN_MAX; m++) {
     if (c.kept === c.want) whole++;
     if (Math.abs(c.gmin - GAP) < 1e-6 && Math.abs(c.gmax - GAP) < 1e-6) tidy++;
     tightest = Math.min(tightest, c.gmin);
-    // The diagonal must pay nothing: there the reference's two fans are one angle.
+    // Nothing is extended any more, so nothing may be lost. A face that drops a
+    // crossing means columnGaps did not open far enough, or the guard in
+    // twoFanColumn stopped throwing when it should.
+    if (c.kept !== c.want) {
+      drift++;
+      console.log(`  INCOMPLETE ${m}x${n}: ${c.kept}/${c.want} — a face may not lose crossings`);
+    }
+    // No gap may fall below the reference's floor: that would be two laces
+    // overlapping, which is worse than the crossing it was bought with.
+    if (c.gmin < GAP - 1e-6) {
+      drift++;
+      console.log(`  TIGHT ${m}x${n}: gap ${c.gmin} px is under the ${GAP} px floor`);
+    }
+    // The diagonal must pay nothing: there the reference's two fans are one angle,
+    // so the dial has nothing to interpolate and no lace has to open.
     if (m === n && (c.kept !== c.want || Math.abs(c.gmin - GAP) > 1e-6 || Math.abs(c.gmax - GAP) > 1e-6)) {
       drift++;
       console.log(`  DIAGONAL ${m}x${n} should be untouched but is not`);
     }
   }
 }
-console.log(`\ncolumn, all ${TWOFAN_MAX * TWOFAN_MAX} faces x 4 levels, at the majority fan's turn:`);
+console.log(`\ncolumn, all ${TWOFAN_MAX * TWOFAN_MAX} faces x 4 levels, at ${COLUMN_DIAL} of the way up the dial:`);
 console.log(`  crossings kept        ${kept}/${want}`);
 console.log(`  faces weaving whole   ${whole}/64`);
-console.log(`  faces all gaps at ${GAP}  ${tidy}/64  (the m = n faces, which pay nothing)`);
-console.log(`  tightest gap anywhere ${tightest.toFixed(1)} px  (two ${W} px laces)`);
+console.log(`  faces opening nothing ${tidy}/64  (the m = n faces, where the two fans are one angle)`);
+console.log(`  tightest gap anywhere ${tightest.toFixed(1)} px  (two ${W} px laces, floor is ${GAP})`);
 console.log(`  faces off the snapshot ${drift}`);
 console.log(`  turn on the diagonal, where the reference has one angle and this IS it:`);
 for (const k of [1, 2, 4, 8]) {

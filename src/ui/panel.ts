@@ -1374,10 +1374,12 @@ export class Panel {
           b.title =
             `${m}×${n} ${hand.toUpperCase()} — ${m + n} laces, ${2 * (m + n)} arms a level, ` +
             `turn ${s.turn.toFixed(2)}° ${sense}\n` +
-            "gap 1.217 widths — the reference's floor, w + 10\n" +
-            (Math.abs(s.wanted - s.turn) < 0.005
+            `between laces 1.217 widths — the reference's floor, w + 10\n` +
+            (Math.abs(s.wanted - s.ceiling) < 0.005
               ? `m = n, so the reference's two fans coincide and this IS its angle`
-              : `its larger fan wants ${s.wanted.toFixed(2)}°, which a column cannot take`) +
+              : `its two fans want ${s.ceiling.toFixed(2)}° and ${s.wanted.toFixed(2)}°; ` +
+                `this sits between them, bought by opening a lace to ` +
+                `${(Math.max(s.innerWeft, s.innerWarp) / 46).toFixed(2)} widths inside`) +
             `\nloosest arm hangs ${s.slack.toFixed(2)} widths past the weave`;
           if (key === this.sceneSource) b.classList.add('browser-on');
           g2.appendChild(b);

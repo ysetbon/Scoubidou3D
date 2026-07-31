@@ -1,24 +1,29 @@
-// What the majority-fan turn costs, face by face -- and the turn that would cost
-// nothing, for comparison.
+// What the turn costs, face by face.
 //
 //   npm run probe:turn                 report
 //   npm run probe:turn -- --write      also refresh scripts/twofan-cost.json
 //
-// THE TRADE. A lopsided face has two candidate turns. The MINORITY fan's keeps
-// every crossing real and every gap at the floor, and hands the majority family an
-// arm several widths longer than the shallow band it crosses -- six on a 1x5 -- so
-// the overhang bundles up on two sides of every level. The MAJORITY fan's lays that
-// family tight, which is what the face is judged on by eye, and is what ships.
+// THE TRADE. A lopsided face has two candidate turns. The MINORITY fan's is the
+// steepest the reference's 56 px offsets can carry: below it every arm spans its
+// band outright. The MAJORITY fan's lays the family you see tight, which is what
+// the face is judged on by eye, and is steeper than that on every lopsided shape.
 //
-// It is not free, and the point of this script is that the price is measured rather
-// than argued. Past the minority turn the minority arms stop reaching across the
-// majority band; the generator extends them to compensate; crossings stop being
-// real and the level's gaps stop being equal. Some open -- 167.6 px on a 1x5 against
-// a ceiling of 69. Some CLOSE: 1.1 px on a 4x8, which is two 46 px laces nearly on
-// top of each other. Faces on the diagonal pay nothing, because there the
+// The column used to take the majority's and extend the short arms to cover the
+// difference, which broke the fold and cost 1276 of 51840 crossings, with gaps
+// running from 1.1 px to 229.8 px against a reference floor of 56 and ceiling of
+// 69. It now takes a point between the two -- COLUMN_DIAL -- and pays for it by
+// opening the gap INSIDE each lace instead, which the landing law turns into arm
+// length for free. Nothing is extended and nothing is lost.
+//
+// So this script no longer measures a loss. It measures what the turn now costs in
+// width: how far each family had to open, and how far the majority family's loosest
+// arm still overhangs. Faces on the diagonal pay neither, because there the
 // reference's two fans are the same angle.
 import { readFileSync, writeFileSync } from 'node:fs';
-import { twoFanColumn, columnTurn, columnTurnRad, reachTurn, GAP, W, TWOFAN_MAX } from '../src/model/twofan';
+import {
+  twoFanColumn, columnTurn, columnTurnRad, reachTurn, columnGaps, famOffsets,
+  GAP, W, TWOFAN_MAX,
+} from '../src/model/twofan';
 
 const seg = (a: any, b: any): boolean => {
   const d = (p: any, q: any, r: any) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
@@ -31,20 +36,23 @@ export interface FaceCost {
   kept: number; want: number; gmin: number; gmax: number; over: number;
   /** The shipped turn and the overhang, against what the minority fan would give. */
   turn?: number; was?: number; wasOver?: number;
+  /** Gap inside one lace of each family, px — what the turn is bought with. */
+  iw?: number; ip?: number;
 }
 
-/** How far the majority family's loosest arm hangs past its band, in widths. */
+/** How far the majority family's loosest arm hangs past its band, in widths, in
+ *  the construction this turn actually builds. */
 export function bigOvershoot(m: number, n: number, turn: number): number {
   const c = Math.cos(turn);
   const s = Math.sin(turn);
-  const cnt = Math.max(m, n);
-  const warp = m > n;
-  const band = (Math.min(m, n) - 0.5) * GAP;
+  const inner = columnGaps(m, n, turn);
+  const warp = m > n; // the majority family; at m === n either answers
+  const mine = famOffsets(warp ? m : n, warp ? inner.warp : inner.weft);
+  const band = Math.max(...famOffsets(warp ? n : m, warp ? inner.weft : inner.warp).map(Math.abs));
   let w = 0;
-  for (let i = 0; i < 2 * cnt; i++) {
-    const off = (cnt - 0.5 - i) * GAP;
-    const sib = (cnt - 0.5 - (i % 2 === 0 ? i + 1 : i - 1)) * GAP;
-    w = Math.max(w, (Math.abs((sib - off * c) / ((warp ? 1 : -1) * s)) - band) / W);
+  for (let i = 0; i < mine.length; i++) {
+    const sib = mine[i % 2 === 0 ? i + 1 : i - 1];
+    w = Math.max(w, (Math.abs((sib - mine[i] * c) / ((warp ? 1 : -1) * s)) - band) / W);
   }
   return w;
 }
@@ -86,11 +94,14 @@ if (process.argv[1]?.includes('probe-turn')) {
   for (let m = 1; m <= TWOFAN_MAX; m++) {
     for (let n = 1; n <= TWOFAN_MAX; n++) {
       const c = faceCost(m, n);
+      const inner = columnGaps(m, n, columnTurnRad(m, n));
       snap[`${m}x${n}`] = {
         ...c,
         turn: +columnTurn(m, n).toFixed(2),
         was: +reachTurn(m, n).toFixed(2),
         wasOver: +bigOvershoot(m, n, (reachTurn(m, n) * Math.PI) / 180).toFixed(2),
+        iw: inner.weft,
+        ip: inner.warp,
       };
       if (c.kept === c.want) whole++;
       if (Math.abs(c.gmin - GAP) < 1e-6 && Math.abs(c.gmax - GAP) < 1e-6) tidy++;
@@ -105,11 +116,13 @@ if (process.argv[1]?.includes('probe-turn')) {
   }
   console.log(`${'face'.padEnd(7)}${'turn was -> now'.padEnd(18)}${'overhang was -> now'.padEnd(20)}${'crossings'.padEnd(14)}gaps`);
   console.log(rows.join('\n'));
-  console.log(`\nmean overhang        ${(was / 64).toFixed(2)}w -> ${(now / 64).toFixed(2)}w   <- what the retune buys`);
+  const widest = Math.max(...Object.values(snap).map((f) => Math.max(f.iw ?? GAP, f.ip ?? GAP)));
+  console.log(`\nmean overhang        ${(was / 64).toFixed(2)}w -> ${(now / 64).toFixed(2)}w   <- what the dial buys`);
   console.log(`crossings kept       ${kept}/${want}`);
-  console.log(`faces weaving whole  ${whole}/64   (was 64/64)`);
-  console.log(`faces all gaps at 56 ${tidy}/64   (was 64/64 -- these are the m = n faces, which pay nothing)`);
-  console.log(`\nThe minority fan is the turn that costs none of this. It is in reachTurn().`);
+  console.log(`faces weaving whole  ${whole}/64`);
+  console.log(`faces opening nothing ${tidy}/64  -- the m = n faces, where the two fans are one angle`);
+  console.log(`widest lace gap      ${widest} px = ${(widest / W).toFixed(2)}w   <- what the dial costs`);
+  console.log(`\nThe dial is COLUMN_DIAL in twofan.ts. 0 is reachTurn() and opens nothing.`);
   if (process.argv.includes('--write')) {
     const note = JSON.parse(readFileSync('scripts/twofan-cost.json', 'utf8'))._;
     writeFileSync('scripts/twofan-cost.json', JSON.stringify({ _: note, faces: snap }, null, 0));
