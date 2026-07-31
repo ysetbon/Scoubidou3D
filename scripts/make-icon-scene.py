@@ -49,8 +49,11 @@ _slots = max(1, (ROUNDS + 1) // 2)
 STEP = SPREAD if _slots < 2 else max(SPLAY, SPREAD / (_slots - 1))
 
 
+OVER = float(sys.argv[4]) if len(sys.argv) > 4 else Q
+
+
 def overhang(fold):
-    return Q + STEP * (fold // 2)
+    return OVER + STEP * (fold // 2)
 
 
 class Arm:

@@ -1,10 +1,9 @@
 // The project's icon, shot from the running app.
 //
-// The favicon is not a drawing of a scoubidou — it IS one: the starting box
-// stitch of scripts/icon-scene.json, rendered by the app's own WebGL canvas
-// with the grid off and the paper knocked out, so what lands in the browser tab
-// is the weave itself on transparency rather than a tile of cream with a weave
-// inside it.
+// The favicon is not a drawing of a scoubidou — it IS one: the box stitch of
+// scripts/icon-scene.json, rendered by the app's own WebGL canvas with the grid
+// off and the paper knocked out, so what lands in the browser tab is the weave
+// itself on transparency rather than a tile of cream with a weave inside it.
 //
 //   npm run dev -- --port 5178 --strictPort   # in one shell
 //   node scripts/icon-shot.mjs                # in another
@@ -22,10 +21,10 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 const PORT = process.env.PORT ?? '5178';
 const OUT = process.env.OUT ?? 'public';
-// The scene the icon is of, as a saved .json — the four-fold starting stitch
-// with its arms trimmed back to stubs. Trimmed because an icon is a square and
-// the app's own sample runs its arms right off to the edge of the canvas, which
-// in a square frame shrinks the knot in the middle to nothing.
+// The scene the icon is of, as a saved .json (scripts/make-icon-scene.py emits
+// it): a box stitch of a few rounds with its tails trimmed back to stubs.
+// Trimmed because an icon is a square, and the sample's full-length tails
+// shrink the knot in the middle of it to nothing.
 const SCENE = process.env.SCENE ?? 'scripts/icon-scene.json';
 const MASTER = 2048;
 // Written as their own files…
@@ -43,6 +42,15 @@ const EL = Number(process.env.EL ?? 55);
 // How much of the frame the model's projected extent takes, on its wider axis.
 const FILL = Number(process.env.FILL ?? 0.9);
 const FOV = Number(process.env.FOV ?? 30);
+
+// Ribbon settings, overridable for a look. The gap between layers is the one
+// that matters here: at the app's default two ribbons that overlap without
+// crossing sit close enough to interpenetrate, and where they do there is no
+// outline between them — the yellow simply turns orange mid-ribbon. Opening the
+// gap parts them, which is the same thing pulling a real stitch snug does.
+const LAYER_GAP = Number(process.env.LAYER_GAP ?? 10);
+const WEAVE_DEPTH = Number(process.env.WEAVE_DEPTH ?? 26);
+const ROUND_CAPS = process.env.ROUND_CAPS === '1';
 
 mkdirSync(OUT, { recursive: true });
 
@@ -69,7 +77,7 @@ await page.evaluate(() => window.dispatchEvent(new Event('resize')));
 await page.waitForTimeout(500);
 
 const shots = await page.evaluate(
-  async ({ az, el, fill, fov, master, sizes, sceneText }) => {
+  async ({ az, el, fill, fov, master, sizes, sceneText, layerGap, weaveDepth, roundCaps }) => {
     const { view } = window.__scoubidou;
     // The saved scene, read by the app's own loader — same path a dropped file
     // takes, so the icon is of exactly what the .json says and not of a sample
@@ -81,7 +89,7 @@ const shots = await page.evaluate(
     // Grid off and paper gone — this is what makes the PNG a cut-out. Square
     // ends rather than round: the open end of a ribbon shows its thickness, and
     // thickness is the thing this project has that a flat drawing does not.
-    view.setParams({ showGrid: false, roundCaps: false });
+    view.setParams({ showGrid: false, roundCaps, layerGap, weaveDepth });
     view.scene.background = null;
 
     const cam = view.camera;
@@ -197,7 +205,7 @@ const shots = await page.evaluate(
     }
     return out;
   },
-  { az: AZ, el: EL, fill: FILL, fov: FOV, master: MASTER, sizes: SIZES, sceneText },
+  { az: AZ, el: EL, fill: FILL, fov: FOV, master: MASTER, sizes: SIZES, sceneText, layerGap: LAYER_GAP, weaveDepth: WEAVE_DEPTH, roundCaps: ROUND_CAPS },
 );
 
 await browser.close();
