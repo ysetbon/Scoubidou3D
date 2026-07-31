@@ -246,7 +246,9 @@ header {
   /* With the nav hidden on a narrow screen the wordmark and the theme switch end
      up in adjacent columns, and without this they touch. */
   gap: 16px;
-  min-height: 82px;
+  /* Tall, because the lockup in it is: the mark is the stitch rendered by the
+     app, and at favicon size that render is a smudge. Follows the mark. */
+  min-height: clamp(92px, 11vw, 176px);
   padding: 0 4.5vw;
   border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--cream) 91%, transparent);
@@ -257,7 +259,7 @@ header {
   display: inline-flex;
   align-items: center;
   justify-self: start;
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 750;
   letter-spacing: -0.05em;
 }
@@ -271,30 +273,56 @@ header {
    crossing in three rectangles — near enough at 36px, but a drawing of the
    product rather than the product. */
 .mark {
-  width: 64px;
-  height: 64px;
+  width: 76px;
+  height: 76px;
   margin-right: 14px;
   object-fit: contain;
 }
 
+/* Beside the wordmark rather than above a heading. Still big enough that the
+   weave reads as a weave — a stitch shrunk to a favicon next to the type looks
+   like a smudge someone left there. */
 .mark.small {
-  width: 36px;
-  height: 36px;
-  margin-right: 10px;
+  width: 46px;
+  height: 46px;
+  margin-right: 12px;
+}
+
+/* The masthead lockup: four times the mark the header used to carry, and type
+   to match. This is the one place on the site that gets to state what the thing
+   IS before saying anything about it, so the stitch is shown at a size where
+   you can see it is woven. The footer keeps the small mark — it is a sign-off,
+   not an introduction. */
+header .brand {
+  font-size: clamp(22px, 2.2vw, 44px);
+}
+
+/* Full size on a desktop screen, and giving ground before the nav has to — the
+   masthead and eight links are competing for the same line. */
+header .mark.small {
+  width: clamp(56px, 7.5vw, 144px);
+  height: clamp(56px, 7.5vw, 144px);
+  margin-right: clamp(12px, 1.2vw, 22px);
 }
 
 header nav {
   display: flex;
-  gap: 34px;
+  /* Was a flat 34px. The masthead takes the room it takes, so the nav gives
+     ground down to 18px before anything wraps — a two-word link broken over two
+     lines reads as two links. */
+  gap: clamp(18px, 2.4vw, 34px);
 }
 
 header nav a {
   font-size: 13px;
   font-weight: 650;
+  white-space: nowrap;
 }
 
-header > .btn {
+header > .btn,
+.headEnd .btn {
   justify-self: end;
+  white-space: nowrap;
 }
 
 /* The header's right-hand pair: the theme switch, then the CTA. */
@@ -1458,7 +1486,7 @@ footer small {
 
 /* ---- responsive ----------------------------------------------------------- */
 
-@media (max-width: 1050px) {
+@media (max-width: 1150px) {
   header {
     grid-template-columns: 1fr auto;
   }
@@ -1533,13 +1561,25 @@ footer small {
     margin: 0;
   }
 
+  /* The masthead comes back down on a phone: a 144px mark in a sticky bar would
+     be most of the screen before a word of the page showed. */
   header {
-    min-height: 68px;
+    min-height: 92px;
     padding: 0 18px;
   }
 
   .brand {
     font-size: 19px;
+  }
+
+  header .brand {
+    font-size: 21px;
+  }
+
+  header .mark.small {
+    width: 52px;
+    height: 52px;
+    margin-right: 10px;
   }
 
   header > .btn {
@@ -1693,6 +1733,50 @@ footer small {
   footer p,
   footer nav {
     justify-self: start;
+  }
+}
+
+/* A phone in portrait. The masthead and the studio button are on one line and
+   there is no line to spare: the mark comes down again, the padding closes up,
+   and the pair on the right stops carrying a 14px gap between two things that
+   are 8px apart on a 320px screen anyway. */
+@media (max-width: 480px) {
+  header {
+    min-height: 78px;
+    padding: 0 12px;
+  }
+
+  header .brand {
+    font-size: 17px;
+  }
+
+  header .mark.small {
+    width: 40px;
+    height: 40px;
+    margin-right: 8px;
+  }
+
+  .headEnd {
+    gap: 8px;
+  }
+
+  .headEnd .btn {
+    padding: 0 13px;
+    font-size: 12px;
+  }
+}
+
+/* Narrower than any phone still sold, but the page was already spilling
+   sideways there before the masthead grew. The mark alone says it: it is the
+   favicon, it is at the top left, and it links home — the word beside it is the
+   part that can go. */
+@media (max-width: 380px) {
+  header .brand span {
+    display: none;
+  }
+
+  header .mark.small {
+    margin-right: 0;
   }
 }
 

@@ -2457,14 +2457,13 @@ function syncThemeButtons(): void {
 const svg = (body: string): string =>
   `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${body}</svg>`;
 
-// The brand mark, as on the project site: a gold lace with a coral one over it,
-// which is the whole product in three rectangles.
+// The brand mark, as on the project site and in the browser tab: a three-round
+// box stitch, rendered by this very app (scripts/icon-shot.mjs) and cut out of
+// its paper. BASE_URL rather than a relative path — the icon sits at the root of
+// the site while this page is served from /app/, and the root moves when the
+// build is based somewhere else.
 const MARK =
-  '<svg class="mark" viewBox="0 0 72 72" aria-hidden="true" focusable="false">' +
-  '<path class="ma" d="M9 16h54v16H9z" />' +
-  '<path class="mb" d="M28 8h16v56H28z" />' +
-  '<path class="mt" d="M28 16h16v16H28z" />' +
-  '</svg>';
+  `<img class="mark" src="${import.meta.env.BASE_URL}icon-192.png" alt="" aria-hidden="true" />`;
 
 // The stacked-layers mark used by the "Level" button and by the level badges: a
 // slab seen edge-on with a second one showing beneath it — one storey above
