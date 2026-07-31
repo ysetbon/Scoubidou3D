@@ -33,12 +33,12 @@ const PNGS = [512, 192, 180, 32];
 const ICO = [48, 32, 16];
 const SIZES = [...new Set([...PNGS, ...ICO])];
 
-// A flat stitch wants to be looked down on — from low down its own crossings
-// hide each other, and the over/under that the whole project is about is the one
-// thing the icon has to show. High, but not straight overhead: some tilt is what
-// gives the ribbons a visible thickness rather than four flat bars.
+// High enough that the over/under the whole project is about is legible — from
+// low down a stitch's crossings hide each other — but low enough that the three
+// rounds still read as three. Straight overhead would be clearest of all and
+// would throw away the one thing this has that a drawing does not: height.
 const AZ = Number(process.env.AZ ?? 34);
-const EL = Number(process.env.EL ?? 55);
+const EL = Number(process.env.EL ?? 40);
 // How much of the frame the model's projected extent takes, on its wider axis.
 const FILL = Number(process.env.FILL ?? 0.9);
 const FOV = Number(process.env.FOV ?? 30);

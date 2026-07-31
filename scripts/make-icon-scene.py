@@ -19,6 +19,13 @@ TAIL is how far past the corner the LAST round's four ends run — they are the
 loose tails, never folded again. The sample uses 120; an icon is a square, and
 spokes that long shrink the knot in the middle of it, so this takes a shorter
 one by default.
+
+MIND THE HAND EDIT. scripts/icon-scene.json started here but was then adjusted
+in the app: both pinned middles were pulled longer, because at the bottom round
+the yellow arm's open end sat directly over the orange run it dives under, and
+through a square-cut end you could see the orange inside the yellow. Re-running
+this script overwrites that. Re-run it to change the round count or the tails,
+then fix that corner again — or edit the .json.
 """
 import json
 import sys
