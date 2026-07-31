@@ -1345,11 +1345,14 @@ export class Panel {
           'sit a tenth of a width apart instead of touching, so the weave is no longer ' +
           'jammed against itself; and the turn comes out of that clearance rather than ' +
           'being assumed — 50.03° at a 1×1, where the original says 45°, and 45° turns ' +
-          'out to overlap the laces. Each cell quotes its turn, and its tooltip what the ' +
-          "reference's larger fan wants. A column cannot have that larger angle: its few " +
-          'laces would no longer reach across the wide band, and the weave comes apart. ' +
-          'That is why the shading off the diagonal survives the new angles — the slack is real, and ' +
-          'it is not the turn that causes it.',
+          'out to overlap the laces. Each cell quotes its turn, and its tooltip the two ' +
+          'angles a lopsided face is caught between: the smaller fan’s, which its few ' +
+          'laces can always reach across, and the larger fan’s, which lays the family ' +
+          'you see tight. It takes a point between them and pays for it by opening the gap ' +
+          'inside a lace — never between laces, which stay at the floor — so every face ' +
+          'weaves whole, every crossing real. The shading off the diagonal is the slack ' +
+          'that remains: real, and not something the turn can spend away. On the diagonal ' +
+          'the two fans are one angle, so those eight faces pay nothing and are untouched.',
       ),
     );
     for (const { hand, label, sense } of HANDS) {
