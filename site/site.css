@@ -246,9 +246,10 @@ header {
   /* With the nav hidden on a narrow screen the wordmark and the theme switch end
      up in adjacent columns, and without this they touch. */
   gap: 16px;
-  /* Tall, because the lockup in it is: the mark is the stitch rendered by the
-     app, and at favicon size that render is a smudge. Follows the mark. */
-  min-height: clamp(92px, 11vw, 176px);
+  /* Taller than it was, because the lockup in it is: the mark is the stitch
+     rendered by the app, and at favicon size that render is a smudge. Follows
+     the mark. */
+  min-height: clamp(84px, 8vw, 118px);
   padding: 0 4.5vw;
   border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--cream) 91%, transparent);
@@ -294,15 +295,15 @@ header {
    you can see it is woven. The footer keeps the small mark — it is a sign-off,
    not an introduction. */
 header .brand {
-  font-size: clamp(22px, 2.2vw, 44px);
+  font-size: clamp(21px, 2vw, 26px);
 }
 
 /* Full size on a desktop screen, and giving ground before the nav has to — the
    masthead and eight links are competing for the same line. */
 header .mark.small {
-  width: clamp(56px, 7.5vw, 144px);
-  height: clamp(56px, 7.5vw, 144px);
-  margin-right: clamp(12px, 1.2vw, 22px);
+  width: clamp(52px, 6.7vw, 86px);
+  height: clamp(52px, 6.7vw, 86px);
+  margin-right: clamp(10px, 1.1vw, 16px);
 }
 
 header nav {
@@ -1561,10 +1562,10 @@ footer small {
     margin: 0;
   }
 
-  /* The masthead comes back down on a phone: a 144px mark in a sticky bar would
-     be most of the screen before a word of the page showed. */
+  /* The masthead comes back down on a phone: a full-size mark in a sticky bar
+     would be most of the screen before a word of the page showed. */
   header {
-    min-height: 92px;
+    min-height: 84px;
     padding: 0 18px;
   }
 
