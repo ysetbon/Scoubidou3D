@@ -1,12 +1,12 @@
 # Panel mocks
 
-Three proposals for the studio's control panel (`src/ui/panel.ts` + `src/styles.css`),
+Proposals for the studio's control panel (`src/ui/panel.ts` + `src/styles.css`),
 drawn in the project site's own design language — cream paper, Georgia headlines over a
 grotesque, hairline rules, coral / gold / teal, pill buttons with a hard offset shadow.
 The tokens are lifted from `site/site.css` so a mock can be judged against the page that
 actually ships rather than against a fresh palette.
 
-All three obey the same rules:
+Mocks 1–3 are the original three, and they obey the same rules:
 
 1. **No prose in the working panel.** Every note the shipping panel prints — the tool
    notes, the weave and level explanations, the colour legends, the storage caveat, the
@@ -22,6 +22,7 @@ All three obey the same rules:
 | [1 — Tabbed panel](./mock-1-tabs.html) | Layers / Ribbon / Scene as three peer tabs, one pane on screen | The stack gets the panel's whole height |
 | [2 — Numbered cards](./mock-2-cards.html) | Settings collapse into `01 / 02 / 03` cards that print their own current values | You read the scene's whole setup without opening anything |
 | [3 — Layers only](./mock-3-dock.html) | Settings leave the panel for a dock over the canvas; a card per level; per-strand inspector in its row | The panel holds nothing but the stack |
+| [4 — Layers / Masks switch](./mock-4-layer-mask-switch.html) | The stack bar's title becomes a two-way switch, and the masks get a view of their own | The panel says what it is showing by showing you how to change it |
 
 ## What shipped
 
@@ -47,7 +48,26 @@ of the panel for the same reason: the ground belongs on the floor. Both came out
 a hand sketch, which was worth more than a mock here — it is what someone reaches
 for when they want to move a storey.
 
-The three mocks stay in the repo as the record of the choice — and as the place to
+**Mock 4, and it shipped too.** The stack bar had grown a title that only named what
+the panel already was (`Layers`) and a note you read once and then read forever
+(`TOP = FRONT`), while the masks rode in a dashed card wedged above a stack they are
+not part of — a mask is a crossing, not a storey. Both went, and the space became a
+switch: **Layers | Masks**, a filled thumb sliding between two marks the app already
+uses (the Level button's stacked slabs, and one band crossing over another). The mask
+count rides on the Masks side, so putting the crossings out of sight does not put out
+of sight that there are any, and `TOP = FRONT` moved into the About sheet where the
+rest of the prose lives.
+
+Mock 4 is drawn against `../../src/styles.css` rather than `mocks.css` — it changes one
+strip of a panel that already ships, so it is judged in the shipping palette, at the
+shipping panel width, with the shipping rows under it. Its first column is the question
+the mock was really for: **which mark for masks**. The Weave tool's own mark is drawn
+on the diagonal for a 24px button and shrinks to a bare ✕ beside a label, so the strip
+puts it next to three others — upright bands, the mask row's two-tone disc, the
+intersect glyph — in both themes and at the size it will actually be read. The upright
+bands won.
+
+The mocks stay in the repo as the record of the choice — and as the place to
 try the next panel idea before touching the app.
 
 ## Both themes
@@ -89,11 +109,17 @@ states its navigation model, and shows the About area at true panel width.
 | `mock-2-cards.png` · `mock-2-cards-dark.png` | mock 2, both themes |
 | `mock-3-dock.png` · `mock-3-dock-dark.png` | mock 3, both themes |
 | `mock-3-dock-about.png` · `mock-3-dock-about-dark.png` | mock 3 with the About sheet open (frame only) |
+| `mock-4-layer-mask-switch.png` | mock 4 — both themes in one shot, four panels each |
 
 The mocks are static HTML — no build step. Open one in a browser, or re-render with
 Playwright at a 1440 × 900 viewport, `deviceScaleFactor: 2`, `fullPage: true`, once per
 theme via `?theme=`; the About shots click `.helpbtn [data-act="about"]` and capture
 `.frame` alone.
 
-The scene shown is the same in all three — a box stitch of 3 rounds, 9 strands, 3 masks,
+Mock 4 is the exception to all of that: one page holds both themes, as a row of
+`<iframe>`s per theme, so a colour is judged against its opposite number rather than
+across a scroll. Shoot it whole at 1520 × 1560, `deviceScaleFactor: 2` — the frames are
+live, so a switch clicked in the page really does swap that panel's body.
+
+The scene shown is the same in all four — a box stitch of 3 rounds, 9 strands, 3 masks,
 3 levels — so the panels are compared on layout alone.

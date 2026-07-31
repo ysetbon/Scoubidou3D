@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Panel mock 4 — Layers / Masks switch</title>
+  <!-- The APP's own stylesheet, not the mocks' copy: this proposal changes one
+       strip of the shipping panel, so it has to be judged in the shipping
+       palette, at the shipping panel width, with the shipping rows under it. -->
+  <link rel="stylesheet" href="../../src/styles.css" />
+  <style>
+    /* ---- mock 4: the stack bar's title becomes a switch ---------------------
+       Today the bar reads  "Layers  TOP = FRONT"  then [Level] [Strand], and the
+       masks ride in a dashed card pinned above the stack. The word "Layers" only
+       ever names what the panel already is, and TOP = FRONT is a fact you learn
+       once and then read forever.
+       So: drop both, and spend the space on a two-way switch — LAYERS | MASKS —
+       that says what the panel is showing AND changes it. Each side carries its
+       own mark (the stacked slabs the Level button already uses; the crossing
+       bands the Weave tool already uses), so the two are told apart without
+       reading, and the "mask" that gets made with Weave is visibly the same
+       thing as the "masks" this side lists. */
+
+    /* ---- the switch --------------------------------------------------------
+       Two equal columns with a filled thumb sliding between them: the thumb takes
+       --fill, which is the token every active control in the app already takes —
+       ink on cream in the light theme, coral in the dark one — so it is the same
+       "this one is on" everywhere, and neither theme needed a colour of its own.
+       Grid rather than flex so the two halves are equal whatever the labels
+       measure, which is what lets the thumb be a plain 50%. */
+    .viewswitch {
+      position: relative;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      margin-right: auto;
+      padding: 2px;
+      border: 1.5px solid var(--edge2);
+      border-radius: 999px;
+      background: var(--cream);
+    }
+
+    .viewswitch-thumb {
+      position: absolute;
+      z-index: 0;
+      top: 2px;
+      left: 2px;
+      width: calc(50% - 2px);
+      height: calc(100% - 4px);
+      border-radius: 999px;
+      background: var(--fill);
+      transition: transform 0.22s cubic-bezier(0.3, 0.85, 0.35, 1);
+    }
+
+    .viewswitch[data-view='masks'] .viewswitch-thumb {
+      transform: translateX(100%);
+    }
+
+    .viewswitch button {
+      position: relative;
+      z-index: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 27px;
+      padding: 0 11px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      transition: color 0.18s;
+    }
+
+    .viewswitch button[aria-selected='true'] {
+      color: var(--fill-ink);
+    }
+
+    .viewswitch button:not([aria-selected='true']):hover {
+      color: var(--ink);
+    }
+
+    .viewswitch svg {
+      width: 14px;
+      height: 14px;
+      flex: 0 0 auto;
+      fill: currentColor;
+    }
+
+    /* The count rides on the MASKS side so the number stays visible from the
+       Layers side — hiding the masks must not hide that there are any. It flips
+       to the thumb's ink when that side is on. */
+    .viewswitch em {
+      font-style: normal;
+      opacity: 0.65;
+    }
+
+    /* ---- the masks view ----------------------------------------------------
+       No card and no header: the switch has just said what these are, and the
+       dashed frame was only ever there to mark them off from the stack they were
+       sitting in. They are not storeys either, so this list starts at the top of
+       the panel rather than hanging from its floor. */
+    .mask-list {
+      flex: 0 0 auto;
+    }
+
+    .mask-list .row + .row {
+      margin-top: 5px;
+    }
+
+    /* Words out, marks only — the other reading of "take the text out of the
+       bar". It fits a phone better and it needs the marks to carry the whole
+       meaning on their own, which is the thing to judge here. */
+    .viewswitch.icons button {
+      padding: 0 15px;
+    }
+
+    /* ---- the mark comparison strip ---- */
+    body.marks {
+      padding: 15px 16px;
+      background: var(--paper);
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+    }
+
+    .markrow {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .markrow > small {
+      width: 46px;
+      flex: 0 0 auto;
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ---- the mock's own page furniture (not proposed UI) ------------------- */
+    body {
+      margin: 0;
+      padding: 26px 24px 34px;
+      background: var(--cream);
+      color: var(--ink);
+      font-family: 'Avenir Next', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    body.frame {
+      padding: 0;
+      background: var(--paper);
+    }
+
+    h1 {
+      margin: 0 0 4px;
+      font-family: Georgia, serif;
+      font-size: 25px;
+      font-weight: 400;
+    }
+
+    .lede {
+      max-width: 760px;
+      margin: 0 0 22px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: 20px;
+    }
+
+    .band {
+      margin-bottom: 26px;
+    }
+
+    .band-title {
+      margin: 0 0 10px;
+      font-family: Georgia, serif;
+      font-size: 17px;
+      font-weight: 400;
+    }
+
+    .cell h2 {
+      margin: 0 0 7px;
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .cell iframe {
+      display: block;
+      width: 344px;
+      height: 560px;
+      border: 1.5px solid var(--edge2);
+      background: #fffaf0;
+      box-shadow: 5px 6px 0 rgba(23, 23, 19, 0.5);
+    }
+
+    .cell iframe.short {
+      height: 292px;
+    }
+
+    /* The panel replica: #panel is `flex: 0 0 var(--panel-w)` inside the app's
+       row, and here it is the whole document. */
+    body.frame #panel {
+      width: 100%;
+      height: 100vh;
+      border-left: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <script>
+    // The frames are shot one theme at a time, as the other mocks are.
+    const Q = new URLSearchParams(location.search);
+    document.documentElement.dataset.theme = Q.get('theme') === 'dark' ? 'dark' : 'light';
+  </script>
+
+  <script type="module">
+    const Q = new URLSearchParams(location.search);
+
+    // ---- the two marks, lifted from the app ---------------------------------
+    // Layers: the stacked slabs the Level button and the level badges already use.
+    // Masks: the Weave tool's own mark — one band crossing another with the lower
+    // one broken where it passes beneath. Using the tool's mark for the list is
+    // the whole point: the thing you make with Weave is the thing listed here.
+    const svg = (b) => `<svg viewBox="0 0 24 24" aria-hidden="true">${b}</svg>`;
+    const LAYERS_ICON = svg(
+      '<path d="M12 3 22 9.2 12 15.4 2 9.2Z" />' +
+        '<path d="M12 17.7 3.7 12.5 2 13.6 12 19.8 22 13.6 20.3 12.5Z" />',
+    );
+    // Three candidates for the masks side, because the toolbar's own mark is
+    // drawn for a 24px button and shrinks to a bare ✕ at label size:
+    //   weave — the Weave tool's mark exactly as it ships, on the diagonal
+    //   cross — the same idea stood upright: one band whole, the other broken
+    //           behind it, which is the whole of what a mask says
+    //   disc  — the mask row's own two-tone disc, over above under
+    //   inter — the intersect glyph every image editor uses for a mask
+    const MASK_MARKS = {
+      weave: svg(
+        '<g transform="rotate(-45 12 12)">' +
+          '<rect x="-1.5" y="9.5" width="10" height="5" rx="2.5" />' +
+          '<rect x="15.5" y="9.5" width="10" height="5" rx="2.5" />' +
+          '</g>' +
+          '<rect x="-1.5" y="9.5" width="27" height="5" rx="2.5" transform="rotate(45 12 12)" />',
+      ),
+      cross: svg(
+        '<rect x="9.7" y="0.6" width="4.6" height="6.6" rx="2.3" />' +
+          '<rect x="9.7" y="16.8" width="4.6" height="6.6" rx="2.3" />' +
+          '<rect x="0.6" y="9.7" width="22.8" height="4.6" rx="2.3" />',
+      ),
+      disc: svg(
+        '<path fill-rule="evenodd" d="M12 2.4a9.6 9.6 0 1 0 0 19.2 9.6 9.6 0 0 0 0-19.2Zm0 2.2a7.4 7.4 0 1 1 0 14.8 7.4 7.4 0 0 1 0-14.8Z" />' +
+          '<path d="M4.6 12a7.4 7.4 0 0 1 14.8 0Z" />',
+      ),
+      inter: svg(
+        '<path d="M9 3.6a8.4 8.4 0 1 0 0 16.8 8.4 8.4 0 0 0 0-16.8Z" opacity="0.42" />' +
+          '<path fill-rule="evenodd" d="M15 3.6a8.4 8.4 0 1 1 0 16.8 8.4 8.4 0 0 1 0-16.8Zm0 2.2a6.2 6.2 0 1 0 0 12.4 6.2 6.2 0 0 0 0-12.4Z" />',
+      ),
+    };
+    const MASK_ICON = MASK_MARKS[Q.get('mark')] ?? MASK_MARKS.cross;
+    const MARK =
+      '<svg class="mark" viewBox="0 0 72 72" aria-hidden="true">' +
+      '<path class="ma" d="M9 16h54v16H9z" /><path class="mb" d="M28 8h16v56H28z" />' +
+      '<path class="mt" d="M28 16h16v16H28z" /></svg>';
+
+    // ---- the scene the panel is showing -------------------------------------
+    // The same one the other mocks draw: a box stitch, 9 strands over 3 levels,
+    // with 3 crossings masked. Bottom-up, as the model stores it.
+    const CORAL = '#ff5c35', GOLD = '#ffd447', TEAL = '#087e8b';
+    const STRANDS = [
+      { id: '1_1', color: CORAL, level: 0 },
+      { id: '2_1', color: GOLD, level: 0 },
+      { id: '3_1', color: TEAL, level: 0 },
+      { id: '1_2', color: CORAL, level: 1, parent: '1_1' },
+      { id: '2_2', color: GOLD, level: 1, parent: '2_1' },
+      { id: '3_2', color: TEAL, level: 1, parent: '3_1' },
+      { id: '1_3', color: CORAL, level: 2, parent: '1_2' },
+      { id: '2_3', color: GOLD, level: 2, parent: '2_2' },
+      { id: '3_3', color: TEAL, level: 2, parent: '3_2' },
+    ];
+    const MASKS = [
+      { over: '1_2', under: '2_1' },
+      { over: '2_2', under: '3_1' },
+      { over: '3_3', under: '1_2' },
+    ];
+
+    const el = (tag, cls, text) => {
+      const n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text !== undefined) n.textContent = text;
+      return n;
+    };
+    const iconBtn = (glyph, title) => {
+      const b = el('button', 'icon-btn', glyph);
+      b.type = 'button';
+      b.title = title;
+      return b;
+    };
+    const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+    /**
+     * The switch. Two tabs and a thumb; `set(view)` moves it, and `onChange` is
+     * how the panel hears about a press. `iconOnly` drops the words, which is the
+     * other reading of "take the text out of the bar".
+     */
+    function makeSwitch({ mark = MASK_ICON, count = 0, iconOnly = false, onChange }) {
+      const sw = el('div', 'viewswitch' + (iconOnly ? ' icons' : ''));
+      sw.setAttribute('role', 'tablist');
+      sw.setAttribute('aria-label', 'What the panel is showing');
+      sw.appendChild(el('span', 'viewswitch-thumb'));
+
+      const tab = (key, icon, label, extra) => {
+        const b = el('button');
+        b.type = 'button';
+        b.setAttribute('role', 'tab');
+        b.innerHTML = icon + (iconOnly ? '' : `<span>${label}</span>${extra ?? ''}`);
+        b.title =
+          key === 'layers'
+            ? 'Show the layer stack — top of the panel is the front of the scene'
+            : 'Show the mask layers — one crossing each, over above under';
+        b.addEventListener('click', () => set(key));
+        return b;
+      };
+      const layersTab = tab('layers', LAYERS_ICON, 'Layers');
+      const masksTab = tab('masks', mark, 'Masks', count ? `<em>${count}</em>` : '');
+      sw.appendChild(layersTab);
+      sw.appendChild(masksTab);
+
+      function set(view) {
+        sw.dataset.view = view;
+        layersTab.setAttribute('aria-selected', String(view === 'layers'));
+        masksTab.setAttribute('aria-selected', String(view === 'masks'));
+        onChange?.(view);
+      }
+      return { node: sw, set };
+    }
+
+    // ---- the frame: one panel, at panel width -------------------------------
+    function buildFrame() {
+      document.body.classList.add('frame');
+      const masks = Q.get('empty') ? [] : MASKS;
+      let view = Q.get('view') === 'masks' ? 'masks' : 'layers';
+
+      const panel = el('aside');
+      panel.id = 'panel';
+
+      const brand = el('div', 'brandbar');
+      const home = el('a', 'brand-home');
+      home.href = '#';
+      home.innerHTML = `${MARK}<span>Scoubidou<i>3D</i></span>`;
+      brand.appendChild(home);
+      brand.appendChild(el('span', 'tag teal', plural(STRANDS.length, 'strand')));
+      panel.appendChild(brand);
+
+      const bar = el('div', 'stackbar');
+      const stack = el('div', 'stack');
+      panel.appendChild(bar);
+      panel.appendChild(stack);
+      document.body.appendChild(panel);
+
+      const sw = makeSwitch({
+        count: masks.length,
+        iconOnly: !!Q.get('icons'),
+        onChange: (next) => showView(next, masks, stack),
+      });
+      bar.appendChild(sw.node);
+      const setView = sw.set;
+
+      // The two adders stay put in both views: pressing one in the masks view
+      // makes a layer you would not be looking at, so it flips the switch back.
+      const addLevel = el('button', 'pill coral');
+      addLevel.type = 'button';
+      addLevel.innerHTML = `${LAYERS_ICON}<span>Level</span>`;
+      addLevel.title = 'Add a level: from now on, new layers rest one storey higher';
+      addLevel.addEventListener('click', () => setView('layers'));
+      bar.appendChild(addLevel);
+
+      const addStrand = el('button', 'pill', 'Strand');
+      addStrand.type = 'button';
+      addStrand.textContent = 'Strand';
+      addStrand.title = 'Drop a new straight strand into the scene';
+      addStrand.addEventListener('click', () => setView('layers'));
+      bar.appendChild(addStrand);
+
+      setView(view);
+    }
+
+    function showView(next, masks, stack) {
+      // The stack hangs from the floor because level 0 is the ground. A mask list
+      // has no ground, so it starts at the top like any other list.
+      stack.classList.toggle('from-bottom', next === 'layers');
+      stack.innerHTML = '';
+      (next === 'layers' ? layersView() : masksView(masks)).forEach((n) => stack.appendChild(n));
+    }
+
+    // ---- the layer stack, exactly as it ships (minus the mask card) ----------
+    function layersView() {
+      const out = [];
+      for (let level = 2; level >= 0; level--) {
+        const rows = STRANDS.map((s, i) => ({ s, i }))
+          .filter((r) => r.s.level === level)
+          .reverse();
+        if (rows.length) {
+          const group = el('div', 'level-group');
+          for (const r of rows) group.appendChild(layerRow(r.s));
+          out.push(group);
+        }
+        out.push(levelBar(level, rows.length));
+      }
+      return out;
+    }
+
+    function levelBar(level, count) {
+      const bar = el('div', 'level-bar' + (level === 0 ? ' ground' : ''));
+      bar.appendChild(el('span', 'level-badge', String(level)));
+      bar.appendChild(el('b', undefined, `Level ${level}`));
+      bar.appendChild(
+        el(
+          'small',
+          undefined,
+          level === 0
+            ? `ground · ${plural(count, 'layer')}`
+            : `+${level} ${level === 1 ? 'storey' : 'storeys'} · ${plural(count, 'layer')}`,
+        ),
+      );
+      if (level > 0) {
+        const acts = el('span', 'row-acts');
+        acts.appendChild(iconBtn('▲', 'Move up'));
+        acts.appendChild(iconBtn('▼', 'Move down'));
+        const del = iconBtn('✕', 'Remove this level');
+        del.classList.add('danger');
+        acts.appendChild(del);
+        bar.appendChild(acts);
+      }
+      return bar;
+    }
+
+    function layerRow(strand) {
+      const row = el('div', 'row');
+      const swatch = el('span', 'swatch');
+      swatch.style.background = strand.color;
+      row.appendChild(swatch);
+      const name = el('button', 'row-name');
+      name.type = 'button';
+      name.appendChild(el('span', 'row-id', strand.id));
+      if (strand.parent) name.appendChild(el('span', 'tag', `↳ ${strand.parent}`));
+      row.appendChild(name);
+      const acts = el('span', 'row-acts');
+      acts.appendChild(iconBtn('●', 'Show / hide'));
+      acts.appendChild(iconBtn('▲', 'Move up'));
+      acts.appendChild(iconBtn('▼', 'Move down'));
+      row.appendChild(acts);
+      return row;
+    }
+
+    // ---- the masks view ------------------------------------------------------
+    function masksView(masks) {
+      if (!masks.length) {
+        const note = el(
+          'p',
+          'empty',
+          'No mask layers yet. Pick Weave in the toolbar, then click the strand that goes over and the one it goes under.',
+        );
+        return [note];
+      }
+      const list = el('div', 'mask-list');
+      const colour = (id) => STRANDS.find((s) => s.id === id)?.color ?? '#888';
+      for (const m of masks) {
+        const row = el('div', 'row row-mask');
+        const disc = el('span', 'mask-disc');
+        disc.style.background = `linear-gradient(180deg, ${colour(m.over)} 50%, ${colour(m.under)} 50%)`;
+        row.appendChild(disc);
+        const name = el('span', 'row-name');
+        name.appendChild(el('span', 'row-id', m.over));
+        name.appendChild(el('span', 'tag coral', 'over'));
+        name.appendChild(el('span', 'row-id', m.under));
+        row.appendChild(name);
+        const acts = el('span', 'row-acts');
+        acts.appendChild(iconBtn('⇅', `${m.over} rides over ${m.under} — click to swap`));
+        const del = iconBtn('✕', 'Delete mask layer');
+        del.classList.add('danger');
+        acts.appendChild(del);
+        row.appendChild(acts);
+        list.appendChild(row);
+      }
+      return [list];
+    }
+
+    // ---- the marks frame: the same switch with each candidate mask mark ------
+    function buildMarks() {
+      document.body.classList.add('marks');
+      const row = (caption, opts, view) => {
+        const line = el('div', 'markrow');
+        line.appendChild(el('small', undefined, caption));
+        const sw = makeSwitch(opts);
+        sw.set(view);
+        line.appendChild(sw.node);
+        return line;
+      };
+      for (const [key, mark] of Object.entries(MASK_MARKS)) {
+        document.body.appendChild(row(key, { mark, count: 3 }, 'masks'));
+      }
+      document.body.appendChild(row('off', { mark: MASK_MARKS.cross, count: 3 }, 'layers'));
+      document.body.appendChild(
+        row('no words', { mark: MASK_MARKS.cross, iconOnly: true }, 'masks'),
+      );
+    }
+
+    // ---- the compare page: both themes, all three states ---------------------
+    function buildIndex() {
+      document.body.appendChild(
+        Object.assign(el('h1'), { textContent: 'Panel mock 4 — the Layers / Masks switch' }),
+      );
+      const lede = el('p', 'lede');
+      lede.innerHTML =
+        'The stack bar loses its title and its <b>TOP = FRONT</b> note, and gains a two-way ' +
+        'switch: <b>Layers</b> is the stack as it is today, <b>Masks</b> is the crossings on ' +
+        'their own, out of the dashed card they ride in now. Each side carries a mark — the ' +
+        'Level button’s stacked slabs for layers, one band crossing over another for masks — ' +
+        'and the count sits on the Masks side, so hiding the masks does not hide that there ' +
+        'are any. The frames are live: click a switch. Light and dark are the app’s own ' +
+        'tokens, so the thumb is ink on cream in one and coral in the other, exactly like ' +
+        'every other active control.';
+      document.body.appendChild(lede);
+
+      const cell = (label, params, theme, tall) => {
+        const box = el('div', 'cell');
+        box.appendChild(el('h2', undefined, label));
+        const frame = el('iframe');
+        if (!tall) frame.classList.add('short');
+        frame.src = `?frame=1&theme=${theme}&${params}`;
+        frame.title = `${theme} — ${label}`;
+        box.appendChild(frame);
+        return box;
+      };
+
+      // One row per theme, same four cells in the same order, so a colour is
+      // judged against its opposite number rather than across a wrap.
+      const states = [
+        // The mark question first, because it decides what the switch says at
+        // all: the Weave tool's own mark is drawn for a 24px button and comes out
+        // as a bare ✕ beside a label, so there are two other candidates here.
+        ['Which mask mark?', 'marks=1', false],
+        ['Layers view', 'view=layers', true],
+        ['Masks view', 'view=masks', true],
+        ['Masks, none yet', 'view=masks&empty=1', true],
+      ];
+      for (const theme of ['light', 'dark']) {
+        const band = el('div', 'band');
+        band.appendChild(el('h2', 'band-title', theme === 'light' ? 'Light' : 'Dark'));
+        const grid = el('div', 'grid');
+        for (const [label, params, tall] of states) grid.appendChild(cell(label, params, theme, tall));
+        band.appendChild(grid);
+        document.body.appendChild(band);
+      }
+    }
+
+    if (Q.get('marks')) buildMarks();
+    else if (Q.get('frame')) buildFrame();
+    else buildIndex();
+  </script>
+</body>
+
+</html>

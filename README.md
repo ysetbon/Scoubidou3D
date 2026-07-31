@@ -91,9 +91,10 @@ The three layouts this was chosen from, as clickable mocks and renders:
     version of picking two strands for an OSS mask (first selected = over). Hovering lights **one
     layer** and names it at the cursor — green for the over, blue for the under — so on a stitch
     whose arms are drawn as one seamless lace you can still see exactly which strand a click takes.
-  - **Masks are layers.** Each gets a row in the stack's own Masks card, reading `1_2` **over**
-    `1_3` (OSS's `first_second`), with a two-tone disc showing the over strand's colour above the
-    under strand's, and flip / delete controls. A mask changes only its own crossing.
+  - **Masks are layers.** The panel's bar opens with a **Layers | Masks** switch; the masks side
+    is a row per crossing, reading `1_2` **over** `1_3` (OSS's `first_second`), with a two-tone
+    disc showing the over strand's colour above the under strand's, and flip / delete controls.
+    A mask changes only its own crossing.
   - **Imported masks weave automatically.** `MaskedStrand` records from a `.json` become over/under
     relationships, so an imported basket interlaces the way it was drawn. With no mask on a
     crossing, the **higher layer** rides over.

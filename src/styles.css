@@ -228,20 +228,97 @@ button {
   border-bottom: 1px solid var(--hair);
 }
 
+/* The bar's title, which only a dock card opened INTO the panel still has: the
+   stack itself is titled by its switch. */
 .stack-title {
+  min-width: 0;
   margin-right: auto;
+  overflow: hidden;
   font-size: 19px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.stack-title u {
-  margin-left: 7px;
-  font-family: inherit;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  text-decoration: none;
+/* ---- Layers | Masks -------------------------------------------------------
+   The stack bar used to open with the word "Layers" and a TOP = FRONT note. The
+   word named what the panel already was, and the note is a fact you learn once;
+   the space went to a switch that says what the panel is showing AND changes it.
+
+   Two equal columns with a filled thumb sliding between them. The thumb takes
+   --fill, the token every active control in the app already takes — ink on cream
+   in the light theme, coral in the dark — so "this side is on" is the same
+   statement here as everywhere else, and neither theme needs a colour of its
+   own. Grid rather than flex so the halves stay equal whatever the labels
+   measure, which is what lets the thumb be a plain 50%. */
+.viewswitch {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-right: auto;
+  padding: 2px;
+  border: 1.5px solid var(--edge2);
+  border-radius: 999px;
+  background: var(--cream);
+}
+
+.viewswitch-thumb {
+  position: absolute;
+  z-index: 0;
+  top: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
+  height: calc(100% - 4px);
+  border-radius: 999px;
+  background: var(--fill);
+  transition: transform 0.22s cubic-bezier(0.3, 0.85, 0.35, 1);
+}
+
+.viewswitch[data-view='masks'] .viewswitch-thumb {
+  transform: translateX(100%);
+}
+
+.viewswitch button {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 27px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
   color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: color 0.18s;
+}
+
+.viewswitch button[aria-selected='true'] {
+  color: var(--fill-ink);
+}
+
+.viewswitch button:not([aria-selected='true']):hover {
+  color: var(--ink);
+}
+
+.viewswitch .icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* The count rides on the MASKS side, so hiding the masks does not hide that
+   there are any. */
+.viewswitch em {
+  font-style: normal;
+  opacity: 0.65;
 }
 
 .stackbar .pill {
@@ -291,8 +368,7 @@ button {
   background: var(--cream);
 }
 
-.level-group,
-.mask-card {
+.level-group {
   flex: 0 0 auto;
   padding: 8px;
   border: 1.5px solid var(--edge2);
@@ -310,30 +386,25 @@ button {
   margin-top: 16px;
 }
 
-/* Masks are a kind of their own, not a storey — so the card says so, and it sits
-   above the stack proper rather than in it. */
-.mask-card {
-  margin: 0 0 16px;
-  border-style: dashed;
+/* Masks are a kind of their own, not a storey — so they are the other side of
+   the stack bar's switch rather than a card wedged into the stack. A plain list,
+   from the top down: a crossing has no ground to hang from. */
+.mask-list {
+  flex: 0 0 auto;
 }
 
-.mask-card > header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 1px 1px 8px;
+.mask-list .row + .row {
+  margin-top: 5px;
 }
 
-.level-bar b,
-.mask-card > header b {
+.level-bar b {
   font-size: 10.5px;
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
-.level-bar small,
-.mask-card > header small {
+.level-bar small {
   margin-right: auto;
   font-size: 10px;
   font-weight: 700;
@@ -1376,6 +1447,11 @@ button {
   .stackbar .pill,
   .inspector .pill {
     min-height: 34px;
+  }
+  /* The switch is two targets in one control, so it grows with the pills beside
+     it rather than staying the 27px a pointer is happy with. */
+  .viewswitch button {
+    min-height: 30px;
   }
   .chip,
   .swatch-input {

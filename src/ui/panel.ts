@@ -12,8 +12,8 @@
 //     what a level does. A card whose header names it could not say any of that;
 //     a bar you can move can. Level 0 carries no controls: the ground is not a
 //     break, just what is left below the lowest one. Masks are crossings rather
-//     than storeys, so they sit in a card above the stack — where OpenStrand's
-//     own layer panel keeps them.
+//     than storeys, so they are not in the stack at all: the bar opens with a
+//     LAYERS | MASKS switch, and the crossings are the other side of it.
 //   * The stack HANGS FROM THE BOTTOM. It is built bottom-up (level 0 is the
 //     ground, strands[0] is the lowest layer), so a panel with room to spare puts
 //     the ground on its floor rather than its ceiling.
@@ -124,6 +124,17 @@ const DOCK_LABELS: Record<DockKey, string> = {
   scene: 'Scene',
 };
 
+/**
+ * What the stack is showing. The panel used to title itself "Layers" and print
+ * TOP = FRONT beside it, with the masks riding in a card pinned above the stack.
+ * The word only ever named what the panel already was, and the note is a fact
+ * you learn once and then read forever — so both are gone, and the space went to
+ * a switch that says what is on screen AND changes it. Masks are a different
+ * kind of thing from layers (a crossing, not a storey), and now they get a view
+ * of their own rather than a card in someone else's.
+ */
+type StackView = 'layers' | 'masks';
+
 /** The width at which the panel stops being a column beside the canvas and
  *  becomes a bottom sheet under it — the same breakpoint styles.css uses, and
  *  the point where a floating card would cover the scene it belongs to. */
@@ -144,6 +155,9 @@ export class Panel {
   // notion of a selection, and this one exists to put a row's own controls in
   // the row rather than in a section of their own.
   private selectedId: string | null = null;
+  // Which side of the stack bar's switch is down. Panel-side only, and kept
+  // across redraws: adding a strand should not throw you back out of the masks.
+  private stackView: StackView = 'layers';
   // Every state the scene has been in, recorded off its own JSON. See history.ts
   // for the rule; every edit in this file reaches it through `record` below.
   private history = new History();
@@ -446,7 +460,7 @@ export class Panel {
     brand.appendChild(home);
     // Only the strand count: a 42-strand, 10-level scene ran the full line off the
     // panel's edge, and the cards below already state their own counts — the level
-    // headers their layers, the mask card its crossings.
+    // headers their layers, the switch its crossings.
     const name = el('span', 'tag teal');
     this.brandTag = name;
     brand.appendChild(name);
@@ -489,10 +503,9 @@ export class Panel {
 
     this.syncBrand();
 
-    // The stack reads bottom-up — level 0 is the ground — so an under-filled
-    // panel hangs from the bottom and the ground row sits on the panel's floor.
-    // A dock card rendered in here is not a stack and starts at the top.
-    host.classList.toggle('from-bottom', !this.inlineDock());
+    // Only the layer stack hangs from the floor (renderStack puts it back): a
+    // dock card is not a stack, and neither is a list of crossings.
+    host.classList.remove('from-bottom');
 
     const section = this.inlineDock();
     if (section) {
@@ -509,12 +522,13 @@ export class Panel {
       return;
     }
 
-    const title = el('h2', 'stack-title', 'Layers');
-    title.appendChild(el('u', undefined, 'top = front'));
-    bar.appendChild(title);
-    // "New level" drops a storey marker at the top of the stack, so everything
-    // added from here on rests a full storey higher. See levels.ts.
+    bar.appendChild(this.viewSwitch());
+    // Both adders make a LAYER, so either one takes you back to the layers if you
+    // were in the masks — otherwise the press appears to do nothing at all.
+    // "Level" drops a storey marker at the top of the stack, so everything added
+    // from here on rests a full storey higher. See levels.ts.
     const addLevel = iconPill(LAYERS_ICON, 'Level', () => {
+      this.stackView = 'layers';
       addLevelBreak(this.scene);
       this.apply('add a level');
     });
@@ -522,7 +536,14 @@ export class Panel {
     addLevel.title = 'Add a level: from now on, new layers rest one storey higher';
     bar.appendChild(addLevel);
     bar.appendChild(
-      pill('Strand', () => this.addStrand(), 'Drop a new straight strand into the scene'),
+      pill(
+        'Strand',
+        () => {
+          this.stackView = 'layers';
+          this.addStrand();
+        },
+        'Drop a new straight strand into the scene',
+      ),
     );
     this.renderStack();
   }
@@ -531,6 +552,76 @@ export class Panel {
    *  screen, where a popover would cover the scene it belongs to. */
   private inlineDock(): DockKey | null {
     return this.dockOpen && isNarrow() ? this.dockOpen : null;
+  }
+
+  // ---- Layers / Masks ------------------------------------------------------
+  // The switch is held so a press can move the thumb and swap the body without a
+  // full redraw: rebuilding the bar would put a new thumb on screen already in
+  // its final place, and the slide is what says the two views are one panel.
+  private switchHost: HTMLElement | null = null;
+  private viewTabs: Partial<Record<StackView, HTMLButtonElement>> = {};
+
+  /**
+   * The stack bar's switch: two tabs and a filled thumb between them.
+   *
+   * Each side carries the mark the app already uses for that thing — the Level
+   * button's stacked slabs, and one band crossing over another with the lower
+   * one broken where it passes beneath, which is the whole of what a mask says.
+   * The count sits on the Masks side, so putting the masks out of sight does not
+   * put out of sight that there are any.
+   */
+  private viewSwitch(): HTMLElement {
+    const sw = el('div', 'viewswitch');
+    sw.dataset.view = this.stackView;
+    sw.setAttribute('role', 'tablist');
+    sw.setAttribute('aria-label', 'What the panel is showing');
+    sw.appendChild(el('span', 'viewswitch-thumb'));
+    this.switchHost = sw;
+    this.viewTabs = {};
+    sw.appendChild(
+      this.viewTab(
+        'layers',
+        LAYERS_ICON,
+        'Layers',
+        'Show the layer stack — the top of the panel is the front of the scene',
+      ),
+    );
+    sw.appendChild(
+      this.viewTab(
+        'masks',
+        MASK_ICON,
+        'Masks',
+        'Show the mask layers — one crossing each, over above under',
+      ),
+    );
+    return sw;
+  }
+
+  private viewTab(view: StackView, icon: string, label: string, title: string): HTMLButtonElement {
+    const b = el('button') as HTMLButtonElement;
+    b.type = 'button';
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', String(this.stackView === view));
+    b.innerHTML = `${icon}<span>${label}</span>`;
+    if (view === 'masks' && this.scene.masks.length) {
+      b.appendChild(el('em', undefined, String(this.scene.masks.length)));
+    }
+    b.title = title;
+    b.addEventListener('click', () => this.showStackView(view));
+    this.viewTabs[view] = b;
+    return b;
+  }
+
+  /** Flip the switch: the bar stays where it is and only the body is rebuilt. */
+  private showStackView(view: StackView): void {
+    if (this.stackView === view) return;
+    this.stackView = view;
+    if (this.switchHost) this.switchHost.dataset.view = view;
+    for (const key of ['layers', 'masks'] as StackView[]) {
+      this.viewTabs[key]?.setAttribute('aria-selected', String(key === view));
+    }
+    this.selectedId = null;
+    this.renderStack();
   }
 
   // ---- Tool (Pan / Orbit / Move / Attach / Weave) --------------------------
@@ -1464,9 +1555,14 @@ export class Panel {
     if (!host) return;
     host.innerHTML = '';
 
-    // Masks are crossings rather than storeys, so they sit above the stack proper
-    // — which is also where OpenStrand's own layer panel keeps them.
-    if (this.scene.masks.length) host.appendChild(this.maskCard());
+    // Masks are crossings rather than storeys: they have no ground and no order
+    // worth reading, so their view is an ordinary list from the top down. The
+    // stack proper is the one that hangs from the floor.
+    host.classList.toggle('from-bottom', this.stackView === 'layers');
+    if (this.stackView === 'masks') {
+      host.appendChild(this.maskList());
+      return;
+    }
 
     const top = this.scene.levelBreaks.length;
     for (let level = top; level >= 0; level--) {
@@ -1560,19 +1656,31 @@ export class Panel {
     return group;
   }
 
-  private maskCard(): HTMLElement {
-    const card = el('section', 'mask-card');
-    const head = el('header');
-    head.appendChild(el('b', undefined, 'Masks'));
-    head.appendChild(el('small', undefined, plural(this.scene.masks.length, 'crossing')));
-    card.appendChild(head);
-    const body = el('div');
-    // OSS appends a MaskedStrand to the end of the strand list, which is the top
-    // of the layer panel; here they are a kind of their own, so they keep their
-    // own order and their own card.
-    this.scene.masks.forEach((m, i) => body.appendChild(this.maskRow(m, i)));
-    card.appendChild(body);
-    return card;
+  /**
+   * The masks side of the switch: one row per crossing, and nothing else.
+   *
+   * No card and no header — the switch has just said what these are, and the
+   * dashed frame they used to sit in was only there to mark them off from the
+   * stack they were sitting in. OSS appends a MaskedStrand to the end of the
+   * strand list, which is the top of its layer panel; here they are a kind of
+   * their own, so they keep their own order and their own view.
+   */
+  private maskList(): HTMLElement {
+    const list = el('section', 'mask-list');
+    list.setAttribute('aria-label', 'Mask layers');
+    if (!this.scene.masks.length) {
+      list.appendChild(
+        el(
+          'p',
+          'empty',
+          'No mask layers yet. Pick Weave in the toolbar, then click the strand that goes over ' +
+            'and the one it goes under.',
+        ),
+      );
+      return list;
+    }
+    this.scene.masks.forEach((m, i) => list.appendChild(this.maskRow(m, i)));
+    return list;
   }
 
   /** A mask row. The disc shows the two strands' own colours, over above under,
@@ -1986,7 +2094,15 @@ const ABOUT: Array<[string, string]> = [
     'Click the strand that goes <b>over</b>, then the one it goes under: they interlock at their ' +
       'crossing, which is the 3D version of an OpenStrand mask. Hovering lights <b>one layer</b>, ' +
       'not the whole arm family, and names it — so on a stitch you can see exactly which of its ' +
-      'strands you are about to mask. With no mask on a crossing, the higher layer wins.',
+      'strands you are about to mask. With no mask on a crossing, the higher layer wins. The ' +
+      'crossings you have made are a view of their own: the switch at the top of the panel puts ' +
+      '<b>Masks</b> in place of the stack, and carries the count either way.',
+  ],
+  [
+    'The stack',
+    'The panel is the scene’s layers, and it reads <b>top = front</b>: the row at the top of ' +
+      'the stack is the one nearest you. It is built the other way up — level <b>0</b> is the ' +
+      'ground, so the stack hangs from the floor of the panel, where the ground belongs.',
   ],
   [
     'Levels',
@@ -2114,6 +2230,16 @@ const MARK =
 const LAYERS_ICON = svg(
   '<path d="M12 3 22 9.2 12 15.4 2 9.2Z" />' +
     '<path d="M12 17.7 3.7 12.5 2 13.6 12 19.8 22 13.6 20.3 12.5Z" />',
+);
+
+// The masks side of the stack bar's switch: one band whole, the other broken
+// behind it — the same thing the Weave tool's mark says, stood upright. The
+// tool's own mark is drawn on the diagonal for a 24px button and shrinks to a
+// bare ✕ beside a label, which is why this one is not simply that one reused.
+const MASK_ICON = svg(
+  '<rect x="9.7" y="0.6" width="4.6" height="6.6" rx="2.3" />' +
+    '<rect x="9.7" y="16.8" width="4.6" height="6.6" rx="2.3" />' +
+    '<rect x="0.6" y="9.7" width="22.8" height="4.6" rx="2.3" />',
 );
 
 // The toolbar's marks. Each one states what the tool acts on rather than naming
