@@ -314,13 +314,6 @@ button {
   height: 14px;
 }
 
-/* The count rides on the MASKS side, so hiding the masks does not hide that
-   there are any. */
-.viewswitch em {
-  font-style: normal;
-  opacity: 0.65;
-}
-
 .stackbar .pill {
   flex: 0 0 auto;
   min-height: 31px;

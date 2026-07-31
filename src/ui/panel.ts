@@ -567,8 +567,10 @@ export class Panel {
    * Each side carries the mark the app already uses for that thing — the Level
    * button's stacked slabs, and one band crossing over another with the lower
    * one broken where it passes beneath, which is the whole of what a mask says.
-   * The count sits on the Masks side, so putting the masks out of sight does not
-   * put out of sight that there are any.
+   * Two words and two marks, and nothing else: the Masks side used to print the
+   * count, which is three digits on a woven mat and pushed the switch into the
+   * Level and Strand pills beside it. The number is in the tooltip instead — a
+   * switch is a control, not a readout.
    */
   private viewSwitch(): HTMLElement {
     const sw = el('div', 'viewswitch');
@@ -586,12 +588,15 @@ export class Panel {
         'Show the layer stack — the top of the panel is the front of the scene',
       ),
     );
+    const masks = this.scene.masks.length;
     sw.appendChild(
       this.viewTab(
         'masks',
         MASK_ICON,
         'Masks',
-        'Show the mask layers — one crossing each, over above under',
+        masks
+          ? `Show the mask layers — ${plural(masks, 'crossing')}, over above under`
+          : 'Show the mask layers — none yet',
       ),
     );
     return sw;
@@ -603,9 +608,6 @@ export class Panel {
     b.setAttribute('role', 'tab');
     b.setAttribute('aria-selected', String(this.stackView === view));
     b.innerHTML = `${icon}<span>${label}</span>`;
-    if (view === 'masks' && this.scene.masks.length) {
-      b.appendChild(el('em', undefined, String(this.scene.masks.length)));
-    }
     b.title = title;
     b.addEventListener('click', () => this.showStackView(view));
     this.viewTabs[view] = b;
@@ -2096,7 +2098,7 @@ const ABOUT: Array<[string, string]> = [
       'not the whole arm family, and names it — so on a stitch you can see exactly which of its ' +
       'strands you are about to mask. With no mask on a crossing, the higher layer wins. The ' +
       'crossings you have made are a view of their own: the switch at the top of the panel puts ' +
-      '<b>Masks</b> in place of the stack, and carries the count either way.',
+      '<b>Masks</b> in place of the stack.',
   ],
   [
     'The stack',

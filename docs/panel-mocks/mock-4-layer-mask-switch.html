@@ -16,10 +16,12 @@
        once and then read forever.
        So: drop both, and spend the space on a two-way switch — LAYERS | MASKS —
        that says what the panel is showing AND changes it. Each side carries its
-       own mark (the stacked slabs the Level button already uses; the crossing
-       bands the Weave tool already uses), so the two are told apart without
-       reading, and the "mask" that gets made with Weave is visibly the same
-       thing as the "masks" this side lists. */
+       own mark (the stacked slabs the Level button already uses; crossing bands
+       for a mask), so the two are told apart without reading, and the "mask" you
+       make with Weave is visibly the same thing as the "masks" this side lists.
+       Two words and two marks, and nothing else — a count on the Masks side runs
+       to three digits on a woven mat, and pushes the switch into the pills beside
+       it, so the number belongs in the tooltip. */
 
     /* ---- the switch --------------------------------------------------------
        Two equal columns with a filled thumb sliding between them: the thumb takes
@@ -89,14 +91,6 @@
       height: 14px;
       flex: 0 0 auto;
       fill: currentColor;
-    }
-
-    /* The count rides on the MASKS side so the number stays visible from the
-       Layers side — hiding the masks must not hide that there are any. It flips
-       to the thumb's ink when that side is on. */
-    .viewswitch em {
-      font-style: normal;
-      opacity: 0.65;
     }
 
     /* ---- the masks view ----------------------------------------------------
@@ -318,17 +312,17 @@
      * how the panel hears about a press. `iconOnly` drops the words, which is the
      * other reading of "take the text out of the bar".
      */
-    function makeSwitch({ mark = MASK_ICON, count = 0, iconOnly = false, onChange }) {
+    function makeSwitch({ mark = MASK_ICON, iconOnly = false, onChange }) {
       const sw = el('div', 'viewswitch' + (iconOnly ? ' icons' : ''));
       sw.setAttribute('role', 'tablist');
       sw.setAttribute('aria-label', 'What the panel is showing');
       sw.appendChild(el('span', 'viewswitch-thumb'));
 
-      const tab = (key, icon, label, extra) => {
+      const tab = (key, icon, label) => {
         const b = el('button');
         b.type = 'button';
         b.setAttribute('role', 'tab');
-        b.innerHTML = icon + (iconOnly ? '' : `<span>${label}</span>${extra ?? ''}`);
+        b.innerHTML = icon + (iconOnly ? '' : `<span>${label}</span>`);
         b.title =
           key === 'layers'
             ? 'Show the layer stack — top of the panel is the front of the scene'
@@ -337,7 +331,7 @@
         return b;
       };
       const layersTab = tab('layers', LAYERS_ICON, 'Layers');
-      const masksTab = tab('masks', mark, 'Masks', count ? `<em>${count}</em>` : '');
+      const masksTab = tab('masks', mark, 'Masks');
       sw.appendChild(layersTab);
       sw.appendChild(masksTab);
 
@@ -374,7 +368,6 @@
       document.body.appendChild(panel);
 
       const sw = makeSwitch({
-        count: masks.length,
         iconOnly: !!Q.get('icons'),
         onChange: (next) => showView(next, masks, stack),
       });
@@ -513,9 +506,9 @@
         return line;
       };
       for (const [key, mark] of Object.entries(MASK_MARKS)) {
-        document.body.appendChild(row(key, { mark, count: 3 }, 'masks'));
+        document.body.appendChild(row(key, { mark }, 'masks'));
       }
-      document.body.appendChild(row('off', { mark: MASK_MARKS.cross, count: 3 }, 'layers'));
+      document.body.appendChild(row('off', { mark: MASK_MARKS.cross }, 'layers'));
       document.body.appendChild(
         row('no words', { mark: MASK_MARKS.cross, iconOnly: true }, 'masks'),
       );
@@ -532,8 +525,9 @@
         'switch: <b>Layers</b> is the stack as it is today, <b>Masks</b> is the crossings on ' +
         'their own, out of the dashed card they ride in now. Each side carries a mark — the ' +
         'Level button’s stacked slabs for layers, one band crossing over another for masks — ' +
-        'and the count sits on the Masks side, so hiding the masks does not hide that there ' +
-        'are any. The frames are live: click a switch. Light and dark are the app’s own ' +
+        'and nothing else: a count on the Masks side runs to three digits on a woven mat and ' +
+        'pushes the switch into the pills beside it, so the number is in the tooltip. ' +
+        'The frames are live: click a switch. Light and dark are the app’s own ' +
         'tokens, so the thumb is ink on cream in one and coral in the other, exactly like ' +
         'every other active control.';
       document.body.appendChild(lede);
