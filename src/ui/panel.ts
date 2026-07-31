@@ -289,7 +289,8 @@ export class Panel {
 
     const status = el('div');
     status.id = 'status';
-    // Empty until syncStatus fills it, and on a touch screen it stays that way.
+    // Empty until the weave has a half-made pick, which is the only thing it
+    // ever says; most of a session it stays exactly like this.
     status.hidden = true;
     this.statusHost = status;
     document.body.appendChild(status);
@@ -396,30 +397,23 @@ export class Panel {
   }
 
   /**
-   * The one line of text over the canvas. On a mouse it states the camera
-   * gesture; on a touch screen it says nothing at all, because the canvas is the
-   * scarce thing there and the gestures are the ones every 3D view on a phone
-   * already uses — About states them for anyone who wants them in words. Either
-   * way it gives the space up to the weave whenever a pick is half-made, which
-   * is the only moment in the app where a mode is holding something for you.
+   * The one line of text over the canvas, and it speaks for one thing only: the
+   * weave's half-made pick, the single moment in the app where a mode is holding
+   * something for you. The camera gesture used to sit here whenever nothing else
+   * did; it is gone, because it never changed and so never earned the canvas —
+   * drag/scroll/right-drag is what every 3D view does, and About states it in
+   * words for anyone who wants them.
    */
   private syncStatus(): void {
     const host = this.statusHost;
     if (!host) return;
     const pending = this.view.getWeavePending();
-    if (pending) {
-      host.innerHTML = `<b>${pending}</b> rides over — now click the strand it crosses`;
-      host.classList.add('live');
-      host.hidden = false;
-      return;
-    }
-    host.classList.remove('live');
-    if (matchMedia('(pointer: coarse)').matches) {
+    if (!pending) {
       host.textContent = '';
       host.hidden = true;
       return;
     }
-    host.textContent = 'Drag to orbit · scroll to zoom · right-drag to pan';
+    host.innerHTML = `<b>${pending}</b> rides over — now click the strand it crosses`;
     host.hidden = false;
   }
 

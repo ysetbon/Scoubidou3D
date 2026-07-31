@@ -14,8 +14,8 @@
  *             swaps the PANEL to that card instead, because a floating card on a
  *             phone covers the very thing the slider is changing
  *   #corner   the theme switch and the About ?, top right
- *   #status   one line: the camera gesture on a mouse, or the weave's half-made
- *             pick. Silent on a touch screen unless a pick is waiting
+ *   #status   one line, and only ever the weave's half-made pick. Silent the
+ *             rest of the time, on every pointer
  *   #panel    the layer stack, and nothing else
  *   .sheet    About, sliding up over the panel
  *
@@ -1194,8 +1194,9 @@ button {
   box-shadow: 3px 4px 0 var(--shadow);
 }
 
-/* The one line of text over the canvas: the camera gesture, or the weave's
-   half-made pick. */
+/* The one line of text over the canvas, and the weave's half-made pick is the
+   only thing it ever says — so it is always live state, never a note, and it is
+   styled the one way. */
 #status {
   position: fixed;
   z-index: 5;
@@ -1204,28 +1205,19 @@ button {
   left: 16px;
   max-width: min(34vw, 380px);
   padding: 8px 12px;
-  border: 1px solid var(--edge2);
+  border: 1px solid var(--coral);
   border-radius: 999px;
   background: var(--paper);
   background: color-mix(in srgb, var(--paper) 90%, transparent);
   backdrop-filter: blur(6px);
   box-shadow: 3px 3px var(--shadow);
-  font-size: 10px;
-  font-weight: 750;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-#status.live {
-  border-color: var(--coral);
-  color: var(--ink);
-  text-transform: none;
-  letter-spacing: 0.01em;
   font-size: 11.5px;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+  color: var(--ink);
 }
 
-#status.live b {
+#status b {
   color: var(--coral);
   font-family: ui-monospace, Menlo, Consolas, monospace;
 }
@@ -1575,16 +1567,6 @@ button {
     padding: 10px;
   }
 
-}
-
-/* The gesture line never appears on a touch screen — width has nothing to do
-   with it, a landscape phone is wide. The canvas is the scarce thing there, the
-   touch gestures are the standard ones, and About states them in words. The
-   weave's half-made pick still gets the space: it is live state, not a note. */
-@media (pointer: coarse) {
-  #status:not(.live) {
-    display: none;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
