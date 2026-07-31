@@ -266,33 +266,21 @@ header {
   color: var(--coral);
 }
 
-/* The mark is a crossing: a gold lace with a coral one over it, which is the
-   whole product in three rectangles. */
+/* The mark is the favicon: a three-round box stitch rendered by the app itself
+   (scripts/icon-shot.mjs), cut out of its paper. It used to be a drawing of a
+   crossing in three rectangles — near enough at 36px, but a drawing of the
+   product rather than the product. */
 .mark {
   width: 64px;
   height: 64px;
   margin-right: 14px;
-  overflow: visible;
+  object-fit: contain;
 }
 
 .mark.small {
   width: 36px;
   height: 36px;
   margin-right: 10px;
-}
-
-.mark path {
-  stroke: var(--ink);
-  stroke-width: 2.2px;
-}
-
-.ma {
-  fill: var(--yellow);
-}
-
-.mb,
-.mt {
-  fill: var(--coral);
 }
 
 header nav {
@@ -1446,10 +1434,6 @@ footer {
   padding: 30px 5vw;
   background: var(--invert-bg);
   color: var(--invert-ink);
-}
-
-footer .mark path {
-  stroke: var(--invert-ink);
 }
 
 footer p {
