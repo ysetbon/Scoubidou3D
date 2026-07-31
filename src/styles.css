@@ -584,8 +584,7 @@ button {
   gap: 4px;
 }
 
-.chip,
-.swatch-input {
+.chip {
   width: 19px;
   height: 19px;
   padding: 0;
@@ -599,23 +598,19 @@ button {
   box-shadow: 0 0 0 2px var(--cream), 0 0 0 3.5px var(--edge2);
 }
 
-.swatch-input {
-  /* Dashed, so it reads as "any colour" rather than as a seventh lace. */
-  border-style: dashed;
-  /* The native swatch draws its own inset; strip it so the ring is the border. */
-  overflow: hidden;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-.swatch-input::-webkit-color-swatch-wrapper {
-  padding: 0;
-}
-
-.swatch-input::-webkit-color-swatch,
-.swatch-input::-moz-color-swatch {
-  border: 0;
-  border-radius: 50%;
+/* The door to the picker window. A wheel rather than a swatch of the current
+   colour: the six beside it ARE colours, and this one is all the rest. */
+.chip.wheel {
+  background: conic-gradient(
+    #ff2d2d,
+    #ffd447,
+    #4ade4a,
+    #21d4d4,
+    #2d6bff,
+    #b83dff,
+    #ff2d8a,
+    #ff2d2d
+  );
 }
 
 /* Layer or set — where the palette above it spends a colour. A segmented pair
@@ -1446,8 +1441,7 @@ button {
   .viewswitch button {
     min-height: 30px;
   }
-  .chip,
-  .swatch-input {
+  .chip {
     width: 24px;
     height: 24px;
   }
@@ -1824,6 +1818,147 @@ button {
 
   .browser-cell small {
     font-size: 9px;
+  }
+}
+
+/* ---- the colour picker ----------------------------------------------------
+   Six chips are the laces you keep; this is everything else. It is a window and
+   not a well because it ends in a decision — OK spends the colour, and until
+   then the drag across the square costs the scene nothing. Same overlay as the
+   sample browser, one size down. */
+
+.picker-back {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--ink) 45%, transparent);
+}
+
+.picker {
+  width: min(272px, 100%);
+  max-height: 100%;
+  padding: 14px;
+  border: 1.5px solid var(--edge2);
+  background: var(--paper);
+  box-shadow: 8px 10px 0 var(--shadow);
+  overflow: auto;
+}
+
+.picker-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.picker-head h3 {
+  font-size: 17px;
+}
+
+/* Where the OK is about to land — the scope switch is behind this window. */
+.picker-note {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+.picker-sv {
+  position: relative;
+  height: 150px;
+  border: 1.5px solid var(--edge2);
+  /* White to the pure hue across, and black down over the top of it: the two
+     gradients together are the saturation / value square. */
+  background:
+    linear-gradient(to top, #000, rgba(0, 0, 0, 0)),
+    linear-gradient(to right, #fff, hsl(var(--hue, 0) 100% 50%));
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.picker-hue {
+  position: relative;
+  height: 15px;
+  margin-top: 8px;
+  border: 1.5px solid var(--edge2);
+  background: linear-gradient(
+    to right,
+    hsl(0 100% 50%),
+    hsl(60 100% 50%),
+    hsl(120 100% 50%),
+    hsl(180 100% 50%),
+    hsl(240 100% 50%),
+    hsl(300 100% 50%),
+    hsl(360 100% 50%)
+  );
+  touch-action: none;
+  cursor: ew-resize;
+}
+
+/* The handle on either field: a ring in the colour it sits on, so it stays
+   visible at both ends of the square. */
+.picker-dot {
+  position: absolute;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  margin: -6.5px 0 0 -6.5px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--edge2);
+  pointer-events: none;
+}
+
+.picker-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.picker-swatch {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border: 1.5px solid var(--edge2);
+  border-radius: 50%;
+}
+
+.picker-hex {
+  width: 100%;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1.5px solid var(--edge2);
+  background: var(--cream);
+  color: var(--ink);
+  font-family: 'Avenir Next', Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.picker-acts .pill {
+  min-height: 32px;
+  font-size: 11px;
+}
+
+@media (max-width: 640px) {
+  .picker-sv {
+    height: 178px;
+  }
+
+  .picker-hue {
+    height: 22px;
+  }
+
+  .picker-acts .pill {
+    min-height: 40px;
   }
 }
 
