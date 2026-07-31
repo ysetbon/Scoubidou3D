@@ -839,16 +839,33 @@ export const SAMPLES: Record<string, () => Scene3D> = {
   'curved-stack': curvedStack,
 };
 
-/** What the dropdown and the project site list, in order, with the group each sits in. */
+/**
+ * What the dropdown and the project site list, in order, with the group each sits in.
+ *
+ * FOUR STITCHES ARE DELIBERATELY ABSENT, on the same terms as
+ * `SHOW_ORIGINAL_TWIST_FAMILY` in panel.ts: nothing is deleted, the generators
+ * still run and `?sample=` still opens every one of them — they are only off the
+ * list. They are `round-stitch-10`, `twist-stitch-10`, `twist-3x1-10` and
+ * `twist-2x2-10`.
+ *
+ * The three twists go because the browser's grid already has that face, built to
+ * the 1xn reference (twofan.ts) rather than to the single-turn law — and where
+ * the two disagree it is the reference that is right, which is why the grid the
+ * browser shows is the two-fan one. Listing the older build of a face beside the
+ * grid offers a choice between them that isn't a real choice.
+ *
+ * The round stitch goes because it is not one. `boxStitchRounds(…, spiral)` gets
+ * the ORDERING right — the rotation never reverses, so the column repeats every
+ * round instead of every two — but a real round stitch also corkscrews, and this
+ * one does not: the square never turns, so the column rises straight (see the
+ * ORDER note on `boxStitchRounds`). What actually turns is the twist family, and
+ * that is where anyone looking for a turning column should land.
+ */
 export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }> = [
   { key: 'two-crossing', label: 'Two crossing strands', group: 'Basics' },
   { key: 'box-stitch', label: 'Box stitch — starting stitch', group: 'Stitches' },
   { key: 'box-stitch-10', label: 'Box stitch — 10 levels', group: 'Stitches' },
   { key: 'box-stitch-15', label: 'Box stitch — 15 levels', group: 'Stitches' },
-  { key: 'round-stitch-10', label: 'Round stitch — 10 levels', group: 'Stitches' },
-  { key: 'twist-stitch-10', label: 'Twist stitch — 10 twists', group: 'Stitches' },
-  { key: 'twist-3x1-10', label: 'Twist stitch — 3×1, 10 twists', group: 'Stitches' },
-  { key: 'twist-2x2-10', label: 'Twist stitch — 2×2, 10 twists', group: 'Stitches' },
   { key: 'braid-3', label: 'Three-strand braid', group: 'Braids' },
   { key: 'braid-4', label: 'Four-strand flat braid', group: 'Braids' },
   { key: 'diagonal', label: 'Diagonal basket', group: 'Weaves' },
