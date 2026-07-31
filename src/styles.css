@@ -203,9 +203,11 @@ button {
   text-underline-offset: 3px;
 }
 
+/* Half again the 32px it sat at while it was a drawing of a crossing. It is a
+   render of a three-round stitch now, and a render needs the room to be one. */
 .mark {
-  width: 32px;
-  height: 32px;
+  width: 48px;
+  height: 48px;
   flex: 0 0 auto;
   object-fit: contain;
 }
