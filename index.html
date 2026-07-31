@@ -7,7 +7,14 @@
   <title>Scoubidou3D — see every strand</title>
   <meta name="description"
     content="Scoubidou3D is a 3D reimagining of OpenStrand Studio: strands become ribbons with real width and thickness, layer order becomes height, and masks become a true over/under weave you can orbit. Thirteen built-in samples, from two crossing laces to a fifteen-round box stitch and twist stitches on any m×n face. Runs in the browser." />
-  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <!-- The icon is a render of the box stitch itself, cut out of its paper (see
+       scripts/icon-shot.mjs). .ico first for whatever still goes looking for that
+       name; the PNGs are what a browser picks up. -->
+  <link rel="icon" href="./favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" sizes="32x32" href="./icon-32.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="./icon-512.png" />
+  <link rel="apple-touch-icon" href="./icon-180.png" />
   <link rel="canonical" href="https://ysetbon.github.io/Scoubidou3D/" />
 
   <meta property="og:type" content="website" />
@@ -15,6 +22,7 @@
   <meta property="og:description"
     content="Strands with real width and thickness, stacked layer over layer along Z. Open a sample in your browser and tilt it." />
   <meta property="og:url" content="https://ysetbon.github.io/Scoubidou3D/" />
+  <meta property="og:image" content="https://ysetbon.github.io/Scoubidou3D/icon-512.png" />
   <meta name="twitter:card" content="summary" />
 
   <!-- Set the theme before first paint: anything deferred or bundled lands after
