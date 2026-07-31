@@ -83,7 +83,7 @@ export class History {
    *
    * @param label what the edit was called, for the arrows' tooltips and the toast
    * @param tag groups a RUN of edits from one control into a single step — a
-   *   width slider being dragged, a colour well being scrubbed. A record whose
+   *   width slider being dragged, say. A record whose
    *   tag matches the run already on top replaces it instead of stacking on it,
    *   so the drag is one undo rather than one per pixel.
    * @returns whether anything was recorded

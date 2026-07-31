@@ -107,13 +107,19 @@ The three layouts this was chosen from, as clickable mocks and renders:
   reconnect too.
 - 🎨 **Colour a layer, or the whole lace.** A layer name is `set_length`: `1_2` is the second length
   of lace `1`. So a picked colour has two places it can land, and a switch under the palette says
-  which — **This layer** paints `1_2` alone, **`1_x`** paints *every* length of that lace at once,
-  and either way it is one press of undo. A lace worked through a ten-round column is twenty-odd
-  layers of one set; recolouring it used to be twenty-odd presses and twenty-odd undos. The set is
-  read off the **name** rather than the attach graph, exactly as OSS writes it, so it survives a
-  file being saved, reopened and hand-edited. The switch is offered only where it means something —
-  a lace with a single length has nothing to spread to — and the choice is remembered between
-  visits. ([`src/model/colour.ts`](src/model/colour.ts), checked by `npm run check:colour`)
+  which — **This layer** paints `1_2` alone, **All layers** paints *every* length of that lace at
+  once, and either way it is one press of undo. A lace worked through a ten-round column is
+  twenty-odd layers of one set; recolouring it used to be twenty-odd presses and twenty-odd undos.
+  The set is read off the **name** rather than the attach graph, exactly as OSS writes it, so it
+  survives a file being saved, reopened and hand-edited. The switch is offered only where it means
+  something — a lace with a single length has nothing to spread to — and the choice is remembered
+  between visits. ([`src/model/colour.ts`](src/model/colour.ts), checked by `npm run check:colour`)
+- 🎡 **Any colour, and none of it spent until OK.** Six chips are the laces you keep; the **wheel**
+  beside them opens a picker window — a saturation/brightness square over a hue strip, with a hex
+  field for a colour you already know. It is a window rather than a live well because hunting for a
+  colour is a *drag*, and painting every step of that drag put a hundred colours through the scene
+  (and through undo) on the way to the one you wanted. **OK** spends the colour under whichever
+  scope the switch is holding; **Cancel**, **Escape** and a click outside spend nothing.
 - 📚 **Layer stacking = default depth.** The layer order sets the *default* over/under (higher layer
   rides over); masks override specific crossings, just like in OSS. Reorder a layer and it restacks
   live.

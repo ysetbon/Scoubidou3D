@@ -112,6 +112,51 @@ function rgbaFromHex(hexStr: string, a: number): RGBA {
   return { r: (int >> 16) & 255, g: (int >> 8) & 255, b: int & 255, a };
 }
 
+/**
+ * The picker works in HSV, not RGB: hue round, saturation across, value down is
+ * the one arrangement where "the same colour, paler" is a straight move — which
+ * is what someone hunting for a lace colour is actually doing. RGB is the
+ * storage format, so the two are converted at the edges.
+ */
+interface HSV {
+  /** 0–360, and 0 for a grey — which has no hue to keep. */
+  h: number;
+  /** 0–1 */
+  s: number;
+  /** 0–1 */
+  v: number;
+}
+
+function rgbToHsv(c: RGBA): HSV {
+  const r = c.r / 255;
+  const g = c.g / 255;
+  const b = c.b / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  return { h, s: max === 0 ? 0 : d / max, v: max };
+}
+
+function hsvToRgba(c: HSV, a: number): RGBA {
+  const f = (n: number): number => {
+    const k = (n + c.h / 60) % 6;
+    return Math.round(255 * (c.v - c.v * c.s * Math.max(0, Math.min(k, 4 - k, 1))));
+  };
+  return { r: f(5), g: f(3), b: f(1), a };
+}
+
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
 /** Which dock card is open, if any. */
 type DockKey = 'ribbon' | 'weave' | 'view' | 'scene';
 
@@ -392,8 +437,8 @@ export class Panel {
    *
    * @param label what the edit is called in the history
    * @param tag groups a RUN of edits from a single control into one step; see
-   *   History.record. The width slider and the colour well both fire on every
-   *   `input` event, and without this a drag would be forty presses of undo.
+   *   History.record. A range input fires on every `input` event, so without this
+   *   a drag of the width slider would be forty presses of undo.
    */
   private apply(label: string, tag?: string, refit = false): void {
     this.view.setScene(this.scene, refit);
@@ -1790,14 +1835,18 @@ export class Panel {
       chips.appendChild(chip);
     }
     // The palette is six laces; anything else comes out of the picker, which is
-    // also how a colour read off a file gets edited rather than replaced.
-    const custom = el('input', 'swatch-input') as HTMLInputElement;
-    custom.type = 'color';
-    custom.value = hex(strand.color);
-    custom.title = 'Any colour';
-    custom.addEventListener('input', () => {
-      this.paint(strand, rgbaFromHex(custom.value, strand.color.a));
-    });
+    // also how a colour read off a file gets edited rather than replaced. Drawn
+    // as a wheel rather than as a swatch of the current colour: the six beside it
+    // are colours, and this one is the door to all the rest.
+    const custom = el('button', 'chip wheel') as HTMLButtonElement;
+    custom.type = 'button';
+    custom.title = 'Any colour…';
+    custom.setAttribute('aria-label', 'Choose any colour');
+    custom.setAttribute('aria-haspopup', 'dialog');
+    // Lit when the strand is wearing something the six chips cannot show, so the
+    // row always says where its colour came from.
+    if (!PALETTE.some((c) => hex(c) === hex(strand.color))) custom.classList.add('on');
+    custom.addEventListener('click', () => this.openColourPicker(strand));
     chips.appendChild(custom);
     colours.appendChild(chips);
     box.appendChild(colours);
@@ -1868,17 +1917,197 @@ export class Panel {
    */
   private colourScope: ColourScope = loadColourScope();
 
-  /** Spend a colour under the current scope, and name the edit for what it did.
-   *  Tagged by scope AND target, so scrubbing the picker is one undo but
-   *  switching scope mid-scrub starts a step of its own — the second edit is a
-   *  different edit, and stepping back should land between them. */
+  /**
+   * Spend a colour under the current scope, and name the edit for what it did.
+   *
+   * Untagged, unlike the width slider: every colour that reaches here is now one
+   * deliberate press — a chip, or an OK — and two of them are two edits. The tag
+   * was here for the old live well, which streamed a colour per pixel of a drag
+   * and needed the whole run folded into one step; it also quietly folded two
+   * chip presses into one, so undo after picking gold and then teal landed on
+   * neither. The picker holds its own drag now, and spends nothing until OK.
+   */
   private paint(strand: Strand3D, colour: RGBA): void {
     const n = recolour(this.scene, strand.id, colour, this.colourScope);
     const set = setOf(strand.id);
-    this.apply(
-      n > 1 ? `recolour set ${set}` : 'recolour a strand',
-      `colour:${this.colourScope}:${strand.id}`,
+    this.apply(n > 1 ? `recolour set ${set}` : 'recolour a strand');
+  }
+
+  /**
+   * The picker window: every colour there is, and none of them spent until OK.
+   *
+   * A chip paints on the press, which is right for six known laces. Hunting for a
+   * colour is a different act — it is a drag across a whole square of them — and
+   * done live that put a hundred colours through the scene on the way to the one
+   * you wanted. So this is a window with a decision at the end: OK spends the
+   * colour under the current scope, Cancel and Escape spend nothing, and the
+   * scene is untouched the whole time it is open.
+   */
+  private openColourPicker(strand: Strand3D): void {
+    const before = strand.color;
+    let hsv = rgbToHsv(before);
+
+    const back = el('div', 'picker-back');
+    const close = (): void => {
+      back.remove();
+      document.removeEventListener('keydown', onKey, true);
+    };
+    const commit = (): void => {
+      close();
+      this.paint(strand, hsvToRgba(hsv, before.a));
+    };
+    // Capture, so the window answers Escape and Enter before the app's own
+    // shortcuts see them: while this is open it is the only thing on screen.
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        close();
+      } else if (e.key === 'Enter') {
+        e.stopPropagation();
+        e.preventDefault();
+        commit();
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    back.addEventListener('click', (e) => {
+      if (e.target === back) close();
+    });
+
+    const box = el('div', 'picker');
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-label', 'Pick a colour');
+    const head = el('div', 'picker-head');
+    head.appendChild(el('h3', undefined, 'Colour'));
+    box.appendChild(head);
+    // Where the OK will land — the scope switch is in the row behind this window,
+    // and a whole-lace repaint is not something to discover afterwards.
+    const mates = setMembers(this.scene, strand.id).length;
+    head.appendChild(
+      el(
+        'span',
+        'picker-note',
+        this.colourScope === 'set' && mates > 1
+          ? `all ${mates} layers of ${setOf(strand.id)}_x`
+          : strand.id,
+      ),
     );
+
+    // Saturation across, value down, at the hue the strip below is holding.
+    const sv = el('div', 'picker-sv');
+    sv.tabIndex = 0;
+    sv.setAttribute('role', 'group');
+    sv.setAttribute('aria-label', 'Saturation and brightness — arrow keys to move');
+    const svDot = el('i', 'picker-dot');
+    sv.appendChild(svDot);
+    box.appendChild(sv);
+
+    const hue = el('div', 'picker-hue');
+    hue.tabIndex = 0;
+    hue.setAttribute('role', 'slider');
+    hue.setAttribute('aria-label', 'Hue');
+    hue.setAttribute('aria-valuemin', '0');
+    hue.setAttribute('aria-valuemax', '360');
+    const hueDot = el('i', 'picker-dot');
+    hue.appendChild(hueDot);
+    box.appendChild(hue);
+
+    const foot = el('div', 'picker-foot');
+    const swatch = el('span', 'picker-swatch');
+    const field = el('input', 'picker-hex') as HTMLInputElement;
+    field.type = 'text';
+    field.spellcheck = false;
+    field.maxLength = 7;
+    field.setAttribute('aria-label', 'Hex colour');
+    foot.append(swatch, field);
+    box.appendChild(foot);
+
+    const draw = (typing = false): void => {
+      const c = hsvToRgba(hsv, before.a);
+      const h = hex(c);
+      sv.style.setProperty('--hue', String(Math.round(hsv.h)));
+      svDot.style.left = `${hsv.s * 100}%`;
+      svDot.style.top = `${(1 - hsv.v) * 100}%`;
+      svDot.style.background = h;
+      hueDot.style.left = `${(hsv.h / 360) * 100}%`;
+      hueDot.style.background = `hsl(${hsv.h} 100% 50%)`;
+      hue.setAttribute('aria-valuenow', String(Math.round(hsv.h)));
+      swatch.style.background = h;
+      // Not while it is being typed in: rewriting the field under the caret turns
+      // a half-finished `#ff5` into something you did not type.
+      if (!typing) field.value = h;
+    };
+
+    // One drag handler for both fields: press anywhere to jump there, and keep
+    // reading until the finger lifts — captured, so a drag off the edge of the
+    // square still tracks instead of stopping at the border.
+    const track = (host: HTMLElement, at: (x: number, y: number) => void): void => {
+      const read = (e: PointerEvent): void => {
+        const r = host.getBoundingClientRect();
+        at(clamp01((e.clientX - r.left) / r.width), clamp01((e.clientY - r.top) / r.height));
+        draw();
+      };
+      host.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        host.focus();
+        host.setPointerCapture(e.pointerId);
+        read(e);
+      });
+      host.addEventListener('pointermove', (e) => {
+        if (host.hasPointerCapture(e.pointerId)) read(e);
+      });
+      host.addEventListener('pointerup', (e) => {
+        if (host.hasPointerCapture(e.pointerId)) host.releasePointerCapture(e.pointerId);
+      });
+    };
+    track(sv, (x, y) => {
+      hsv = { ...hsv, s: x, v: 1 - y };
+    });
+    track(hue, (x) => {
+      hsv = { ...hsv, h: x * 360 };
+    });
+
+    // The keyboard reaches the same two fields. Shift is the coarse step, as on a
+    // range input.
+    sv.addEventListener('keydown', (e) => {
+      const d = e.shiftKey ? 0.1 : 0.02;
+      const x = e.key === 'ArrowRight' ? d : e.key === 'ArrowLeft' ? -d : 0;
+      const y = e.key === 'ArrowUp' ? d : e.key === 'ArrowDown' ? -d : 0;
+      if (!x && !y) return;
+      e.preventDefault();
+      hsv = { ...hsv, s: clamp01(hsv.s + x), v: clamp01(hsv.v + y) };
+      draw();
+    });
+    hue.addEventListener('keydown', (e) => {
+      const d = e.shiftKey ? 20 : 4;
+      const x = e.key === 'ArrowRight' ? d : e.key === 'ArrowLeft' ? -d : 0;
+      if (!x) return;
+      e.preventDefault();
+      hsv = { ...hsv, h: (hsv.h + x + 360) % 360 };
+      draw();
+    });
+
+    field.addEventListener('input', () => {
+      const text = field.value.trim();
+      if (!/^#?[0-9a-f]{6}$/i.test(text)) return;
+      hsv = rgbToHsv(rgbaFromHex(text, before.a));
+      draw(true);
+    });
+    // Whatever it was left as, the field goes back to saying what the window holds.
+    field.addEventListener('blur', () => draw());
+
+    const acts = el('div', 'pill-row picker-acts');
+    const cancel = pill('Cancel', close, 'Close without changing the colour');
+    cancel.classList.add('ghost');
+    const ok = pill('OK', commit, 'Apply this colour');
+    ok.classList.add('coral');
+    acts.append(cancel, ok);
+    box.appendChild(acts);
+
+    draw();
+    back.appendChild(box);
+    document.body.appendChild(back);
+    sv.focus();
   }
 
   /**
@@ -1914,10 +2143,14 @@ export class Panel {
       group.appendChild(b);
     };
 
+    // "All layers" rather than the set's own name and count: `7_x · 23` is the
+    // exact truth, and it reads as a layer id — the one thing on this row that is
+    // NOT a place to press. The count belongs in the tooltip, where a number is
+    // read once out of curiosity instead of parsed on every glance.
     choice('layer', 'This layer', `Colour ${strand.id} alone`);
     choice(
       'set',
-      `${set}_x · ${mates.length}`,
+      'All layers',
       `Colour the whole set — all ${mates.length} layers of ${set}_x, this one included`,
     );
 
@@ -2090,11 +2323,13 @@ const ABOUT: Array<[string, string]> = [
   ],
   [
     'Colour',
-    'A layer name is <b>set_length</b>: <b>1_2</b> is the second length of lace <b>1</b>. So a ' +
+    'The six chips paint on the press; the <b>wheel</b> beside them opens a picker window, ' +
+      'where any colour at all is reachable and nothing lands until you press <b>OK</b>. ' +
+      'A layer name is <b>set_length</b>: <b>1_2</b> is the second length of lace <b>1</b>. So a ' +
       'picked colour has two places to land, and the switch under the palette says which: ' +
-      '<b>This layer</b> paints <b>1_2</b> alone, <b>1_x</b> paints every length of that lace at ' +
-      'once. Either way it is one press of undo. The choice is remembered, and it is offered ' +
-      'only where it means something — a lace with one length has nothing to spread to.',
+      '<b>This layer</b> paints <b>1_2</b> alone, <b>All layers</b> paints every length of that ' +
+      'lace at once. Either way it is one press of undo. The choice is remembered, and it is ' +
+      'offered only where it means something — a lace with one length has nothing to spread to.',
   ],
   [
     'Masks',
@@ -2351,7 +2586,7 @@ function actBtn(icon: string, label: string, onClick: () => void): HTMLButtonEle
 }
 
 /** Fields the browser gives an undo of its own — the JSON paste box, the name
- *  field. A range or a colour well is not one of them: Ctrl+Z with a slider
+ *  field, the picker's hex box. A range is not one of them: Ctrl+Z with a slider
  *  focused means the scene. */
 const TYPED_INPUTS = new Set(['text', 'search', 'url', 'email', 'password', 'number', 'tel']);
 
