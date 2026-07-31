@@ -23,6 +23,9 @@
     document.documentElement.dataset.theme =
       t || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   </script>
+  <!-- The studio carries its own theme code above, so it does not load
+       site/theme.js — but it does count, like every other page. -->
+  <script type="module" src="../site/count.js"></script>
 
 </head>
 <body>
