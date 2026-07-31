@@ -1,9 +1,10 @@
 // The project's icon, shot from the running app.
 //
-// The favicon is not a drawing of a scoubidou — it IS one: the box-stitch
-// column, rendered by the app's own WebGL canvas with the grid off and the
-// paper knocked out, so what lands in the browser tab is the weave itself on
-// transparency rather than a tile of cream with a weave inside it.
+// The favicon is not a drawing of a scoubidou — it IS one: the starting box
+// stitch of scripts/icon-scene.json, rendered by the app's own WebGL canvas
+// with the grid off and the paper knocked out, so what lands in the browser tab
+// is the weave itself on transparency rather than a tile of cream with a weave
+// inside it.
 //
 //   npm run dev -- --port 5178 --strictPort   # in one shell
 //   node scripts/icon-shot.mjs                # in another
@@ -17,11 +18,15 @@
 // a browser's own one-shot downscale of a 2048px render to 16px throws away the
 // black outlines that are the only thing keeping the strands apart at that size.
 import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 const PORT = process.env.PORT ?? '5178';
 const OUT = process.env.OUT ?? 'public';
-const SAMPLE = process.env.SAMPLE ?? 'box-stitch-10';
+// The scene the icon is of, as a saved .json — the four-fold starting stitch
+// with its arms trimmed back to stubs. Trimmed because an icon is a square and
+// the app's own sample runs its arms right off to the edge of the canvas, which
+// in a square frame shrinks the knot in the middle to nothing.
+const SCENE = process.env.SCENE ?? 'scripts/icon-scene.json';
 const MASTER = 2048;
 // Written as their own files…
 const PNGS = [512, 192, 180, 32];
@@ -29,29 +34,19 @@ const PNGS = [512, 192, 180, 32];
 const ICO = [48, 32, 16];
 const SIZES = [...new Set([...PNGS, ...ICO])];
 
-// The three-quarter view the sample cards use for a column, lifted a little:
-// from higher up the crown of four arms at the top of the stack opens out, and
-// it is that cross — not the rounds below it — that survives being 16 pixels.
+// A flat stitch wants to be looked down on — from low down its own crossings
+// hide each other, and the over/under that the whole project is about is the one
+// thing the icon has to show. High, but not straight overhead: some tilt is what
+// gives the ribbons a visible thickness rather than four flat bars.
 const AZ = Number(process.env.AZ ?? 34);
-const EL = Number(process.env.EL ?? 26);
-// How much of the frame the model's projected extent takes. A column is far
-// taller than it is wide, so this is measured against the taller axis.
-const FILL = Number(process.env.FILL ?? 0.84);
+const EL = Number(process.env.EL ?? 55);
+// How much of the frame the model's projected extent takes, on its wider axis.
+const FILL = Number(process.env.FILL ?? 0.9);
 const FOV = Number(process.env.FOV ?? 30);
-// Which slice of the column the framing is measured against, counted down from
-// the top: 1 fits the whole stack, 0.5 the crown and the rounds under it. A
-// square frame round the whole of something four times taller than it is wide
-// leaves the stitch a thin ribbon of nothing in the middle, and at 16 pixels a
-// thin ribbon is a smudge — so the icon is framed on the top of the column and
-// the rest of it runs out of the bottom of the frame.
-const CROP = Number(process.env.CROP ?? 0.6);
-
-// The lace colours the scene was drawn in — OSS's own two, brighter and redder
-// than the muted pair the built-in sample carries.
-const ORANGE = { r: 255, g: 92, b: 53, a: 255 };
-const YELLOW = { r: 255, g: 212, b: 71, a: 255 };
 
 mkdirSync(OUT, { recursive: true });
+
+const sceneText = readFileSync(SCENE, 'utf8');
 
 const browser = await chromium.launch({
   executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
@@ -63,7 +58,7 @@ const page = await browser.newPage({
 });
 page.on('pageerror', (e) => console.log('  page error:', e.message.slice(0, 200)));
 
-await page.goto(`http://localhost:${PORT}/Scoubidou3D/app/?sample=${SAMPLE}`, { waitUntil: 'load' });
+await page.goto(`http://localhost:${PORT}/Scoubidou3D/app/`, { waitUntil: 'load' });
 await page.waitForFunction(() => !!window.__scoubidou, null, { timeout: 60000 });
 await page.addStyleTag({
   content:
@@ -74,16 +69,20 @@ await page.evaluate(() => window.dispatchEvent(new Event('resize')));
 await page.waitForTimeout(500);
 
 const shots = await page.evaluate(
-  async ({ az, el, fill, fov, crop, master, sizes, orange, yellow }) => {
+  async ({ az, el, fill, fov, master, sizes, sceneText }) => {
     const { view } = window.__scoubidou;
-    view.setParams({ showGrid: false });
-    view.scene.background = null; // the paper, gone — this is what makes the PNG cut out
+    // The saved scene, read by the app's own loader — same path a dropped file
+    // takes, so the icon is of exactly what the .json says and not of a sample
+    // that happens to look like it. Only the dev server can hand us the module;
+    // the handle this whole script drives is dev-only anyway.
+    const { parseSceneText } = await import('/Scoubidou3D/src/model/sceneIO.ts');
+    view.setScene(parseSceneText(sceneText, 'icon'), false);
 
-    // Repaint the two laces. Set 1 is the orange one and set 2 the yellow one,
-    // which is how the sample builds them and how their ids are numbered.
-    const scene = view.getScene();
-    for (const s of scene.strands) s.color = { ...(s.id.startsWith('2_') ? yellow : orange) };
-    view.setScene(scene, false);
+    // Grid off and paper gone — this is what makes the PNG a cut-out. Square
+    // ends rather than round: the open end of a ribbon shows its thickness, and
+    // thickness is the thing this project has that a flat drawing does not.
+    view.setParams({ showGrid: false, roundCaps: false });
+    view.scene.background = null;
 
     const cam = view.camera;
     const V = cam.position.constructor;
@@ -92,9 +91,9 @@ const shots = await page.evaluate(
     cam.updateProjectionMatrix();
 
     // Frame against points off the ribbons themselves, not a bounding box: a box
-    // round a tipped column has corners nothing occupies, and fitting those puts
-    // the stitch small and off centre.
-    const all = [];
+    // round a tipped stitch has corners nothing occupies, and fitting those puts
+    // the weave small and off centre.
+    const pts = [];
     view.scene.traverse((o) => {
       if (!o.isMesh || o.type === 'GridHelper' || !o.visible) return;
       for (let p = o.parent; p; p = p.parent) if (!p.visible) return;
@@ -102,20 +101,10 @@ const shots = await page.evaluate(
       if (!pos) return;
       o.updateWorldMatrix(true, false);
       for (let i = 0; i < pos.count; i += 3) {
-        all.push(new V(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(o.matrixWorld));
+        pts.push(new V(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(o.matrixWorld));
       }
     });
-    if (!all.length) throw new Error('nothing to frame');
-
-    // Everything still gets DRAWN — the crop only decides what gets FITTED.
-    let zLo = Infinity;
-    let zHi = -Infinity;
-    for (const p of all) {
-      zLo = Math.min(zLo, p.z);
-      zHi = Math.max(zHi, p.z);
-    }
-    const floor = zHi - (zHi - zLo) * crop;
-    const pts = crop >= 1 ? all : all.filter((p) => p.z >= floor);
+    if (!pts.length) throw new Error('nothing to frame');
 
     const lo = pts[0].clone();
     const hi = pts[0].clone();
@@ -208,17 +197,7 @@ const shots = await page.evaluate(
     }
     return out;
   },
-  {
-    az: AZ,
-    el: EL,
-    fill: FILL,
-    fov: FOV,
-    crop: CROP,
-    master: MASTER,
-    sizes: SIZES,
-    orange: ORANGE,
-    yellow: YELLOW,
-  },
+  { az: AZ, el: EL, fill: FILL, fov: FOV, master: MASTER, sizes: SIZES, sceneText },
 );
 
 await browser.close();

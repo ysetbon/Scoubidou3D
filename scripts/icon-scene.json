@@ -1,0 +1,500 @@
+{
+  "format": "scoubidou3d-scene",
+  "version": 2,
+  "name": "Box stitch — 2 levels",
+  "strands": [
+    {
+      "id": "1_1",
+      "start": {
+        "x": 341,
+        "y": 301
+      },
+      "end": {
+        "x": 459,
+        "y": 235
+      },
+      "control_points": [
+        {
+          "x": 341,
+          "y": 301
+        },
+        {
+          "x": 341,
+          "y": 301
+        }
+      ],
+      "control_point_center": null,
+      "control_point_center_locked": false,
+      "triangleHasMoved": false,
+      "cp2Activated": false,
+      "width": 54,
+      "stroke_width": 4,
+      "color": {
+        "r": 255,
+        "g": 92,
+        "b": 53,
+        "a": 255
+      },
+      "stroke_color": {
+        "r": 30,
+        "g": 30,
+        "b": 30,
+        "a": 255
+      },
+      "thickness": null,
+      "visible": true,
+      "isMask": false,
+      "hasCircles": [
+        true,
+        true
+      ],
+      "parentId": null,
+      "parentSide": null
+    },
+    {
+      "id": "2_1",
+      "start": {
+        "x": 367,
+        "y": 209
+      },
+      "end": {
+        "x": 433,
+        "y": 327
+      },
+      "control_points": [
+        {
+          "x": 367,
+          "y": 209
+        },
+        {
+          "x": 367,
+          "y": 209
+        }
+      ],
+      "control_point_center": null,
+      "control_point_center_locked": false,
+      "triangleHasMoved": false,
+      "cp2Activated": false,
+      "width": 54,
+      "stroke_width": 4,
+      "color": {
+        "r": 255,
+        "g": 212,
+        "b": 71,
+        "a": 255
+      },
+      "stroke_color": {
+        "r": 30,
+        "g": 30,
+        "b": 30,
+        "a": 255
+      },
+      "thickness": null,
+      "visible": true,
+      "isMask": false,
+      "hasCircles": [
+        true,
+        true
+      ],
+      "parentId": null,
+      "parentSide": null
+    },
+    {
+      "id": "1_2",
+      "start": {
+        "x": 341,
+        "y": 301
+      },
+      "end": {
+        "x": 466,
+        "y": 301
+      },
+      "control_points": [
+        {
+          "x": 341,
+          "y": 301
+        },
+        {
+          "x": 341,
+          "y": 301
+        }
+      ],
+      "control_point_center": null,
+      "control_point_center_locked": false,
+      "triangleHasMoved": false,
+      "cp2Activated": false,
+      "width": 54,
+      "stroke_width": 4,
+      "color": {
+        "r": 255,
+        "g": 92,
+        "b": 53,
+        "a": 255
+      },
+      "stroke_color": {
+        "r": 30,
+        "g": 30,
+        "b": 30,
+        "a": 255
+      },
+      "thickness": null,
+      "visible": true,
+      "isMask": false,
+      "hasCircles": [
+        true,
+        true
+      ],
+      "parentId": "1_1",
+      "parentSide": 0
+    },
+    {
+      "id": "2_2",
+      "start": {
+        "x": 433,
+        "y": 327
+      },
+      "end": {
+        "x": 433,
+        "y": 202
+      },
+      "control_points": [
+        {
+          "x": 433,
+          "y": 327
+        },
+        {
+          "x": 433,
+          "y": 327
+        }
+      ],
+      "control_point_center": null,
+      "control_point_center_locked": false,
+      "triangleHasMoved": false,
+      "cp2Activated": false,
+      "width": 54,
+      "stroke_width": 4,
+      "color": {
+        "r": 255,
+        "g": 212,
+        "b": 71,
+        "a": 255
+      },
+      "stroke_color": {
+        "r": 30,
+        "g": 30,
+        "b": 30,
+        "a": 255
+      },
+      "thickness": null,
+      "visible": true,
+      "isMask": false,
+      "hasCircles": [
+        true,
+        true
+      ],
+      "parentId": "2_1",
+      "parentSide": 1
+    },
+    {
+      "id": "1_3",
+      "start": {
+        "x": 459,
+        "y": 235
+      },
+      "end": {
+        "x": 334,
+        "y": 235
+      },
+      "control_points": [
+        {
+          "x": 459,
+          "y": 235
+        },
+        {
+          "x": 459,
+          "y": 235
+        }
+      ],
+      "control_point_center": null,
+      "control_point_center_locked": false,
+      "triangleHasMoved": false,
+      "cp2Activated": false,
+      "width": 54,
+      "stroke_width": 4,
+      "color": {
+        "r": 255,
+        "g": 92,
+        "b": 53,
+        "a": 255
+      },
+      "stroke_color": {
+        "r": 30,
+        "g": 30,
+        "b": 30,
+        "a": 255
+      },
+      "thickness": null,
+      "visible": true,
+      "isMask": false,
+      "hasCircles": [
+        true,
+        true
+      ],
+      "parentId": "1_1",
+      "parentSide": 1
+    },
+    {
+      "id": "2_3",
+      "start": {
+        "x": 367,
+        "y": 209
+      },
+      "end": {
+        "x": 367,
+        "y": 334
+      },
+      "control_points": [
+        {
+          "x": 367,
+          "y": 209
+        },
+        {
+          "x": 367,
+          "y": 209
+        }
+      ],
+      "control_point_center": null,
+      "control_point_center_locked": false,
+      "triangleHasMoved": false,
+      "cp2Activated": false,
+      "width": 54,
+      "stroke_width": 4,
+      "color": {
+        "r": 255,
+        "g": 212,
+        "b": 71,
+        "a": 255
+      },
+      "stroke_color": {
+        "r": 30,
+        "g": 30,
+        "b": 30,
+        "a": 255
+      },
+      "thickness": null,
+      "visible": true,
+      "isMask": false,
+      "hasCircles": [
+        true,
+        true
+      ],
+      "parentId": "2_1",
+      "parentSide": 0
+    },
+    {
+      "id": "2_4",
+      "start": {
+        "x": 367,
+        "y": 334
+      },
+      "end": {
+        "x": 367,
+        "y": 173.0
+      },
+      "control_points": [
+        {
+          "x": 367,
+          "y": 334
+        },
+        {
+          "x": 367,
+          "y": 334
+        }
+      ],
+      "control_point_center": null,
+      "control_point_center_locked": false,
+      "triangleHasMoved": false,
+      "cp2Activated": false,
+      "width": 54,
+      "stroke_width": 4,
+      "color": {
+        "r": 255,
+        "g": 212,
+        "b": 71,
+        "a": 255
+      },
+      "stroke_color": {
+        "r": 30,
+        "g": 30,
+        "b": 30,
+        "a": 255
+      },
+      "thickness": null,
+      "visible": true,
+      "isMask": false,
+      "hasCircles": [
+        true,
+        false
+      ],
+      "parentId": "2_3",
+      "parentSide": 1
+    },
+    {
+      "id": "1_4",
+      "start": {
+        "x": 334,
+        "y": 235
+      },
+      "end": {
+        "x": 495.0,
+        "y": 235
+      },
+      "control_points": [
+        {
+          "x": 334,
+          "y": 235
+        },
+        {
+          "x": 334,
+          "y": 235
+        }
+      ],
+      "control_point_center": null,
+      "control_point_center_locked": false,
+      "triangleHasMoved": false,
+      "cp2Activated": false,
+      "width": 54,
+      "stroke_width": 4,
+      "color": {
+        "r": 255,
+        "g": 92,
+        "b": 53,
+        "a": 255
+      },
+      "stroke_color": {
+        "r": 30,
+        "g": 30,
+        "b": 30,
+        "a": 255
+      },
+      "thickness": null,
+      "visible": true,
+      "isMask": false,
+      "hasCircles": [
+        true,
+        false
+      ],
+      "parentId": "1_3",
+      "parentSide": 1
+    },
+    {
+      "id": "2_5",
+      "start": {
+        "x": 433,
+        "y": 202
+      },
+      "end": {
+        "x": 433,
+        "y": 363.0
+      },
+      "control_points": [
+        {
+          "x": 433,
+          "y": 202
+        },
+        {
+          "x": 433,
+          "y": 202
+        }
+      ],
+      "control_point_center": null,
+      "control_point_center_locked": false,
+      "triangleHasMoved": false,
+      "cp2Activated": false,
+      "width": 54,
+      "stroke_width": 4,
+      "color": {
+        "r": 255,
+        "g": 212,
+        "b": 71,
+        "a": 255
+      },
+      "stroke_color": {
+        "r": 30,
+        "g": 30,
+        "b": 30,
+        "a": 255
+      },
+      "thickness": null,
+      "visible": true,
+      "isMask": false,
+      "hasCircles": [
+        true,
+        false
+      ],
+      "parentId": "2_2",
+      "parentSide": 1
+    },
+    {
+      "id": "1_5",
+      "start": {
+        "x": 466,
+        "y": 301
+      },
+      "end": {
+        "x": 305.0,
+        "y": 301
+      },
+      "control_points": [
+        {
+          "x": 466,
+          "y": 301
+        },
+        {
+          "x": 466,
+          "y": 301
+        }
+      ],
+      "control_point_center": null,
+      "control_point_center_locked": false,
+      "triangleHasMoved": false,
+      "cp2Activated": false,
+      "width": 54,
+      "stroke_width": 4,
+      "color": {
+        "r": 255,
+        "g": 92,
+        "b": 53,
+        "a": 255
+      },
+      "stroke_color": {
+        "r": 30,
+        "g": 30,
+        "b": 30,
+        "a": 255
+      },
+      "thickness": null,
+      "visible": true,
+      "isMask": false,
+      "hasCircles": [
+        true,
+        false
+      ],
+      "parentId": "1_2",
+      "parentSide": 1
+    }
+  ],
+  "masks": [
+    {
+      "overId": "1_2",
+      "underId": "2_3"
+    },
+    {
+      "overId": "2_4",
+      "underId": "1_5"
+    }
+  ],
+  "levelBreaks": [
+    6
+  ]
+}
