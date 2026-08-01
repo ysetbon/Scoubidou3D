@@ -69,7 +69,7 @@ puts it next to three others — upright bands, the mask row's two-tone disc, th
 intersect glyph — in both themes and at the size it will actually be read. The upright
 bands won.
 
-**Mock 5, still open.** The inspector has exactly one reach switch — `Applies to ·
+**Mock 5, and A won.** The inspector has exactly one reach switch — `Applies to ·
 This layer / All layers` — and it governs the colour chips and nothing else, while
 `Straighten` and `Hide` are two pills that always act on the single layer whose row is
 open. On a scene with sets in it that split stops making sense: colouring a whole `3_x`
@@ -87,20 +87,48 @@ as hidden across a whole stack (dimmed, hollow swatch), and a sticky
 `207 layers hidden · Show all` strip on the stack itself. The strip has to live there and
 not in the inspector, since the inspector can be closed with the scene still soloed.
 
-Three shapes for the rows, and that is the question the mock is for:
+Three shapes for the rows, and that was the question the mock was for:
 
 | | The row | Costs |
 | --- | --- | --- |
-| **A** | verb pill on the left, reach switch on the right | six rows where there were four |
+| **A** ✔ | verb pill on the left, reach switch on the right | six rows where there were four |
 | **B** | no pill — the switch halves *are* the buttons, one press | colour has no button of its own and must stay sticky, so the same control means two things one row apart |
 | **C** | one reach at the top governing everything under it | cannot colour a branch while hiding a single layer |
+
+**A is the one to build.** It costs a press that B saves, and buys the two things that
+matter more: the panel has ONE reach control that means one thing everywhere — colour's
+switch and Hide's switch are the same control doing the same job — and the row says what
+a press will do *before* it is pressed, which on `Hide others · All layers` is the
+difference between reading "207 rows are about to go" and finding out. B's saved press
+is real, but it buys it by making the row that arms a mode and the row that fires an
+action look identical one line apart, and colour cannot be made to work B's way: its
+trigger is a chip, not a button on the row. C is fewer controls and the wrong ones —
+colouring a branch while hiding a single layer is an ordinary thing to want, and C is
+the only shape that cannot say it.
+
+So the inspector becomes:
+
+    Colour        [chips]
+    Applies to    [This layer | All layers]
+    Width         [------o-----]
+    ────────────────────────────────────────
+    [Straighten]  [This layer | All layers]
+    [Hide]        [This layer | All layers]
+    [Hide others] [This layer | All layers]
+    ────────────────────────────────────────
+    [bin] [✕]
+
+with each switch remembered on its own — reaching a branch is a mode you stay in, not a
+choice you re-make every press — and the stack carrying the sticky
+`N layers hidden · Show all` whenever anything is off, which is the only way back from a
+solo once the inspector is closed.
 
 **One thing to settle in the model, not the panel.** `rebuild()` maps a hidden strand's
 centerline to `null` (`src/scene/StrandScene.ts`), which drops it out of the crossing
 solve as well as out of the drawing — so a soloed branch comes back flat, having lost
 every over/under it had with the layers around it. Hiding one layer barely shows it;
-`Hide others` makes it the whole picture. Whatever row shape wins, hide wants to stop
-the *drawing* and leave the *weave* alone.
+`Hide others` makes it the whole picture. Hide wants to stop the *drawing* and leave the
+*weave* alone, and that goes in with A.
 
 The mocks stay in the repo as the record of the choice — and as the place to
 try the next panel idea before touching the app.
