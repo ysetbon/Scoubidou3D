@@ -37,6 +37,7 @@
   </script>
   <link rel="stylesheet" href="./site/site.css" />
   <script type="module" src="./site/theme.js"></script>
+  <script type="module" src="./site/count.js"></script>
 </head>
 
 <body>
@@ -758,7 +759,12 @@ npm run shots    <span class="cmt"># reshoot site/shots/*.webp</span></code></pr
       <a href="https://github.com/ysetbon/Scoubidou3D">Source</a>
       <a href="https://github.com/ysetbon/Scoubidou3D/issues">Issues</a>
     </nav>
-    <small>GPL-3.0, matching OpenStrand Studio</small>
+    <!-- The counting note is nested inside the licence line rather than added
+         beside it: the footer is a four-column grid, and a fifth child would
+         drop to a row of its own. site/count.js unhides it, so it appears only
+         while visits are actually being counted. -->
+    <small>GPL-3.0, matching OpenStrand Studio<span data-count-note hidden><br />Visits counted
+        without cookies</span></small>
   </footer>
 
   <!-- Three small behaviours, in plain script so the page needs no build step of
