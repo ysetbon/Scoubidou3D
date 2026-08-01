@@ -440,6 +440,21 @@ button {
   border-color: var(--edge2);
 }
 
+/* A hidden layer, dimmed whole. The ●/○ in the row's controls says the same
+   thing exactly, and says it in ten pixels at the far end of the row — which is
+   enough for one hidden layer and useless for the two hundred that "Hide
+   others" turns off at once. The swatch goes hollow with it: a solid block of
+   colour is the one part of a dimmed row that still reads as present. */
+.row.off {
+  opacity: 0.42;
+}
+
+.row.off .swatch {
+  /* Beats the inline colour the row paints on, which is the point. */
+  background: transparent !important;
+  border-style: dashed;
+}
+
 .row.sel {
   border: 1.5px solid var(--sel);
 }
@@ -651,6 +666,59 @@ button {
 .inspector .pill {
   min-height: 30px;
   font-size: 10.5px;
+}
+
+/* ---- an action and how far it reaches ------------------------------------
+   Straighten, Hide and Hide others each get a row: the verb where COLOUR and
+   WIDTH print their labels, its reach where their controls sit. So the
+   inspector stays two columns to the bottom, and the switch on an action row is
+   the same control, in the same place, as the one under the palette. */
+.act-row .pill {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.act-row .scope-toggle {
+  flex: 0 0 auto;
+}
+
+/* Between what the layer LOOKS like and what to DO with it. Without it the six
+   rows read as six properties, and Hide others reads as one of them. */
+.insp-split {
+  height: 0;
+  margin: 1px 0 10px;
+  border-top: 1.5px solid var(--edge2);
+}
+
+/* ---- the way back from a solo --------------------------------------------
+   Sticky to the top of the stack, and coral, because it is the one control in
+   the panel that undoes something you cannot undo by hand: after Hide others on
+   a twist, the rows you would have to press are the two hundred that are off. */
+.hidden-banner {
+  position: sticky;
+  z-index: 2;
+  top: -12px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 7px 8px 7px 11px;
+  border: 1.5px solid var(--coral);
+  background: var(--paper);
+}
+
+.hidden-banner b {
+  margin-right: auto;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.hidden-banner .pill {
+  flex: 0 0 auto;
+  min-height: 26px;
+  padding: 0 11px;
+  font-size: 10px;
 }
 
 /* ---- controls ------------------------------------------------------------ */

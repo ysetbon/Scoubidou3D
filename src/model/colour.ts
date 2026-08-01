@@ -21,8 +21,14 @@
 
 import { RGBA, Scene3D, Strand3D } from './types';
 
-/** Which of the two a picked colour is spent on. */
-export type ColourScope = 'layer' | 'set';
+/**
+ * How far an edit reaches: the one layer, or every layer of its set.
+ *
+ * Named for the reach rather than for colour because colour is no longer the
+ * only thing that has one — straightening, hiding, and hiding everything else
+ * each carry their own, and they all mean this same pair.
+ */
+export type Scope = 'layer' | 'set';
 
 /** The set a layer name belongs to — the `N` of `N_M` — or null for a name
  *  outside the convention. Masks are named for the pair they join (`1_2_3_4`),
@@ -57,7 +63,7 @@ export function setMembers(scene: Scene3D, id: string): Strand3D[] {
  * recoloured. Returns how many strands actually took the colour, which is what
  * the panel names the edit by.
  */
-export function recolour(scene: Scene3D, id: string, colour: RGBA, scope: ColourScope): number {
+export function recolour(scene: Scene3D, id: string, colour: RGBA, scope: Scope): number {
   const targets = scope === 'set' ? setMembers(scene, id) : scene.strands.filter((s) => s.id === id);
   for (const s of targets) s.color = { r: colour.r, g: colour.g, b: colour.b, a: s.color.a };
   return targets.length;

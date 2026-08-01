@@ -420,14 +420,28 @@ export class StrandScene {
     // 0) Resting height per strand, shared by every strand in one lace.
     this.computeBaseZ();
 
-    // 1) The flat world-space centerline of every strand (null = skip).
+    // 1) The flat world-space centerline of every strand (null = skip). A HIDDEN
+    //    strand is here: hiding stops the drawing, not the weaving. A mask is
+    //    not — it is a relationship between two layers, and becomes real Z in
+    //    step 2 rather than a ribbon of its own.
     const worldLines = this.current.strands.map((s) =>
-      s.visible && !s.isMask ? densify(this.strandCenterlineWorld(s), 0.2) : null,
+      s.isMask ? null : densify(this.strandCenterlineWorld(s), 0.2),
     );
 
     // 2) Weave: turn crossings into per-strand Z height fields, then bake Z into
     //    each centerline. world3D[i] is the woven centerline used everywhere.
-    this.world3D = this.weaveCenterlines(worldLines);
+    //
+    //    Hidden layers weave and are then dropped, rather than being left out of
+    //    the weave: a crossing is a fact about two strands, and taking one of
+    //    them out of the solve straightens the OTHER one — so hiding a layer
+    //    used to flatten the lace it ran under, and "hide everything but this
+    //    lace" handed back the one thing it was asked to show with every one of
+    //    its over/unders gone. Everything downstream — the lace merge, the
+    //    ribbons, the connectors, the handles, the weave overlays — reads
+    //    `world3D` and skips a null, so this one line is the whole of "hidden".
+    this.world3D = this.weaveCenterlines(worldLines).map((line, i) =>
+      this.current.strands[i].visible ? line : null,
+    );
 
     // 3) Build the ribbons. Strands glued into one lace become ONE mesh along a
     //    single centerline, so the lace has no internal seams at all.

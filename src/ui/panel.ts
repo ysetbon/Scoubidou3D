@@ -49,7 +49,7 @@ import {
 } from '../model/levels';
 import { deleteCustom, getCustom, listCustom, saveCustom, storageAvailable } from '../model/customSamples';
 import { controlsAtDefault, resetControlPoints } from '../model/controlPoints';
-import { ColourScope, recolour, setMembers, setOf } from '../model/colour';
+import { Scope, recolour, setMembers, setOf } from '../model/colour';
 
 // Where the numbers in the reference folder come from. All three live outside the
 // studio bundle, so they are plain links rather than samples: relative ones so the
@@ -1610,6 +1610,9 @@ export class Panel {
       return;
     }
 
+    const back = this.hiddenBanner();
+    if (back) host.appendChild(back);
+
     const top = this.scene.levelBreaks.length;
     for (let level = top; level >= 0; level--) {
       const rows: number[] = [];
@@ -1762,10 +1765,50 @@ export class Panel {
     return row;
   }
 
+  /**
+   * How many layers are off, and the one press that brings them all back.
+   *
+   * It lives on the stack rather than in the inspector, and sticks to the top of
+   * it, because `Hide others` hides the very rows you would have to find to undo
+   * it by hand — two hundred of them on a twist — and the inspector that did it
+   * can be closed with the scene still soloed. Undo reaches it too; this is the
+   * way back that does not depend on the press being the last thing you did.
+   */
+  private hiddenBanner(): HTMLElement | null {
+    const hidden = this.scene.strands.filter((s) => !s.isMask && !s.visible);
+    if (hidden.length === 0) return null;
+
+    const box = el('div', 'hidden-banner');
+    box.appendChild(
+      el('b', undefined, `${hidden.length} ${hidden.length === 1 ? 'layer' : 'layers'} hidden`),
+    );
+    const show = pill(
+      'Show all',
+      () => {
+        for (const s of hidden) s.visible = true;
+        this.apply('show every layer');
+      },
+      'Bring every hidden layer back',
+    );
+    show.classList.add('coral');
+    box.appendChild(show);
+    return box;
+  }
+
   private layerRow(index: number): HTMLElement {
     const strand = this.scene.strands[index];
     const selected = strand.id === this.selectedId;
-    const row = el('div', 'row' + (selected ? ' sel' : '') + (strand.isMask ? ' row-mask' : ''));
+    // `off` dims the whole row. One hidden layer reads well enough as a hollow
+    // dot; two hundred of them, after a solo, have to be legible as a block —
+    // which is the difference between a stack you can scan and a column of rows
+    // whose state is in a 10px glyph at the far end of each one.
+    const row = el(
+      'div',
+      'row' +
+        (selected ? ' sel' : '') +
+        (strand.isMask ? ' row-mask' : '') +
+        (!strand.isMask && !strand.visible ? ' off' : ''),
+    );
 
     const swatch = el('span', 'swatch');
     swatch.style.background = hex(strand.color);
@@ -1857,23 +1900,14 @@ export class Panel {
       }),
     );
 
+    // A hairline between what this layer LOOKS like and what to DO with it. The
+    // three action rows below carry a reach each, and without the rule they read
+    // as three more properties of the strand.
+    box.appendChild(el('div', 'insp-split'));
+    for (const row of this.actionRows(strand)) box.appendChild(row);
+    box.appendChild(el('div', 'insp-split'));
+
     const acts = el('div', 'pill-row');
-    const atDefault = controlsAtDefault(strand);
-    const straighten = pill('Straighten', () => {
-      resetControlPoints(strand);
-      this.apply('straighten a strand');
-    });
-    straighten.disabled = atDefault;
-    straighten.title = atDefault
-      ? 'Control points are already at their default'
-      : 'Reset control points (straighten this strand)';
-    acts.appendChild(straighten);
-    acts.appendChild(
-      pill(strand.visible ? 'Hide' : 'Show', () => {
-        strand.visible = !strand.visible;
-        this.apply(strand.visible ? 'show a strand' : 'hide a strand');
-      }, 'Show / hide this strand'),
-    );
 
     // A bin for deleting and a ✕ for closing. They were the same button before,
     // which is the one pairing you cannot have: ✕ reads as "put this away" on
@@ -1903,13 +1937,143 @@ export class Panel {
   }
 
   /**
-   * Where the next colour lands: on this layer alone, or on its whole set.
+   * The three things you can do to a layer, one per row, each with its own reach.
+   *
+   * They were two pills sharing a row with the bin, and both acted on the one
+   * open layer always — so colouring a lace whole was a press and hiding it was
+   * one press per length. A row each buys them the switch the colour chips
+   * already had, and the room for a third: **Hide others**, which reads that
+   * same switch the other way round, as what to KEEP.
+   *
+   * Each pill says what it will do to the reach shown beside it — `Hide` becomes
+   * `Show` once everything it would reach is already hidden — so the row can be
+   * read before it is pressed rather than after.
+   */
+  private actionRows(strand: Strand3D): HTMLElement[] {
+    const mates = setMembers(this.scene, strand.id);
+    const set = setOf(strand.id);
+    // Masks are not layers you can hide — they are a crossing between two of
+    // them — so they are never a target and never counted.
+    const layers = this.scene.strands.filter((s) => !s.isMask);
+    const rows: HTMLElement[] = [];
+
+    const row = (
+      key: ReachKey,
+      label: string,
+      titles: [string, string],
+      act: () => void,
+      disabled?: string,
+    ): void => {
+      const line = el('div', 'insp-row act-row');
+      const reach = this.reachOf(strand, key);
+      const b = pill(label, act, disabled ?? titles[reach === 'set' ? 1 : 0]);
+      b.disabled = disabled !== undefined;
+      line.appendChild(b);
+      const toggle = this.reachToggle(key, titles, mates.length > 1);
+      if (toggle) line.appendChild(toggle);
+      rows.push(line);
+    };
+
+    // ---- Straighten ---------------------------------------------------------
+    const bendable = this.reachTargets(strand, 'straighten');
+    const atDefault = bendable.every((s) => controlsAtDefault(s));
+    row(
+      'straighten',
+      'Straighten',
+      [
+        `Reset control points (straighten ${strand.id})`,
+        `Straighten the whole set — all ${mates.length} layers of ${set}_x`,
+      ],
+      () => {
+        for (const s of bendable) resetControlPoints(s);
+        this.apply(bendable.length > 1 ? `straighten set ${set}` : 'straighten a strand');
+      },
+      atDefault
+        ? bendable.length > 1
+          ? 'Every layer of this set is already straight'
+          : 'Control points are already at their default'
+        : undefined,
+    );
+
+    // ---- Hide / Show --------------------------------------------------------
+    // One press covers a set that is part hidden and part not: anything still
+    // showing means the press hides, and only a set that is wholly gone offers
+    // to bring it back. The alternative — flipping each layer where it stands —
+    // reads as a press that did nothing to half of what it named.
+    const hideable = this.reachTargets(strand, 'hide');
+    const anyShown = hideable.some((s) => s.visible);
+    const verb = anyShown ? 'Hide' : 'Show';
+    row(
+      'hide',
+      verb,
+      [
+        `${verb} ${strand.id}`,
+        `${verb} the whole set — all ${mates.length} layers of ${set}_x`,
+      ],
+      () => {
+        for (const s of hideable) s.visible = !anyShown;
+        this.apply(
+          hideable.length > 1
+            ? `${anyShown ? 'hide' : 'show'} set ${set}`
+            : anyShown
+              ? 'hide a strand'
+              : 'show a strand',
+        );
+      },
+    );
+
+    // ---- Hide others --------------------------------------------------------
+    // The solo. On a woven mat this is the only way to look at one lace, and on
+    // a 230-layer twist it is 207 rows in a press — so the stack grows a way
+    // back (see `hiddenBanner`) the moment anything is off.
+    const keep = new Set(this.reachTargets(strand, 'others'));
+    const doomed = layers.filter((s) => !keep.has(s) && s.visible);
+    const raising = [...keep].filter((s) => !s.visible).length;
+    row(
+      'others',
+      'Hide others',
+      [
+        `Hide every layer except ${strand.id} — ${layers.length - 1} of them`,
+        `Hide every layer except the ${mates.length} of ${set}_x — ` +
+          `${layers.length - mates.length} of them`,
+      ],
+      () => {
+        for (const s of layers) s.visible = keep.has(s);
+        this.apply('hide the other layers');
+      },
+      doomed.length === 0 && raising === 0
+        ? 'Nothing else is showing — this layer is already the only one'
+        : undefined,
+    );
+
+    return rows;
+  }
+
+  /**
+   * How far each action reaches: this layer alone, or its whole set.
    *
    * The choice is the panel's, not the strand's — it is how you are working, so
    * it stays put as you move down the stack rather than resetting on every row —
    * and it is remembered between visits, like the theme.
    */
-  private colourScope: ColourScope = loadColourScope();
+  private reaches: Reaches = loadReaches();
+
+  /**
+   * The reach an action would actually use on this strand.
+   *
+   * A layer with no set of its own — a hand-named `s7`, or the only length of
+   * its lace — has one reach whatever the switch says, and its row is drawn
+   * without a switch at all (see `reachToggle`). Asking here rather than at each
+   * call site keeps the two from ever disagreeing.
+   */
+  private reachOf(strand: Strand3D, key: ReachKey): Scope {
+    return setMembers(this.scene, strand.id).length > 1 ? this.reaches[key] : 'layer';
+  }
+
+  /** The layers an action would land on: this one, or every length of its lace. */
+  private reachTargets(strand: Strand3D, key: ReachKey): Strand3D[] {
+    return this.reachOf(strand, key) === 'set' ? setMembers(this.scene, strand.id) : [strand];
+  }
 
   /**
    * Spend a colour under the current scope, and name the edit for what it did.
@@ -1922,7 +2086,7 @@ export class Panel {
    * neither. The picker holds its own drag now, and spends nothing until OK.
    */
   private paint(strand: Strand3D, colour: RGBA): void {
-    const n = recolour(this.scene, strand.id, colour, this.colourScope);
+    const n = recolour(this.scene, strand.id, colour, this.reachOf(strand, 'colour'));
     const set = setOf(strand.id);
     this.apply(n > 1 ? `recolour set ${set}` : 'recolour a strand');
   }
@@ -1981,7 +2145,7 @@ export class Panel {
       el(
         'span',
         'picker-note',
-        this.colourScope === 'set' && mates > 1
+        this.reachOf(strand, 'colour') === 'set'
           ? `all ${mates} layers of ${setOf(strand.id)}_x`
           : strand.id,
       ),
@@ -2105,33 +2269,64 @@ export class Panel {
   }
 
   /**
-   * The layer / set switch, drawn under the palette — and only when there is a
-   * choice to make. A strand whose name is outside the `N_M` convention has no
-   * set, and one that is the only length of its own has a set of one: either way
-   * both halves would do the same thing, so the row stays away.
+   * The colour reach, drawn under the palette — and only when there is a choice
+   * to make. A strand whose name is outside the `N_M` convention has no set, and
+   * one that is the only length of its own has a set of one: either way both
+   * halves would do the same thing, so the row stays away.
+   *
+   * It keeps a row and a label of its own where the three action rows carry
+   * their verb instead, because the chips above are its button: there is nothing
+   * on the row itself to press.
    */
   private scopeRow(strand: Strand3D): HTMLElement | null {
     const set = setOf(strand.id);
-    const mates = set === null ? [] : setMembers(this.scene, strand.id);
-    if (mates.length < 2) return null;
+    const mates = setMembers(this.scene, strand.id);
+    const toggle = this.reachToggle(
+      'colour',
+      [
+        `Colour ${strand.id} alone`,
+        `Colour the whole set — all ${mates.length} layers of ${set}_x, this one included`,
+      ],
+      mates.length > 1,
+    );
+    if (!toggle) return null;
 
     const row = el('div', 'insp-row');
     row.appendChild(el('span', 'insp-label', 'Applies to'));
+    row.appendChild(toggle);
+    return row;
+  }
+
+  /**
+   * One reach switch: `This layer | All layers`, for whichever action asked.
+   *
+   * `null` when the strand has no set to spread to, which is what keeps the
+   * switch off a row where both halves would do the same thing — and off every
+   * row of a scene of hand-named strands, where none of them has one.
+   */
+  private reachToggle(
+    key: ReachKey,
+    titles: [string, string],
+    offer: boolean,
+  ): HTMLElement | null {
+    if (!offer) return null;
+
     const group = el('span', 'scope-toggle');
     group.setAttribute('role', 'group');
-    group.setAttribute('aria-label', 'What a colour applies to');
+    group.setAttribute('aria-label', 'How far this reaches');
 
-    const choice = (key: ColourScope, label: string, title: string): void => {
+    const choice = (scope: Scope, label: string, title: string): void => {
       const b = el('button', 'scope-btn', label) as HTMLButtonElement;
       b.type = 'button';
       b.title = title;
-      b.setAttribute('aria-pressed', String(this.colourScope === key));
+      b.setAttribute('aria-pressed', String(this.reaches[key] === scope));
       b.addEventListener('click', () => {
-        if (this.colourScope === key) return;
-        this.colourScope = key;
-        saveColourScope(key);
-        // No scene edit here: nothing is recoloured until a colour is picked, so
-        // this redraws the panel and stays out of the history.
+        if (this.reaches[key] === scope) return;
+        this.reaches[key] = scope;
+        saveReaches(this.reaches);
+        // No scene edit here: a reach is what the NEXT press will do, so this
+        // redraws the panel — the verbs and their tooltips change with it — and
+        // stays out of the history.
         this.renderStack();
       });
       group.appendChild(b);
@@ -2141,15 +2336,9 @@ export class Panel {
     // exact truth, and it reads as a layer id — the one thing on this row that is
     // NOT a place to press. The count belongs in the tooltip, where a number is
     // read once out of curiosity instead of parsed on every glance.
-    choice('layer', 'This layer', `Colour ${strand.id} alone`);
-    choice(
-      'set',
-      'All layers',
-      `Colour the whole set — all ${mates.length} layers of ${set}_x, this one included`,
-    );
-
-    row.appendChild(group);
-    return row;
+    choice('layer', 'This layer', titles[0]);
+    choice('set', 'All layers', titles[1]);
+    return group;
   }
 
   /**
@@ -2326,6 +2515,17 @@ const ABOUT: Array<[string, string]> = [
       'offered only where it means something — a lace with one length has nothing to spread to.',
   ],
   [
+    'Hiding, and how far a press reaches',
+    'Every action in a row’s controls carries that same <b>This layer / All layers</b> switch, ' +
+      'and each remembers its own: you can be colouring a lace whole while straightening one ' +
+      'length of it. <b>Hide</b> takes a layer out of the picture and leaves it in the stack, ' +
+      'dimmed — its crossings stay, so the strands it ran under keep their over and under. ' +
+      '<b>Hide others</b> reads the switch the other way round, as what to <i>keep</i>: it hides ' +
+      'everything that is not this layer, or everything that is not its lace, which is how you ' +
+      'look at one lace of a stitch on its own. Nothing is deleted by any of it — while anything ' +
+      'is hidden the stack carries a <b>Show all</b> at the top, and undo reaches it too.',
+  ],
+  [
     'Masks',
     'Click the strand that goes <b>over</b>, then the one it goes under: they interlock at their ' +
       'crossing, which is the 3D version of an OpenStrand mask. Hovering lights <b>one layer</b>, ' +
@@ -2362,27 +2562,50 @@ const ABOUT: Array<[string, string]> = [
   ],
 ];
 
-// ---- the colour scope ------------------------------------------------------
-// Layer or set (see model/colour.ts). Remembered for the same reason the theme
-// is: it is a way of working rather than a property of a scene, so it belongs to
-// the person and not to the file — and someone recolouring lace by lace should
-// not have to say so again on every strand, or after every refresh.
+// ---- the reaches -----------------------------------------------------------
+// Layer or set (see model/colour.ts), one per action that has a reach: the
+// colour chips, Straighten, Hide, and Hide others. Remembered for the same
+// reason the theme is — it is a way of working rather than a property of a
+// scene, so it belongs to the person and not to the file, and someone working
+// lace by lace should not have to say so again on every strand or after every
+// refresh.
+//
+// One per action rather than one for the panel because they are genuinely
+// independent: fixing the bend in a single length of a lace you are colouring
+// whole is an ordinary thing to be doing.
 
-const SCOPE_KEY = 'scoubidou3d-colour-scope';
+/** The actions that carry a reach of their own. */
+type ReachKey = 'colour' | 'straighten' | 'hide' | 'others';
 
-function loadColourScope(): ColourScope {
+const REACH_KEYS: ReachKey[] = ['colour', 'straighten', 'hide', 'others'];
+const REACH_STORE = 'scoubidou3d-reaches';
+// What colour's reach was stored under when it was the only one. Read once, so
+// that a returning user's choice survives the change instead of silently
+// resetting to This layer.
+const LEGACY_COLOUR_KEY = 'scoubidou3d-colour-scope';
+
+type Reaches = Record<ReachKey, Scope>;
+
+function loadReaches(): Reaches {
+  const out = { colour: 'layer', straighten: 'layer', hide: 'layer', others: 'layer' } as Reaches;
   try {
-    return localStorage.getItem(SCOPE_KEY) === 'set' ? 'set' : 'layer';
+    if (localStorage.getItem(LEGACY_COLOUR_KEY) === 'set') out.colour = 'set';
+    const raw = localStorage.getItem(REACH_STORE);
+    if (raw) {
+      const saved = JSON.parse(raw) as Partial<Record<string, unknown>>;
+      for (const k of REACH_KEYS) if (saved[k] === 'set') out[k] = 'set';
+    }
   } catch {
-    // A sandboxed frame can refuse storage; the layer is the safer default
-    // anyway, being the smaller of the two edits.
-    return 'layer';
+    // A sandboxed frame can refuse storage, and a hand-edited value can refuse
+    // to parse; the layer is the safer default anyway, being the smaller of the
+    // two edits in every case — and, for Hide others, by two hundred rows.
   }
+  return out;
 }
 
-function saveColourScope(scope: ColourScope): void {
+function saveReaches(reaches: Reaches): void {
   try {
-    localStorage.setItem(SCOPE_KEY, scope);
+    localStorage.setItem(REACH_STORE, JSON.stringify(reaches));
   } catch {
     // Not fatal: the choice still holds for this session.
   }
