@@ -1937,17 +1937,19 @@ export class Panel {
   }
 
   /**
-   * The three things you can do to a layer, one per row, each with its own reach.
+   * The four things you can do to a layer, one per row, each with a reach.
    *
    * They were two pills sharing a row with the bin, and both acted on the one
    * open layer always — so colouring a lace whole was a press and hiding it was
    * one press per length. A row each buys them the switch the colour chips
-   * already had, and the room for a third: **Hide others**, which reads that
-   * same switch the other way round, as what to KEEP.
+   * already had, and the room for two more: **Show**, which is Hide's own verb
+   * standing on its own so a part-hidden set has a press that finishes the job,
+   * and **Hide others**, which reads the same switch the other way round, as
+   * what to KEEP.
    *
-   * Each pill says what it will do to the reach shown beside it — `Hide` becomes
-   * `Show` once everything it would reach is already hidden — so the row can be
-   * read before it is pressed rather than after.
+   * Every pill says what it will do at the reach shown beside it, and a pill
+   * with nothing left to do is disabled and says why — so a row can be read
+   * before it is pressed rather than after.
    */
   private actionRows(strand: Strand3D): HTMLElement[] {
     const mates = setMembers(this.scene, strand.id);
@@ -1995,31 +1997,48 @@ export class Panel {
         : undefined,
     );
 
-    // ---- Hide / Show --------------------------------------------------------
-    // One press covers a set that is part hidden and part not: anything still
-    // showing means the press hides, and only a set that is wholly gone offers
-    // to bring it back. The alternative — flipping each layer where it stands —
-    // reads as a press that did nothing to half of what it named.
-    const hideable = this.reachTargets(strand, 'hide');
-    const anyShown = hideable.some((s) => s.visible);
-    const verb = anyShown ? 'Hide' : 'Show';
+    // ---- Hide, and Show ------------------------------------------------------
+    // Two rows rather than one pill that changes its word, because a set is not
+    // all one thing: hide the whole of 3_x, bring one length back to look at it,
+    // and a toggle reads "Hide" again — the only reading left once anything is
+    // showing — so the twenty-two still gone had no press that would return
+    // them. Split, each verb always does what it says: Hide hides, Show shows,
+    // and whichever has nothing left to do says so and goes quiet.
+    //
+    // They share ONE reach between them, and it is the pair's, not each row's.
+    // Two switches that could disagree is a trap with only one way to fall:
+    // hiding a lace whole and then reaching for Show, which would be sitting on
+    // This layer and hand back one length of the twenty-three.
+    const targets = this.reachTargets(strand, 'hide');
+    const shown = targets.filter((s) => s.visible).length;
+    const whole = targets.length > 1 ? `the whole set — all ${targets.length} layers of ${set}_x` : '';
     row(
       'hide',
-      verb,
-      [
-        `${verb} ${strand.id}`,
-        `${verb} the whole set — all ${mates.length} layers of ${set}_x`,
-      ],
+      'Hide',
+      [`Hide ${strand.id}`, `Hide ${whole}`],
       () => {
-        for (const s of hideable) s.visible = !anyShown;
-        this.apply(
-          hideable.length > 1
-            ? `${anyShown ? 'hide' : 'show'} set ${set}`
-            : anyShown
-              ? 'hide a strand'
-              : 'show a strand',
-        );
+        for (const s of targets) s.visible = false;
+        this.apply(targets.length > 1 ? `hide set ${set}` : 'hide a strand');
       },
+      shown === 0
+        ? targets.length > 1
+          ? 'Every layer of this set is already hidden'
+          : 'This layer is already hidden'
+        : undefined,
+    );
+    row(
+      'hide',
+      'Show',
+      [`Show ${strand.id}`, `Show ${whole}`],
+      () => {
+        for (const s of targets) s.visible = true;
+        this.apply(targets.length > 1 ? `show set ${set}` : 'show a strand');
+      },
+      shown === targets.length
+        ? targets.length > 1
+          ? 'Every layer of this set is already showing'
+          : 'This layer is already showing'
+        : undefined,
     );
 
     // ---- Hide others --------------------------------------------------------
@@ -2518,7 +2537,9 @@ const ABOUT: Array<[string, string]> = [
     'Hiding, and how far a press reaches',
     'Every action in a row’s controls carries that same <b>This layer / All layers</b> switch, ' +
       'and each remembers its own: you can be colouring a lace whole while straightening one ' +
-      'length of it. <b>Hide</b> takes a layer out of the picture and leaves it in the stack, ' +
+      'length of it. <b>Hide</b> and <b>Show</b> are a row each and share one switch between ' +
+      'them, so a lace hidden whole comes back whole. Hide takes a layer out of the picture and ' +
+      'leaves it in the stack, ' +
       'dimmed — its crossings stay, so the strands it ran under keep their over and under. ' +
       '<b>Hide others</b> reads the switch the other way round, as what to <i>keep</i>: it hides ' +
       'everything that is not this layer, or everything that is not its lace, which is how you ' +
@@ -2574,7 +2595,13 @@ const ABOUT: Array<[string, string]> = [
 // independent: fixing the bend in a single length of a lace you are colouring
 // whole is an ordinary thing to be doing.
 
-/** The actions that carry a reach of their own. */
+/**
+ * The actions that carry a reach of their own.
+ *
+ * `hide` is shared by the Hide row and the Show row: they are one axis worked
+ * from either end, and two switches that could disagree only ever fall one way
+ * — hide a lace whole, reach for Show, and get back one length of twenty-three.
+ */
 type ReachKey = 'colour' | 'straighten' | 'hide' | 'others';
 
 const REACH_KEYS: ReachKey[] = ['colour', 'straighten', 'hide', 'others'];

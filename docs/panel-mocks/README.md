@@ -114,9 +114,22 @@ So the inspector becomes:
     ────────────────────────────────────────
     [Straighten]  [This layer | All layers]
     [Hide]        [This layer | All layers]
+    [Show]        [This layer | All layers]
     [Hide others] [This layer | All layers]
     ────────────────────────────────────────
     [bin] [✕]
+
+**One divergence, from use: `Show` is a row of its own.** The mock draws Hide as one
+pill that changes its word — `Hide` while anything it reaches is showing, `Show` once
+everything is gone — which is right for a single layer and wrong for a set the moment
+the set is part hidden. Hide `3_x` whole, bring one length back to look at it, and the
+pill reads `Hide` again, because something is showing: the twenty-two still gone have no
+press that returns them. Split in two, each verb always does what it says, and the one
+with nothing left to do is disabled and says why.
+
+The two share **one** reach between them rather than carrying a switch each. Two
+switches that can disagree only ever fall one way — hide a lace whole, reach for `Show`,
+and it is sitting on `This layer` and hands back one length of twenty-three.
 
 with each switch remembered on its own — reaching a branch is a mode you stay in, not a
 choice you re-make every press — and the stack carrying the sticky
