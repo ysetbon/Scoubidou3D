@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Panel mock 5 — a reach for every action</title>
+  <!-- The APP's own stylesheet, as mock 4 does: this proposal rearranges the
+       inspector that already ships, so it has to be judged in the shipping
+       palette, at the shipping panel width, over the shipping stack. -->
+  <link rel="stylesheet" href="../../src/styles.css" />
+  <style>
+    /* ---- mock 5: one "applies to" per action ---------------------------------
+       Today the inspector has ONE reach switch — `Applies to · This layer /
+       All layers` — and it governs the colour chips alone. Straighten and Hide
+       sit under it as two pills in a row with the bin and the ✕, and both act on
+       the one layer whose row you opened, always.
+
+       That is a strange split once you have a scene with sets in it. `Colour the
+       whole 3_x branch` is one press; `hide the whole 3_x branch` is 23. And the
+       thing you actually want on a 230-layer twist — *show me this lace and
+       nothing else* — cannot be asked for at all.
+
+       So: give every action its own row and its own reach.
+
+         Colour        [chips]
+         Applies to    [This layer | All layers]
+         Width         [------o-----]
+         ────────────────────────────────────────
+         [Straighten]  [This layer | All layers]
+         [Hide]        [This layer | All layers]
+         [Hide others] [This layer | All layers]
+         ────────────────────────────────────────
+         [bin] [✕]
+
+       The switch always says the same thing — *what counts as "this"*: the one
+       layer, or every layer of its `N_x` branch. The verb on the left decides
+       what happens to it. `Hide others` reads the switch the other way round,
+       as what to KEEP: hide everything that is not this layer, or everything
+       that is not its branch — which is the solo the twists have wanted.
+
+       Three variants here, and the question the mock is for is which control
+       shape the rows take (A / B / C below). The fourth frame is the state that
+       decides it: what the panel looks like after `Hide others · All layers` on
+       a 7×3 twist, where 207 of 230 rows go dim at once. */
+
+    /* ---- A: the verb is a pill, the reach is the switch beside it -----------
+       The action rows line up with the rows above them — verb where the
+       COLOUR / WIDTH labels are, control where their controls are — so the
+       inspector stays two columns all the way down. */
+    .act-row {
+      gap: 8px;
+    }
+
+    .act-row .pill {
+      /* Against the switch, the pill takes the label column and no more; the
+         default `flex: 1 1 auto` would have it eat the row. */
+      flex: 1 1 auto;
+      min-width: 0;
+      justify-content: center;
+    }
+
+    .act-row .scope-toggle {
+      flex: 0 0 auto;
+    }
+
+    /* A hairline between "what this layer looks like" and "what to do with it".
+       The inspector is six rows now; without it the two halves run together. */
+    .insp-split {
+      height: 0;
+      margin: 2px 0 10px;
+      border-top: 1.5px solid var(--edge2);
+    }
+
+    /* ---- B: the switch IS the button ---------------------------------------
+       No pill: the two halves are the action, and pressing one does it at that
+       reach. One press instead of two, and no armed state to read. What it
+       costs is that the row can no longer SHOW a state — and the colour row
+       above it, which has no button of its own, must stay armed-and-sticky. So
+       the same control means two different things in one panel, which is the
+       thing to judge. */
+    .scope-toggle.live .scope-btn {
+      color: var(--ink);
+    }
+
+    .scope-toggle.live .scope-btn:hover {
+      background: var(--coral);
+      color: var(--fill-ink);
+    }
+
+    /* ---- the way back ------------------------------------------------------
+       `Hide others` hides rows you would have to find and click to bring back —
+       207 of them here — and it can be pressed with the inspector open and then
+       left closed. So the count and its undo live on the stack itself, above
+       every row, where they are visible whether or not anything is selected. */
+    .hidden-banner {
+      /* Sticky, not merely first: the stack scrolls, and a way back that scrolls
+         out of the stack is a way back you cannot find from a soloed scene. */
+      position: sticky;
+      top: -12px;
+      z-index: 2;
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      padding: 7px 8px 7px 11px;
+      border: 1.5px solid var(--coral);
+      background: var(--paper);
+    }
+
+    .hidden-banner b {
+      margin-right: auto;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .hidden-banner .pill {
+      flex: 0 0 auto;
+      min-height: 26px;
+      padding: 0 11px;
+      font-size: 10px;
+    }
+
+    /* A hidden layer has to read as hidden across a stack, not just carry a
+       hollow dot: after a solo, 207 rows are off and 23 are on, and that has to
+       be legible at a glance from arm's length. */
+    .row.off {
+      opacity: 0.4;
+    }
+
+    .row.off .swatch {
+      background: transparent !important;
+      border-style: dashed;
+    }
+
+    /* ---- the mock's own page furniture (not proposed UI) ------------------- */
+    body {
+      margin: 0;
+      padding: 26px 24px 34px;
+      background: var(--cream);
+      color: var(--ink);
+      font-family: 'Avenir Next', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    body.frame {
+      padding: 0;
+      background: var(--paper);
+    }
+
+    h1 {
+      margin: 0 0 4px;
+      font-family: Georgia, serif;
+      font-size: 25px;
+      font-weight: 400;
+    }
+
+    .lede {
+      max-width: 820px;
+      margin: 0 0 22px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: 20px;
+    }
+
+    .band {
+      margin-bottom: 26px;
+    }
+
+    .band-title {
+      margin: 0 0 10px;
+      font-family: Georgia, serif;
+      font-size: 17px;
+      font-weight: 400;
+    }
+
+    .cell {
+      width: 344px;
+    }
+
+    .cell h2,
+    .strip-col h2 {
+      margin: 0 0 3px;
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .cell p {
+      margin: 0 0 7px;
+      font-size: 11.5px;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+
+    .cell iframe {
+      display: block;
+      width: 344px;
+      height: 780px;
+      border: 1.5px solid var(--edge2);
+      background: #fffaf0;
+      box-shadow: 5px 6px 0 rgba(23, 23, 19, 0.5);
+    }
+
+    /* The panel replica: #panel is `flex: 0 0 var(--panel-w)` inside the app's
+       row, and here it is the whole document. */
+    body.frame #panel {
+      width: 100%;
+      height: 100vh;
+      border-left: 0;
+    }
+
+    /* ---- the close-up strip -------------------------------------------------
+       The frames above show the proposal where it lives — 344px of panel over a
+       230-row stack — which is the right test and the wrong picture to read the
+       rows off. This is the same three inspectors at panel width with three rows
+       of context each, and nothing else. */
+    body.strip {
+      padding: 20px;
+    }
+
+    .strip-grid {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: 18px;
+    }
+
+    .strip-col {
+      width: 316px;
+    }
+
+    .strip-col > .level-group {
+      background: var(--paper);
+    }
+  </style>
+</head>
+
+<body>
+  <script>
+    const Q = new URLSearchParams(location.search);
+    document.documentElement.dataset.theme = Q.get('theme') === 'dark' ? 'dark' : 'light';
+  </script>
+
+  <script type="module">
+    const Q = new URLSearchParams(location.search);
+
+    // ---- the scene: a 7×3 twist, generated the way samples.ts generates it ---
+    // `twistStitchMN(7, 3, 10)` — ten laces, twenty-three layers each, eleven
+    // storeys, 230 layers and 462 crossings. Level 0 carries the ten pinned
+    // laces and the first pair of arms off each; every storey above it is one
+    // more pair per lace, and an arm's parent is the arm the OTHER side of its
+    // lace left behind (that swap is the twist). Ids and colours below are the
+    // generator's own, dumped from it rather than invented, so the panel is
+    // showing the stack this scene really makes.
+    const SETS = 10;
+    const TWISTS = 10;
+    const PALETTE = [
+      '#e27a26', '#f5c837', '#3caaaf', '#f0f0f0',
+      '#d25a6e', '#8ca0d2', '#96c378', '#be8cc8',
+    ];
+    const colourOf = (set) => PALETTE[(set - 1) % PALETTE.length];
+
+    const STRANDS = [];
+    for (let k = 1; k <= SETS; k++) STRANDS.push({ id: `${k}_1`, set: k, level: 0, parent: null });
+    for (let k = 1; k <= SETS; k++) {
+      STRANDS.push({ id: `${k}_2`, set: k, level: 0, parent: `${k}_1` });
+      STRANDS.push({ id: `${k}_3`, set: k, level: 0, parent: `${k}_1` });
+    }
+    for (let L = 1; L <= TWISTS; L++) {
+      for (let k = 1; k <= SETS; k++) {
+        STRANDS.push({ id: `${k}_${2 * L + 2}`, set: k, level: L, parent: `${k}_${2 * L + 1}` });
+        STRANDS.push({ id: `${k}_${2 * L + 3}`, set: k, level: L, parent: `${k}_${2 * L}` });
+      }
+    }
+
+    // The layer the inspector is open on. Teal, mid-stack, and one of twenty-three
+    // — a set big enough that "all layers" is a real saving and a real risk.
+    const PICKED = '3_7';
+    const PICKED_SET = 3;
+    const SET_SIZE = STRANDS.filter((s) => s.set === PICKED_SET).length;
+
+    const el = (tag, cls, text) => {
+      const n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text !== undefined) n.textContent = text;
+      return n;
+    };
+    const iconBtn = (glyph, title) => {
+      const b = el('button', 'icon-btn', glyph);
+      b.type = 'button';
+      b.title = title;
+      return b;
+    };
+    const pill = (label, title, cls) => {
+      const b = el('button', 'pill' + (cls ? ' ' + cls : ''), label);
+      b.type = 'button';
+      if (title) b.title = title;
+      return b;
+    };
+    const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+    const svg = (b) => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${b}</svg>`;
+    const LAYERS_ICON = svg(
+      '<path d="M12 3 22 9.2 12 15.4 2 9.2Z" />' +
+        '<path d="M12 17.7 3.7 12.5 2 13.6 12 19.8 22 13.6 20.3 12.5Z" />',
+    );
+    const MASK_ICON = svg(
+      '<rect x="9.7" y="0.6" width="4.6" height="6.6" rx="2.3" />' +
+        '<rect x="9.7" y="16.8" width="4.6" height="6.6" rx="2.3" />' +
+        '<rect x="0.6" y="9.7" width="22.8" height="4.6" rx="2.3" />',
+    );
+    const MARK =
+      '<svg class="mark" viewBox="0 0 72 72" aria-hidden="true">' +
+      '<path class="ma" d="M9 16h54v16H9z" /><path class="mb" d="M28 8h16v56H28z" />' +
+      '<path class="mt" d="M28 16h16v16H28z" /></svg>';
+
+    /**
+     * The reach switch, as it ships (`.scope-toggle` / `.scope-btn`) with one
+     * addition: `live` marks the variant where the halves ARE the buttons, so
+     * neither is ever the pressed one.
+     *
+     * `titles` is a pair, because the same two words mean something different on
+     * every row — "All layers" straightens twenty-three, hides twenty-three, or
+     * SPARES twenty-three and hides the two hundred and seven around them.
+     */
+    function scopeToggle({ titles, live = false, pressed = 'layer', onPick }) {
+      const group = el('span', 'scope-toggle' + (live ? ' live' : ''));
+      group.setAttribute('role', 'group');
+      const make = (key, label, title) => {
+        const b = el('button', 'scope-btn', label);
+        b.type = 'button';
+        b.title = title;
+        if (!live) b.setAttribute('aria-pressed', String(pressed === key));
+        b.addEventListener('click', () => {
+          if (!live) {
+            for (const other of group.children) other.setAttribute('aria-pressed', 'false');
+            b.setAttribute('aria-pressed', 'true');
+          }
+          onPick?.(key);
+        });
+        group.appendChild(b);
+      };
+      // "All layers" rather than `3_x · 23`, which is the exact truth and reads
+      // as a layer id — the one thing on this row that is not a place to press.
+      // The count belongs in the tooltip. (That argument is already in
+      // panel.ts's scopeRow; it holds for every row this mock adds.)
+      make('layer', 'This layer', titles[0]);
+      make('set', 'All layers', titles[1]);
+      return group;
+    }
+
+    const labelled = (label, control) => {
+      const row = el('div', 'insp-row');
+      row.appendChild(el('span', 'insp-label', label));
+      row.appendChild(control);
+      return row;
+    };
+
+    function colourRow() {
+      const chips = el('span', 'chips');
+      for (const c of ['#e27a26', '#f5c837', '#3caaaf', '#f0f0f0', '#d25a6e', '#8ca0d2']) {
+        const chip = el('button', 'chip' + (c === '#3caaaf' ? ' on' : ''));
+        chip.type = 'button';
+        chip.style.background = c;
+        chip.title = c;
+        chips.appendChild(chip);
+      }
+      const wheel = el('button', 'chip wheel');
+      wheel.type = 'button';
+      wheel.title = 'Any colour…';
+      chips.appendChild(wheel);
+      return labelled('Colour', chips);
+    }
+
+    function widthRow() {
+      const wrap = el('div', 'slider');
+      const head = el('div', 'slider-head');
+      head.appendChild(el('span', undefined, 'Width'));
+      head.appendChild(el('var', undefined, '46'));
+      wrap.appendChild(head);
+      const input = el('input');
+      input.type = 'range';
+      input.min = '6';
+      input.max = '140';
+      input.step = '1';
+      input.value = '46';
+      input.style.setProperty('--pct', `${((46 - 6) / 134) * 100}%`);
+      wrap.appendChild(input);
+      return wrap;
+    }
+
+    // The three verbs, and what each half of their switch would do to this scene.
+    // Written out because the tooltips are half the proposal: two words on a
+    // button cannot say "spares twenty-three and hides two hundred and seven".
+    const VERBS = (hidden) => [
+      {
+        key: 'straighten',
+        label: 'Straighten',
+        titles: [
+          `Reset ${PICKED}'s control points`,
+          `Reset the control points of all ${SET_SIZE} layers of ${PICKED_SET}_x`,
+        ],
+      },
+      {
+        key: 'hide',
+        label: hidden ? 'Show' : 'Hide',
+        titles: hidden
+          ? [`Show ${PICKED}`, `Show all ${SET_SIZE} layers of ${PICKED_SET}_x`]
+          : [`Hide ${PICKED}`, `Hide all ${SET_SIZE} layers of ${PICKED_SET}_x`],
+      },
+      {
+        key: 'others',
+        label: 'Hide others',
+        titles: [
+          `Hide every layer except ${PICKED} — ${STRANDS.length - 1} of them`,
+          `Hide every layer except the ${SET_SIZE} of ${PICKED_SET}_x — ` +
+            `${STRANDS.length - SET_SIZE} of them`,
+        ],
+      },
+    ];
+
+    /**
+     * The inspector, in whichever shape this frame is arguing for.
+     *
+     *   A — verb pill on the left, reach switch on the right. Two columns all
+     *       the way down, and the switch shows what a press will do BEFORE it
+     *       is pressed. Colour's own switch is the same control doing the same
+     *       job, so the panel has one idiom.
+     *   B — the switch halves are the buttons: press "All layers" on the Hide
+     *       row and twenty-three layers go. One press, no armed state — but
+     *       colour cannot work that way (its trigger is a chip elsewhere in the
+     *       panel), so that row stays sticky and the two look identical.
+     *   C — leave the actions as they are and promote today's single switch to
+     *       the top, where it governs everything under it. Smallest change,
+     *       and the one thing it cannot do is mix: colour the branch, hide the
+     *       layer.
+     */
+    function inspector(variant, hidden) {
+      const box = el('div', 'inspector');
+      const verbs = VERBS(hidden);
+
+      if (variant === 'C') {
+        box.appendChild(
+          labelled(
+            'Applies to',
+            scopeToggle({
+              titles: [
+                `Everything below acts on ${PICKED} alone`,
+                `Everything below acts on all ${SET_SIZE} layers of ${PICKED_SET}_x`,
+              ],
+            }),
+          ),
+        );
+      }
+
+      box.appendChild(colourRow());
+
+      if (variant !== 'C') {
+        box.appendChild(
+          labelled(
+            'Applies to',
+            scopeToggle({
+              titles: [
+                `Colour ${PICKED} alone`,
+                `Colour the whole set — all ${SET_SIZE} layers of ${PICKED_SET}_x`,
+              ],
+            }),
+          ),
+        );
+      }
+
+      box.appendChild(widthRow());
+
+      if (variant === 'C') {
+        const acts = el('div', 'pill-row');
+        acts.appendChild(pill('Straighten', 'Reset control points'));
+        acts.appendChild(pill(hidden ? 'Show' : 'Hide', 'Show / hide'));
+        box.appendChild(acts);
+        const more = el('div', 'pill-row');
+        more.appendChild(pill('Hide others', 'Hide everything this does not apply to'));
+        box.appendChild(more);
+      } else {
+        box.appendChild(el('div', 'insp-split'));
+        for (const v of verbs) {
+          const row = el('div', 'insp-row act-row');
+          if (variant === 'A') {
+            row.appendChild(pill(v.label, `${v.titles[0]} — at the reach shown beside it`));
+            row.appendChild(scopeToggle({ titles: v.titles }));
+          } else {
+            row.appendChild(el('span', 'insp-label', v.label));
+            row.appendChild(scopeToggle({ titles: v.titles, live: true }));
+          }
+          box.appendChild(row);
+        }
+        box.appendChild(el('div', 'insp-split'));
+      }
+
+      const foot = el('div', 'pill-row');
+      const del = pill('', `Delete layer ${PICKED}`, 'square danger');
+      del.textContent = '🗑';
+      const close = pill('', 'Close these controls', 'square');
+      close.textContent = '✕';
+      foot.appendChild(del);
+      foot.appendChild(close);
+      box.appendChild(foot);
+      return box;
+    }
+
+    // ---- the frame: one panel, at panel width -------------------------------
+    function buildFrame() {
+      document.body.classList.add('frame');
+      const variant = (Q.get('v') || 'A').toUpperCase();
+      // `solo` is the state after `Hide others · All layers`: everything that is
+      // not 3_x is off.
+      const solo = !!Q.get('solo');
+      const hiddenCount = solo ? STRANDS.length - SET_SIZE : 0;
+
+      const panel = el('aside');
+      panel.id = 'panel';
+
+      const brand = el('div', 'brandbar');
+      const home = el('a', 'brand-home');
+      home.href = '#';
+      home.innerHTML = `${MARK}<span>Scoubidou<i>3D</i></span>`;
+      brand.appendChild(home);
+      brand.appendChild(
+        el(
+          'span',
+          'tag teal',
+          solo
+            ? `${STRANDS.length - hiddenCount} of ${STRANDS.length} shown`
+            : plural(STRANDS.length, 'strand'),
+        ),
+      );
+      panel.appendChild(brand);
+
+      // The stack bar exactly as it ships since mock 4: the Layers / Masks
+      // switch, then the two adders.
+      const bar = el('div', 'stackbar');
+      const sw = el('div', 'viewswitch');
+      sw.dataset.view = 'layers';
+      sw.setAttribute('role', 'tablist');
+      sw.appendChild(el('span', 'viewswitch-thumb'));
+      const tab = (icon, label, on) => {
+        const b = el('button');
+        b.type = 'button';
+        b.setAttribute('role', 'tab');
+        b.setAttribute('aria-selected', String(on));
+        b.innerHTML = icon + `<span>${label}</span>`;
+        return b;
+      };
+      sw.appendChild(tab(LAYERS_ICON, 'Layers', true));
+      sw.appendChild(tab(MASK_ICON, 'Masks', false));
+      bar.appendChild(sw);
+      const addLevel = el('button', 'pill coral');
+      addLevel.type = 'button';
+      addLevel.innerHTML = `${LAYERS_ICON}<span>Level</span>`;
+      bar.appendChild(addLevel);
+      const addStrand = pill('Strand', 'Drop a new straight strand into the scene');
+      bar.appendChild(addStrand);
+      panel.appendChild(bar);
+
+      const stack = el('div', 'stack from-bottom');
+      if (hiddenCount) stack.appendChild(banner(hiddenCount));
+      for (const node of layersView(variant, solo)) stack.appendChild(node);
+      panel.appendChild(stack);
+
+      document.body.appendChild(panel);
+      // Open on the layer the inspector belongs to, wherever it fell in 230 rows.
+      // Scrolling the STACK, not the row into view: the row's own scrollIntoView
+      // walks up and scrolls the page these frames are embedded in too.
+      const sel = stack.querySelector('.row.sel');
+      if (sel) {
+        const dy = sel.getBoundingClientRect().top - stack.getBoundingClientRect().top;
+        stack.scrollTop += dy - (hiddenCount ? 62 : 26);
+      }
+    }
+
+    function banner(count) {
+      const box = el('div', 'hidden-banner');
+      box.appendChild(el('b', undefined, `${count} layers hidden`));
+      box.appendChild(pill('Show all', 'Bring every hidden layer back', 'coral'));
+      return box;
+    }
+
+    /** The stack: a group of rows per storey, each sitting on its own bar. */
+    function layersView(variant, solo) {
+      const out = [];
+      for (let level = TWISTS; level >= 0; level--) {
+        const rows = STRANDS.filter((s) => s.level === level).reverse();
+        if (rows.length) {
+          const group = el('div', 'level-group');
+          for (const s of rows) {
+            const off = solo && s.set !== PICKED_SET;
+            group.appendChild(layerRow(s, off));
+            if (s.id === PICKED) group.appendChild(inspector(variant, off));
+          }
+          out.push(group);
+        }
+        out.push(levelBar(level, rows.length));
+      }
+      return out;
+    }
+
+    function levelBar(level, count) {
+      const bar = el('div', 'level-bar' + (level === 0 ? ' ground' : ''));
+      bar.appendChild(el('span', 'level-badge', String(level)));
+      bar.appendChild(el('b', undefined, `Level ${level}`));
+      bar.appendChild(
+        el(
+          'small',
+          undefined,
+          level === 0
+            ? `ground · ${plural(count, 'layer')}`
+            : `+${level} ${level === 1 ? 'storey' : 'storeys'} · ${plural(count, 'layer')}`,
+        ),
+      );
+      if (level > 0) {
+        const acts = el('span', 'row-acts');
+        acts.appendChild(iconBtn('▲', 'Move up'));
+        acts.appendChild(iconBtn('▼', 'Move down'));
+        const del = iconBtn('✕', 'Remove this level');
+        del.classList.add('danger');
+        acts.appendChild(del);
+        bar.appendChild(acts);
+      }
+      return bar;
+    }
+
+    function layerRow(strand, off) {
+      const sel = strand.id === PICKED;
+      const row = el('div', 'row' + (sel ? ' sel' : '') + (off ? ' off' : ''));
+      const swatch = el('span', 'swatch');
+      swatch.style.background = colourOf(strand.set);
+      row.appendChild(swatch);
+      const name = el('button', 'row-name');
+      name.type = 'button';
+      name.setAttribute('aria-expanded', String(sel));
+      name.appendChild(el('span', 'row-id', strand.id));
+      if (strand.parent) name.appendChild(el('span', 'tag', `↳ ${strand.parent}`));
+      row.appendChild(name);
+      const acts = el('span', 'row-acts');
+      acts.appendChild(iconBtn(off ? '○' : '●', 'Show / hide'));
+      acts.appendChild(iconBtn('▲', 'Move up'));
+      acts.appendChild(iconBtn('▼', 'Move down'));
+      row.appendChild(acts);
+      return row;
+    }
+
+    // ---- the compare page ----------------------------------------------------
+    function buildIndex() {
+      document.body.appendChild(
+        Object.assign(el('h1'), { textContent: 'Panel mock 5 — a reach for every action' }),
+      );
+      const lede = el('p', 'lede');
+      lede.innerHTML =
+        'Today one <b>Applies to</b> switch governs the colour chips and nothing else, while ' +
+        '<b>Straighten</b> and <b>Hide</b> are two pills that always act on the one layer whose ' +
+        'row is open. This gives each of them a row and a reach of its own, and adds a third — ' +
+        '<b>Hide others</b>, which hides everything that is <i>not</i> this layer, or everything ' +
+        'that is not its whole <code>N_x</code> branch. The scene is the <b>7×3 twist</b>: ten ' +
+        'laces, twenty-three layers each, eleven storeys — 230 rows, which is the size at which ' +
+        'reaching a whole branch in one press stops being a convenience. The frames are live; ' +
+        'the tooltips carry the counts.';
+      document.body.appendChild(lede);
+
+      const states = [
+        [
+          'A — verb + reach',
+          'The row keeps the inspector’s two columns: verb where COLOUR and WIDTH are, control ' +
+            'where their controls are. The switch says what a press will do before you press it, ' +
+            'and it is the same control colour already uses.',
+          'v=A',
+        ],
+        [
+          'B — the switch is the button',
+          'No pill: pressing a half does it at that reach. One press instead of two — but colour ' +
+            'has no button of its own and must stay sticky, so the identical control means two ' +
+            'different things one row apart.',
+          'v=B',
+        ],
+        [
+          'C — one reach for all of it',
+          'Today’s switch promoted to the top of the inspector, governing everything under it. ' +
+            'The smallest change, and the only one that cannot colour a branch while hiding a ' +
+            'single layer.',
+          'v=C',
+        ],
+        [
+          'A — after Hide others · All layers',
+          'The state that decides the design: 207 of 230 rows off at once. Hidden rows go dim ' +
+            'with a hollow swatch, and the count and its undo sit on the stack — not in the ' +
+            'inspector, which can be closed with the scene still soloed.',
+          'v=A&solo=1',
+        ],
+      ];
+
+      for (const theme of ['light', 'dark']) {
+        const band = el('div', 'band');
+        band.appendChild(el('h2', 'band-title', theme === 'light' ? 'Light' : 'Dark'));
+        const grid = el('div', 'grid');
+        for (const [label, note, params] of states) {
+          const box = el('div', 'cell');
+          box.appendChild(el('h2', undefined, label));
+          box.appendChild(el('p', undefined, note));
+          const frame = el('iframe');
+          frame.src = `?frame=1&theme=${theme}&${params}`;
+          frame.title = `${theme} — ${label}`;
+          box.appendChild(frame);
+          grid.appendChild(box);
+        }
+        band.appendChild(grid);
+        document.body.appendChild(band);
+      }
+    }
+
+    /** The three inspectors on their own, at panel width, for reading. */
+    function buildStrip() {
+      document.body.classList.add('strip');
+      document.body.appendChild(
+        Object.assign(el('h1'), { textContent: 'Panel mock 5 — the inspector, close up' }),
+      );
+      const lede = el('p', 'lede');
+      lede.innerHTML =
+        'Layer <code>3_7</code> of a 7×3 twist, open. Its branch <code>3_x</code> is 23 of the ' +
+        'scene’s 230 layers, so <b>All layers</b> means 23 on every row — except <b>Hide ' +
+        'others</b>, which reads the same switch as what to <i>keep</i>: press it and the other ' +
+        '207 go.';
+      document.body.appendChild(lede);
+
+      const grid = el('div', 'strip-grid');
+      const cols = [
+        ['A — verb + reach', 'A', false],
+        ['B — the switch is the button', 'B', false],
+        ['C — one reach for all of it', 'C', false],
+        ['A — with the branch soloed', 'A', true],
+      ];
+      for (const [label, variant, off] of cols) {
+        const col = el('div', 'strip-col');
+        col.appendChild(el('h2', undefined, label));
+        if (off) col.appendChild(banner(STRANDS.length - SET_SIZE));
+        const group = el('div', 'level-group');
+        for (const id of ['4_6', '3_7']) {
+          const s = STRANDS.find((x) => x.id === id);
+          group.appendChild(layerRow(s, off && s.set !== PICKED_SET));
+          if (id === PICKED) group.appendChild(inspector(variant, false));
+        }
+        for (const id of ['2_7', '2_6']) {
+          const s = STRANDS.find((x) => x.id === id);
+          group.appendChild(layerRow(s, off && s.set !== PICKED_SET));
+        }
+        col.appendChild(group);
+        grid.appendChild(col);
+      }
+      document.body.appendChild(grid);
+    }
+
+    if (Q.get('strip')) buildStrip();
+    else if (Q.get('frame')) buildFrame();
+    else buildIndex();
+  </script>
+</body>
+
+</html>
