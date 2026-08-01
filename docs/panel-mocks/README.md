@@ -23,6 +23,7 @@ Mocks 1–3 are the original three, and they obey the same rules:
 | [2 — Numbered cards](./mock-2-cards.html) | Settings collapse into `01 / 02 / 03` cards that print their own current values | You read the scene's whole setup without opening anything |
 | [3 — Layers only](./mock-3-dock.html) | Settings leave the panel for a dock over the canvas; a card per level; per-strand inspector in its row | The panel holds nothing but the stack |
 | [4 — Layers / Masks switch](./mock-4-layer-mask-switch.html) | The stack bar's title becomes a two-way switch, and the masks get a view of their own | The panel says what it is showing by showing you how to change it |
+| [5 — A reach for every action](./mock-5-scoped-layer-actions.html) | Straighten, Hide and a new Hide others each get a row and their own `This layer / All layers` | One press reaches a whole `N_x` branch, not just one layer |
 
 ## What shipped
 
@@ -68,6 +69,39 @@ puts it next to three others — upright bands, the mask row's two-tone disc, th
 intersect glyph — in both themes and at the size it will actually be read. The upright
 bands won.
 
+**Mock 5, still open.** The inspector has exactly one reach switch — `Applies to ·
+This layer / All layers` — and it governs the colour chips and nothing else, while
+`Straighten` and `Hide` are two pills that always act on the single layer whose row is
+open. On a scene with sets in it that split stops making sense: colouring a whole `3_x`
+branch is one press and hiding it is twenty-three. So mock 5 gives every action a row
+and a reach of its own, and adds a third — **Hide others**, which reads the same switch
+the other way round, as what to *keep*: hide everything that is not this layer, or
+everything that is not its branch.
+
+Its scene is the **7×3 twist** (`twistStitchMN(7, 3, 10)`) rather than the box stitch
+the other mocks use, because the proposal only earns its keep at that size: ten laces,
+twenty-three layers each, eleven storeys, 230 rows. `Hide others · All layers` there
+turns 207 rows off in one press — which is why the mock draws that state as its fourth
+frame and gives it two things the shipping panel has no need for: hidden rows that read
+as hidden across a whole stack (dimmed, hollow swatch), and a sticky
+`207 layers hidden · Show all` strip on the stack itself. The strip has to live there and
+not in the inspector, since the inspector can be closed with the scene still soloed.
+
+Three shapes for the rows, and that is the question the mock is for:
+
+| | The row | Costs |
+| --- | --- | --- |
+| **A** | verb pill on the left, reach switch on the right | six rows where there were four |
+| **B** | no pill — the switch halves *are* the buttons, one press | colour has no button of its own and must stay sticky, so the same control means two things one row apart |
+| **C** | one reach at the top governing everything under it | cannot colour a branch while hiding a single layer |
+
+**One thing to settle in the model, not the panel.** `rebuild()` maps a hidden strand's
+centerline to `null` (`src/scene/StrandScene.ts`), which drops it out of the crossing
+solve as well as out of the drawing — so a soloed branch comes back flat, having lost
+every over/under it had with the layers around it. Hiding one layer barely shows it;
+`Hide others` makes it the whole picture. Whatever row shape wins, hide wants to stop
+the *drawing* and leave the *weave* alone.
+
 The mocks stay in the repo as the record of the choice — and as the place to
 try the next panel idea before touching the app.
 
@@ -111,16 +145,23 @@ states its navigation model, and shows the About area at true panel width.
 | `mock-3-dock.png` · `mock-3-dock-dark.png` | mock 3, both themes |
 | `mock-3-dock-about.png` · `mock-3-dock-about-dark.png` | mock 3 with the About sheet open (frame only) |
 | `mock-4-layer-mask-switch.png` | mock 4 — both themes in one shot, four panels each |
+| `mock-5-scoped-layer-actions.png` | mock 5 — both themes, four panels each, over the whole 7×3 stack |
+| `mock-5-inspector.png` · `mock-5-inspector-dark.png` | mock 5's four inspectors on their own, at reading size |
 
 The mocks are static HTML — no build step. Open one in a browser, or re-render with
 Playwright at a 1440 × 900 viewport, `deviceScaleFactor: 2`, `fullPage: true`, once per
 theme via `?theme=`; the About shots click `.helpbtn [data-act="about"]` and capture
 `.frame` alone.
 
-Mock 4 is the exception to all of that: one page holds both themes, as a row of
+Mocks 4 and 5 are the exception to all of that: one page holds both themes, as a row of
 `<iframe>`s per theme, so a colour is judged against its opposite number rather than
-across a scroll. Shoot it whole at 1520 × 1560, `deviceScaleFactor: 2` — the frames are
-live, so a switch clicked in the page really does swap that panel's body.
+across a scroll. Shoot mock 4 whole at 1520 × 1560 and mock 5 at 1500 × 2300, both at
+`deviceScaleFactor: 2` — the frames are live, so a switch clicked in the page really does
+swap that panel's body. Mock 5's close-up is the same file at `?strip=1`, shot at
+1420 × 960, `deviceScaleFactor: 3`, once per theme. The viewport has to be tall enough
+to hold the whole page in both cases: an `<iframe>` below the fold does not paint into a
+`fullPage` capture.
 
-The scene shown is the same in all four — a box stitch of 3 rounds, 9 strands, 3 masks,
-3 levels — so the panels are compared on layout alone.
+The scene shown is the same in mocks 1–4 — a box stitch of 3 rounds, 9 strands, 3 masks,
+3 levels — so those panels are compared on layout alone. Mock 5 is the one that changes
+it, and says why above.
