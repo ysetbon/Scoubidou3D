@@ -1,4 +1,4 @@
-<title>Box stitches in 3D — one stitch, then the next</title>
+<title>Box stitches in 3D — every face, worked as deep as you like</title>
 
 <style>
   :root {
@@ -70,7 +70,9 @@
   }
 
   /* ---- masthead ---------------------------------------------------------- */
-  .head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px 28px; }
+  .head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px 28px; }
+  .head > div:first-child { flex: 1 1 100%; }
+  .head > p { flex: 1 1 34ch; }
   .head h1 {
     font-family: Georgia, "Times New Roman", serif;
     font-size: clamp(26px, 4vw, 38px);
@@ -109,11 +111,36 @@
   .states button[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
   .states button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
 
+  .ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; }
   .depth { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
   .depth b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; min-width: 4.5ch; }
   .depth input { accent-color: var(--accent); width: 160px; cursor: pointer; }
   .depth input:disabled { cursor: default; opacity: 0.45; }
   .depth input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  .picker {
+    display: grid;
+    grid-template-columns: 22px repeat(8, minmax(34px, 1fr));
+    gap: 3px;
+    max-width: 560px;
+    align-items: center;
+  }
+  .ax { font-family: var(--mono); font-size: 10px; color: var(--muted); text-align: center; line-height: 1.15; }
+  .ax.corner { font-size: 9px; }
+  .cell {
+    appearance: none;
+    background: var(--panel);
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 5px 0;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    cursor: pointer;
+  }
+  .cell:hover { color: var(--ink); border-color: var(--ink); }
+  .cell[aria-pressed="true"] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+  .cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   /* ---- stage ------------------------------------------------------------- */
   .stage {
@@ -249,42 +276,44 @@
   <div class="head">
     <div>
       <span class="eyebrow">Scoubidou3D · box stitch · m×n · k = 0</span>
-      <h1>One stitch, and then that stitch again.</h1>
+      <h1>Sixty-four faces, worked as deep as you like.</h1>
     </div>
-    <div class="states">
-      <button type="button" data-face="1x1" aria-pressed="true">1×1</button>
-      <button type="button" data-face="3x2" aria-pressed="false">3×2</button>
-      <button type="button" data-face="3x3" aria-pressed="false">3×3</button>
+    <div class="ctl">
+      <div class="states">
+        <button type="button" data-hand="lh" aria-pressed="true">LH · cw</button>
+        <button type="button" data-hand="rh" aria-pressed="false">RH · ccw</button>
+      </div>
+      <label class="depth">
+        <span>Rounds</span>
+        <input type="range" id="depth" min="1" max="10" step="1" value="1"
+               aria-label="How many rounds to work">
+        <b><span id="depth-n">1</span> / 10</b>
+      </label>
     </div>
-    <label class="depth">
-      <span>Rounds</span>
-      <input type="range" id="depth" min="1" max="10" step="1" value="1"
-             aria-label="How many rounds to work">
-      <b><span id="depth-n">1</span> / <span id="depth-of">10</span></b>
-    </label>
-    <p>Drag to orbit, scroll or pinch to zoom. Pull the slider and the same stitch
-    is worked again on top of the last — watch a round land <em>on</em> the one
-    below rather than through it, and watch which ribbon rides over, because that
-    swaps every round.</p>
+    <p>Pick a face on the grid, then pull the slider: the same stitch is worked
+    again on top of the last, up to ten rounds. Watch a round land <em>on</em> the
+    one below rather than through it, and watch which ribbon rides over, because
+    that swaps every round. Drag to orbit, scroll or pinch to zoom.</p>
   </div>
+
+  <div class="picker" id="grid" role="grid" aria-label="Box faces, m by n"></div>
 
   <div class="stage" id="stage">
     <span class="hint">Drag to orbit</span>
     <canvas id="c"></canvas>
     <div class="readout">
-      <div class="n"><b id="facename">1 × 1</b><span id="hand">left hand · cw</span></div>
+      <div class="n"><b id="facename">3 × 2</b><span id="hand">left hand · cw</span></div>
       <div class="facts">
-        <span><b id="ribbons">2</b> ribbons</span>
-        <span><b id="strands">10</b> strands</span>
-        <span><b id="masks">4</b> masks</span>
-        <span><b id="footprint">224 × 224</b> px</span>
+        <span><b id="ribbons">5</b> ribbons</span>
+        <span><b id="strands">25</b> strands</span>
+        <span><b id="masks">24</b> masks</span>
+        <span><b id="footprint">448 × 336</b> px</span>
       </div>
       <div id="load" class="off">1.5× — one ribbon does that much more of the binding</div>
     </div>
     <div class="tools">
-      <button type="button" id="spin" aria-pressed="true">Spinning</button>
-      <button type="button" data-view="all" aria-pressed="true">Whole face</button>
-      <button type="button" data-view="top" aria-pressed="false">Plan</button>
+      <button type="button" id="fit">Whole face</button>
+      <button type="button" id="top">Plan</button>
     </div>
     <div id="loading">building the faces…</div>
   </div>
@@ -318,15 +347,14 @@
     </section>
     <section>
       <h2>Where this comes from</h2>
-      <p>The meshes were built by the studio itself and lifted out of it, so the
-      page cannot disagree with the app about the model. That is also what limits
-      how deep the slider goes: every round is another set of meshes, and a
-      ten-round 3×2 is 2 MB on its own. So the 1×1 is baked to ten rounds, the
-      3×2 to three and the 3×3 to one, and the slider stops where each one does.
-      Nothing stops the model — <code>npm run check:box</code> carries every one
-      of the 128 faces to ten rounds and asserts the fold, the width and that
-      period-two flip at all 114 048 crossings. Every face is a sample in both
-      hands —
+      <p>Nothing on this page was drawn for it. It carries the studio's own
+      view and the studio's own builder, and puts the two together when you click
+      — so there is no second implementation that could disagree, and nothing
+      baked to go stale. That is also why all 64 faces are here to ten rounds:
+      baking them would have been 640 scenes and hundreds of megabytes.
+      <code>npm run check:box</code> carries the same 128 columns to ten rounds
+      and asserts the fold, the width and that period-two flip at all 114 048
+      crossings. Every face is a sample in the app too —
       <a href="https://ysetbon.github.io/Scoubidou3D/app/?sample=box-lh-8x8">8×8
       in the studio</a>, <code>?sample=box-lh-3x2</code>, and the rest — and they
       are drawn flat, arm by named arm, in the companion sheet

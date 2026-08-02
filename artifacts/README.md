@@ -17,7 +17,7 @@ own light or dark theme, so both are designed rather than one inverted.
 | artifact | what it settles |
 | --- | --- |
 | [`twist-level-9`](twist-level-9/) | The 1×1 twist column at level 9, before and after the fix in `collectJunctions` — whether each lace is one continuous ribbon or four pieces with bridges lofted across the seams. |
-| [`box-family`](box-family/) | The m×n box stitch worked round after round — whether a round really lands on the one below rather than through it, and whether the over/under flips the way a box's has to. Slider to ten rounds. |
+| [`box-family`](box-family/) | Every m×n box face, both hands, worked to ten rounds — whether a round really lands on the one below rather than through it, and whether the over/under flips the way a box's has to. **Live**: it carries `StrandScene` and builds what you pick. |
 
 ---
 
@@ -42,6 +42,21 @@ own bounding box, drops indices to Uint16 where the mesh is small enough,
 deflates the lot and base64s it. The page undoes that with `DecompressionStream`.
 A 1×1 column at level 9 goes from ~0.65 MB of raw arrays to ~0.33 MB of text; the
 finished page, three.js and all, is about 1.1 MB.
+
+## Live artifacts
+
+A page whose subject is a *family* cannot be baked: all 64 box faces at ten
+rounds each is 640 scenes and hundreds of megabytes, and a page you cannot open
+settles nothing. Such an artifact says `"live": true` and no scenes at all — the
+build skips straight to bundling — and its `viewer.js` imports `StrandScene` and
+whatever builds its scenes, then puts the two together in the browser.
+
+That keeps the same promise a different way. A baked page cannot disagree with
+the app because it was handed the app's meshes; a live page cannot disagree
+because it *is* the app — the same view class, the same builder, no second
+implementation. What it gives up is the frozen record: a baked page still shows
+what the model looked like the day it was built, and a live one moves with the
+code. Bake a before/after, run a family live.
 
 ## Comparing two builds
 
@@ -70,8 +85,7 @@ never eat work in progress.
 3. Say which scenes to bake in `artifact.json`, and which of them to keep: `show`
    names one, or a list of them for a page that flips between several. Leave it
    out to keep every scene the bake produced. Weight is the thing to watch — an
-   8×8 box is 4 MB of mesh on its own, which is why `box-family` bakes six faces
-   and links to the studio for the other fifty-eight.
+   8×8 box is 4 MB of mesh on its own.
 4. Write the page. It is a page, not a demo — say what the reader is looking at
    and what would count as it being wrong.
 5. `npm run artifact -- <name>`, then add a row to the table above.
