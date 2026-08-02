@@ -203,5 +203,117 @@ if (from < 0 || to < 0 || to < from) {
   console.log(`  ${checked} strands put against the drawn sheet, coordinate for coordinate`);
 }
 
+// ---- the column -------------------------------------------------------------
+// Every round after the first is the same move again: each arm folds at its own
+// free end and runs back along its own line. So an arm only ever visits two
+// points, the column rises straight at a constant width, and the over/unders
+// repeat with PERIOD TWO — an arm over here this round is under here the next.
+// That period is the whole difference between a box and a spiral, and it is the
+// one thing a drawing of a single round cannot show, so it is checked here.
+const ROUNDS = 10;
+let roundsChecked = 0;
+let flips = 0;
+for (const { hand } of HANDS as Array<{ hand: Hand }>) {
+  for (const f of BOX_FAMILY) {
+    const { m, n } = f;
+    const tag = `${m}x${n} ${hand} x${ROUNDS}`;
+    const sc = boxStitchMN(m, n, tag, hand, ROUNDS);
+    const S = byId(sc);
+
+    if (sc.strands.length !== 3 * (m + n) + 2 * (m + n) * ROUNDS)
+      fail(`${tag}: ${sc.strands.length} strands, want ${3 * (m + n) + 2 * (m + n) * ROUNDS}`);
+    if (sc.masks.length !== 2 * m * n * (ROUNDS + 1))
+      fail(`${tag}: ${sc.masks.length} masks, want ${2 * m * n * (ROUNDS + 1)}`);
+    if (sc.levelBreaks.length !== ROUNDS)
+      fail(`${tag}: ${sc.levelBreaks.length} level breaks, want ${ROUNDS}`);
+    if (new Set(sc.strands.map((s) => s.id)).size !== sc.strands.length)
+      fail(`${tag}: duplicate ids`);
+
+    // Every fold pivots at the free end of the one before it, stays on that
+    // arm's own line — never off it, which is what k = 0 means — and runs back
+    // the way that one came. That, repeated, IS the column.
+    for (let set = 1; set <= m + n; set++) {
+      for (let l = 4; l <= 2 + 1 + 2 * ROUNDS; l++) {
+        const k = S[`${set}_${l}`];
+        const j = S[`${set}_${l - 2}`];
+        if (!k) {
+          fail(`${tag}: ${set}_${l} is missing`);
+          continue;
+        }
+        if (k.start.x !== j.end.x || k.start.y !== j.end.y)
+          fail(`${tag}: ${k.id} does not start where ${j.id} ends`);
+        if (k.parentId !== j.id || k.parentSide !== 1)
+          fail(`${tag}: ${k.id} is not attached to ${j.id}'s end`);
+        const cross = Math.abs((k.end.x - k.start.x) * (j.end.y - j.start.y) -
+          (k.end.y - k.start.y) * (j.end.x - j.start.x));
+        if (cross > 1e-9) fail(`${tag}: ${k.id} leaves ${j.id}'s line`);
+        const dot = (k.end.x - k.start.x) * (j.end.x - j.start.x) +
+          (k.end.y - k.start.y) * (j.end.y - j.start.y);
+        if (dot >= 0) fail(`${tag}: ${k.id} carries on rather than folding back`);
+      }
+      // Every fold but the last lands POKE (give or take the splay) past the
+      // band; only the last runs out to the loose end a finished box has.
+      for (const arm of [0, 1]) {
+        const band = arm === 0 || true ? 0 : 0;
+        void band;
+        for (let r = 0; r <= ROUNDS; r++) {
+          const k = S[`${set}_${2 + arm + 2 * r}`];
+          const half = set > n ? ((2 * n - 1) * GAP) / 2 : ((2 * m - 1) * GAP) / 2;
+          const mid = set > n ? 300 : 400;
+          const along = set > n ? Math.abs(k.end.y - mid) : Math.abs(k.end.x - mid);
+          const tailAt = set > n ? (n + 1) * GAP : (m + 1) * GAP;
+          if (r === ROUNDS) {
+            if (Math.abs(along - tailAt) > 1e-9)
+              fail(`${tag}: ${k.id} is the last fold and should end at ${tailAt}, not ${along}`);
+          } else if (Math.abs(along - half - POKE) > 7.001) {
+            fail(`${tag}: ${k.id} lands ${(along - half).toFixed(2)} past the band, want ~${POKE}`);
+          }
+        }
+        // No two folds of one arm may end on the same point.
+        const ends = new Set<string>();
+        for (let r = 0; r <= ROUNDS; r++) {
+          const e = S[`${set}_${2 + arm + 2 * r}`].end;
+          const key = `${e.x.toFixed(3)},${e.y.toFixed(3)}`;
+          if (ends.has(key)) fail(`${tag}: set ${set} arm ${arm} lands twice on ${key}`);
+          ends.add(key);
+        }
+      }
+    }
+
+    // The column stays the width round two set it — it does not creep outward.
+    const xs = sc.strands.flatMap((s) => [s.start.x, s.end.x]);
+    const ys = sc.strands.flatMap((s) => [s.start.y, s.end.y]);
+    if (Math.max(...xs) - Math.min(...xs) !== f.width ||
+        Math.max(...ys) - Math.min(...ys) !== f.height)
+      fail(`${tag}: grew to ${Math.max(...xs) - Math.min(...xs)}x${Math.max(...ys) - Math.min(...ys)}`);
+
+    // The weave, round by round, and the period-two flip between them.
+    for (let q = 1; q <= m; q++) {
+      const v = n + q;
+      for (let p = 1; p <= n; p++) {
+        for (let r = 0; r <= ROUNDS; r++) {
+          const a = 2 + 2 * r;
+          const b = 3 + 2 * r;
+          // `a` and `b` sit on the same two lines whatever the round, so a
+          // crossing keeps its plan position and only its over/under moves.
+          const want = r % 2 === 0
+            ? [[a, a, true], [a, b, false], [b, a, false], [b, b, true]]
+            : [[a, a, false], [a, b, true], [b, a, true], [b, b, false]];
+          for (const [vl, hl, wantWeft] of want as Array<[number, number, boolean]>) {
+            const winner = over(sc, `${v}_${vl}`, `${p}_${hl}`);
+            if ((winner === `${p}_${hl}`) !== wantWeft)
+              fail(`${tag} round ${r}: ${v}_${vl} x ${p}_${hl} — ${winner} rides over`);
+            roundsChecked++;
+          }
+          if (r > 0) flips++;
+        }
+      }
+    }
+  }
+}
+console.log(`\ncolumns — every face carried to ${ROUNDS} rounds, both hands:`);
+console.log(`  ${roundsChecked} crossings resolved, ${flips} of them a flip on the round below`);
+console.log(`  ${BOX_FAMILY.length * HANDS.length} columns built`);
+
 console.log(bad ? `  ${bad} FAILED` : '  all clear');
 if (bad) process.exit(1);

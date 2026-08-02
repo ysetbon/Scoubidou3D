@@ -13,6 +13,13 @@ const HOST = document.getElementById('stage');
 const canvas = document.getElementById('c');
 const FACES = SPEC.sample.faces;
 const PACK = DATA.variants.box;
+// The faces, each with the depths that were baked for it. Mesh weight is the
+// only reason they differ — a ten-round 3×2 is 2 MB on its own — so the slider
+// runs as deep as each face goes and says how deep that is.
+const KEYS = [];
+for (const f of FACES) if (!KEYS.includes(f.key)) KEYS.push(f.key);
+const DEPTH = {};
+for (const k of KEYS) DEPTH[k] = FACES.filter((f) => f.key === k).map((f) => f.rounds).sort((a, b) => a - b);
 
 // ---- unpacking --------------------------------------------------------------
 function bytes(b64) {
@@ -91,7 +98,7 @@ scene.add(fill);
 const groups = {};
 const boxes = {};
 let current = null;
-let face = FACES[1];
+let face = FACES[0];
 let view = 'all';
 
 // Each face is a different size AND a different shape, so unlike a before/after
@@ -155,21 +162,37 @@ function show(id) {
   current = groups[face.id];
   scene.add(current);
   document.querySelectorAll('[data-face]').forEach((b) =>
-    b.setAttribute('aria-pressed', String(b.dataset.face === face.id)));
+    b.setAttribute('aria-pressed', String(b.dataset.face === face.key)));
 
-  const { m, n } = face;
+  const depths = DEPTH[face.key];
+  const slider = document.getElementById('depth');
+  slider.max = String(depths[depths.length - 1]);
+  slider.value = String(face.rounds);
+  slider.disabled = depths.length < 2;
+
+  const { m, n, rounds } = face;
   set('facename', `${m} × ${n}`);
+  set('depth-n', rounds);
+  set('depth-of', depths[depths.length - 1]);
   set('ribbons', m + n);
-  set('strands', 5 * (m + n));
-  set('masks', 4 * m * n);
+  set('strands', 3 * (m + n) + 2 * (m + n) * rounds);
+  set('masks', 2 * m * n * (rounds + 1));
   set('footprint', `${112 * (m + 1)} × ${112 * (n + 1)}`);
   const load = Math.max(m, n) / Math.min(m, n);
   const badge = document.getElementById('load');
   badge.textContent = load === 1 ? 'balanced — every ribbon binds the same' :
     `${load.toFixed(load % 1 ? 1 : 0)}× — one ribbon does that much more of the binding`;
   badge.className = load === 1 ? 'ok' : 'off';
-  set('hand', face.hand === 'lh' ? 'left hand · clockwise' : 'right hand · counter-clockwise');
+  set('hand', face.hand === 'lh' ? 'left hand · cw' : 'right hand · ccw');
   frame();
+}
+
+/** Nearest baked depth at or below what the slider asks for. */
+function at(key, rounds) {
+  const depths = DEPTH[key];
+  let want = depths[0];
+  for (const d of depths) if (d <= rounds) want = d;
+  return FACES.find((f) => f.key === key && f.rounds === want).id;
 }
 
 function resize() {
@@ -226,7 +249,9 @@ function tick() {
   });
 
   document.querySelectorAll('[data-face]').forEach((b) =>
-    b.addEventListener('click', () => show(b.dataset.face)));
+    b.addEventListener('click', () => show(at(b.dataset.face, face.rounds))));
+  document.getElementById('depth').addEventListener('input', (e) =>
+    show(at(face.key, Number(e.target.value))));
   document.querySelectorAll('[data-view]').forEach((b) =>
     b.addEventListener('click', () => frame(b.dataset.view)));
 

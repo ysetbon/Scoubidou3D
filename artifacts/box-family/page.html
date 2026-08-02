@@ -1,4 +1,4 @@
-<title>Box stitches in 3D — one construction, any face</title>
+<title>Box stitches in 3D — one stitch, then the next</title>
 
 <style>
   :root {
@@ -108,6 +108,12 @@
   .states button:hover { color: var(--ink); }
   .states button[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
   .states button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+
+  .depth { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .depth b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; min-width: 4.5ch; }
+  .depth input { accent-color: var(--accent); width: 160px; cursor: pointer; }
+  .depth input:disabled { cursor: default; opacity: 0.45; }
+  .depth input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
   /* ---- stage ------------------------------------------------------------- */
   .stage {
@@ -243,32 +249,35 @@
   <div class="head">
     <div>
       <span class="eyebrow">Scoubidou3D · box stitch · m×n · k = 0</span>
-      <h1>The same stitch, however wide you make it.</h1>
+      <h1>One stitch, and then that stitch again.</h1>
     </div>
     <div class="states">
-      <button type="button" data-face="a-1x1" aria-pressed="false">1×1</button>
-      <button type="button" data-face="c-3x2" aria-pressed="true">3×2</button>
-      <button type="button" data-face="d-3x3" aria-pressed="false">3×3</button>
-      <button type="button" data-face="e-5x5" aria-pressed="false">5×5</button>
-      <button type="button" data-face="g-1x8" aria-pressed="false">1×8</button>
-      <button type="button" data-face="h-3x2rh" aria-pressed="false">3×2 RH</button>
+      <button type="button" data-face="1x1" aria-pressed="true">1×1</button>
+      <button type="button" data-face="3x2" aria-pressed="false">3×2</button>
+      <button type="button" data-face="3x3" aria-pressed="false">3×3</button>
     </div>
-    <p>Drag to orbit, scroll or pinch to zoom. Every face here is the same
-    construction at a different width and depth — watch the over/under stay a
-    checkerboard however far it stretches. Six of the sixty-four are baked in;
-    the rest are a click away in the studio.</p>
+    <label class="depth">
+      <span>Rounds</span>
+      <input type="range" id="depth" min="1" max="10" step="1" value="1"
+             aria-label="How many rounds to work">
+      <b><span id="depth-n">1</span> / <span id="depth-of">10</span></b>
+    </label>
+    <p>Drag to orbit, scroll or pinch to zoom. Pull the slider and the same stitch
+    is worked again on top of the last — watch a round land <em>on</em> the one
+    below rather than through it, and watch which ribbon rides over, because that
+    swaps every round.</p>
   </div>
 
   <div class="stage" id="stage">
     <span class="hint">Drag to orbit</span>
     <canvas id="c"></canvas>
     <div class="readout">
-      <div class="n"><b id="facename">3 × 2</b><span id="hand">left hand · clockwise</span></div>
+      <div class="n"><b id="facename">1 × 1</b><span id="hand">left hand · cw</span></div>
       <div class="facts">
-        <span><b id="ribbons">5</b> ribbons</span>
-        <span><b id="strands">25</b> strands</span>
-        <span><b id="masks">24</b> masks</span>
-        <span><b id="footprint">448 × 336</b> px</span>
+        <span><b id="ribbons">2</b> ribbons</span>
+        <span><b id="strands">10</b> strands</span>
+        <span><b id="masks">4</b> masks</span>
+        <span><b id="footprint">224 × 224</b> px</span>
       </div>
       <div id="load" class="off">1.5× — one ribbon does that much more of the binding</div>
     </div>
@@ -285,17 +294,19 @@
       <h2>What you are looking at</h2>
       <p>A box stitch on an <code>m × n</code> face: m ribbons one way crossing n
       the other, woven, and then every loose end carried straight back across the
-      block and out the far side. The second pass rests a storey on the first —
-      that is the step you can see in the ends, and why a box is <em>thick</em>
-      rather than merely wide.</p>
+      block and out the far side. That is one round. Every round after it is the
+      same move again — each arm folds at its own free end and runs back along
+      <em>its own line</em>, the same distance past the weave as the round below —
+      so the column rises straight and stays exactly the width it started. Only
+      the last round runs on: those are the loose ends you would tie off.</p>
     </section>
     <section>
-      <h2>Why there is only one per size</h2>
-      <p>A box is the twist family's own starting stitch at <em>k = 0</em>. The
-      pointer does not move, so every end pairs with the end straight opposite and
-      each arm carries on along its own line. Nothing rotates, nothing is
-      stretched, and the aligner that a twist needs reports there is nothing to
-      do. No angle to derive, no dial to set — one box per size per hand.</p>
+      <h2>Why it is a box and not a spiral</h2>
+      <p>Look at one crossing as the column rises: the ribbon on top this round is
+      underneath the next. The over/unders repeat with <em>period two</em>, and
+      that alternation is the whole of what makes this the box stitch. Keep the
+      same ribbon on top every round instead and the identical moves give you the
+      round — spiral — stitch. Nothing else about the two differs.</p>
     </section>
     <section>
       <h2>What m ≠ n costs</h2>
@@ -308,9 +319,14 @@
     <section>
       <h2>Where this comes from</h2>
       <p>The meshes were built by the studio itself and lifted out of it, so the
-      page cannot disagree with the app about the model — an 8×8 alone is 4 MB of
-      it, which is why six faces are baked here rather than all 64. Every one of
-      the 64 is a sample in both hands —
+      page cannot disagree with the app about the model. That is also what limits
+      how deep the slider goes: every round is another set of meshes, and a
+      ten-round 3×2 is 2 MB on its own. So the 1×1 is baked to ten rounds, the
+      3×2 to three and the 3×3 to one, and the slider stops where each one does.
+      Nothing stops the model — <code>npm run check:box</code> carries every one
+      of the 128 faces to ten rounds and asserts the fold, the width and that
+      period-two flip at all 114 048 crossings. Every face is a sample in both
+      hands —
       <a href="https://ysetbon.github.io/Scoubidou3D/app/?sample=box-lh-8x8">8×8
       in the studio</a>, <code>?sample=box-lh-3x2</code>, and the rest — and they
       are drawn flat, arm by named arm, in the companion sheet

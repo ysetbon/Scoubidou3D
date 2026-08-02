@@ -17,7 +17,7 @@ own light or dark theme, so both are designed rather than one inverted.
 | artifact | what it settles |
 | --- | --- |
 | [`twist-level-9`](twist-level-9/) | The 1×1 twist column at level 9, before and after the fix in `collectJunctions` — whether each lace is one continuous ribbon or four pieces with bridges lofted across the seams. |
-| [`box-family`](box-family/) | The m×n box stitch at six sizes and in both hands — whether one construction really does hold from a 1×1 to a 5×5, and what a 1×8 looks like when a single ribbon carries the whole face. |
+| [`box-family`](box-family/) | The m×n box stitch worked round after round — whether a round really lands on the one below rather than through it, and whether the over/under flips the way a box's has to. Slider to ten rounds. |
 
 ---
 

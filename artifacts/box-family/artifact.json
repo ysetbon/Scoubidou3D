@@ -1,60 +1,152 @@
 {
-  "title": "Box stitches in 3D — one construction, any face",
-  "description": "Orbit the m×n box stitch at six sizes and in both hands — real geometry lifted out of the studio, not a drawing of it.",
+  "title": "Box stitches in 3D — one stitch, then the next",
+  "description": "Orbit the m×n box stitch and pull the slider: every round is the same fold again, resting on the one below. Real geometry lifted out of the Scoubidou3D studio.",
   "favicon": "🧶",
   "sample": {
     "faces": [
       {
-        "id": "a-1x1",
+        "id": "a-01",
+        "key": "1x1",
         "m": 1,
         "n": 1,
         "hand": "lh",
+        "rounds": 1,
         "label": "1×1"
       },
       {
-        "id": "c-3x2",
+        "id": "a-02",
+        "key": "1x1",
+        "m": 1,
+        "n": 1,
+        "hand": "lh",
+        "rounds": 2,
+        "label": "1×1"
+      },
+      {
+        "id": "a-03",
+        "key": "1x1",
+        "m": 1,
+        "n": 1,
+        "hand": "lh",
+        "rounds": 3,
+        "label": "1×1"
+      },
+      {
+        "id": "a-04",
+        "key": "1x1",
+        "m": 1,
+        "n": 1,
+        "hand": "lh",
+        "rounds": 4,
+        "label": "1×1"
+      },
+      {
+        "id": "a-05",
+        "key": "1x1",
+        "m": 1,
+        "n": 1,
+        "hand": "lh",
+        "rounds": 5,
+        "label": "1×1"
+      },
+      {
+        "id": "a-06",
+        "key": "1x1",
+        "m": 1,
+        "n": 1,
+        "hand": "lh",
+        "rounds": 6,
+        "label": "1×1"
+      },
+      {
+        "id": "a-07",
+        "key": "1x1",
+        "m": 1,
+        "n": 1,
+        "hand": "lh",
+        "rounds": 7,
+        "label": "1×1"
+      },
+      {
+        "id": "a-08",
+        "key": "1x1",
+        "m": 1,
+        "n": 1,
+        "hand": "lh",
+        "rounds": 8,
+        "label": "1×1"
+      },
+      {
+        "id": "a-09",
+        "key": "1x1",
+        "m": 1,
+        "n": 1,
+        "hand": "lh",
+        "rounds": 9,
+        "label": "1×1"
+      },
+      {
+        "id": "a-10",
+        "key": "1x1",
+        "m": 1,
+        "n": 1,
+        "hand": "lh",
+        "rounds": 10,
+        "label": "1×1"
+      },
+      {
+        "id": "b-01",
+        "key": "3x2",
         "m": 3,
         "n": 2,
         "hand": "lh",
+        "rounds": 1,
         "label": "3×2"
       },
       {
-        "id": "d-3x3",
+        "id": "b-02",
+        "key": "3x2",
+        "m": 3,
+        "n": 2,
+        "hand": "lh",
+        "rounds": 2,
+        "label": "3×2"
+      },
+      {
+        "id": "b-03",
+        "key": "3x2",
+        "m": 3,
+        "n": 2,
+        "hand": "lh",
+        "rounds": 3,
+        "label": "3×2"
+      },
+      {
+        "id": "c-01",
+        "key": "3x3",
         "m": 3,
         "n": 3,
         "hand": "lh",
+        "rounds": 1,
         "label": "3×3"
-      },
-      {
-        "id": "e-5x5",
-        "m": 5,
-        "n": 5,
-        "hand": "lh",
-        "label": "5×5"
-      },
-      {
-        "id": "g-1x8",
-        "m": 1,
-        "n": 8,
-        "hand": "lh",
-        "label": "1×8"
-      },
-      {
-        "id": "h-3x2rh",
-        "m": 3,
-        "n": 2,
-        "hand": "rh",
-        "label": "3×2 RH"
       }
     ]
   },
   "show": [
-    "a-1x1",
-    "c-3x2",
-    "d-3x3",
-    "e-5x5",
-    "g-1x8",
-    "h-3x2rh"
+    "a-01",
+    "a-02",
+    "a-03",
+    "a-04",
+    "a-05",
+    "a-06",
+    "a-07",
+    "a-08",
+    "a-09",
+    "a-10",
+    "b-01",
+    "b-02",
+    "b-03",
+    "c-01"
   ],
   "variants": [
     {
