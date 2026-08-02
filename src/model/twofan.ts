@@ -62,8 +62,8 @@ export const POKE = 32;
 export const COLUMN_DIAL = 0.67;
 
 const STROKE: RGBA = { r: 30, g: 30, b: 30, a: 255 };
-const INDIGO: RGBA = { r: 61, g: 58, b: 140, a: 255 };
-const WEFT: RGBA[] = [
+export const INDIGO: RGBA = { r: 61, g: 58, b: 140, a: 255 };
+export const WEFT: RGBA[] = [
   { r: 226, g: 122, b: 38, a: 255 },
   { r: 245, g: 200, b: 55, a: 255 },
   { r: 60, g: 170, b: 175, a: 255 },
@@ -74,7 +74,14 @@ const WEFT: RGBA[] = [
   { r: 190, g: 140, b: 200, a: 255 },
 ];
 
-function mk(id: string, start: Point, end: Point, color: RGBA, parentId?: string, parentSide?: 0 | 1): Strand3D {
+export function mk(
+  id: string,
+  start: Point,
+  end: Point,
+  color: RGBA,
+  parentId?: string,
+  parentSide?: 0 | 1,
+): Strand3D {
   return {
     id,
     start,
