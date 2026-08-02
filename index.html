@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Scoubidou3D — see every strand</title>
   <meta name="description"
-    content="Scoubidou3D is a 3D reimagining of OpenStrand Studio: strands become ribbons with real width and thickness, layer order becomes height, and masks become a true over/under weave you can orbit. Thirteen built-in samples, from two crossing laces to a fifteen-round box stitch and twist stitches on any m×n face. Runs in the browser." />
+    content="Scoubidou3D is a 3D reimagining of OpenStrand Studio: strands become ribbons with real width and thickness, layer order becomes height, and masks become a true over/under weave you can orbit. Fifteen built-in samples, from two crossing laces to a fifteen-round box stitch, and box and twist stitches on any m×n face. Runs in the browser." />
   <!-- The icon is a render of the box stitch itself, cut out of its paper (see
        scripts/icon-shot.mjs). .ico first for whatever still goes looking for that
        name; the PNGs are what a browser picks up. -->
@@ -93,7 +93,7 @@
               <path d="M4 10h11M11 5l5 5-5 5" />
             </svg>
           </a>
-          <a class="under" href="#samples">Browse the thirteen samples ↓</a>
+          <a class="under" href="#samples">Browse the fifteen samples ↓</a>
         </div>
         <div class="trust">
           <span>◎ No install</span>
@@ -140,7 +140,7 @@
     <section class="section projects" id="samples">
       <div class="heading">
         <div>
-          <p class="kicker">Thirteen scenes, already built</p>
+          <p class="kicker">Fifteen scenes, already built</p>
           <h2>Start with a sample,<br />not an empty canvas.</h2>
         </div>
         <p>
@@ -392,6 +392,42 @@
           </div>
           <div class="meta"><span>92 strands</span><span>88 masks</span><span>11 levels</span></div>
         </article>
+
+        <article data-category="Stitches">
+          <a class="projectArt indigo" href="./app/?sample=box-lh-3x2">
+            <img class="shot light" src="./site/shots/box-lh-3x2-light.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A box stitch on a three-by-two face in the studio: three indigo ribbons crossing two coloured ones, every arm carried back over the weave" />
+            <img class="shot dark" src="./site/shots/box-lh-3x2-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A box stitch on a three-by-two face in the studio: three indigo ribbons crossing two coloured ones, every arm carried back over the weave" />
+            <span>box-lh-3x2</span><b aria-hidden="true">↗</b>
+          </a>
+          <div class="projectName">
+            <div><small>Stitches</small>
+              <h3>Box stitch — 3×2 face</h3>
+            </div>
+          </div>
+          <div class="meta"><span>25 strands</span><span>24 masks</span><span>3×2 face</span></div>
+        </article>
+
+        <article data-category="Stitches">
+          <a class="projectArt indigo" href="./app/?sample=box-lh-5x5">
+            <img class="shot light" src="./site/shots/box-lh-5x5-light.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A box stitch on a five-by-five face in the studio: a square mat of ten ribbons woven over and under, its arms poking out on all four sides" />
+            <img class="shot dark" src="./site/shots/box-lh-5x5-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async"
+              alt="A box stitch on a five-by-five face in the studio: a square mat of ten ribbons woven over and under, its arms poking out on all four sides" />
+            <span>box-lh-5x5</span><b aria-hidden="true">↗</b>
+          </a>
+          <div class="projectName">
+            <div><small>Stitches</small>
+              <h3>Box stitch — 5×5 face</h3>
+            </div>
+          </div>
+          <div class="meta"><span>50 strands</span><span>100 masks</span><span>5×5 face</span></div>
+        </article>
       </div>
 
       <p class="gridNote">
@@ -427,6 +463,37 @@
           <a class="btn outline"
             href="https://claude.ai/code/artifact/dd01aab8-db95-4b72-bcc3-4f2faf6da48b">
             The write-up ↗
+          </a>
+        </div>
+      </aside>
+
+      <!-- The other family that outgrew a thumbnail. Two of its faces are above;
+           all 64 are in the studio, and the two pages are where they are argued. -->
+      <aside class="sampleDoor">
+        <div>
+          <p class="kicker">Two of sixty-four</p>
+          <h3>The box stitch,<br />on any face.</h3>
+          <p>
+            The box stitch is not only the square one. Lay <strong>m</strong> ribbons across
+            <strong>n</strong> and the same move works any face from a 1×1 to an 8×8 — the twist
+            family's own starting stitch with the twist taken out, so nothing rotates, nothing is
+            stretched and there is exactly <strong>one box per size per hand</strong>. All 64 are in
+            the studio in both hands; work one round after another and it rises as a column.
+          </p>
+        </div>
+        <div class="sampleDoorLinks">
+          <a class="btn coral" href="./app/?sample=box-lh-5x5">Open a 5×5
+            <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M4 10h11M11 5l5 5-5 5" />
+            </svg>
+          </a>
+          <a class="btn outline"
+            href="https://claude.ai/code/artifact/0fb7a3f9-fd93-4700-b286-a373580f39d3">
+            Orbit them, to ten rounds ↗
+          </a>
+          <a class="btn outline"
+            href="https://claude.ai/code/artifact/a733e1f3-9ed4-490d-845d-c6090e89abb4">
+            All 64 drawn flat ↗
           </a>
         </div>
       </aside>

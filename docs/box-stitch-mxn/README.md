@@ -12,7 +12,15 @@ Every link is in [links.md](../links.md#the-mn-faces-in-the-studio).
 
 **Drawn flat**, [`artifact.html`](artifact.html) is the source of the published
 **Box Stitches** sheet:
-<https://claude.ai/code/artifact/a733e1f3-9ed4-490d-845d-c6090e89abb4>.
+<https://claude.ai/code/artifact/a733e1f3-9ed4-490d-845d-c6090e89abb4>. Every arm
+named, every size measured, both hands.
+
+**In 3D**, [`artifacts/box-family`](../../artifacts/box-family/) is the source of
+**Box stitches in 3D**:
+<https://claude.ai/code/artifact/0fb7a3f9-fd93-4700-b286-a373580f39d3>. Pick a
+face off an 8×8 grid, pull a slider to ten rounds, and orbit it. That page is
+*live* — it carries `StrandScene` and `boxStitchMN` and builds what you pick, so
+it is the app rather than a picture of it.
 
 `npm run check:box` holds the two together. They cannot share code — the sheet is
 one self-contained file on a host that can fetch nothing — so the check reads the

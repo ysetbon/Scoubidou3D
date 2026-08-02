@@ -131,6 +131,16 @@ twists, and the box the same starting stitch closes into at k = 0:
 | **m=7** | [7×1](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-rh-7x1) | [7×2](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-rh-7x2) | [7×3](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-rh-7x3) | [7×4](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-rh-7x4) | [7×5](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-rh-7x5) | [7×6](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-rh-7x6) | [7×7](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-rh-7x7) | [7×8](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-rh-7x8) |
 | **m=8** | [8×1](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-rh-8x1) | [8×2](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-rh-8x2) | [8×3](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-rh-8x3) | [8×4](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-rh-8x4) | [8×5](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-rh-8x5) | [8×6](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-rh-8x6) | [8×7](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-rh-8x7) | [8×8](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-rh-8x8) |
 
+## The two box sheets
+
+Neither is on this site — they are published pages, linked from the samples section
+and from [docs/box-stitch-mxn](box-stitch-mxn/).
+
+| Page | Link | What it is |
+| --- | --- | --- |
+| Box Stitches | [drawn flat](https://claude.ai/code/artifact/a733e1f3-9ed4-490d-845d-c6090e89abb4) | All 64 faces, both hands, every arm named and every size measured |
+| Box stitches in 3D | [orbit them](https://claude.ai/code/artifact/0fb7a3f9-fd93-4700-b286-a373580f39d3) | The same 64, worked to ten rounds — built in the page by the studio's own view |
+
 ## Two things worth knowing
 
 - **The theme is shared.** The site and the studio store one choice, so opening one from

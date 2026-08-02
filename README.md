@@ -176,7 +176,8 @@ The three layouts this was chosen from, as clickable mocks and renders:
   four-strand braids, a truly-woven
   mat (a checkerboard of masks), a diagonal basket, and a curved ribbon weave. Behind those, two
   generated families the browser lists as grids rather than dropdown entries: every m×n **twist**
-  face and every m×n **box** face, 1×1 to 8×8, in both hands. Each is listed with
+  face and every m×n **box** face, 1×1 to 8×8, in both hands — two of the box faces have cards of
+  their own on the site. Each is listed with
   its own picture on [the project site](https://ysetbon.github.io/Scoubidou3D/), and
   `?sample=<key>` opens one directly — e.g.
   [`/app/?sample=box-stitch-10`](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-stitch-10).
@@ -224,8 +225,10 @@ crossing **n** the other, `?sample=box-lh-3x2` and the other 63, in both hands. 
 family's own starting stitch with the twist taken out — at **k = 0** the pointer does not move, so
 every end pairs with the end straight opposite and each arm carries on along its own line and back
 over the block. Nothing rotates and nothing is stretched, which is why there is exactly one box per
-size per hand and no angle to derive. Browse them as a grid beside the twist family, or see all 64
-drawn flat: **[docs/box-stitch-mxn](docs/box-stitch-mxn/)**.
+size per hand and no angle to derive. Work the same round again and it rises as a column, by the
+rule the 1×1's own column already had: every fold but the last lands the same distance past the
+weave, and only the last runs out to the loose ends. Browse the family as a grid beside the twist
+one, or take it flat and in 3D: **[docs/box-stitch-mxn](docs/box-stitch-mxn/)**.
 
 ### The twist stitch
 

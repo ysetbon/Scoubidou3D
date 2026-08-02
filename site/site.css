@@ -695,6 +695,8 @@ header > .btn,
 .projectArt.coral { background: #ef9aab; }
 .projectArt.yellow { background: #f3ca3f; }
 .projectArt.teal { background: #72c6b9; }
+/* The box family's own card colour — the indigo its warp ribbons are drawn in. */
+.projectArt.indigo { background: #a9a4e6; }
 
 /* The pictures are SCREENSHOTS of the studio's own 3D canvas, one per sample per
    theme — scripts/site-shots.mjs. They keep the tile's coloured ground and sit on
