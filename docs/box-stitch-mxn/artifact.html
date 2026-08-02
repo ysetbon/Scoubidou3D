@@ -1,0 +1,584 @@
+<title>Box Stitches</title>
+<style>
+  :root {
+    --paper: #F1F2F4; --panel: #FFFFFF; --plate: #FFFFFF;
+    --ink: #17181D; --ink-2: #4C4F5A; --ink-3: #7C7F8C;
+    --rule: #D6D8DE; --rule-soft: #E6E8EC;
+    --accent: #4A3AB7; --s-horiz: #2a78d6; --s-vert: #eb6834; --grid: #E3E5EA;
+    --shadow: 0 1px 2px rgba(23,24,29,.06), 0 8px 24px -12px rgba(23,24,29,.18);
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #131419; --panel: #1B1D24; --plate: #FFFFFF;
+      --ink: #ECEDF1; --ink-2: #A8ABB6; --ink-3: #7E8290;
+      --rule: #2C2F39; --rule-soft: #23262E; --accent: #9A8DF0;
+      --s-horiz: #3987e5; --s-vert: #d95926; --grid: #2A2D36;
+      --shadow: 0 1px 2px rgba(0,0,0,.5), 0 10px 30px -14px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #131419; --panel: #1B1D24; --plate: #FFFFFF;
+    --ink: #ECEDF1; --ink-2: #A8ABB6; --ink-3: #7E8290;
+    --rule: #2C2F39; --rule-soft: #23262E; --accent: #9A8DF0;
+    --s-horiz: #3987e5; --s-vert: #d95926; --grid: #2A2D36;
+    --shadow: 0 1px 2px rgba(0,0,0,.5), 0 10px 30px -14px rgba(0,0,0,.7);
+  }
+  :root[data-theme="light"] {
+    --paper: #F1F2F4; --panel: #FFFFFF; --plate: #FFFFFF;
+    --ink: #17181D; --ink-2: #4C4F5A; --ink-3: #7C7F8C;
+    --rule: #D6D8DE; --rule-soft: #E6E8EC; --accent: #4A3AB7;
+    --s-horiz: #2a78d6; --s-vert: #eb6834; --grid: #E3E5EA;
+    --shadow: 0 1px 2px rgba(23,24,29,.06), 0 8px 24px -12px rgba(23,24,29,.18);
+  }
+
+  body { background: var(--paper); color: var(--ink); font-family: var(--sans); line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 44px 20px 76px; display: flex; flex-direction: column; gap: 40px; }
+
+  header { display: flex; flex-direction: column; gap: 12px; }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--ink-3); }
+  h1 { font-family: var(--mono); font-size: clamp(30px, 5vw, 46px); font-weight: 600; letter-spacing: -.03em; margin: 0; }
+  .lede { margin: 0; max-width: 68ch; color: var(--ink-2); font-size: 16px; }
+  .params { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .chip { font-family: var(--mono); font-size: 12px; padding: 5px 10px; border: 1px solid var(--rule); border-radius: 2px; background: var(--panel); color: var(--ink-2); white-space: nowrap; }
+  .chip b { color: var(--ink); font-weight: 600; }
+
+  .sec { display: flex; flex-direction: column; gap: 16px; }
+  .sec > h2 { font-family: var(--mono); font-size: 13px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; margin: 0; padding-bottom: 10px; border-bottom: 1px solid var(--rule); display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+  .sec > h2 span { font-weight: 400; letter-spacing: .04em; text-transform: none; color: var(--ink-3); font-size: 12px; }
+  .note { color: var(--ink-2); font-size: 14.5px; max-width: 74ch; margin: 0; }
+  .note code, td code { font-family: var(--mono); font-size: 12.5px; background: var(--rule-soft); padding: 1px 5px; border-radius: 2px; color: var(--ink); }
+
+  .card { background: var(--panel); border: 1px solid var(--rule); border-radius: 3px; box-shadow: var(--shadow); }
+
+  /* anatomy */
+  .anat { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 0; }
+  @media (max-width: 860px) { .anat { grid-template-columns: 1fr; } }
+  .anat-figs { display: grid; grid-template-columns: 1fr 1fr; border-right: 1px solid var(--rule-soft); }
+  .anat-figs figure { margin: 0; border-right: 1px solid var(--rule-soft); }
+  .anat-figs figure:last-child { border-right: none; }
+  .anat-figs figcaption, .two figcaption { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); padding: 11px 14px; display: flex; align-items: center; gap: 8px; }
+  .anat-figs svg, .two svg { background: var(--plate); border-top: 1px solid var(--rule-soft); padding: 8px 4px; margin: 0 auto; width: auto; max-width: 100%; }
+  .anat-figs svg { max-height: 430px; }
+  .two svg { max-height: 580px; }
+  .step-dot { width: 17px; height: 17px; border-radius: 50%; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex: none; }
+  .anat-key { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+  .anat-key h3 { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); margin: 0; font-weight: 500; }
+  .kv { display: grid; grid-template-columns: 88px minmax(0,1fr); gap: 6px 12px; font-size: 13.5px; color: var(--ink-2); }
+  .kv b { font-family: var(--mono); font-size: 12.5px; color: var(--ink); font-weight: 600; }
+
+  /* steps */
+  .steps { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 14px; }
+  @media (max-width: 900px) { .steps { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+  .step { background: var(--panel); border: 1px solid var(--rule); border-radius: 3px; box-shadow: var(--shadow); padding: 13px 14px 15px; display: flex; flex-direction: column; gap: 7px; }
+  .step .num { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: .1em; }
+  .step h4 { margin: 0; font-size: 14px; font-weight: 600; }
+  .step p { margin: 0; font-size: 13px; color: var(--ink-2); }
+  .step code { font-family: var(--mono); font-size: 11.5px; color: var(--ink); }
+
+  /* formula */
+  .formula { font-family: var(--mono); font-size: 13.5px; background: var(--panel); border: 1px solid var(--rule); border-left: 3px solid var(--accent); border-radius: 2px; padding: 15px 17px; color: var(--ink); overflow-x: auto; line-height: 1.95; box-shadow: var(--shadow); }
+  .formula b { color: var(--accent); }
+  .formula .c { color: var(--ink-3); }
+
+  td.dir, th.dir { text-align: center; font-size: 15px; letter-spacing: 3px; color: var(--ink); }
+  td.dim { color: var(--ink-3); }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 780px) { .cols { grid-template-columns: 1fr; } }
+  .hand-card { background: var(--panel); border: 1px solid var(--rule); border-radius: 3px; box-shadow: var(--shadow); padding: 14px 16px 16px; }
+  .hand-card h4 { margin: 0 0 10px; font-family: var(--mono); font-size: 13px; font-weight: 600; }
+  .dirs { display: grid; grid-template-columns: auto auto 1fr; gap: 8px 14px; align-items: baseline; font-size: 13.5px; color: var(--ink-2); }
+  .dirs b { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+  .dirs .g { font-size: 17px; color: var(--accent); line-height: 1; }
+  .callout { background: color-mix(in srgb, var(--accent) 7%, var(--panel)); border: 1px solid var(--rule); border-left: 3px solid var(--accent); border-radius: 2px; padding: 13px 16px; font-size: 14px; color: var(--ink-2); }
+  .callout b { color: var(--ink); }
+  .callout code { font-family: var(--mono); font-size: 12.5px; }
+  .steps.four { grid-template-columns: repeat(4, minmax(0,1fr)); }
+  @media (max-width: 900px) { .steps.four { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+
+  /* table */
+  .scroll { overflow-x: auto; border: 1px solid var(--rule); border-radius: 3px; background: var(--panel); box-shadow: var(--shadow); }
+  .scroll.tall { max-height: 560px; overflow-y: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 880px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 10px 13px; border-bottom: 1px solid var(--rule-soft); font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); }
+  th { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  thead th { position: sticky; top: 0; z-index: 1; background: var(--panel); }
+  th:first-child, td:first-child { text-align: left; }
+  th.ext, td.ext { text-align: left; color: var(--ink-3); }
+  td.n { color: var(--ink); font-weight: 600; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr.hot td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  tbody tr.band td { border-top: 1px solid var(--rule); }
+  .grp th { text-align: center; color: var(--ink-2); border-bottom: none; padding-bottom: 4px; }
+  .grp th.sp { border-left: 1px solid var(--rule-soft); }
+
+  /* the 8x8 sheet — the family laid out on its own axes: m across, n down */
+  .sheet { background: var(--panel); border: 1px solid var(--rule); border-radius: 3px; box-shadow: var(--shadow); padding: 14px 16px 16px; overflow-x: auto; }
+  .sheet-grid { display: grid; grid-template-columns: 26px repeat(8, minmax(74px, 1fr)); gap: 6px; min-width: 700px; }
+  .ax { font-family: var(--mono); font-size: 11px; color: var(--ink-3); display: flex; align-items: center; justify-content: center; letter-spacing: .06em; }
+  .ax.corner { font-size: 10px; color: var(--ink-3); }
+  .cell { appearance: none; padding: 0; border: 1px solid var(--rule); border-radius: 2px; background: var(--plate); aspect-ratio: 1; cursor: pointer; position: relative; display: block; overflow: hidden; transition: border-color .12s, box-shadow .12s; }
+  .cell svg { display: block; width: 100%; height: 100%; }
+  .cell .tag { position: absolute; left: 3px; bottom: 2px; font-family: var(--mono); font-size: 9.5px; font-weight: 700; color: #43464F; background: rgba(255,255,255,.82); padding: 0 3px; border-radius: 2px; letter-spacing: .02em; }
+  .cell:hover { border-color: var(--accent); }
+  .cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .cell[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+  .sheet-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-top: 12px; font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+
+  /* gallery */
+  .pats { display: flex; flex-direction: column; gap: 18px; }
+  .pat { background: var(--panel); border: 1px solid var(--rule); border-radius: 3px; box-shadow: var(--shadow); overflow: hidden; }
+  .pat-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--rule-soft); }
+  .pat-n { font-family: var(--mono); font-size: 15px; font-weight: 600; }
+  .pat-meta { font-family: var(--mono); font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
+  .hand { border-bottom: 1px solid var(--rule-soft); }
+  .hand:last-child { border-bottom: none; }
+  .hand-name { font-family: var(--mono); font-size: 12px; font-weight: 600; padding: 10px 16px 0; }
+  .hand-name span { font-weight: 400; color: var(--ink-3); margin-left: 8px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 720px) { .two { grid-template-columns: 1fr; } }
+  .two figure { margin: 0; border-right: 1px solid var(--rule-soft); display: flex; flex-direction: column; }
+  .two figure:last-child { border-right: none; }
+
+  footer { color: var(--ink-3); font-size: 12px; font-family: var(--mono); border-top: 1px solid var(--rule); padding-top: 16px; line-height: 1.8; }
+</style>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">mxn generator · reference · companion to Twist Stitches</div>
+    <h1>Box Stitches</h1>
+    <p class="lede">A box stitch begins from exactly the same <b>starting stitch</b> as a twist. The difference is <b>k = 0</b>: every loose end pairs with the end straight across from it, so each arm simply carries on along its own line and back over the block. Nothing rotates, nothing is stretched — the finished stitch is the weave doubled and squared off, a closed <b>box</b>. All sixty-four faces from <b>1×1</b> to <b>8×8</b> are drawn here, in both hands.</p>
+    <div class="params">
+      <span class="chip">k = <b>0</b></span>
+      <span class="chip">sizes <b>1×1 … 8×8</b></span>
+      <span class="chip"><b>64</b> faces · <b>128</b> stitches</span>
+      <span class="chip">LH ⇒ <b>cw</b>, RH ⇒ <b>ccw</b></span>
+      <span class="chip">strand <b>46 px</b> wide</span>
+      <span class="chip">alignment: <b>none needed</b></span>
+    </div>
+  </header>
+
+  <section class="sec">
+    <h2>Anatomy <span>3 × 2, left hand</span></h2>
+    <div class="card anat">
+      <div class="anat-figs">
+        <figure><figcaption><span class="step-dot">1</span>starting stitch</figcaption><div id="anat-a"></div></figure>
+        <figure><figcaption><span class="step-dot">2</span>box</figcaption><div id="anat-b"></div></figure>
+      </div>
+      <div class="anat-key">
+        <h3>How a strand is named</h3>
+        <div class="kv">
+          <b>3_2</b><span>set 3, layer 2 — set = one ribbon, layer = which piece of it</span>
+          <b>_1</b><span>the first piece, buried inside the block</span>
+          <b>_2 / _3</b><span>the two arms leaving the block, one each side</span>
+          <b>_4 / _5</b><span>the continuation: <code>_2</code> carries on as <code>_4</code>, <code>_3</code> as <code>_5</code></span>
+          <b>3_2_1_3</b><span>a mask — <code>3_2</code> passes <i>over</i> <code>1_3</code></span>
+        </div>
+        <h3>Which set is which</h3>
+        <div class="kv">
+          <b>1 … n</b><span>the horizontal sets (n of them)</span>
+          <b>n+1 … n+m</b><span>the vertical sets (m of them)</span>
+        </div>
+        <p class="note" style="font-size:13px">In <b>m × n</b>, m counts the vertical ribbons and n the horizontal ones — so 3 × 2 is three verticals crossing two horizontals.</p>
+      </div>
+    </div>
+    <p class="note">Because <code>_4</code> is collinear with <code>_2</code> and <code>_5</code> with <code>_3</code>, each ribbon reads as one straight bar that runs clean across the block and sticks out on both sides. Every bar crosses every ribbon of the other direction a second time, which is where the second layer of masks comes from.</p>
+  </section>
+
+  <section class="sec">
+    <h2>How one is made <span>the same passes as a twist — the last one has nothing to do</span></h2>
+    <div class="steps four">
+      <div class="step"><span class="num">01</span><h4>Weave the block</h4><p>Lay m vertical ribbons across n horizontal ribbons and mask the crossings. That's the starting stitch.</p></div>
+      <div class="step"><span class="num">02</span><h4>Pair by k = 0</h4><p>The pointer doesn't move: every end pairs with the end straight opposite, so each arm aims along its own line.</p></div>
+      <div class="step"><span class="num">03</span><h4>Carry on straight</h4><p><code>_2 → _4</code>, <code>_3 → _5</code>, each continuing back across the block and out the far side.</p></div>
+      <div class="step"><span class="num">04</span><h4>Mask again</h4><p>The block's over/under pattern is repeated one-for-one on the new crossings, on top of the starting stitch.</p></div>
+    </div>
+    <div class="callout"><b>Step 5, align, is a no-op at k = 0.</b> Both passes return immediately with <code>preserve_continuation</code> and the message <i>"k=0: _4/_5 alignment matches continuation exactly, no adjustment needed"</i>. That was confirmed on the eight runs the first version of this sheet was built from — and it cannot be otherwise at any size, because the aligner's job is to bring the arms of a group to a shared angle, and at k = 0 every arm of a group already lies on its family's axis. That is the whole difference from a twist, where the arms must be rotated to a shared angle and stretched until the gaps even out.</div>
+  </section>
+
+  <section class="sec">
+    <h2>The rules <span>everything on this page follows from these</span></h2>
+    <div class="formula">
+      <span class="c">// sets</span><br>
+      horizontal sets = <b>1 … n</b> ,  vertical sets = <b>n+1 … n+m</b><br><br>
+      <span class="c">// directions — the only thing the hand changes</span><br>
+      horizontal <b>_4 → 0°</b> (right) , <b>_5 → 180°</b> (left)   <span class="c">// both hands</span><br>
+      vertical LH <b>_4 → +90°</b> (down) , <b>_5 → −90°</b> (up)<br>
+      vertical RH <b>_4 → −90°</b> (up) , <b>_5 → +90°</b> (down)<br><br>
+      <span class="c">// lengths of the continuation bars</span><br>
+      horizontal bar = <b>112·m + 60</b> px ,  vertical bar = <b>112·n + 60</b> px<br>
+      box footprint = <b>112·(m+1) × 112·(n+1)</b> px<br><br>
+      <span class="c">// how many strands</span><br>
+      base <b>3(m+n)</b> + base masks <b>2mn</b> + continuation <b>2(m+n)</b> + continuation masks <b>2mn</b><br>
+      total = <b>5(m+n) + 4mn</b>
+    </div>
+    <div class="cols">
+      <div class="hand-card">
+        <h4>Left hand · cw</h4>
+        <div class="dirs">
+          <b>x_4</b><span class="g">→</span><span>horizontal arms run right</span>
+          <b>x_5</b><span class="g">←</span><span>horizontal arms run left</span>
+          <b>x_4</b><span class="g">↓</span><span>vertical arms run down</span>
+          <b>x_5</b><span class="g">↑</span><span>vertical arms run up</span>
+        </div>
+      </div>
+      <div class="hand-card">
+        <h4>Right hand · ccw</h4>
+        <div class="dirs">
+          <b>x_4</b><span class="g">→</span><span>horizontal arms run right</span>
+          <b>x_5</b><span class="g">←</span><span>horizontal arms run left</span>
+          <b>x_4</b><span class="g">↑</span><span>vertical arms run up</span>
+          <b>x_5</b><span class="g">↓</span><span>vertical arms run down</span>
+        </div>
+      </div>
+    </div>
+    <p class="note">The hand also swaps which row each horizontal bar sits on — that's the <code>_2</code>/<code>_3</code> swap — so the RH box is the mirror of the LH box, exactly as with twists. The mask lists are identical in both hands: every vertical <code>x_2</code> over every horizontal <code>y_3</code>, every <code>x_3</code> over every <code>y_2</code>, then the same pattern again on the <code>_4</code>/<code>_5</code> layer.</p>
+  </section>
+
+  <section class="sec">
+    <h2>Every stitch <span>pick a face — 1×1 to 8×8, m across, n down</span></h2>
+    <div class="sheet">
+      <div class="sheet-grid" id="sheet" role="grid" aria-label="Box stitch faces, m by n"></div>
+      <div class="sheet-foot">
+        <span>every cell is that face's finished box, left hand</span>
+        <span>each drawing is fitted to its cell — the sheet is not to one scale</span>
+      </div>
+    </div>
+    <div class="pats" id="detail"></div>
+  </section>
+
+  <section class="sec">
+    <h2>Every size <span>all 64 faces, from the rules above</span></h2>
+    <div class="scroll tall">
+      <table>
+        <thead>
+          <tr>
+            <th>stitch</th><th>strands</th><th>base + masks + cont + masks</th>
+            <th>box (px)</th><th>h bar (px)</th><th>v bar (px)</th>
+            <th class="dir">LH _4 h / v</th><th class="dir">RH _4 h / v</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <p class="note">A face is square only when m = n, and those are the only ones whose two bars are the same length: m sets the width and n the height, so 8 × 1 is a wide strip and 1 × 8 is a tall one. Strand count grows as <code>4mn</code> — an 8 × 8 box is 336 strands against a 1 × 1's 14.</p>
+  </section>
+
+  <section class="sec">
+    <h2>Box or twist <span>same start, k decides</span></h2>
+    <p class="note"><b>k = 0 — box.</b> Pointer doesn't move, arms carry on straight, alignment does nothing. The result is fixed: angles are always 0° / 180° / ±90°, lengths are always <code>112m + 60</code> and <code>112n + 60</code>. There is exactly one box per size per hand.</p>
+    <p class="note"><b>k ≠ 0 — twist.</b> The pointer walks the rim, so every end aims somewhere else, the two groups fan out, and the aligner has to pick a shared angle per group and stretch the arms until the gaps are equal (never below <code>strand width + 10 = 56 px</code>). Those angles, sizes and drawings are in the companion sheet, <a href="https://claude.ai/code/artifact/2a07b85f-3b94-4257-b201-d2d6ab74c0e1">Twist Stitches</a>.</p>
+  </section>
+
+  <footer>
+    The first version of this sheet drew four sizes — 1×1, 2×1, 3×2, 3×3 in both hands — straight out of <code>mxn_{lh,rh}_continuation.generate_json(m, n, k=0, direction)</code> and the alignment pass that follows it. The drawings here are laid out by the page itself from the rules above, and for those eight stitches they come out identical to the generated ones, character for character; the other 120 are the same construction carried on.<br>
+    Real coordinates, widths and mask order throughout (block → block masks → continuation → continuation masks). Set colours are the one thing not carried over: the original generator randomises them past the second set, so this sheet fixes a palette — horizontal sets by index, vertical sets along one indigo ramp — and keeps it the same at every size.
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---- the drawing ---------------------------------------------------------
+  // Geometry of the starting stitch and its k = 0 continuation. Verified against
+  // the eight stitches the first version of this sheet was generated from: the
+  // SVG this produces for 1×1, 2×1, 3×2 and 3×3 is identical to theirs.
+  var W = 46, OUT = 54, G = 56, POKE = 32, R_OUT = 27, R_IN = 23;
+  var CX = 1232, CY = 392;
+
+  var WARP = [[61,58,140],[123,113,214],[179,173,236],[79,73,168],
+              [145,136,226],[106,97,196],[207,203,244],[46,43,107]];
+  var WEFT = [[255,255,255],[85,170,0],[123,167,217],[226,122,38],
+              [210,90,110],[245,200,55],[60,170,175],[190,140,200]];
+
+  function rgb(c) { return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')'; }
+  function f2(v) { return v.toFixed(2); }
+  function f1(v) { return v.toFixed(1); }
+
+  // `_1` is the slant buried in the block, `_2` / `_3` the arms leaving it,
+  // `_4` / `_5` the continuation. Right hand swaps which of a set's two lines
+  // each arm takes — that is the whole of the hand.
+  function build(m, n, hand) {
+    var lh = hand === 'lh';
+    var armX = ((2 * m - 1) * G) / 2 + POKE;
+    var armY = ((2 * n - 1) * G) / 2 + POKE;
+    var col = function (j) { return CX + (j - (2 * m - 1) / 2) * G; };
+    var row = function (i) { return CY + (i - (2 * n - 1) / 2) * G; };
+    var hBar = 112 * m + 60, vBar = 112 * n + 60;
+    var warp = [], weft = [], q, p;
+
+    for (q = 0; q < m; q++) {
+      var left = col(2 * q), right = col(2 * q + 1);
+      var lowL = { x: left, y: CY + n * G }, lowR = { x: right, y: CY + n * G };
+      var hiL = { x: left, y: CY - n * G }, hiR = { x: right, y: CY - n * G };
+      var up = function (x) { return { x: x, y: CY - armY }; };
+      var down = function (x) { return { x: x, y: CY + armY }; };
+      warp.push(lh
+        ? { set: n + q + 1, colour: WARP[q % WARP.length],
+            s1: [lowR, hiL], s2: [lowR, up(right)], s3: [hiL, down(left)] }
+        : { set: n + q + 1, colour: WARP[q % WARP.length],
+            s1: [lowL, hiR], s2: [hiR, down(right)], s3: [lowL, up(left)] });
+    }
+    for (p = 0; p < n; p++) {
+      var hi = row(2 * p), lo = row(2 * p + 1);
+      var inL = function (y) { return { x: CX - m * G, y: y }; };
+      var inR = function (y) { return { x: CX + m * G, y: y }; };
+      var outL = function (y) { return { x: CX - armX, y: y }; };
+      var outR = function (y) { return { x: CX + armX, y: y }; };
+      weft.push(lh
+        ? { set: p + 1, colour: WEFT[p % WEFT.length],
+            s1: [inL(lo), inR(hi)], s2: [inR(hi), outL(hi)], s3: [inL(lo), outR(lo)] }
+        : { set: p + 1, colour: WEFT[p % WEFT.length],
+            s1: [inL(hi), inR(lo)], s2: [inR(lo), outL(lo)], s3: [inL(hi), outR(hi)] });
+    }
+
+    // The continuation: from an arm's free end, straight back the way it came.
+    function carry(seg, len) {
+      var a = seg[0], b = seg[1];
+      var dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy);
+      return [b, { x: b.x - (dx / d) * len, y: b.y - (dy / d) * len }];
+    }
+    warp.forEach(function (s) { s.s4 = carry(s.s2, vBar); s.s5 = carry(s.s3, vBar); });
+    weft.forEach(function (s) { s.s4 = carry(s.s2, hBar); s.s5 = carry(s.s3, hBar); });
+    return { m: m, n: n, hand: hand, warp: warp, weft: weft };
+  }
+
+  function strandSvg(p, maskId) {
+    var a = p.seg[0], b = p.seg[1], c = rgb(p.colour);
+    function dot(q) {
+      return '<circle cx="' + f2(q.x) + '" cy="' + f2(q.y) + '" r="' + f2(R_OUT) + '" fill="black"/>' +
+             '<circle cx="' + f2(q.x) + '" cy="' + f2(q.y) + '" r="' + f2(R_IN) + '" fill="' + c + '"/>';
+    }
+    function line(col, w) {
+      return '<line x1="' + f2(a.x) + '" y1="' + f2(a.y) + '" x2="' + f2(b.x) + '" y2="' + f2(b.y) +
+             '" stroke="' + col + '" stroke-width="' + w + '" stroke-linecap="butt"/>';
+    }
+    return '<g' + (maskId ? ' mask="url(#' + maskId + ')"' : '') + '>' +
+      dot(a) + (p.caps === 2 ? dot(b) : '') + line('black', OUT) + line(c, W) + '</g>';
+  }
+
+  /** One drawing. `box` false is the starting stitch, true the finished box. */
+  function draw(m, n, hand, box, uid, opts) {
+    opts = opts || {};
+    var st = build(m, n, hand), i, j;
+    var base = [], cont = [], byId = {};
+    function lay(s, i, into) {
+      var p = { id: s.set + '_' + i, colour: s.colour, seg: s['s' + i], caps: i === 1 ? 2 : 1 };
+      byId[p.id] = p; into.push(p); return p;
+    }
+    for (i = 0; i < st.warp.length; i++) lay(st.warp[i], 1, base);
+    for (i = 0; i < st.weft.length; i++) lay(st.weft[i], 1, base);
+    for (i = 0; i < st.warp.length; i++) lay(st.warp[i], 2, base);
+    for (i = 0; i < st.weft.length; i++) lay(st.weft[i], 2, base);
+    for (i = 0; i < st.warp.length; i++) lay(st.warp[i], 3, base);
+    for (i = 0; i < st.weft.length; i++) lay(st.weft[i], 3, base);
+
+    var masks = [], cmasks = [];
+    for (i = 0; i < st.warp.length; i++)
+      for (j = 0; j < st.weft.length; j++) masks.push([st.warp[i], 2, st.weft[j], 3]);
+    for (i = 0; i < st.warp.length; i++)
+      for (j = 0; j < st.weft.length; j++) masks.push([st.warp[i], 3, st.weft[j], 2]);
+
+    if (box) {
+      // Warp continuations go left column then right, weft ones high row then low.
+      for (i = 0; i < st.warp.length; i++) { lay(st.warp[i], 5, cont); lay(st.warp[i], 4, cont); }
+      var order = st.hand === 'lh' ? [4, 5] : [5, 4];
+      for (i = 0; i < st.weft.length; i++) { lay(st.weft[i], order[0], cont); lay(st.weft[i], order[1], cont); }
+      for (i = 0; i < st.warp.length; i++) {
+        for (j = 0; j < st.weft.length; j++) cmasks.push([st.warp[i], 5, st.weft[j], 5]);
+        for (j = 0; j < st.weft.length; j++) cmasks.push([st.warp[i], 4, st.weft[j], 4]);
+      }
+    }
+
+    // The frame, and the labels it has to hold. A label is sized off the drawing
+    // so that it comes out the same size on screen whatever the face — but the
+    // arms it names are always 56 px apart, so past a point that scaling would
+    // run one label into the next, and the pitch caps it. The margin then opens
+    // far enough to hold whatever size that leaves. The first four sizes are
+    // small enough that neither ever binds, and come out exactly as published.
+    var basePad = box ? 56 : 48;
+    var vw0 = box ? 112 * (m + 2) : 112 * m + 104;
+    var vh0 = box ? 112 * (n + 2) : 112 * n + 104;
+    var chars = String(m + n).length + 2;
+    var fs = Math.min(vw0 / 24, 100 / (0.6 * chars));
+    var sw = (fs * 5) / 18, off = 1.5 * fs;
+    var lab = opts.labels !== false;
+    var padX = lab ? Math.max(basePad, off + 0.3 * chars * fs) : basePad;
+    var padY = lab ? Math.max(basePad, off + 0.5 * fs) : basePad;
+    var vw = vw0 - 2 * basePad + 2 * padX;
+    var vh = vh0 - 2 * basePad + 2 * padY;
+    var x0 = CX - vw / 2, y0 = CY - vh / 2;
+    var geom = ' x="' + f1(x0) + '" y="' + f1(y0) + '" width="' + f1(vw) + '" height="' + f1(vh) + '"';
+    var mid = function (k) { return uid + '_m_' + k[0].set + '_' + k[1] + '_' + k[2].set + '_' + k[3]; };
+
+    var every = masks.concat(cmasks), defs = '', k, u;
+    for (i = 0; i < every.length; i++) {
+      k = every[i]; u = byId[k[2].set + '_' + k[3]];
+      defs += '<mask id="' + mid(k) + '" maskUnits="userSpaceOnUse"' + geom + '>' +
+        '<rect' + geom + ' fill="black"/>' +
+        '<line x1="' + f2(u.seg[0].x) + '" y1="' + f2(u.seg[0].y) + '" x2="' + f2(u.seg[1].x) +
+        '" y2="' + f2(u.seg[1].y) + '" stroke="white" stroke-width="' + OUT + '" stroke-linecap="butt"/></mask>';
+    }
+
+    var body = '';
+    for (i = 0; i < base.length; i++) body += strandSvg(base[i]);
+    for (i = 0; i < masks.length; i++) body += strandSvg(byId[masks[i][0].set + '_' + masks[i][1]], mid(masks[i]));
+    for (i = 0; i < cont.length; i++) body += strandSvg(cont[i]);
+    for (i = 0; i < cmasks.length; i++) body += strandSvg(byId[cmasks[i][0].set + '_' + cmasks[i][1]], mid(cmasks[i]));
+
+    if (opts.labels !== false) {
+      var pick = [];
+      if (!box) {
+        for (i = 0; i < st.warp.length; i++) pick.push([st.warp[i], 2]);
+        for (i = 0; i < st.weft.length; i++) pick.push([st.weft[i], 2]);
+        for (i = 0; i < st.warp.length; i++) pick.push([st.warp[i], 3]);
+        for (i = 0; i < st.weft.length; i++) pick.push([st.weft[i], 3]);
+      } else {
+        for (i = 0; i < st.warp.length; i++) pick.push([st.warp[i], 5], [st.warp[i], 4]);
+        var ord = st.hand === 'lh' ? [4, 5] : [5, 4];
+        for (i = 0; i < st.weft.length; i++) pick.push([st.weft[i], ord[0]], [st.weft[i], ord[1]]);
+      }
+      for (i = 0; i < pick.length; i++) {
+        var s = pick[i][0], li = pick[i][1], seg = s['s' + li];
+        var dx = seg[1].x - seg[0].x, dy = seg[1].y - seg[0].y;
+        var d = Math.sqrt(dx * dx + dy * dy);
+        body += '<text x="' + f1(seg[1].x + (dx / d) * off) + '" y="' + f1(seg[1].y + (dy / d) * off) +
+          '" font-family="ui-monospace,monospace" font-size="' + f1(fs) + '" font-weight="700"' +
+          ' text-anchor="middle" dominant-baseline="central" fill="#111" stroke="#fff" stroke-width="' +
+          f1(sw) + '" paint-order="stroke">' + s.set + '_' + li + '</text>';
+      }
+    }
+
+    var style = opts.style || 'max-width:520px;height:auto;display:block';
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + f1(x0) + ' ' + f1(y0) + ' ' +
+      f1(vw) + ' ' + f1(vh) + '" width="100%" style="' + style + '"><defs>' + defs + '</defs>' + body + '</svg>';
+  }
+
+  function facts(m, n) {
+    return {
+      base: 3 * (m + n), baseMasks: 2 * m * n, cont: 2 * (m + n), contMasks: 2 * m * n,
+      strands: 5 * (m + n) + 4 * m * n,
+      boxW: 112 * (m + 1), boxH: 112 * (n + 1), hBar: 112 * m + 60, vBar: 112 * n + 60
+    };
+  }
+
+  // ---- the page ------------------------------------------------------------
+  var MAX = 8;
+  var sel = { m: 3, n: 2 };
+
+  document.getElementById('anat-a').innerHTML = draw(3, 2, 'lh', false, 'anatA');
+  document.getElementById('anat-b').innerHTML = draw(3, 2, 'lh', true, 'anatB');
+
+  // The table: every face, m then n.
+  var rows = '';
+  for (var m = 1; m <= MAX; m++) {
+    for (var n = 1; n <= MAX; n++) {
+      var f = facts(m, n);
+      rows += '<tr id="r' + m + 'x' + n + '"' + (n === 1 && m > 1 ? ' class="band"' : '') + '>' +
+        '<td class="n">' + m + ' × ' + n + '</td><td>' + f.strands + '</td>' +
+        '<td class="dim">' + f.base + ' + ' + f.baseMasks + ' + ' + f.cont + ' + ' + f.contMasks + '</td>' +
+        '<td>' + f.boxW + ' × ' + f.boxH + '</td><td>' + f.hBar + '</td><td>' + f.vBar + '</td>' +
+        '<td class="dir">→ ↓</td><td class="dir">→ ↑</td></tr>';
+    }
+  }
+  document.getElementById('tbody').innerHTML = rows;
+
+  // The sheet: m across, n down, so a cell sits where its own face's shape does.
+  var sheet = document.getElementById('sheet');
+  var html = '<div class="ax corner">m→<br>n↓</div>';
+  for (var c = 1; c <= MAX; c++) html += '<div class="ax">' + c + '</div>';
+  for (var r = 1; r <= MAX; r++) {
+    html += '<div class="ax">' + r + '</div>';
+    for (var c2 = 1; c2 <= MAX; c2++) {
+      html += '<button type="button" class="cell" data-m="' + c2 + '" data-n="' + r +
+        '" aria-pressed="false" aria-label="' + c2 + ' by ' + r + ', ' + facts(c2, r).strands +
+        ' strands"><span class="tag">' + c2 + '×' + r + '</span></button>';
+    }
+  }
+  sheet.innerHTML = html;
+  var cells = [].slice.call(sheet.querySelectorAll('.cell'));
+
+  // Drawing 64 boxes at once is more DOM than the page needs; each cell draws
+  // when it comes near the viewport and gives the nodes back when it leaves.
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      var el = e.target, tag = el.querySelector('.tag');
+      if (e.isIntersecting) {
+        if (!el.dataset.drawn) {
+          el.insertAdjacentHTML('afterbegin',
+            draw(+el.dataset.m, +el.dataset.n, 'lh', true, 'c' + el.dataset.m + 'x' + el.dataset.n,
+                 { labels: false, style: 'display:block;width:100%;height:100%' }));
+          el.dataset.drawn = '1';
+        }
+      } else if (el.dataset.drawn) {
+        el.innerHTML = '';
+        el.appendChild(tag);
+        delete el.dataset.drawn;
+      }
+    });
+  }, { rootMargin: '600px 0px' });
+  cells.forEach(function (el) { io.observe(el); });
+
+  var detail = document.getElementById('detail');
+  var HANDS = [
+    { hand: 'lh', name: 'LH · cw', arms: '_4 arms → ↓ · _5 arms ← ↑' },
+    { hand: 'rh', name: 'RH · ccw', arms: '_4 arms → ↑ · _5 arms ← ↓' }
+  ];
+
+  function render() {
+    var m = sel.m, n = sel.n, f = facts(m, n), out = '';
+    out += '<div class="pat"><div class="pat-head"><span class="pat-n">' + m + ' × ' + n + '</span>' +
+      '<span class="pat-meta">' + m + ' vertical · ' + n + ' horizontal · ' + f.strands +
+      ' strands · box ' + f.boxW + ' × ' + f.boxH + ' px</span></div>';
+    HANDS.forEach(function (h) {
+      out += '<div class="hand"><div class="hand-name">' + h.name + ' <span>' + h.arms + '</span></div>' +
+        '<div class="two">' +
+        '<figure><figcaption><span class="step-dot">1</span>starting stitch</figcaption>' +
+        draw(m, n, h.hand, false, 'd' + h.hand + m + 'x' + n + 's') + '</figure>' +
+        '<figure><figcaption><span class="step-dot">2</span>box</figcaption>' +
+        draw(m, n, h.hand, true, 'd' + h.hand + m + 'x' + n + 'b') + '</figure>' +
+        '</div></div>';
+    });
+    detail.innerHTML = out + '</div>';
+
+    cells.forEach(function (el) {
+      el.setAttribute('aria-pressed', +el.dataset.m === m && +el.dataset.n === n ? 'true' : 'false');
+    });
+    var hot = document.querySelector('tbody tr.hot');
+    if (hot) hot.classList.remove('hot');
+    var tr = document.getElementById('r' + m + 'x' + n);
+    if (tr) tr.classList.add('hot');
+    try { history.replaceState(null, '', '#' + m + 'x' + n); } catch (e) {}
+  }
+
+  function pick(m, n, scroll) {
+    sel = { m: Math.min(MAX, Math.max(1, m)), n: Math.min(MAX, Math.max(1, n)) };
+    render();
+    if (scroll) {
+      var smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+      detail.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+    }
+  }
+
+  sheet.addEventListener('click', function (e) {
+    var el = e.target.closest ? e.target.closest('.cell') : null;
+    if (el) pick(+el.dataset.m, +el.dataset.n, true);
+  });
+  sheet.addEventListener('keydown', function (e) {
+    var el = e.target.closest ? e.target.closest('.cell') : null;
+    if (!el) return;
+    var d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    var m = Math.min(MAX, Math.max(1, +el.dataset.m + d[0]));
+    var n = Math.min(MAX, Math.max(1, +el.dataset.n + d[1]));
+    var next = sheet.querySelector('.cell[data-m="' + m + '"][data-n="' + n + '"]');
+    if (next) { next.focus(); pick(m, n, false); }
+  });
+
+  var h = /^#(\d)x(\d)$/.exec(location.hash || '');
+  if (h) sel = { m: Math.min(MAX, Math.max(1, +h[1])), n: Math.min(MAX, Math.max(1, +h[2])) };
+  render();
+})();
+</script>

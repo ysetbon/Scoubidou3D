@@ -371,6 +371,7 @@ exactly like the original editor.
 | [docs/layer-levels.md](docs/layer-levels.md) | levels: what a storey is and why it is two thicknesses |
 | [docs/control-points.md](docs/control-points.md) | OpenStrand's control-point marks and staging, and the one place this differs |
 | [docs/box-stitch-levels](docs/box-stitch-levels/) | the box stitch round by round, and the round stitch |
+| [docs/box-stitch-mxn](docs/box-stitch-mxn/) | every m×n box stitch, 1×1 to 8×8, drawn in both hands |
 | [docs/twist-stitch](docs/twist-stitch/) | the twist stitch, its screw group, and the turn's derivation |
 | [docs/panel-mocks](docs/panel-mocks/) | the three panel layouts, and which one shipped |
 
