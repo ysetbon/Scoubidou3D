@@ -110,10 +110,15 @@ try {
     try {
       // vite needs a beat to notice a swapped file before the page reloads onto it
       if (variant.swap) await new Promise((r) => setTimeout(r, 1500));
-      const packed = pack(await bake(`${work}/scenes`, { url: URL_BASE }), [spec.show]);
+      // `show` names the scene to keep. A page that flips between several — a
+      // family rather than a before/after — names them all, and omitting it
+      // keeps every scene the bake produced.
+      const want = spec.show == null ? null : [spec.show].flat();
+      const packed = pack(await bake(`${work}/scenes`, { url: URL_BASE }), want);
       variants[variant.id] = { meta: packed.meta, blob: packed.blob };
+      const meshes = Object.values(packed.meta).reduce((n, s) => n + s.parts.length, 0);
       console.log(
-        `  ${variant.id.padEnd(7)} ${packed.meta[spec.show].parts.length} meshes, ` +
+        `  ${variant.id.padEnd(7)} ${Object.keys(packed.meta).length} scene(s), ${meshes} meshes, ` +
           `${(packed.rawBytes / 1048576).toFixed(2)} MB -> ${(packed.blob.length / 1048576).toFixed(2)} MB`,
       );
     } finally {

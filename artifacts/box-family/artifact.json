@@ -1,0 +1,65 @@
+{
+  "title": "Box stitches in 3D — one construction, any face",
+  "description": "Orbit the m×n box stitch at six sizes and in both hands — real geometry lifted out of the studio, not a drawing of it.",
+  "favicon": "🧶",
+  "sample": {
+    "faces": [
+      {
+        "id": "a-1x1",
+        "m": 1,
+        "n": 1,
+        "hand": "lh",
+        "label": "1×1"
+      },
+      {
+        "id": "c-3x2",
+        "m": 3,
+        "n": 2,
+        "hand": "lh",
+        "label": "3×2"
+      },
+      {
+        "id": "d-3x3",
+        "m": 3,
+        "n": 3,
+        "hand": "lh",
+        "label": "3×3"
+      },
+      {
+        "id": "e-5x5",
+        "m": 5,
+        "n": 5,
+        "hand": "lh",
+        "label": "5×5"
+      },
+      {
+        "id": "g-1x8",
+        "m": 1,
+        "n": 8,
+        "hand": "lh",
+        "label": "1×8"
+      },
+      {
+        "id": "h-3x2rh",
+        "m": 3,
+        "n": 2,
+        "hand": "rh",
+        "label": "3×2 RH"
+      }
+    ]
+  },
+  "show": [
+    "a-1x1",
+    "c-3x2",
+    "d-3x3",
+    "e-5x5",
+    "g-1x8",
+    "h-3x2rh"
+  ],
+  "variants": [
+    {
+      "id": "box",
+      "label": "Box"
+    }
+  ]
+}

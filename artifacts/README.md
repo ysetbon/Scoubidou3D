@@ -6,6 +6,7 @@ settle: *is this model actually right?* You orbit it and find out.
 
 ```
 npm run artifact -- twist-level-9      # -> artifacts/built/twist-level-9.html
+npm run artifact -- box-family
 ```
 
 Open the file in a browser, or publish it (Claude Code's Artifact tool takes the
@@ -16,6 +17,7 @@ own light or dark theme, so both are designed rather than one inverted.
 | artifact | what it settles |
 | --- | --- |
 | [`twist-level-9`](twist-level-9/) | The 1×1 twist column at level 9, before and after the fix in `collectJunctions` — whether each lace is one continuous ribbon or four pieces with bridges lofted across the seams. |
+| [`box-family`](box-family/) | The m×n box stitch at six sizes and in both hands — whether one construction really does hold from a 1×1 to a 5×5, and what a 1×8 looks like when a single ribbon carries the whole face. |
 
 ---
 
@@ -65,7 +67,11 @@ never eat work in progress.
 1. `mkdir artifacts/<name>` and copy the four files above as a starting point.
 2. Point `scenes.ts` at whatever you want built; it writes one JSON scene per
    file into the directory it is handed.
-3. Say which levels to bake and which one to show in `artifact.json`.
+3. Say which scenes to bake in `artifact.json`, and which of them to keep: `show`
+   names one, or a list of them for a page that flips between several. Leave it
+   out to keep every scene the bake produced. Weight is the thing to watch — an
+   8×8 box is 4 MB of mesh on its own, which is why `box-family` bakes six faces
+   and links to the studio for the other fifty-eight.
 4. Write the page. It is a page, not a demo — say what the reader is looking at
    and what would count as it being wrong.
 5. `npm run artifact -- <name>`, then add a row to the table above.
