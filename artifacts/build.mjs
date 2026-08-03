@@ -15,6 +15,13 @@
 //   4. bundle  — esbuild rolls three.js and the viewer into one script
 //   5. inline  — drop that script into the page shell
 //
+// An artifact may instead be LIVE: no scenes, no bake, no pack. The page carries
+// the app's own scene builder and StrandScene, and builds what it shows in the
+// browser. That is for a page whose subject is a FAMILY too big to bake — all 64
+// box faces at ten rounds each is 640 scenes and hundreds of MB — and it keeps
+// the same promise a different way: the meshes still come from the app's own
+// renderer, because the page is running it.
+//
 // A variant with a `swap` is baked against a DIFFERENT revision of a source file,
 // which is how a before/after page shows a real regression rather than a drawing
 // of one. The file is restored afterwards, and the build refuses to start if that
@@ -46,7 +53,7 @@ const work = `${dir}/.work`;
 const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' });
 
 // ---- 0. don't build over anyone's work --------------------------------------
-const swapped = [...new Set(spec.variants.flatMap((v) => Object.keys(v.swap ?? {})))];
+const swapped = [...new Set((spec.variants ?? []).flatMap((v) => Object.keys(v.swap ?? {})))];
 const dirty = git('status', '--porcelain', '--', ...(swapped.length ? swapped : ['.']))
   .split('\n')
   .filter(Boolean);
@@ -89,38 +96,47 @@ mkdirSync(work, { recursive: true });
 console.log(`artifact ${name}`);
 let server = null;
 try {
+  if (spec.live) {
+    console.log('  live — no scenes to bake; the page builds its own');
+  } else {
   // 1. scenes
-  execFileSync(
-    'npx',
-    ['esbuild', `${dir}/scenes.ts`, '--bundle', '--platform=node', '--format=esm',
-      `--outfile=${work}/scenes.mjs`, '--log-level=warning'],
-    { cwd: ROOT, stdio: 'inherit' },
-  );
-  execFileSync('node', [`${work}/scenes.mjs`, `${work}/scenes`, JSON.stringify(spec.sample)],
-    { cwd: ROOT, stdio: 'inherit' });
-
-  server = await serve();
-
-  // 2 + 3. bake each variant, swapping sources where it asks for it
-  const variants = {};
-  for (const variant of spec.variants) {
-    for (const [file, ref] of Object.entries(variant.swap ?? {})) {
-      writeFileSync(`${ROOT}/${file}`, git('show', `${ref}:${file}`));
+    execFileSync(
+      'npx',
+      ['esbuild', `${dir}/scenes.ts`, '--bundle', '--platform=node', '--format=esm',
+        `--outfile=${work}/scenes.mjs`, '--log-level=warning'],
+      { cwd: ROOT, stdio: 'inherit' },
+    );
+    execFileSync('node', [`${work}/scenes.mjs`, `${work}/scenes`, JSON.stringify(spec.sample)],
+      { cwd: ROOT, stdio: 'inherit' });
+  
+    server = await serve();
+  
+    // 2 + 3. bake each variant, swapping sources where it asks for it
+    const variants = {};
+    for (const variant of spec.variants) {
+      for (const [file, ref] of Object.entries(variant.swap ?? {})) {
+        writeFileSync(`${ROOT}/${file}`, git('show', `${ref}:${file}`));
+      }
+      try {
+        // vite needs a beat to notice a swapped file before the page reloads onto it
+        if (variant.swap) await new Promise((r) => setTimeout(r, 1500));
+        // `show` names the scene to keep. A page that flips between several — a
+        // family rather than a before/after — names them all, and omitting it
+        // keeps every scene the bake produced.
+        const want = spec.show == null ? null : [spec.show].flat();
+        const packed = pack(await bake(`${work}/scenes`, { url: URL_BASE }), want);
+        variants[variant.id] = { meta: packed.meta, blob: packed.blob };
+        const meshes = Object.values(packed.meta).reduce((n, s) => n + s.parts.length, 0);
+        console.log(
+          `  ${variant.id.padEnd(7)} ${Object.keys(packed.meta).length} scene(s), ${meshes} meshes, ` +
+            `${(packed.rawBytes / 1048576).toFixed(2)} MB -> ${(packed.blob.length / 1048576).toFixed(2)} MB`,
+        );
+      } finally {
+        for (const file of Object.keys(variant.swap ?? {})) git('checkout', '--', file);
+      }
     }
-    try {
-      // vite needs a beat to notice a swapped file before the page reloads onto it
-      if (variant.swap) await new Promise((r) => setTimeout(r, 1500));
-      const packed = pack(await bake(`${work}/scenes`, { url: URL_BASE }), [spec.show]);
-      variants[variant.id] = { meta: packed.meta, blob: packed.blob };
-      console.log(
-        `  ${variant.id.padEnd(7)} ${packed.meta[spec.show].parts.length} meshes, ` +
-          `${(packed.rawBytes / 1048576).toFixed(2)} MB -> ${(packed.blob.length / 1048576).toFixed(2)} MB`,
-      );
-    } finally {
-      for (const file of Object.keys(variant.swap ?? {})) git('checkout', '--', file);
-    }
+    writeFileSync(`${work}/data.json`, JSON.stringify({ show: spec.show, variants }));
   }
-  writeFileSync(`${work}/data.json`, JSON.stringify({ show: spec.show, variants }));
 
   // 4. bundle
   execFileSync(

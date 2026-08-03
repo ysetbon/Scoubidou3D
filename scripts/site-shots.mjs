@@ -62,6 +62,10 @@ const SHOTS = {
   // rather than idealised, and it is the derived one the app now opens.
   'twofan-col-lh-1x3-10': COLUMN,
   'twofan-col-lh-2x2-10': COLUMN,
+  // The box on a face wider than a square. Flat framing: a single round is a mat,
+  // not a column, and the whole point of it is the checkerboard read from above.
+  'box-lh-3x2': FLAT,
+  'box-lh-5x5': FLAT,
 };
 
 const KEYS = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(SHOTS);

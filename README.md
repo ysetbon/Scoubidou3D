@@ -174,7 +174,10 @@ The three layouts this was chosen from, as clickable mocks and renders:
   **two-fan columns** on a **1×3** and a **2×2** face, ten levels each, derived from the reference
   stitch rather than idealised ([the law](docs/twist-stitch/deriving-the-turn.md)), three- and
   four-strand braids, a truly-woven
-  mat (a checkerboard of masks), a diagonal basket, and a curved ribbon weave. Each is listed with
+  mat (a checkerboard of masks), a diagonal basket, and a curved ribbon weave. Behind those, two
+  generated families the browser lists as grids rather than dropdown entries: every m×n **twist**
+  face and every m×n **box** face, 1×1 to 8×8, in both hands — two of the box faces have cards of
+  their own on the site. Each is listed with
   its own picture on [the project site](https://ysetbon.github.io/Scoubidou3D/), and
   `?sample=<key>` opens one directly — e.g.
   [`/app/?sample=box-stitch-10`](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-stitch-10).
@@ -214,6 +217,18 @@ is what the level break between them says.
 Both come out of one generator, so the round count is the only difference. Every round, every mask,
 every start and end point, and the level rule they forced:
 **[docs/box-stitch-levels](docs/box-stitch-levels/)**.
+
+#### The box on any face
+
+That column is the square box worked round after round. The box also *widens*: **m** ribbons one way
+crossing **n** the other, `?sample=box-lh-3x2` and the other 63, in both hands. It is the twist
+family's own starting stitch with the twist taken out — at **k = 0** the pointer does not move, so
+every end pairs with the end straight opposite and each arm carries on along its own line and back
+over the block. Nothing rotates and nothing is stretched, which is why there is exactly one box per
+size per hand and no angle to derive. Work the same round again and it rises as a column, by the
+rule the 1×1's own column already had: every fold but the last lands the same distance past the
+weave, and only the last runs out to the loose ends. Browse the family as a grid beside the twist
+one, or take it flat and in 3D: **[docs/box-stitch-mxn](docs/box-stitch-mxn/)**.
 
 ### The twist stitch
 
@@ -371,6 +386,7 @@ exactly like the original editor.
 | [docs/layer-levels.md](docs/layer-levels.md) | levels: what a storey is and why it is two thicknesses |
 | [docs/control-points.md](docs/control-points.md) | OpenStrand's control-point marks and staging, and the one place this differs |
 | [docs/box-stitch-levels](docs/box-stitch-levels/) | the box stitch round by round, and the round stitch |
+| [docs/box-stitch-mxn](docs/box-stitch-mxn/) | every m×n box stitch, 1×1 to 8×8, drawn in both hands |
 | [docs/twist-stitch](docs/twist-stitch/) | the twist stitch, its screw group, and the turn's derivation |
 | [docs/panel-mocks](docs/panel-mocks/) | the three panel layouts, and which one shipped |
 

@@ -1,0 +1,367 @@
+<title>Box stitches in 3D — every face, worked as deep as you like</title>
+
+<style>
+  :root {
+    --ground: #f5efdf;
+    --panel: #fbf7ec;
+    --ink: #241f18;
+    --muted: #867c6a;
+    --line: #ded3ba;
+    --accent: #3d3a8c;
+    --ok: #2c6b52;
+    --ok-wash: #d9e8df;
+    --off: #8a6320;
+    --off-wash: #f2e6cd;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #14110e;
+      --panel: #1d1913;
+      --ink: #efe7d6;
+      --muted: #9b907d;
+      --line: #352e23;
+      --accent: #9a97e8;
+      --ok: #77c39c;
+      --ok-wash: #1e2f27;
+      --off: #d6ab63;
+      --off-wash: #302615;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #14110e;
+    --panel: #1d1913;
+    --ink: #efe7d6;
+    --muted: #9b907d;
+    --line: #352e23;
+    --accent: #9a97e8;
+    --ok: #77c39c;
+    --ok-wash: #1e2f27;
+    --off: #d6ab63;
+    --off-wash: #302615;
+  }
+  :root[data-theme="light"] {
+    --ground: #f5efdf;
+    --panel: #fbf7ec;
+    --ink: #241f18;
+    --muted: #867c6a;
+    --line: #ded3ba;
+    --accent: #3d3a8c;
+    --ok: #2c6b52;
+    --ok-wash: #d9e8df;
+    --off: #8a6320;
+    --off-wash: #f2e6cd;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 26px 20px 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  /* ---- masthead ---------------------------------------------------------- */
+  .head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px 28px; }
+  .head > div:first-child { flex: 1 1 100%; }
+  .head > p { flex: 1 1 34ch; }
+  .head h1 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: clamp(26px, 4vw, 38px);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .eyebrow {
+    display: block;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .head p { margin: 0; max-width: 46ch; color: var(--muted); font-size: 14.5px; line-height: 1.6; }
+
+  /* ---- the faces --------------------------------------------------------- */
+  .states { display: flex; flex-wrap: wrap; gap: 0; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+  .states button {
+    appearance: none;
+    background: var(--panel);
+    color: var(--muted);
+    border: 0;
+    border-right: 1px solid var(--line);
+    padding: 9px 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+  }
+  .states button:last-child { border-right: 0; }
+  .states button:hover { color: var(--ink); }
+  .states button[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
+  .states button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+
+  .ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; }
+  .depth { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .depth b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; min-width: 4.5ch; }
+  .depth input { accent-color: var(--accent); width: 160px; cursor: pointer; }
+  .depth input:disabled { cursor: default; opacity: 0.45; }
+  .depth input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  .picker {
+    display: grid;
+    grid-template-columns: 22px repeat(8, minmax(34px, 1fr));
+    gap: 3px;
+    max-width: 560px;
+    align-items: center;
+  }
+  .ax { font-family: var(--mono); font-size: 10px; color: var(--muted); text-align: center; line-height: 1.15; }
+  .ax.corner { font-size: 9px; }
+  .cell {
+    appearance: none;
+    background: var(--panel);
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 5px 0;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    cursor: pointer;
+  }
+  .cell:hover { color: var(--ink); border-color: var(--ink); }
+  .cell[aria-pressed="true"] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+  .cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---- stage ------------------------------------------------------------- */
+  .stage {
+    position: relative;
+    height: min(66vh, 620px);
+    min-height: 380px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+    background: var(--ground);
+  }
+  .stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  .readout {
+    position: absolute;
+    left: 14px;
+    bottom: 14px;
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 11px 15px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    backdrop-filter: blur(6px);
+    pointer-events: none;
+    max-width: calc(100% - 28px);
+  }
+  .readout .n {
+    font-family: Georgia, serif;
+    font-size: 30px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .readout .n span { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-left: 9px; letter-spacing: 0.06em; text-transform: none; }
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 14px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .facts b { color: var(--ink); font-weight: 600; }
+  #load {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    padding: 3px 9px;
+    border-radius: 11px;
+    align-self: flex-start;
+  }
+  #load.ok { color: var(--ok); background: var(--ok-wash); }
+  #load.off { color: var(--off); background: var(--off-wash); }
+
+  .tools { position: absolute; right: 14px; bottom: 14px; display: flex; gap: 8px; }
+  .tools button {
+    appearance: none;
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 7px 12px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+  }
+  .tools button:hover { color: var(--ink); }
+  .tools button[aria-pressed="true"] { color: var(--ink); border-color: var(--ink); }
+  .tools button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .hint {
+    position: absolute;
+    left: 14px;
+    top: 14px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    pointer-events: none;
+  }
+  #loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--ground);
+  }
+
+  /* ---- the note ---------------------------------------------------------- */
+  .note { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 22px 34px; }
+  .note section { display: flex; flex-direction: column; gap: 7px; }
+  .note h2 {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0;
+    font-weight: 600;
+  }
+  .note p { margin: 0; font-size: 14px; line-height: 1.65; color: var(--ink); }
+  .note code {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 1px 5px;
+  }
+  .note em { font-style: normal; color: var(--accent); }
+  .note a { color: var(--accent); }
+
+  @media (max-width: 640px) {
+    .hint { display: none; }
+    .readout { top: 12px; bottom: auto; }
+    .tools { flex-wrap: wrap; justify-content: flex-end; max-width: calc(100% - 28px); }
+    .stage { height: min(58vh, 460px); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+  <div class="head">
+    <div>
+      <span class="eyebrow">Scoubidou3D · box stitch · m×n · k = 0</span>
+      <h1>Sixty-four faces, worked as deep as you like.</h1>
+    </div>
+    <div class="ctl">
+      <div class="states">
+        <button type="button" data-hand="lh" aria-pressed="true">LH · cw</button>
+        <button type="button" data-hand="rh" aria-pressed="false">RH · ccw</button>
+      </div>
+      <label class="depth">
+        <span>Rounds</span>
+        <input type="range" id="depth" min="1" max="10" step="1" value="1"
+               aria-label="How many rounds to work">
+        <b><span id="depth-n">1</span> / 10</b>
+      </label>
+    </div>
+    <p>Pick a face on the grid, then pull the slider: the same stitch is worked
+    again on top of the last, up to ten rounds. Watch a round land <em>on</em> the
+    one below rather than through it, and watch which ribbon rides over, because
+    that swaps every round. Drag to orbit, scroll or pinch to zoom.</p>
+  </div>
+
+  <div class="picker" id="grid" role="grid" aria-label="Box faces, m by n"></div>
+
+  <div class="stage" id="stage">
+    <span class="hint">Drag to orbit</span>
+    <canvas id="c"></canvas>
+    <div class="readout">
+      <div class="n"><b id="facename">3 × 2</b><span id="hand">left hand · cw</span></div>
+      <div class="facts">
+        <span><b id="ribbons">5</b> ribbons</span>
+        <span><b id="strands">25</b> strands</span>
+        <span><b id="masks">24</b> masks</span>
+        <span><b id="footprint">448 × 336</b> px</span>
+      </div>
+      <div id="load" class="off">1.5× — one ribbon does that much more of the binding</div>
+    </div>
+    <div class="tools">
+      <button type="button" id="fit">Whole face</button>
+      <button type="button" id="top">Plan</button>
+    </div>
+    <div id="loading">building the faces…</div>
+  </div>
+
+  <div class="note">
+    <section>
+      <h2>What you are looking at</h2>
+      <p>A box stitch on an <code>m × n</code> face: m ribbons one way crossing n
+      the other, woven, and then every loose end carried straight back across the
+      block and out the far side. That is one round. Every round after it is the
+      same move again — each arm folds at its own free end and runs back along
+      <em>its own line</em>, the same distance past the weave as the round below —
+      so the column rises straight and stays exactly the width it started. Only
+      the last round runs on: those are the loose ends you would tie off.</p>
+    </section>
+    <section>
+      <h2>Why it is a box and not a spiral</h2>
+      <p>Look at one crossing as the column rises: the ribbon on top this round is
+      underneath the next. The over/unders repeat with <em>period two</em>, and
+      that alternation is the whole of what makes this the box stitch. Keep the
+      same ribbon on top every round instead and the identical moves give you the
+      round — spiral — stitch. Nothing else about the two differs.</p>
+    </section>
+    <section>
+      <h2>What m ≠ n costs</h2>
+      <p>Not slack: no arm was turned off its line, so none hangs past the weave
+      the way a lopsided twist's does. What it costs is <em>binding</em>. Take the
+      1×8 — its single warp passes through all 64 crossings while each of its
+      eight wefts passes through 8, so the whole face hangs off one piece of
+      plastic. Square faces share it evenly.</p>
+    </section>
+    <section>
+      <h2>Where this comes from</h2>
+      <p>Nothing on this page was drawn for it. It carries the studio's own
+      view and the studio's own builder, and puts the two together when you click
+      — so there is no second implementation that could disagree, and nothing
+      baked to go stale. That is also why all 64 faces are here to ten rounds:
+      baking them would have been 640 scenes and hundreds of megabytes.
+      <code>npm run check:box</code> carries the same 128 columns to ten rounds
+      and asserts the fold, the width and that period-two flip at all 114 048
+      crossings. Every face is a sample in the app too —
+      <a href="https://ysetbon.github.io/Scoubidou3D/app/?sample=box-lh-8x8">8×8
+      in the studio</a>, <code>?sample=box-lh-3x2</code>, and the rest — and they
+      are drawn flat, arm by named arm, in the companion sheet
+      <a href="https://claude.ai/code/artifact/a733e1f3-9ed4-490d-845d-c6090e89abb4">Box
+      Stitches</a>.</p>
+    </section>
+  </div>
+</div>
+
+<script>__VIEWER__</script>
