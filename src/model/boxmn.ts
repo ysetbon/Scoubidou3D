@@ -42,8 +42,20 @@ export const SPREAD = 14;
 /** …and never closer than this, or two folds read as one point. */
 export const SPLAY = 2;
 
-/** Browser key. Hand is part of it, so a face is a different sample in each. */
+/** Browser keys. Hand is part of them, so a face is a different sample in each. */
 export const boxKey = (hand: Hand, m: number, n: number): string => `box-${hand}-${m}x${n}`;
+
+/**
+ * How many rounds the family's COLUMNS are worked to.
+ *
+ * The same split the twist family makes: `boxKey` is one stitch — the block and
+ * the arms carried back over it, the thing the drawn sheet measures — and
+ * `boxColumnKey` is that stitch worked again and again, which is the object you
+ * would actually end up holding.
+ */
+export const BOX_ROUNDS = 10;
+export const boxColumnKey = (hand: Hand, m: number, n: number): string =>
+  `box-col-${hand}-${m}x${n}-${BOX_ROUNDS}`;
 
 export interface BoxShape {
   key: string;
@@ -356,16 +368,51 @@ export const BOX_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
   ),
 );
 
+export const BOX_COLUMN_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
+  HANDS.flatMap(({ hand, sense }) =>
+    BOX_FAMILY.map((s) => [
+      boxColumnKey(hand, s.m, s.n),
+      () =>
+        boxStitchMN(
+          s.m,
+          s.n,
+          `Box column — ${s.m}×${s.n} ${hand.toUpperCase()} (${sense}), ` +
+            `${BOX_ROUNDS} rounds, ${column(s).strands} strands`,
+          hand,
+          BOX_ROUNDS,
+        ),
+    ]),
+  ),
+);
+
+/** What a face comes to once it is worked `BOX_ROUNDS` deep. */
+export function column(s: BoxShape): { strands: number; masks: number; crossings: number } {
+  return {
+    strands: 3 * (s.m + s.n) + 2 * (s.m + s.n) * BOX_ROUNDS,
+    masks: 2 * s.m * s.n * (BOX_ROUNDS + 1),
+    crossings: 4 * s.m * s.n * (BOX_ROUNDS + 1),
+  };
+}
+
 // The named list. Sixty-four faces per hand would drown the dropdown, so it gets
-// the diagonal — the eight square boxes, where m = n — and the browser grid gets
-// the rest. Same split the twist family makes.
+// the diagonal — the eight square boxes, where m = n — and three columns, and the
+// browser grids get the rest. Same split the twist family makes.
 const GROUP = 'Box — every m×n face (block + k = 0 continuation)';
 
 export const BOX_LABELS: Array<{ key: string; label: string; group: string }> = HANDS.flatMap(
-  ({ hand, label }) =>
-    BOX_FAMILY.filter((s) => s.m === s.n).map((s) => ({
+  ({ hand, label }) => [
+    ...BOX_FAMILY.filter((s) => s.m === s.n).map((s) => ({
       key: boxKey(hand, s.m, s.n),
       label: `${label} · box ${s.m}×${s.n} — ${s.strands} strands, ${s.crossings} crossings`,
       group: GROUP,
     })),
+    ...([[1, 1], [2, 2], [3, 2]] as Array<[number, number]>).map(([m, n]) => {
+      const s = BOX_FAMILY.find((f) => f.m === m && f.n === n)!;
+      return {
+        key: boxColumnKey(hand, m, n),
+        label: `${label} · box column ${m}×${n} — ${BOX_ROUNDS} rounds, ${column(s).strands} strands`,
+        group: GROUP,
+      };
+    }),
+  ],
 );

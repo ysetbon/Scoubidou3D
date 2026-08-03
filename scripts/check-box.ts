@@ -6,7 +6,8 @@
 // app builds are the same object: same counts, same bars, same right angles,
 // and — the part no formula can be read off — the same weave at every crossing.
 import { readFileSync } from 'node:fs';
-import { BOX_FAMILY, BOX_MAX, boxKey, boxStitchMN } from '../src/model/boxmn';
+import { BOX_FAMILY, BOX_MAX, BOX_ROUNDS, boxColumnKey, boxKey, boxStitchMN } from '../src/model/boxmn';
+import { SAMPLES } from '../src/model/samples';
 import { GAP, HANDS, Hand, POKE } from '../src/model/twofan';
 import { Scene3D, Strand3D } from '../src/model/types';
 
@@ -314,6 +315,29 @@ for (const { hand } of HANDS as Array<{ hand: Hand }>) {
 console.log(`\ncolumns — every face carried to ${ROUNDS} rounds, both hands:`);
 console.log(`  ${roundsChecked} crossings resolved, ${flips} of them a flip on the round below`);
 console.log(`  ${BOX_FAMILY.length * HANDS.length} columns built`);
+
+// ---- and every key the browser can reach ------------------------------------
+// The grids offer a key per face per hand, twice over — one round and ten — and a
+// key the registry never got is a dead cell in the browser that no other check
+// here would notice.
+let reachable = 0;
+for (const { hand } of HANDS as Array<{ hand: Hand }>) {
+  for (const f of BOX_FAMILY) {
+    for (const key of [boxKey(hand, f.m, f.n), boxColumnKey(hand, f.m, f.n)]) {
+      const make = SAMPLES[key];
+      if (!make) {
+        fail(`${key} is offered by the browser but is not in SAMPLES`);
+        continue;
+      }
+      const sc = make();
+      const rounds = key.startsWith('box-col-') ? BOX_ROUNDS : 1;
+      if (sc.strands.length !== 3 * (f.m + f.n) + 2 * (f.m + f.n) * rounds)
+        fail(`${key}: ${sc.strands.length} strands`);
+      reachable++;
+    }
+  }
+}
+console.log(`\n${reachable} browser samples built, both hands, one round and ${BOX_ROUNDS}.`);
 
 console.log(bad ? `  ${bad} FAILED` : '  all clear');
 if (bad) process.exit(1);

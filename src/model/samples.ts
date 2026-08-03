@@ -4,7 +4,7 @@
 // lanyards that inspired the 3D treatment.
 
 import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
-import { BOX_LABELS, BOX_SAMPLES } from './boxmn';
+import { BOX_COLUMN_SAMPLES, BOX_LABELS, BOX_SAMPLES } from './boxmn';
 import { TWOFAN_COLUMN_SAMPLES, TWOFAN_LABELS, TWOFAN_SAMPLES } from './twofan';
 
 const YELLOW: RGBA = { r: 245, g: 200, b: 55, a: 255 };
@@ -828,6 +828,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
   ...TWOFAN_SAMPLES,
   ...TWOFAN_COLUMN_SAMPLES,
   ...BOX_SAMPLES,
+  ...BOX_COLUMN_SAMPLES,
   'two-crossing': twoCrossing,
   'box-stitch': boxStitch,
   'box-stitch-10': () => boxStitchRounds(10, 'Box stitch — 10 levels'),

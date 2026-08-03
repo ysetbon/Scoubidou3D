@@ -38,7 +38,7 @@ import { StrandScene, EditMode } from '../scene/StrandScene';
 import { MaskLink, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, TWIST_FAMILY, TWIST_MAX, makeSample } from '../model/samples';
 import { GAP, HANDS, TWOFAN_COLUMN_FAMILY, TWOFAN_MAX, columnKey } from '../model/twofan';
-import { BOX_FAMILY, BOX_MAX, boxKey } from '../model/boxmn';
+import { BOX_FAMILY, BOX_MAX, BOX_ROUNDS, boxColumnKey, boxKey, column } from '../model/boxmn';
 import { parseSceneText, sceneFromFile, sceneToJson } from '../model/sceneIO';
 import { History } from '../model/history';
 import {
@@ -1514,6 +1514,57 @@ export class Panel {
         }
       }
       body.appendChild(g3);
+    }
+
+    // And the same 64 worked as columns. The stitch above is one round — what the
+    // drawn sheet measures; this is that round again and again, which is the thing
+    // you would end up holding. Same split the twist family makes.
+    body.appendChild(
+      el('h4', 'browser-group', `Box family — every m×n face, ${BOX_ROUNDS} rounds, both hands`),
+    );
+    body.appendChild(
+      el(
+        'p',
+        'browser-note',
+        'Every round is the same move again: each arm folds at its own free end and ' +
+          'runs back along its own line, the same distance past the weave as the round ' +
+          'below, so the column rises straight and keeps the width it started with. Only ' +
+          'the last round runs on — those are the ends you would tie off. What makes it ' +
+          'the BOX stitch rather than the round one is that the over/unders flip every ' +
+          'round: a ribbon over here now is under here next, so the pattern repeats with ' +
+          `period two rather than every round. Cells quote the strand count at ${BOX_ROUNDS} rounds.`,
+      ),
+    );
+    for (const { hand, label, sense } of HANDS) {
+      body.appendChild(el('h5', 'browser-subgroup', `${label} — ${sense}`));
+      const g4 = el('div', 'browser-grid');
+      g4.style.gridTemplateColumns = `auto repeat(${BOX_MAX}, 1fr)`;
+      g4.appendChild(el('span', 'browser-axis', ''));
+      for (let n = 1; n <= BOX_MAX; n++) g4.appendChild(el('span', 'browser-axis', `n=${n}`));
+      for (let m = 1; m <= BOX_MAX; m++) {
+        g4.appendChild(el('span', 'browser-axis', `m=${m}`));
+        for (let n = 1; n <= BOX_MAX; n++) {
+          const s = BOX_FAMILY.find((x) => x.m === m && x.n === n)!;
+          const c = column(s);
+          const key = boxColumnKey(hand, m, n);
+          const b = pill('', () => pick(key));
+          b.classList.add('browser-cell');
+          b.style.setProperty('--slack', String((s.load - 1) / (BOX_MAX - 1)));
+          b.appendChild(el('b', undefined, `${m}×${n}`));
+          b.appendChild(el('small', undefined, `${c.strands}`));
+          b.appendChild(
+            el('small', 'browser-slack', s.load === 1 ? 'even' : `${s.load.toFixed(1)}×`),
+          );
+          b.title =
+            `${m}×${n} ${hand.toUpperCase()} — ${BOX_ROUNDS} rounds, ${c.strands} strands, ` +
+            `${c.masks} masks, on a ${s.width}×${s.height} px footprint\n` +
+            `every round folds POKE past the weave; only the last runs out to a loose end\n` +
+            `the over/unders repeat with period two — that is what makes it a box, not a spiral`;
+          if (key === this.sceneSource) b.classList.add('browser-on');
+          g4.appendChild(b);
+        }
+      }
+      body.appendChild(g4);
     }
 
     if (saved.length) {
