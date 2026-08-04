@@ -38,7 +38,7 @@ import { StrandScene, EditMode } from '../scene/StrandScene';
 import { MaskLink, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, TWIST_FAMILY, TWIST_MAX, makeSample } from '../model/samples';
 import { GAP, HANDS, TWOFAN_COLUMN_FAMILY, TWOFAN_MAX, columnKey } from '../model/twofan';
-import { BOX_FAMILY, BOX_MAX, BOX_ROUNDS, boxColumnKey, boxKey, column } from '../model/boxmn';
+import { BOX_FAMILY, BOX_MAX, BOX_ROUNDS, boxColumnKey, column } from '../model/boxmn';
 import { parseSceneText, sceneFromFile, sceneToJson } from '../model/sceneIO';
 import { History } from '../model/history';
 import {
@@ -1443,26 +1443,38 @@ export class Panel {
       body.appendChild(g2);
     }
 
-    // The same 64 faces at k = 0. There is nothing to derive and nothing to
-    // choose here, which is the point of showing it beside the twist: one box
-    // per size per hand, and every one of them tight.
+    // Columns only. A box stitch is not one round — one round is only where it
+    // starts, and it is not what anyone is after. The twist family's grid offers
+    // the worked column, so this one does too; a single-round grid alongside it
+    // only invited someone to click a face and wonder why what opened was flat.
+    // The single round is still reachable by key (box-<hand>-<m>x<n>) and is what
+    // the drawn sheet behind the door below measures.
     body.appendChild(
-      el('h4', 'browser-group', 'Box family — every m×n face, block + k = 0 continuation, both hands'),
+      el(
+        'h4',
+        'browser-group',
+        `Box family — every m×n face worked ${BOX_ROUNDS} rounds, both hands`,
+      ),
     );
     body.appendChild(
       el(
         'p',
         'browser-note',
-        'The same starting stitch the twist family begins from, closed instead of ' +
-          'twisted. At k = 0 the pointer does not move: every end pairs with the end ' +
-          'straight opposite, so each arm carries on along its own line and back over ' +
-          'the block, and the alignment pass that a twist needs has nothing to do. So ' +
-          'no face here is loose — no arm was turned off its line, and none hangs past ' +
-          'the weave. What m ≠ n still costs is binding: the shading is how much more ' +
-          'of it one ribbon does than another, all 64 crossings for a 1×8’s single warp ' +
-          'against 8 for each of its wefts. Each cell quotes its strand count. To see ' +
-          'them drawn flat instead — the starting stitch beside the box it closes into, ' +
-          'every arm named, in both hands:',
+        `Each cell opens that face as a column of ${BOX_ROUNDS} rounds. The starting ` +
+          'stitch is the twist family’s, closed instead of twisted: at k = 0 the pointer ' +
+          'does not move, so every end pairs with the end straight opposite and each arm ' +
+          'carries on along its own line. Every round after is that same move again — ' +
+          'each arm folds at its own free end and ' +
+          'runs back along its own line, the same distance past the weave as the round ' +
+          'below, so the column rises straight and keeps the width it started with. Only ' +
+          'the last round runs on — those are the ends you would tie off. What makes it ' +
+          'the BOX stitch rather than the round one is that the over/unders flip every ' +
+          'round: a ribbon over here now is under here next, so the pattern repeats with ' +
+          `period two rather than every round. Cells quote the strand count at ${BOX_ROUNDS} ` +
+          'rounds; the shading is how much more of the weave one ribbon does than another, ' +
+          'all 64 crossings for a 1×8’s single warp against 8 for each of its wefts. To see ' +
+          'a face drawn flat as one round instead — the starting stitch beside the box it ' +
+          'closes into, every arm named, in both hands:',
       ),
     );
     const boxDoors = el('div', 'browser-doors');
@@ -1477,64 +1489,6 @@ export class Panel {
       boxDoors.appendChild(a);
     }
     body.appendChild(boxDoors);
-    for (const { hand, label, sense } of HANDS) {
-      body.appendChild(el('h5', 'browser-subgroup', `${label} — ${sense}`));
-      const g3 = el('div', 'browser-grid');
-      g3.style.gridTemplateColumns = `auto repeat(${BOX_MAX}, 1fr)`;
-      g3.appendChild(el('span', 'browser-axis', ''));
-      for (let n = 1; n <= BOX_MAX; n++) g3.appendChild(el('span', 'browser-axis', `n=${n}`));
-      for (let m = 1; m <= BOX_MAX; m++) {
-        g3.appendChild(el('span', 'browser-axis', `m=${m}`));
-        for (let n = 1; n <= BOX_MAX; n++) {
-          const s = BOX_FAMILY.find((x) => x.m === m && x.n === n)!;
-          const key = boxKey(hand, m, n);
-          const b = pill('', () => pick(key));
-          b.classList.add('browser-cell');
-          // Same tile that fades with a twist face's slack, carrying the one thing
-          // a box face can be lopsided about: 1 at the diagonal, 8 at a 1×8.
-          b.style.setProperty('--slack', String((s.load - 1) / (BOX_MAX - 1)));
-          b.appendChild(el('b', undefined, `${m}×${n}`));
-          b.appendChild(el('small', undefined, `${s.strands}`));
-          b.appendChild(
-            el('small', 'browser-slack', s.load === 1 ? 'even' : `${s.load.toFixed(1)}×`),
-          );
-          const most = 8 * Math.max(m, n);
-          b.title =
-            `${m}×${n} ${hand.toUpperCase()} — ${m + n} ribbons, ${s.strands} strands, ` +
-            `${s.masks} masks, box ${s.width}×${s.height} px\n` +
-            `bars ${2 * GAP * m + 60} px across and ${2 * GAP * n + 60} px down; ` +
-            `angles are 0° / 180° / ±90°, always\n` +
-            (s.load === 1
-              ? `every ribbon is in ${most} of the ${s.crossings} crossings — balanced`
-              : `a ${Math.min(m, n) === m ? 'warp' : 'weft'} ribbon is in ${most} of the ` +
-                `${s.crossings} crossings against ${8 * Math.min(m, n)} for the others — ` +
-                `${s.load.toFixed(1)}× the load`);
-          if (key === this.sceneSource) b.classList.add('browser-on');
-          g3.appendChild(b);
-        }
-      }
-      body.appendChild(g3);
-    }
-
-    // And the same 64 worked as columns. The stitch above is one round — what the
-    // drawn sheet measures; this is that round again and again, which is the thing
-    // you would end up holding. Same split the twist family makes.
-    body.appendChild(
-      el('h4', 'browser-group', `Box family — every m×n face, ${BOX_ROUNDS} rounds, both hands`),
-    );
-    body.appendChild(
-      el(
-        'p',
-        'browser-note',
-        'Every round is the same move again: each arm folds at its own free end and ' +
-          'runs back along its own line, the same distance past the weave as the round ' +
-          'below, so the column rises straight and keeps the width it started with. Only ' +
-          'the last round runs on — those are the ends you would tie off. What makes it ' +
-          'the BOX stitch rather than the round one is that the over/unders flip every ' +
-          'round: a ribbon over here now is under here next, so the pattern repeats with ' +
-          `period two rather than every round. Cells quote the strand count at ${BOX_ROUNDS} rounds.`,
-      ),
-    );
     for (const { hand, label, sense } of HANDS) {
       body.appendChild(el('h5', 'browser-subgroup', `${label} — ${sense}`));
       const g4 = el('div', 'browser-grid');
@@ -1555,11 +1509,20 @@ export class Panel {
           b.appendChild(
             el('small', 'browser-slack', s.load === 1 ? 'even' : `${s.load.toFixed(1)}×`),
           );
+          const most = 8 * Math.max(m, n);
           b.title =
             `${m}×${n} ${hand.toUpperCase()} — ${BOX_ROUNDS} rounds, ${c.strands} strands, ` +
             `${c.masks} masks, on a ${s.width}×${s.height} px footprint\n` +
+            `bars ${2 * GAP * m + 60} px across and ${2 * GAP * n + 60} px down; ` +
+            `angles are 0° / 180° / ±90°, always\n` +
             `every round folds POKE past the weave; only the last runs out to a loose end\n` +
-            `the over/unders repeat with period two — that is what makes it a box, not a spiral`;
+            `the over/unders repeat with period two — that is what makes it a box, not a spiral\n` +
+            (s.load === 1
+              ? `every ribbon is in ${most} of the ${s.crossings} crossings — balanced`
+              : `a ${Math.min(m, n) === m ? 'warp' : 'weft'} ribbon is in ${most} of the ` +
+                `${s.crossings} crossings against ${8 * Math.min(m, n)} for the others — ` +
+                `${s.load.toFixed(1)}× the load`) +
+            `\none round alone is the key box-${hand}-${m}x${n}`;
           if (key === this.sceneSource) b.classList.add('browser-on');
           g4.appendChild(b);
         }
