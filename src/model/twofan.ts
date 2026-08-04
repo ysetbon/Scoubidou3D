@@ -27,7 +27,7 @@
 // below reproduce all 16 of the reference's angles to 0.016° and 7 of its 8
 // extension ladders exactly.
 
-import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
+import { MaskLink, Point, RGBA, SampleLabel, Scene3D, Strand3D } from './types';
 
 /** Lace width, in the same pixel space as the rest of the samples. */
 export const W = 46;
@@ -729,19 +729,34 @@ export const TWOFAN_COLUMN_SAMPLES: Record<string, () => Scene3D> = Object.fromE
 // fanned out once -- not levels of a column; the columns live in the browser grid.
 const GROUP = 'Twist — the reference stitch (block + one twist)';
 
-export const TWOFAN_LABELS: Array<{ key: string; label: string; group: string }> = HANDS.flatMap(
-  ({ hand, label }) => [
-    // The reference's own object at every size it tabulates, plus three columns.
-    // The other 61 faces per hand are in the browser.
-    ...TWOFAN_FAMILY.map((s) => ({
-      key: stitchKey(hand, s.m, s.n),
-      label: `${label} · stitch ${s.m}×${s.n} — weft ${s.weft.toFixed(1)}°, warp ${s.warp.toFixed(1)}°`,
-      group: GROUP,
-    })),
-    ...([[1, 1], [2, 2], [1, 6]] as Array<[number, number]>).map(([m, n]) => ({
-      key: columnKey(hand, m, n),
-      label: `${label} · column ${m}×${n} — 10 levels, ${columnTurn(m, n).toFixed(1)}°`,
-      group: GROUP,
-    })),
-  ],
-);
+export const TWOFAN_LABELS: SampleLabel[] = HANDS.flatMap(({ hand, label, sense }) => [
+  // The reference's own object at every size it tabulates, plus three columns.
+  // The other 61 faces per hand are in the browser.
+  //
+  // Twenty-two of these, each a full sentence, made a wall of prose out of what
+  // is really two rows of eight and two of three. Every entry carries a `cell`,
+  // so the browser lays the folder out as the little table it is and keeps the
+  // sentence in the tooltip. The dropdown still reads the long form.
+  ...TWOFAN_FAMILY.map((s) => ({
+    key: stitchKey(hand, s.m, s.n),
+    label: `${label} · stitch ${s.m}×${s.n} — weft ${s.weft.toFixed(1)}°, warp ${s.warp.toFixed(1)}°`,
+    group: GROUP,
+    cell: {
+      band: `${label} — turns ${sense}`,
+      row: 'stitch',
+      head: `${s.m}×${s.n}`,
+      note: `${s.weft.toFixed(0)}°/${s.warp.toFixed(0)}°`,
+    },
+  })),
+  ...([[1, 1], [2, 2], [1, 6]] as Array<[number, number]>).map(([m, n]) => ({
+    key: columnKey(hand, m, n),
+    label: `${label} · column ${m}×${n} — 10 levels, ${columnTurn(m, n).toFixed(1)}°`,
+    group: GROUP,
+    cell: {
+      band: `${label} — turns ${sense}`,
+      row: '10 levels',
+      head: `${m}×${n}`,
+      note: `${columnTurn(m, n).toFixed(1)}°`,
+    },
+  })),
+]);

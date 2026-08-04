@@ -35,7 +35,7 @@
 // layer in OpenStrand's layer panel.
 
 import { StrandScene, EditMode } from '../scene/StrandScene';
-import { MaskLink, Scene3D, Strand3D, RGBA } from '../model/types';
+import { MaskLink, SampleLabel, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, TWIST_FAMILY, TWIST_MAX, makeSample } from '../model/samples';
 import { GAP, HANDS, TWOFAN_COLUMN_FAMILY, TWOFAN_MAX, columnKey } from '../model/twofan';
 import { BOX_FAMILY, BOX_MAX, BOX_ROUNDS, boxColumnKey, column } from '../model/boxmn';
@@ -1290,13 +1290,20 @@ export class Panel {
       this.loadSource(key);
     };
 
-    // The named scenes, in the groups they belong to.
+    // The named scenes, in the groups they belong to. A folder of a few scenes is
+    // a row of pills that say what they are; a folder of twenty-two faces is a
+    // table, and every entry in one of those carries a `cell` to be drawn with.
     const groups: string[] = [];
     for (const s of SAMPLE_LABELS) if (!groups.includes(s.group)) groups.push(s.group);
     for (const g of groups) {
+      const mine = SAMPLE_LABELS.filter((x) => x.group === g);
       body.appendChild(el('h4', 'browser-group', g));
+      if (mine.every((s) => s.cell)) {
+        this.labelTables(body, mine, pick);
+        continue;
+      }
       const list = el('div', 'browser-list');
-      for (const s of SAMPLE_LABELS.filter((x) => x.group === g)) {
+      for (const s of mine) {
         const b = pill(s.label, () => pick(s.key));
         if (s.key === this.sceneSource) b.classList.add('browser-on');
         list.appendChild(b);
@@ -1544,6 +1551,48 @@ export class Panel {
     box.appendChild(body);
     back.appendChild(box);
     document.body.appendChild(back);
+  }
+
+  /**
+   * A named group drawn as little tables instead of a paragraph of pills: one
+   * table per band, one row per kind, each scene a cell that quotes only what
+   * tells it from its neighbours. The full label is the tooltip, so nothing is
+   * lost — it is just no longer twenty-two lines tall.
+   *
+   * Rows are padded out to the widest so a short row cannot pull the next row's
+   * axis label up beside it.
+   */
+  private labelTables(
+    body: HTMLElement,
+    items: SampleLabel[],
+    pick: (key: string) => void,
+  ): void {
+    const bands: string[] = [];
+    for (const s of items) if (!bands.includes(s.cell!.band)) bands.push(s.cell!.band);
+    for (const band of bands) {
+      const mine = items.filter((s) => s.cell!.band === band);
+      const rows: string[] = [];
+      for (const s of mine) if (!rows.includes(s.cell!.row)) rows.push(s.cell!.row);
+      const wide = Math.max(...rows.map((r) => mine.filter((s) => s.cell!.row === r).length));
+      body.appendChild(el('h5', 'browser-subgroup', band));
+      const grid = el('div', 'browser-grid');
+      grid.style.gridTemplateColumns = `auto repeat(${wide}, 1fr)`;
+      for (const r of rows) {
+        grid.appendChild(el('span', 'browser-axis browser-rowhead', r));
+        const row = mine.filter((s) => s.cell!.row === r);
+        for (const s of row) {
+          const b = pill('', () => pick(s.key));
+          b.classList.add('browser-cell');
+          b.title = s.label;
+          b.appendChild(el('b', undefined, s.cell!.head));
+          b.appendChild(el('small', undefined, s.cell!.note));
+          if (s.key === this.sceneSource) b.classList.add('browser-on');
+          grid.appendChild(b);
+        }
+        for (let i = row.length; i < wide; i++) grid.appendChild(el('span'));
+      }
+      body.appendChild(grid);
+    }
   }
 
   private loadSource(key: string): void {

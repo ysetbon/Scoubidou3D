@@ -1806,6 +1806,15 @@ button {
   text-align: center;
 }
 
+/* Same axis type, but running down the left of a named group's table rather than
+   across the top of a family grid, so it sits against its row instead of over a
+   column. */
+.browser-rowhead {
+  padding-right: 5px;
+  text-align: right;
+  white-space: nowrap;
+}
+
 .browser-cell {
   flex-direction: column;
   gap: 1px;

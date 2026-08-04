@@ -119,6 +119,32 @@ export interface Scene3D {
   name: string;
 }
 
+/**
+ * One entry in the named-sample list — what the dropdown and the browser show.
+ *
+ * `label` is the full line, and the dropdown needs it: an `<option>` is one
+ * string with nowhere to put a second. `cell` is the same scene said short, for
+ * a folder that has too many entries to read as prose. A family of a dozen faces
+ * is a table, not a list of sentences, so when every entry in a group carries a
+ * `cell` the browser draws that group as one — `head` and `note` in the tile,
+ * `label` kept whole in its tooltip.
+ */
+export interface SampleLabel {
+  key: string;
+  label: string;
+  group: string;
+  cell?: {
+    /** Subdivision heading — one little table per distinct value, in order. */
+    band: string;
+    /** Row within the band, drawn as the row's axis label on the left. */
+    row: string;
+    /** The tile's own line: the face, `3×2`. */
+    head: string;
+    /** The number under it — what tells this face from its neighbours. */
+    note: string;
+  };
+}
+
 export function cssColor(c: RGBA): string {
   return `rgba(${c.r}, ${c.g}, ${c.b}, ${(c.a / 255).toFixed(3)})`;
 }

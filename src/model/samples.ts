@@ -3,7 +3,7 @@
 // imported .json files. Palette echoes the yellow/orange/white plastic-lacing
 // lanyards that inspired the 3D treatment.
 
-import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
+import { MaskLink, Point, RGBA, SampleLabel, Scene3D, Strand3D } from './types';
 import { BOX_COLUMN_SAMPLES, BOX_LABELS, BOX_SAMPLES } from './boxmn';
 import { TWOFAN_COLUMN_SAMPLES, TWOFAN_LABELS, TWOFAN_SAMPLES } from './twofan';
 
@@ -864,7 +864,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
  * ORDER note on `boxStitchRounds`). What actually turns is the twist family, and
  * that is where anyone looking for a turning column should land.
  */
-export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }> = [
+export const SAMPLE_LABELS: SampleLabel[] = [
   { key: 'two-crossing', label: 'Two crossing strands', group: 'Basics' },
   { key: 'box-stitch', label: 'Box stitch — starting stitch', group: 'Stitches' },
   { key: 'box-stitch-10', label: 'Box stitch — 10 levels', group: 'Stitches' },
