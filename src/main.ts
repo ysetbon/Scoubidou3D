@@ -14,7 +14,13 @@ const panelRoot = document.getElementById('panel') as HTMLElement;
 // unknown key is ignored rather than erroring — a stale bookmark should still
 // land you in a working app.
 const DEFAULT_SAMPLE = 'two-crossing';
-const requested = new URLSearchParams(window.location.search).get('sample');
+// A page that carries the studio rather than linking to it has no query string
+// to set, so it names its opening sample on `window` instead. Same rule either
+// way: an unknown key is ignored.
+const requested =
+  new URLSearchParams(window.location.search).get('sample') ??
+  (window as unknown as { __scoubidouSample?: string }).__scoubidouSample ??
+  null;
 const opening = requested && Object.prototype.hasOwnProperty.call(SAMPLES, requested)
   ? requested
   : DEFAULT_SAMPLE;

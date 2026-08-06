@@ -6,6 +6,7 @@
 import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
 import { BOX_COLUMN_SAMPLES, BOX_LABELS, BOX_SAMPLES } from './boxmn';
 import { SWIRL_LABELS, SWIRL_SAMPLES } from './swirl';
+import { SWIRL_WORKED_KEY, swirlWorked } from './swirlWorked';
 import { TWOFAN_COLUMN_SAMPLES, TWOFAN_LABELS, TWOFAN_SAMPLES } from './twofan';
 
 const YELLOW: RGBA = { r: 245, g: 200, b: 55, a: 255 };
@@ -829,6 +830,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
   ...TWOFAN_SAMPLES,
   ...TWOFAN_COLUMN_SAMPLES,
   ...SWIRL_SAMPLES,
+  [SWIRL_WORKED_KEY]: swirlWorked,
   ...BOX_SAMPLES,
   ...BOX_COLUMN_SAMPLES,
   'two-crossing': twoCrossing,
@@ -882,6 +884,11 @@ export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }>
   // The same starting stitch at k = 0, closed rather than twisted. Only the eight
   // square faces are named; the browser grid has all 64. See docs/box-stitch-mxn/.
   ...SWIRL_LABELS,
+  {
+    key: SWIRL_WORKED_KEY,
+    label: 'Worked by hand · swirl 1\u00d72 LH \u2014 block and two levels',
+    group: 'Swirl \u2014 the k = \u22121 stitch (block + one continuation)',
+  },
   ...BOX_LABELS,
 ];
 
