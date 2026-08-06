@@ -5,6 +5,10 @@ import './styles.css';
 import { StrandScene } from './scene/StrandScene';
 import { Panel } from './ui/panel';
 import { SAMPLES, makeSample } from './model/samples';
+import { boxStitchMN } from './model/boxmn';
+import { twoFanColumn } from './model/twofan';
+import { swirlStitch } from './model/swirl';
+import { swirlWorked } from './model/swirlWorked';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const panelRoot = document.getElementById('panel') as HTMLElement;
@@ -34,3 +38,21 @@ const panel = new Panel(panelRoot, view, opening);
 if (import.meta.env.DEV) {
   (window as unknown as { __scoubidou?: unknown }).__scoubidou = { view, panel };
 }
+
+// A page that CARRIES the studio rather than linking to it — see artifacts/ —
+// builds its own scenes and hands them over. This is the whole of that seam: the
+// panel, and the three families' builders. The studio itself never reads it, so
+// a page that ignores it behaves exactly as the app does.
+//
+// The three are not equally finished, and the seam does not pretend otherwise.
+// A box takes any number of rounds and a twist any number of levels, both
+// solved. `swirlStitch` is the block and ONE continuation, because what decides
+// where a swirl's segment stops above that is still unknown; `swirlWorked` is
+// the single scene that was carried further, by hand.
+(window as unknown as { __scoubidouStudio?: unknown }).__scoubidouStudio = {
+  panel,
+  box: boxStitchMN,
+  twist: twoFanColumn,
+  swirl: swirlStitch,
+  swirlWorked,
+};
