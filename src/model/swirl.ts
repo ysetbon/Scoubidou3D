@@ -35,12 +35,27 @@
 // 1 x 1 is not here. Its k only runs 0 ... 1, so it has no k = -1 at all — the
 // reference shows it at the single twist it has instead.
 //
-// NOT HERE: the column. A twist carries up ten levels by rotating the whole
-// stitch a level at a time (`twoFanColumn`), an arm's worked end being its
-// sibling's start one storey up. That fold does not carry over as-is — searching
-// every correspondence of a 2 × 1's six arms against every turn finds nothing
-// that closes about the block centre with all arms running forward. So this
-// module stops where the reference stops: the block, and one continuation.
+// THE COLUMN, and what is known about it. This module stops at one
+// continuation, but a hand-worked 1 x 2 carried two levels up settles three
+// things that were open, and they are recorded here so they are not re-derived:
+//
+//   1. There is NO cross-lace landing. A twist's arm ends where its sibling
+//      starts one storey up; a swirl's arm simply carries on, one segment per
+//      level, its own chain the whole way. Searching for the twist's fold here
+//      was the wrong question — over all 720 correspondences of a 2 x 1's six
+//      arms against every turn, nothing closes about the block centre with all
+//      arms running forward, and now it is clear why: nothing is meant to.
+//
+//   2. The turn per level is near the angle BETWEEN the two fans. The worked
+//      scene's chains turn by -115 to -125 deg a level, mean -120.4, against
+//      H - V - 180 = -120.19 for that size. Hand-placed, so that is a bearing
+//      rather than a measurement.
+//
+//   3. The lead alternates level to level. The block runs warp over weft
+//      throughout; the first continuation splits, weft leading on the
+//      same-parity pairs and warp on the rest; the second returns to warp over
+//      weft on every cross-family pair. Which family is on top is a property of
+//      the level, not of the stitch.
 
 import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
 import { GAP, Hand, HANDS, INDIGO, POKE, TWOFAN_MAX, W, WEFT, mk } from './twofan';
@@ -415,13 +430,23 @@ export function swirlStitch(m: number, n: number, name: string, hand: Hand = 'lh
     }
   }
 
-  // The continuation's over/unders: a vertical arm rides over a horizontal one
-  // when the two sit at the same parity in their own fan's gap order. That is
-  // the alternation the weave needs, and it is what k = −1 leaves behind once
-  // the ends have been re-routed.
+  // The continuation's over/unders.
+  //
+  // A vertical arm rides over a horizontal one when the two sit at the SAME
+  // parity in their own fan's gap order, and under it when they do not — so
+  // every crossing between the fans is declared and the lead alternates across
+  // the fan. That alternation is the weave; without it a fan would pass wholly
+  // over or wholly under the other and the stitch would read as two loose
+  // layers rather than one cloth.
+  //
+  // The reference sheet declares only the first half. It can: it is a flat
+  // drawing, and paint order settles a crossing it says nothing about. In three
+  // dimensions there is no paint order, so the other half has to be said out
+  // loud or those crossings render by luck.
   vArms.forEach((v, i) => {
     hArms.forEach((h, j) => {
       if (i % 2 === j % 2) masks.push({ overId: v, underId: h });
+      else masks.push({ overId: h, underId: v });
     });
   });
 
