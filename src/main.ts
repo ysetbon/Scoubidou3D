@@ -6,7 +6,7 @@ import { StrandScene } from './scene/StrandScene';
 import { Panel } from './ui/panel';
 import { SAMPLES, makeSample } from './model/samples';
 import { boxStitchMN } from './model/boxmn';
-import { twoFanColumn } from './model/twofan';
+import { columnTurnRad, twoFanColumn } from './model/twofan';
 import { swirlStitch } from './model/swirl';
 import { swirlWorked } from './model/swirlWorked';
 
@@ -53,6 +53,7 @@ if (import.meta.env.DEV) {
   panel,
   box: boxStitchMN,
   twist: twoFanColumn,
+  twistTurn: columnTurnRad,
   swirl: swirlStitch,
   swirlWorked,
 };
