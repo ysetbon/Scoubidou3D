@@ -39,6 +39,7 @@ import { MaskLink, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, TWIST_FAMILY, TWIST_MAX, makeSample } from '../model/samples';
 import { GAP, HANDS, TWOFAN_COLUMN_FAMILY, TWOFAN_MAX, columnKey } from '../model/twofan';
 import { BOX_FAMILY, BOX_MAX, BOX_ROUNDS, boxColumnKey, column } from '../model/boxmn';
+import { SWIRL_FAMILY, SWIRL_MAX, swirlKey } from '../model/swirl';
 import { parseSceneText, sceneFromFile, sceneToJson } from '../model/sceneIO';
 import { History } from '../model/history';
 import {
@@ -1528,6 +1529,72 @@ export class Panel {
         }
       }
       body.appendChild(g4);
+    }
+
+    // ---- the swirl family, k = -1 ------------------------------------------
+    body.appendChild(
+      el('h4', 'browser-group', 'Swirl family — the k = −1 stitch, every m×n face, both hands'),
+    );
+    body.appendChild(
+      el(
+        'p',
+        'browser-note',
+        'The same block again, worked the other way. A box stitch is the starting ' +
+          'stitch at k = 0, where every loose end pairs with the end straight opposite, ' +
+          'and a twist is k = +1. At k = −1 the block does not change at all — same ' +
+          '56 px pitch, same 32 px poke, same over/unders — but a set’s two ends stop ' +
+          'joining the same fan. They split between the two, so one fan ends up holding ' +
+          'arms that leave the block along BOTH axes, which is the thing no k = 0 or ' +
+          'k = +1 face does. Each cell quotes the angle its horizontal fan runs at, and ' +
+          'the shading is how far apart the two fans sit: zero on the diagonal, where ' +
+          'the vertical fan is the horizontal one turned exactly −90°, and widest at a ' +
+          '1×2, which is caught between angles 30.19° apart. Every gap is laid to ' +
+          '56.01 px and every corner to a 16 px floor, both exactly — nothing here is ' +
+          'searched. 1×1 is missing because its k only runs 0…1, so it has no k = −1. ' +
+          'These are the starting stitch and its one continuation, as the reference ' +
+          'draws them; the column above them is not solved yet.',
+      ),
+    );
+    for (const { hand, label, sense } of HANDS) {
+      body.appendChild(el('h5', 'browser-subgroup', `${label} — ${sense}`));
+      const g5 = el('div', 'browser-grid');
+      g5.style.gridTemplateColumns = `auto repeat(${SWIRL_MAX}, 1fr)`;
+      g5.appendChild(el('span', 'browser-axis', ''));
+      for (let n = 1; n <= SWIRL_MAX; n++) g5.appendChild(el('span', 'browser-axis', `n=${n}`));
+      for (let m = 1; m <= SWIRL_MAX; m++) {
+        g5.appendChild(el('span', 'browser-axis', `m=${m}`));
+        for (let n = 1; n <= SWIRL_MAX; n++) {
+          const s = SWIRL_FAMILY.find((x) => x.m === m && x.n === n);
+          if (!s) {
+            // 1x1 has no k = -1 at all; leave the cell empty rather than lie.
+            const gap = el('span', 'browser-axis', '—');
+            gap.title = '1×1 has no k = −1 — its k only runs 0…1';
+            g5.appendChild(gap);
+            continue;
+          }
+          const key = swirlKey(hand, m, n);
+          const b = pill('', () => pick(key));
+          b.classList.add('browser-cell');
+          b.style.setProperty('--slack', String(Math.min(1, s.split / 30.2)));
+          b.appendChild(el('b', undefined, `${m}×${n}`));
+          b.appendChild(el('small', undefined, `${Math.abs(s.h).toFixed(1)}°`));
+          b.appendChild(
+            el('small', 'browser-slack', s.split < 0.005 ? 'square' : `${s.split.toFixed(1)}° apart`),
+          );
+          b.title =
+            `${m}×${n} ${hand.toUpperCase()} — k = −1, ${m + n} laces, ${2 * (m + n)} arms\n` +
+            `horizontal fan ${s.h.toFixed(2)}°, vertical fan ${s.v.toFixed(2)}°\n` +
+            (s.split < 0.005
+              ? 'm = n, so the vertical fan is the horizontal one turned exactly −90°'
+              : `the two fans sit ${s.split.toFixed(2)}° apart — this face is lopsided`) +
+            `\ncase ${s.kind} · ${s.ext.toFixed(1)} px of arm added across both fans` +
+            `\nevery gap 56.01 px, tightest corner on the 16 px floor` +
+            `\nthe key is swirl-${hand}-${m}x${n}`;
+          if (key === this.sceneSource) b.classList.add('browser-on');
+          g5.appendChild(b);
+        }
+      }
+      body.appendChild(g5);
     }
 
     if (saved.length) {

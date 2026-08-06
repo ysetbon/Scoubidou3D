@@ -439,6 +439,16 @@ export interface SwirlShape {
   v: number;
   /** Which of the three cases each fan came out of. */
   kind: string;
+  /**
+   * How far apart the two fans sit, in degrees.
+   *
+   * On the diagonal the vertical fan is the horizontal one turned exactly −90°
+   * and this is zero; off it the two disagree, and by how much is what makes a
+   * lopsided face lopsided. 30.19° at a 1 × 2, the widest in the family.
+   */
+  split: number;
+  /** Total arm length added across both fans, in px. */
+  ext: number;
 }
 
 export const SWIRL_FAMILY: SwirlShape[] = (() => {
@@ -450,7 +460,17 @@ export const SWIRL_FAMILY: SwirlShape[] = (() => {
       if (m === 1 && n === 1) continue;
       const s = swirlSolve(m, n);
       if (!s) continue;
-      out.push({ key: `swirl-${m}x${n}`, m, n, h: s.hAngle, v: s.vAngle, kind: s.kind });
+      const ext = [...s.hExt, ...s.vExt].reduce((a, b) => a + b, 0);
+      out.push({
+        key: `swirl-${m}x${n}`,
+        m,
+        n,
+        h: s.hAngle,
+        v: s.vAngle,
+        kind: s.kind,
+        split: Math.abs(s.hAngle - 90 - s.vAngle),
+        ext,
+      });
     }
   }
   return out;
