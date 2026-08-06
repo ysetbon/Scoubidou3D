@@ -99,3 +99,28 @@ emerge (two fans do appear, 90° apart, but 0.04–1.0° wide and at turns that 
 not match the stitch's own).
 
 So this module stops where the reference stops: the block, and one continuation.
+
+### What a hand-worked column settles
+
+A 1 × 2 LH worked two levels up by hand answers the question the search could
+not, and the answer is that the search was asking the wrong thing:
+
+* **There is no cross-lace landing at all.** A swirl's arm simply carries on —
+  one segment per level, its own chain the whole way. Set 1's two chains are
+  `1_2 → 1_4 → 1_7` and `1_3 → 1_5 → 1_6 → 1_8`, and they never meet. Nothing
+  folds onto a sibling, which is why nothing closed.
+* **The turn per level is near the angle between the two fans.** The worked
+  chains turn by −115° to −125° a level, mean −120.4°, against
+  `H − V − 180 = −120.19°` for that size. The scene is hand-placed, so that is a
+  bearing rather than a measurement.
+* **The lead alternates level to level.** The block runs warp over weft
+  throughout; the first continuation splits, weft leading on the same-parity
+  pairs and warp on the rest; the second returns to warp over weft on every
+  cross-family pair. Which family is on top belongs to the level, not to the
+  stitch — the same period-two flip that makes a box a box rather than a spiral.
+
+The worked scene also confirms the shipped stitch where the two overlap: its
+block cores are **identical** to `swirlStitch(1, 2)`'s, and its four continuation
+masks are exactly the four the rule emits. Where it differs is that its arms bend
+off-axis to meet the continuation, where the twist and the box run them straight
+along their own row or column — which is what the shipped model does.
