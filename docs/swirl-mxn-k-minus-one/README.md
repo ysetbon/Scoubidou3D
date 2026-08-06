@@ -53,3 +53,49 @@ The page is one self-contained file on a host that can fetch nothing, so it
 carries the generator's geometry for all 128 handed entries and the reference
 sheet's own strand table, and lays every drawing out on demand. Nothing in it is
 a picture and nothing in it is searched.
+
+## In the studio
+
+[`src/model/swirl.ts`](../../src/model/swirl.ts) builds the k = −1 stitch — the
+block and its one continuation — for all 63 sizes in both hands, as samples
+`swirl-lh-2x1`, `swirl-rh-8x8` and the rest, beside the twist and box families.
+
+The block is `twoFanStitch`'s block unchanged: same 56 px pitch, same 32 px poke,
+same over/unders. What k = −1 changes is **which loose end joins which fan**. At
+k = +1 a set's two ends both join its own family's fan, so every arm in a fan
+leaves the block along the same axis; at k = −1 the ends split between the fans,
+so one fan holds arms leaving along *both* axes. Reading each fan in the order
+its gaps are measured:
+
+```
+horizontal   (n+m)_4,  then j_4, (j−1)_5 for j = 2…n,  then (n+1)_5      → 2n arms
+vertical     1_4,      then (n+i+1)_5, (n+i)_4 for i = 1…m−1,  then n_5  → 2m arms
+```
+
+`npm run check:swirl` holds it to the reference: the block matches the twist's
+exactly, every gap lands on 56.01 px to **4.5 × 10⁻¹³ px** over all 63 sizes in
+both hands, and the tightest corner anywhere is **+16.0000 px** — the floor Case C
+builds to, hit rather than cleared.
+
+1 × 1 is not in the family. Its k only runs 0 … 1, so it has no k = −1 at all.
+
+## What is not here: the column
+
+A twist carries up ten levels by rotating the whole stitch a level at a time
+(`twoFanColumn`), an arm's worked end being its sibling's start one storey up —
+`worked_end_k(n) = start_σ(k)(n+1)`, with σ pairing the two ends of a lace by
+physical continuity. That fold does **not** carry over to k = −1 as written.
+
+For 2 × 1 there are six arms, so every correspondence can be tested against every
+turn. Searching all 720 permutations at 0.05° resolution about the block centre
+finds nothing that closes with all arms running forward — only two degenerate
+cases, the identity (arms mapping to themselves, zero length) and −180° (the
+stitch's own two-fold symmetry, also zero length). Three weaker readings were
+tried and rejected too: landing on the partner's rotated *line* with σ free
+(closes to 10⁻¹² px, but only by mapping arms to themselves), landing on the
+partner's rotated *point* with the centre and turn both solved (530–2050 px off
+at every face), and folding the raw block ends and letting the fan directions
+emerge (two fans do appear, 90° apart, but 0.04–1.0° wide and at turns that do
+not match the stitch's own).
+
+So this module stops where the reference stops: the block, and one continuation.

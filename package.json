@@ -12,6 +12,7 @@
     "check:history": "esbuild scripts/check-history.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-history.mjs --log-level=warning && node node_modules/.cache/check-history.mjs",
     "check:colour": "esbuild scripts/check-colour.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-colour.mjs --log-level=warning && node node_modules/.cache/check-colour.mjs",
     "check:twofan": "esbuild scripts/check-twofan.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-twofan.mjs --log-level=warning && node node_modules/.cache/check-twofan.mjs",
+    "check:swirl": "esbuild scripts/check-swirl.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-swirl.mjs --log-level=warning && node node_modules/.cache/check-swirl.mjs",
     "check:box": "esbuild scripts/check-box.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-box.mjs --log-level=warning && node node_modules/.cache/check-box.mjs",
     "art": "esbuild scripts/sample-art.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/sample-art.mjs --log-level=warning && node node_modules/.cache/sample-art.mjs",
     "shots": "node scripts/site-shots.mjs",
