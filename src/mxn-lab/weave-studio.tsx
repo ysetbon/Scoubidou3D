@@ -373,7 +373,7 @@ export function ContinuationLab() {
 
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
-    const worker = new Worker(`${LAB_BASE}exact-worker.js?v=even-orientation-v2`, { type: "module" });
+    const worker = new Worker(`${LAB_BASE}exact-worker.js?v=unequal-families-v3`, { type: "module" });
     worker.onmessage = (event) => {
       const message = event.data;
       if (message.type === "progress") {

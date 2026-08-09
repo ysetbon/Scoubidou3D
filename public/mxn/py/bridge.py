@@ -63,14 +63,14 @@ def _stage_strands(json_text):
     return strands
 
 
-def audit(strands, level):
+def audit(strands, level, sizes=None):
     _, _, dst_a, dst_b = NX.level_suffixes(level)
     arms = [s for s in strands if s.get("type") == "AttachedStrand"
             and s["layer_name"].endswith((f"_{dst_a}", f"_{dst_b}"))]
     if len(arms) < 4:
         return 0, 0, 0, 0, 0
     by_name = {s["layer_name"]: s for s in arms}
-    band_a, _band_b, _fan = NX._split_direction_families(by_name, list(by_name))
+    band_a, _band_b, _fan = NX._split_direction_families(by_name, list(by_name), sizes)
     band_a = set(band_a)
     masks = [s for s in strands if s.get("type") == "MaskedStrand"
              and NX._is_level_mask(s.get("layer_name", ""), dst_a, dst_b)]
@@ -109,8 +109,8 @@ def audit(strands, level):
     return across, within, len(masks), stray, broken
 
 
-def describe(result, strands, level, k, expected):
-    across, within, masks, stray, broken = audit(strands, level)
+def describe(result, strands, level, k, expected, sizes=None):
+    across, within, masks, stray, broken = audit(strands, level, sizes)
     def state(axis):
         row = result[axis]
         return "ok" if row.get("success") else ("fb" if row.get("is_fallback") else "FAIL")
@@ -221,6 +221,7 @@ def generate(m, n, ks, hand="lh", direction="cw"):
         raise ValueError("ks must contain at least one value")
     random.seed(0)
     expected = (m * 2) * (n * 2)
+    sizes = (2 * m, 2 * n)
     started = time.time()
     rows, stages = [], []
 
@@ -244,7 +245,7 @@ def generate(m, n, ks, hand="lh", direction="cw"):
         snapshot = [dict(s) for s in strands]
         stages.append({"level": 1, "k": ks[0], "label": "1st twist",
                        "strands": _stage_strands(NX._snapshot_json(strands))})
-    rows.append(describe(result, snapshot, 1, ks[0], expected))
+    rows.append(describe(result, snapshot, 1, ks[0], expected, sizes))
 
     seeds = [(rows[0]["ext"][0], rows[0]["ext"][1])]
     level1_for_k = {ks[0]: (tuple(rows[0]["ext"][0]), tuple(rows[0]["ext"][1]))}
@@ -278,7 +279,7 @@ def generate(m, n, ks, hand="lh", direction="cw"):
             stages.append({"level": level, "k": k_level,
                            "label": f"twist {level}",
                            "strands": _stage_strands(NX._snapshot_json(strands))})
-        rows.append(describe(result, snapshot, level, k_level, expected))
+        rows.append(describe(result, snapshot, level, k_level, expected, sizes))
         seeds.append((rows[-1]["ext"][0], rows[-1]["ext"][1]))
 
     return json.dumps({
