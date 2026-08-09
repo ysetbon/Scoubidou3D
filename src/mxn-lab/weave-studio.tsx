@@ -13,6 +13,38 @@ const LAB_BASE = `${import.meta.env.BASE_URL}mxn/`;
 const COMMIT = "984d9ed";
 const PRESETS = ["1", "1 1 -1", "1 1 -1 -1 -1 -1 -1", "1 1 1", "1 -1 1 -1", "-1 -1"];
 
+// Mirrors of the engine's own search constants, used only to show the cost of a
+// run before it starts. Keep in step with MAX_PAIR_EXTENSION, COMBO_BUDGET and
+// _get_alignment_combo_limit in the Python.
+const MAX_PAIR_EXTENSION = 200;
+const DEFAULT_COMBO_BUDGET = 400_000;
+const ENGINE_COMBO_LIMIT = 10_000_000;
+const EXT_STEP_CHOICES = ["auto", "20", "10", "5"] as const;
+type ExtStep = (typeof EXT_STEP_CHOICES)[number];
+// The ladder pick_extension_step() walks, finest first. 5 is offered as an
+// explicit choice above but is deliberately not in the auto ladder, exactly as
+// in the Python — adding it there changes what every existing stitch picks.
+const EXT_STEPS = [10, 20, 25, 40, 50, 100];
+
+// Same formula as pick_extension_step(): the grid per pair is 0..ext_max in
+// `step` increments, and pairs are independent.
+function comboCount(step: number, pairs: number, extMax = MAX_PAIR_EXTENSION) {
+  return Math.pow(Math.floor(extMax / step) + 1, Math.max(pairs, 1));
+}
+
+function autoStep(pairs: number, budget: number) {
+  for (const step of EXT_STEPS) {
+    if (comboCount(step, pairs) <= budget) return step;
+  }
+  return EXT_STEPS[EXT_STEPS.length - 1];
+}
+
+// A level's two search groups hold 2m and 2n arms, paired outside-in, so the
+// worst group is the one with more pairs.
+function worstPairs(m: number, n: number) {
+  return Math.max(Math.ceil((2 * m) / 2), Math.ceil((2 * n) / 2), 1);
+}
+
 type Point = { x: number; y: number };
 type RGBA = { r: number; g: number; b: number; a?: number };
 type Strand = {
@@ -53,7 +85,10 @@ type ExactResult = {
   m: number; n: number; ks: number[]; expected: number; seconds: number;
   rows: AuditRow[]; stages: Stage[];
 };
-type Params = { m: number; n: number; ks: number[]; key: string };
+type Params = {
+  m: number; n: number; ks: number[]; key: string;
+  preferShortArms: boolean; extStep: number | null; comboBudget: number;
+};
 type Bounds = { minX: number; minY: number; maxX: number; maxY: number };
 
 function parseKs(raw: string) {
@@ -342,11 +377,17 @@ export function ContinuationLab() {
   const [rawKs, setRawKs] = useState("1");
   const [result, setResult] = useState<ExactResult | null>(null);
   const [engineError, setEngineError] = useState<string | null>(null);
-  const [status, setStatus] = useState("Preparing exact geometry…");
+  // Nothing runs until Run is pressed, so the first thing the page says has to
+  // be an instruction rather than a progress report.
+  const [status, setStatus] = useState("Set m, n and ks, then press Run");
   const [busy, setBusy] = useState(false);
   const [progressFrame, setProgressFrame] = useState<ProgressFrame | null>(null);
   const [copiedLevel, setCopiedLevel] = useState<number | null>(null);
   const [fullSizeLevels, setFullSizeLevels] = useState<Set<number>>(() => new Set());
+  const [preferShortArms, setPreferShortArms] = useState(true);
+  const [extStep, setExtStep] = useState<ExtStep>("auto");
+  const [comboBudget, setComboBudget] = useState(DEFAULT_COMBO_BUDGET);
+  const [ranKey, setRanKey] = useState<string | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const busyRef = useRef(false);
   const pendingRef = useRef<Params | null>(null);
@@ -362,6 +403,12 @@ export function ContinuationLab() {
   const ks = inputError ? [] : parsed.values;
   const expected = 4 * m * n;
   const hasDeepMaxK = ks.some((k, index) => index > 0 && k === limits.max);
+  const worstPairCount = worstPairs(m, n);
+  const resolvedStep = extStep === "auto" ? autoStep(worstPairCount, comboBudget) : Number(extStep);
+  const estimatedCombos = comboCount(resolvedStep, worstPairCount);
+  const overEngineLimit = estimatedCombos > ENGINE_COMBO_LIMIT;
+  const paramsKey = `${m}:${n}:${ks.join(",")}:${preferShortArms}:${extStep}:${comboBudget}`;
+  const staleParams = ranKey !== null && ranKey !== paramsKey && !busy;
   const bounds = useMemo(() => result ? allBounds(result.stages) : null, [result]);
   const progressStage: Stage | null = progressFrame ? {
     level: progressFrame.level,
@@ -373,7 +420,7 @@ export function ContinuationLab() {
 
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
-    const worker = new Worker(`${LAB_BASE}exact-worker.js?v=unequal-families-v3`, { type: "module" });
+    const worker = new Worker(`${LAB_BASE}exact-worker.js?v=short-arms-v4`, { type: "module" });
     worker.onmessage = (event) => {
       const message = event.data;
       if (message.type === "progress") {
@@ -430,8 +477,14 @@ export function ContinuationLab() {
       setEngineError(null);
       setProgressFrame(null);
       setStatus("Loading the exact MXN engine…");
+      setRanKey(params.key);
       const id = ++activeIdRef.current;
-      ensureWorker().postMessage({ type: "generate", id, m: params.m, n: params.n, ks: params.ks });
+      ensureWorker().postMessage({
+        type: "generate", id, m: params.m, n: params.n, ks: params.ks,
+        preferShortArms: params.preferShortArms,
+        extStep: params.extStep,
+        comboBudget: params.comboBudget,
+      });
     };
   });
 
@@ -439,13 +492,29 @@ export function ContinuationLab() {
     return () => workerRef.current?.terminate();
   }, []);
 
-  const paramsKey = `${m}:${n}:${ks.join(",")}`;
-  useEffect(() => {
+  const runNow = () => {
     if (inputError || !ks.length) return;
-    const params = { m, n, ks: [...ks], key: paramsKey };
-    const timer = window.setTimeout(() => dispatchRef.current(params), 650);
-    return () => window.clearTimeout(timer);
-  }, [paramsKey, inputError]);
+    dispatchRef.current({
+      m, n, ks: [...ks], key: paramsKey,
+      preferShortArms,
+      extStep: extStep === "auto" ? null : Number(extStep),
+      comboBudget,
+    });
+  };
+
+  // Stop is a hard kill: the search is one synchronous runPythonAsync call, so
+  // the worker cannot read a cancel message while it is running. Terminating
+  // discards the Pyodide runtime, which the next Run has to rebuild.
+  const stopNow = () => {
+    workerRef.current?.terminate();
+    workerRef.current = null;
+    activeIdRef.current += 1;
+    busyRef.current = false;
+    pendingRef.current = null;
+    setBusy(false);
+    setProgressFrame(null);
+    setStatus("Stopped · the engine reloads on the next run");
+  };
 
   const setDimension = (setter: (value: number) => void, value: string) => {
     const next = Number(value);
@@ -509,6 +578,57 @@ export function ContinuationLab() {
               <div className="preset-row" aria-label="Example sequences">{PRESETS.map(preset => <button className="preset" type="button" key={preset} onClick={() => setRawKs(preset)}>{preset}</button>)}</div>
             </div>
             <div id="k-range" className="range-note">Valid k range: <strong>{limits.min}…{limits.max}</strong> · zero preserves the continuation.</div>
+
+            <div className="field-row">
+              <div className="field">
+                <label htmlFor="ext-step">step <span>extension grid</span></label>
+                <div className="number-wrap">
+                  <select id="ext-step" value={extStep} onChange={e => setExtStep(e.target.value as ExtStep)}>
+                    {EXT_STEP_CHOICES.map(choice => (
+                      <option key={choice} value={choice}>
+                        {choice === "auto" ? `auto (${resolvedStep})` : choice}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="field">
+                <label htmlFor="combo-budget">budget <span>combos / group</span></label>
+                <div className="number-wrap">
+                  <input
+                    id="combo-budget" type="number" min="1000" step="1000"
+                    value={comboBudget}
+                    onChange={e => {
+                      const next = Number(e.target.value);
+                      if (Number.isFinite(next) && next >= 1000) setComboBudget(Math.floor(next));
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+            <label className="toggle-line" htmlFor="short-arms">
+              <input
+                id="short-arms" type="checkbox" checked={preferShortArms}
+                onChange={e => setPreferShortArms(e.target.checked)}
+              />
+              <span>prefer shorter arms</span>
+            </label>
+            <div className={`range-note ${overEngineLimit ? "is-warning" : ""}`}>
+              {estimatedCombos.toLocaleString()} combos in the largest group
+              {" "}({worstPairCount} {worstPairCount === 1 ? "pair" : "pairs"} at step {resolvedStep})
+              {overEngineLimit && <><br /><strong>Over the engine&rsquo;s {ENGINE_COMBO_LIMIT.toLocaleString()} combo limit — the search will refuse. Raise the step.</strong></>}
+            </div>
+
+            <div className="run-row">
+              <button type="button" className="run-button" onClick={runNow} disabled={busy || !!inputError || !ks.length}>
+                Run
+              </button>
+              <button type="button" className="stop-button" onClick={stopNow} disabled={!busy}>
+                Stop
+              </button>
+            </div>
+            {staleParams && <div className="range-note">Parameters changed since this run — press Run to recalculate.</div>}
+
             {inputError && <div className="error-note" role="alert">{inputError}</div>}
             {engineError && <div className="error-note" role="alert">{engineError}</div>}
             {hasDeepMaxK && <div className="edge-note">Max-k beyond L1 is an open research edge in this commit and may fail its weave audit.</div>}

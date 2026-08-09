@@ -104,6 +104,42 @@ textarea {
 .range-note, .error-note, .edge-note { padding: 12px 13px; font: 600 11px/1.45 monospace; border-left: 3px solid var(--blue); background: rgba(39,107,114,.08); margin-top: 18px; }
 .error-note { border-color: var(--red); background: rgba(228,81,63,.09); color: #8f2e22; }
 .edge-note { border-color: #b38c17; background: rgba(219,182,56,.12); }
+.range-note.is-warning { border-color: var(--red); background: rgba(228,81,63,.09); color: #8f2e22; }
+
+/* The step picker reuses .number-wrap so it lines up with the m/n inputs, but a
+   select needs its own metrics and its own arrow. */
+.number-wrap select {
+  width: 100%; height: 64px; padding: 0 34px 0 16px;
+  background: var(--card); border: 1px solid var(--ink); border-radius: 2px;
+  font: 400 26px/1 Georgia, serif; outline: none;
+  -webkit-appearance: none; appearance: none; cursor: pointer;
+}
+.number-wrap select:focus { box-shadow: 0 0 0 3px var(--acid); }
+.number-wrap::after {
+  content: ""; position: absolute; right: 14px; top: 50%; width: 8px; height: 8px;
+  border-right: 2px solid var(--ink); border-bottom: 2px solid var(--ink);
+  transform: translateY(-70%) rotate(45deg); pointer-events: none; opacity: 0;
+}
+.number-wrap:has(select)::after { opacity: 1; }
+
+.toggle-line {
+  display: flex; align-items: center; gap: 9px; margin-top: 14px; cursor: pointer;
+  font: 600 11px/1.45 monospace;
+}
+.toggle-line input { width: 16px; height: 16px; accent-color: var(--blue); cursor: pointer; }
+
+.run-row { display: flex; gap: 10px; margin-top: 18px; }
+.run-button, .stop-button {
+  flex: 1; height: 48px; border: 1px solid var(--ink); border-radius: 2px;
+  font: 700 13px/1 monospace; letter-spacing: .08em; text-transform: uppercase;
+  cursor: pointer; background: var(--card); color: var(--ink);
+}
+.run-button { background: var(--acid); }
+.run-button:hover:not(:disabled), .stop-button:hover:not(:disabled) { box-shadow: 0 0 0 3px var(--acid); }
+.run-button:disabled, .stop-button:disabled {
+  opacity: .38; cursor: not-allowed; border-color: var(--line);
+}
+.stop-button:not(:disabled) { border-color: var(--red); color: #8f2e22; }
 .stats { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); margin-top: 22px; }
 .stat { padding: 13px; }
 .stat + .stat { border-left: 1px solid var(--line); }

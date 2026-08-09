@@ -137,14 +137,14 @@ def describe(result, strands, level, k, expected, sizes=None):
     }
 
 
-def level1_extensions(m, n, k, hand, direction):
+def level1_extensions(m, n, k, hand, direction, search=None):
     if k == 0:
         return None
     _starting, strands, info = NX.build_level_one(
         m, n, k, hand, direction, verbose=False)
     result = NX.align_continuation_level(
         strands, m, n, k, direction, hand, 1, info,
-        mirror_sides=m == n, verbose=False)
+        mirror_sides=m == n, verbose=False, **(search or {}))
     horizontal = tuple(result["horizontal"].get("pair_extensions") or ())
     vertical = tuple(result["vertical"].get("pair_extensions") or ())
     return (horizontal, vertical) if horizontal and vertical else None
@@ -214,7 +214,8 @@ def _candidate_frame_emitter(base_strands, level, k):
     return relay
 
 
-def generate(m, n, ks, hand="lh", direction="cw"):
+def generate(m, n, ks, hand="lh", direction="cw",
+             prefer_short_arms=True, ext_step=None, combo_budget=None):
     m, n = int(m), int(n)
     ks = [int(k) for k in ks]
     if not ks:
@@ -222,6 +223,13 @@ def generate(m, n, ks, hand="lh", direction="cw"):
     random.seed(0)
     expected = (m * 2) * (n * 2)
     sizes = (2 * m, 2 * n)
+    # One place the search knobs are assembled, so every level -- including
+    # the per-k level-1 seed solves -- searches on the same grid as the run.
+    search = {"prefer_short_arms": bool(prefer_short_arms)}
+    if ext_step:
+        search["pair_extension_step"] = int(ext_step)
+    if combo_budget:
+        search["combo_budget"] = int(combo_budget)
     started = time.time()
     rows, stages = [], []
 
@@ -238,7 +246,7 @@ def generate(m, n, ks, hand="lh", direction="cw"):
         try:
             result = NX.align_continuation_level(
                 strands, m, n, ks[0], direction, hand, 1,
-                level1_info, mirror_sides=m == n, verbose=False)
+                level1_info, mirror_sides=m == n, verbose=False, **search)
         finally:
             NX._progress_frame_callback = None
         _send_stage_frame(strands, 1, ks[0], "candidate accepted", 1, 1)
@@ -256,7 +264,7 @@ def generate(m, n, ks, hand="lh", direction="cw"):
         with contextlib.redirect_stdout(io.StringIO()):
             if k_level not in level1_for_k:
                 level1_for_k[k_level] = level1_extensions(
-                    m, n, k_level, hand, direction)
+                    m, n, k_level, hand, direction, search)
             k_seed = level1_for_k[k_level]
             level_seeds = ([k_seed] if k_seed else []) + list(reversed(seeds))
             strands, info = NX.add_continuation_level(
@@ -270,7 +278,7 @@ def generate(m, n, ks, hand="lh", direction="cw"):
             try:
                 result = NX.align_continuation_level(
                     strands, m, n, k_level, direction, hand, level, info,
-                    seed_extensions=level_seeds, verbose=False)
+                    seed_extensions=level_seeds, verbose=False, **search)
             finally:
                 NX._progress_frame_callback = None
             _send_stage_frame(
