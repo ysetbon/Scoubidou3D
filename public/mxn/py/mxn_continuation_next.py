@@ -120,6 +120,12 @@ LEVEL_ONE_DEFAULT_SOLUTIONS = {
 }
 # Finest extension grid first; the search costs (ext_max/step + 1) ** pairs, so
 # coarsen only as far as the combo budget forces.
+#
+# 5 is deliberately NOT here. Adding it changes what `auto` picks for every
+# existing stitch -- on 2x2 it quadruples the grid and the finer sweep surfaces
+# degenerate combos the coarse one never reached (measured: k=-1 fell to
+# (85, 0) and stopped being a weave). A finer grid stays reachable by passing
+# pair_extension_step explicitly.
 EXT_STEPS = [10, 20, 25, 40, 50, 100]
 COMBO_BUDGET = 400_000
 _progress_frame_callback = None  # Optional browser-only trial-frame relay
@@ -1240,7 +1246,8 @@ def _mirror_extensions(attempt, chosen, plan, expected, sides, verbose):
     return None
 
 
-def _search_group(run, pairs, base_ceiling, fixed_step, escalate, verbose, label):
+def _search_group(run, pairs, base_ceiling, fixed_step, escalate, verbose, label,
+                  budget=None):
     """
     Run one group's alignment, growing the extension ceiling while the winner
     is pinned against it.
@@ -1266,9 +1273,14 @@ def _search_group(run, pairs, base_ceiling, fixed_step, escalate, verbose, label
     attempts = []
     for index, ceiling in enumerate(ceilings):
         if fixed_step is None:
-            step, combos = pick_extension_step(pairs, ceiling)
+            step, combos = pick_extension_step(
+                pairs, ceiling, COMBO_BUDGET if budget is None else budget)
         else:
             step = int(fixed_step)
+            # The engine walks range(0, ceiling + step, step), so a step that
+            # does not divide the ceiling overshoots it. Round the ceiling up to
+            # the grid instead, so the reported combo count is the real one.
+            ceiling = -(-int(ceiling) // step) * step
             combos = (ceiling // step + 1) ** pairs
 
         result = run(ceiling, step)
@@ -1314,6 +1326,7 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
                              pair_extension_step=None, use_gpu=False,
                              angle_mode=ANGLE_MODE, escalate_extension=None,
                              mirror_sides=None, seed_extensions=None,
+                             prefer_short_arms=True, combo_budget=None,
                              verbose=True):
     """
     Run the engine's parallel alignment on one continuation level.
@@ -1378,7 +1391,7 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
     rescue = _plan_family_rescue(virtual_list, h_order, v_order)
     expected_crossings = len(h_order) * len(v_order)
 
-    def attempt(plan, force=(None, None), bound=None):
+    def attempt(plan, force=(None, None), bound=None, short_arms=None):
         """
         Align the level once, either with the engine's k-based groups (plan None)
         or with the direction families, and report the ring it produced.
@@ -1418,6 +1431,8 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
             finally:
                 search_engine._search_progress_callback = previous
 
+        use_short = prefer_short_arms if short_arms is None else short_arms
+
         def align_h(ceiling, step, window, grab=None):
             lo, hi = window if window else (None, None)
             return run_alignment(lambda: engine.align_horizontal_strands_parallel(
@@ -1432,6 +1447,7 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
                 m=m, k=k, direction=direction,
                 use_gpu=use_gpu,
                 angle_mode=angle_mode,
+                prefer_short_arms=use_short,
             ))
 
         def align_v(ceiling, step, window, grab=None):
@@ -1448,6 +1464,7 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
                 k=k, direction=direction,
                 use_gpu=use_gpu,
                 angle_mode=angle_mode,
+                prefer_short_arms=use_short,
             ))
         if plan is None:
             orders = (list(h_order), list(v_order))
@@ -1496,7 +1513,8 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
                         lambda ceiling, step, _a=align, _w=window: _a(ceiling, step, _w),
                         pairs, max_pair_extension, pair_extension_step,
                         escalate_extension, verbose,
-                        label if plan is None else f"{label}*")
+                        label if plan is None else f"{label}*",
+                        budget=combo_budget)
                 if plan is not None:
                     sett["rescued"] = True
                     sett["family"] = list(order)
@@ -1571,6 +1589,25 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
         elif verbose:
             print(f"    direction families gave {alt['crossings']}"
                   f"/{expected_crossings} — keeping the k-based result")
+
+    # Shorter arms are a preference, never a trade against the weave itself.
+    #
+    # `_select_best_result` chooses per band, on that band's own gap geometry,
+    # but whether the ring closes is a JOINT property of both bands and is only
+    # tested here. So a shorter per-band pick can quietly cost crossings --
+    # measured on 1x2/2x1/1x3 k=1, which fell from complete rings to 6/8 and
+    # 7/12 once the short-arm tie-break was on. Re-run without the preference
+    # whenever it costs crossings and keep whichever ring is more complete.
+    if prefer_short_arms and chosen["crossings"] < expected_crossings:
+        if verbose:
+            print(f"    short arms gave {chosen['crossings']}/{expected_crossings} "
+                  f"crossings -- retrying on lowest variance")
+        steady = attempt(plan_used, short_arms=False)
+        if steady is not None and steady["crossings"] > chosen["crossings"]:
+            if verbose:
+                print(f"    lowest variance gave {steady['crossings']}"
+                      f"/{expected_crossings} -- taking it")
+            chosen = steady
 
     mirrored = _mirror_extensions(attempt, chosen, plan_used, expected_crossings,
                                   mirror_sides, verbose)
