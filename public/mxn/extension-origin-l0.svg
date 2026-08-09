@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="994.0 154.0 476.0 476.0" width="720" role="img" aria-label="L0 to L1: purple crossing = extension 0">
+<rect x="994.0" y="154.0" width="476.0" height="476.0" fill="none"/>
+<line x1="1204.00" y1="504.00" x2="1204.00" y2="224.00" stroke="#E0913F" stroke-width="11" stroke-linecap="round" opacity="0.85"/>
+<line x1="1316.00" y1="504.00" x2="1316.00" y2="224.00" stroke="#E0913F" stroke-width="11" stroke-linecap="round" opacity="0.85"/>
+<line x1="1344.00" y1="308.00" x2="1064.00" y2="308.00" stroke="#3FA5A0" stroke-width="11" stroke-linecap="round" opacity="0.85"/>
+<line x1="1344.00" y1="420.00" x2="1064.00" y2="420.00" stroke="#3FA5A0" stroke-width="11" stroke-linecap="round" opacity="0.85"/>
+<line x1="1148.00" y1="280.00" x2="1148.00" y2="560.00" stroke="#E0913F" stroke-width="11" stroke-linecap="round" opacity="0.85"/>
+<line x1="1260.00" y1="280.00" x2="1260.00" y2="560.00" stroke="#E0913F" stroke-width="11" stroke-linecap="round" opacity="0.85"/>
+<line x1="1120.00" y1="364.00" x2="1400.00" y2="364.00" stroke="#3FA5A0" stroke-width="11" stroke-linecap="round" opacity="0.85"/>
+<line x1="1120.00" y1="476.00" x2="1400.00" y2="476.00" stroke="#3FA5A0" stroke-width="11" stroke-linecap="round" opacity="0.85"/>
+<line x1="1204.00" y1="308.00" x2="1204.00" y2="224.00" stroke="#8A97A0" stroke-width="2" stroke-dasharray="5 4"/>
+<circle cx="1204.00" cy="224.00" r="7" fill="#EE6352"/>
+<circle cx="1204.00" cy="308.00" r="9" fill="#9B8BD6" stroke="#5B4E96" stroke-width="2"/>
+<line x1="1316.00" y1="308.00" x2="1316.00" y2="224.00" stroke="#8A97A0" stroke-width="2" stroke-dasharray="5 4"/>
+<circle cx="1316.00" cy="224.00" r="7" fill="#EE6352"/>
+<circle cx="1316.00" cy="308.00" r="9" fill="#9B8BD6" stroke="#5B4E96" stroke-width="2"/>
+<line x1="1148.00" y1="308.00" x2="1064.00" y2="308.00" stroke="#8A97A0" stroke-width="2" stroke-dasharray="5 4"/>
+<circle cx="1064.00" cy="308.00" r="7" fill="#EE6352"/>
+<circle cx="1148.00" cy="308.00" r="9" fill="#9B8BD6" stroke="#5B4E96" stroke-width="2"/>
+<line x1="1148.00" y1="420.00" x2="1064.00" y2="420.00" stroke="#8A97A0" stroke-width="2" stroke-dasharray="5 4"/>
+<circle cx="1064.00" cy="420.00" r="7" fill="#EE6352"/>
+<circle cx="1148.00" cy="420.00" r="9" fill="#9B8BD6" stroke="#5B4E96" stroke-width="2"/>
+<line x1="1148.00" y1="476.00" x2="1148.00" y2="560.00" stroke="#8A97A0" stroke-width="2" stroke-dasharray="5 4"/>
+<circle cx="1148.00" cy="560.00" r="7" fill="#EE6352"/>
+<circle cx="1148.00" cy="476.00" r="9" fill="#9B8BD6" stroke="#5B4E96" stroke-width="2"/>
+<line x1="1260.00" y1="476.00" x2="1260.00" y2="560.00" stroke="#8A97A0" stroke-width="2" stroke-dasharray="5 4"/>
+<circle cx="1260.00" cy="560.00" r="7" fill="#EE6352"/>
+<circle cx="1260.00" cy="476.00" r="9" fill="#9B8BD6" stroke="#5B4E96" stroke-width="2"/>
+<line x1="1316.00" y1="364.00" x2="1400.00" y2="364.00" stroke="#8A97A0" stroke-width="2" stroke-dasharray="5 4"/>
+<circle cx="1400.00" cy="364.00" r="7" fill="#EE6352"/>
+<circle cx="1316.00" cy="364.00" r="9" fill="#9B8BD6" stroke="#5B4E96" stroke-width="2"/>
+<line x1="1316.00" y1="476.00" x2="1400.00" y2="476.00" stroke="#8A97A0" stroke-width="2" stroke-dasharray="5 4"/>
+<circle cx="1400.00" cy="476.00" r="7" fill="#EE6352"/>
+<circle cx="1316.00" cy="476.00" r="9" fill="#9B8BD6" stroke="#5B4E96" stroke-width="2"/>
+<text x="1008.0" y="184.0" fill="#8A97A0" font-family="ui-monospace,monospace" font-size="19">L0 to L1: purple crossing = extension 0</text>
+</svg>
