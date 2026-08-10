@@ -167,6 +167,9 @@ textarea {
 }
 .solution-nav .save-solution { border-color: transparent; font-size: 14px; width: 26px; }
 .solution-nav .save-solution:hover { border-color: var(--ink); }
+/* The flag is the near-miss twin of the star. It hovers red rather than ink so
+   the button agrees with the strip it sits in about which queue it feeds. */
+.solution-nav .save-semi:hover:not(:disabled) { border-color: var(--red); background: rgba(228, 81, 63, .12); }
 .solution-note { font: 600 9px/1 monospace; color: var(--muted); }
 
 /* Near-miss mode. The whole strip goes red-bordered rather than only the badge:

@@ -790,8 +790,14 @@ export function ContinuationLab() {
     rows.push(entry);
     const ok = writeSaved(rows);
     setSavedCount(ok ? rows.length : savedCount);
+    // The word follows the button. "Saved a solution" after pressing 🚩 reads
+    // as confirmation that the wrong thing was banked, which is exactly the
+    // doubt the two glyphs exist to remove.
+    const what = near
+      ? `L${stage.level} near-miss ${entry.solution_index} 🚩`
+      : `L${stage.level} solution ${entry.solution_index} ⭐`;
     setStatus(ok
-      ? `Saved L${stage.level} solution ${entry.solution_index} · ${rows.length} held locally`
+      ? `Saved ${what} · ${rows.length} held locally`
       : "Could not save — browser storage is full or blocked");
 
     // A configured API is an ADDITION to the local copy, never a replacement:
@@ -804,7 +810,7 @@ export function ContinuationLab() {
       body: JSON.stringify(entry),
     }).then(response => {
       setStatus(response.ok
-        ? `Saved L${stage.level} solution ${entry.solution_index} to the dataset`
+        ? `Saved ${what} to the dataset · rate it at ${near ? "/mxn/semi/" : "/mxn/rate/"}`
         : `Held locally · dataset rejected it (HTTP ${response.status})`);
     }).catch(() => {
       setStatus("Held locally · dataset unreachable");
@@ -956,7 +962,7 @@ export function ContinuationLab() {
                 <input id="api-token" type="password" placeholder="ADMIN_TOKEN" value={apiToken}
                   onChange={e => { setApiToken(e.target.value); writeSetting(TOKEN_KEY, e.target.value); }} />
               </div>
-              <p className="compute-note">Kept in this browser only, never in the repository. Stars always save locally as well.</p>
+              <p className="compute-note">Kept in this browser only, never in the repository. ⭐ and 🚩 always save locally as well.</p>
             </details>
 
             {inputError && <div className="error-note" role="alert">{inputError}</div>}
@@ -1059,10 +1065,18 @@ export function ContinuationLab() {
                                 <button type="button" onClick={() => browseSemi(stage.level, (near?.index ?? 0) + 1)}
                                   disabled={busyHere || !near || near.index + 1 >= near.count}
                                   aria-label={`Next near-miss for level ${stage.level}`}>›</button>
-                                <button className="save-solution" type="button" onClick={() => saveSolution(stage)}
+                                {/* A flag, not the star. The two buttons do the
+                                    same thing to different objects and land in
+                                    different queues, and a ring that fell short
+                                    is flagged for someone to look at rather than
+                                    kept for being good. Same glyph for both was
+                                    the whole reason near-misses looked like they
+                                    were not saving: the star that was pressed
+                                    was the other one. */}
+                                <button className="save-solution save-semi" type="button" onClick={() => saveSolution(stage)}
                                   disabled={!item}
-                                  title="Save this near-miss for rating"
-                                  aria-label={`Save level ${stage.level} near-miss to the dataset`}>⭐</button>
+                                  title="Flag this near-miss for rating — goes to /mxn/semi/"
+                                  aria-label={`Flag level ${stage.level} near-miss for the dataset`}>🚩</button>
                                 {semiButton}
                               </span>
                             );
@@ -1084,7 +1098,7 @@ export function ContinuationLab() {
                                 disabled={busyHere}
                                 aria-label={`Next solution for level ${stage.level}`}>›</button>
                               <button className="save-solution" type="button" onClick={() => saveSolution(stage)}
-                                title="Save this solution to the dataset"
+                                title="Save this closed ring for rating — goes to /mxn/rate/"
                                 aria-label={`Save level ${stage.level} solution to the dataset`}>⭐</button>
                               {semiButton}
                             </span>

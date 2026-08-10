@@ -175,7 +175,7 @@ on, so a later rating always knows what it was rating. Download exports the set.
 
 ### The dataset API
 
-⭐ always writes to `localStorage`. If a Worker URL and admin token are set in
+⭐ and 🚩 always write to `localStorage`. If a Worker URL and admin token are set in
 the sidebar's *dataset API* panel, it **also** POSTs to
 `worker-api/` — a Cloudflare Worker over D1, deployed separately and entirely
 optional. The local copy is never replaced by the remote one: a bad token or a
@@ -243,7 +243,10 @@ membership from the candidate's own `moves` list instead of guessing from the
 arm angles. Reporting a fold against the wrong band would be worse than not
 reporting it.
 
-`◑` again returns the card to rings that close. `⭐` in near-miss mode writes
+`◑` again returns the card to rings that close. Near-miss mode swaps the save
+button from `⭐` to `🚩`, because the two write to different queues and a shared
+glyph made a mis-press invisible: the near-miss appeared not to save when what
+had actually happened was that the closed-ring star was pressed. `🚩` writes
 `kind: "semi"` with the band, the deficit and `refs`, and `/mxn/semi/` is the
 queue over those rows — the same component as the categoriser, tinted amber, so
 a rating cannot be filed against the wrong question by accident. What a score
