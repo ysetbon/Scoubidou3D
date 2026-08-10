@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  CORES_IN_USE, detectMachine, estimateSpeedup, usableWorkers, type Machine,
+  CORES_IN_USE, SUB_SECOND_CEILING, detectMachine, estimateSpeedup, usableWorkers,
+  type Machine,
 } from "./machine";
 
 // Upstream the lab sits at the root of its own host, so its runtime assets were
@@ -514,10 +515,8 @@ export function ContinuationLab() {
   const resolvedStep = extStep === "auto" ? autoStep(worstPairCount, comboBudget) : Number(extStep);
   const estimatedCombos = comboCount(resolvedStep, worstPairCount);
   const overEngineLimit = estimatedCombos > ENGINE_COMBO_LIMIT;
-  // Total sweep for this run: every level searches its own combo space.
-  const estimatedWork = estimatedCombos * Math.max(ks.length, 1);
   const workers = usableWorkers(machine?.cores ?? null);
-  const potentialSpeedup = estimateSpeedup(estimatedWork, workers);
+  const potentialSpeedup = estimateSpeedup(workers);
   const paramsKey = `${m}:${n}:${ks.join(",")}:${preferShortArms}:${extStep}:${comboBudget}`;
   const staleParams = ranKey !== null && ranKey !== paramsKey && !busy;
   // Frozen at the end of a run: browsing changes a level's geometry, and a
@@ -979,13 +978,13 @@ export function ContinuationLab() {
 
                   {workers > 1 && (
                     <p className="compute-note">
-                      Were those cores reachable, this run
-                      {" "}(<b>{estimatedWork.toLocaleString()}</b> combos across {ks.length || 1}{" "}
-                      level{ks.length === 1 ? "" : "s"}) estimates at about{" "}
-                      <b>{potentialSpeedup.toFixed(1)}×</b> on {workers} workers. Estimate only,
-                      fitted to measurements of the real engine on 4 cores: 1.4× on 2×2, 3.6× on 3×3
-                      and 3×2. Small searches gain little; the sweep has to be big enough to pay for
-                      splitting it.
+                      Were those cores reachable, a run that takes more than a few seconds
+                      estimates at <b>{potentialSpeedup.low.toFixed(1)}×–{potentialSpeedup.high.toFixed(1)}×</b>
+                      {" "}on {workers} workers. A run that finishes in under a second gains
+                      essentially nothing — up to {SUB_SECOND_CEILING}× — and no setting on this page
+                      predicts which you have: 2×2 k=1 and k=−1 sweep the same 441 combos and
+                      measured 1.0× and 2.6×. Band measured on the real engine, 13 sizes at 2–4
+                      workers, all agreeing with the single-core answer exactly.
                     </p>
                   )}
 

@@ -269,25 +269,54 @@ The panel exists because both limits are invisible and neither is obvious:
   left to assume it is helping.
 - **Only one core searches**, for the reason `bridge.py:29-32` gives.
 
-The estimate row answers "what would the other cores be worth", from measured
-speedups of the real engine's own process pool on 4 cores, serial as reference:
+The estimate row answers "what would the other cores be worth", from the sweep
+below: 13 sizes run serial and at 2, 3 and 4 workers of the engine's own process
+pool, native CPython. Speedup at 4 workers, serial as reference:
 
-| case | serial | 4-core | speedup |
-|---|---|---|---|
-| 2×2 `[1]` | 0.32s | 0.23s | 1.4× |
-| 2×2 `[1,2,2]` | 3.21s | 2.00s | 1.6× |
-| 3×3 `[1]` | 28.20s | 7.80s | 3.6× |
-| 3×2 `[1]` | 30.17s | 8.44s | 3.6× |
+| case | serial | 4-core | speedup | | case | serial | 4-core | speedup |
+|---|---|---|---|---|---|---|---|---|
+| 2×2 `[0]` | 0.04s | 0.04s | 1.0× | | 2×3 `[1]` | 30.71s | 8.02s | 3.8× |
+| 2×2 `[1]` | 0.22s | 0.23s | 1.0× | | 3×2 `[1]` | 30.25s | 8.34s | 3.6× |
+| 1×1 `[1]` | 0.28s | 0.18s | 1.6× | | 3×3 `[1]` | 29.46s | 7.83s | 3.8× |
+| 2×2 `[1,2,2]` | 3.28s | 2.06s | 1.6× | | 3×3 `[-1]` | 35.92s | 8.83s | 4.1× |
+| 2×2 `[-1]` | 1.61s | 0.63s | 2.6× | | 1×3 `[1]` | 56.76s | 16.86s | 3.4× |
+| 1×2 `[1]` | 3.08s | 1.13s | 2.7× | | 3×1 `[1]` | 58.17s | 15.35s | 3.8× |
 
-3.6× of 4 is ~90% efficiency, so the sweep parallelises nearly perfectly once it
-is large enough to be worth splitting; the small cases are dominated by
-per-level work that does not. Solving Amdahl per row gives a parallel fraction
-that tracks `log(combos × levels)`, which is the fit in `machine.ts`. It is
-labelled an estimate in the UI and should stay labelled: it is four native
-measurements extrapolated across wasm and core counts neither was taken at.
+Long runs sit at 3.4×–4.1× of four, i.e. 84–102% of linear: the sweep splits
+almost perfectly once it is big enough to be worth splitting.
+
+**Combo count does not predict which band a run lands in.** `2×2 [1]` and
+`2×2 [-1]` sweep the same 441 combos and came out at 1.0× and 2.6×. `k` changes
+the cost of each combo rather than how many there are, so the discriminator is
+wall-clock run length, which is not known until the run has happened. The panel
+therefore reports the measured band and says what separates the two, instead of
+fitting a curve. An earlier version of `machine.ts` fitted parallel fraction to
+`log(combos × levels)`; those two 441-combo rows are what retired it, and the
+fit had predicted 1.3× for both.
 
 Those are native CPython timings. Under Pyodide the same work is slower, so
 treat the table as the shape of the speedup rather than the wall clock.
+
+#### The parallel/serial divergence did not reproduce
+
+The check above warns that the multiprocessing path can settle on a different
+combo than the serial one, measured on `2×2 [1,2,2]` where it picked `(30,120)`
+at L3 and stopped being a weave. Across all 39 parallel runs in the sweep — 13
+sizes × {2,3,4} workers, `2×2 [1,2,2]` among them — **every result matched
+serial exactly**. Zero divergences.
+
+That is not a refutation. It is a different machine and a narrow range of worker
+counts, and the failure mode is order-dependent: `consume_chunk` merges in
+*completion* order (`wait(FIRST_COMPLETED)`, `mxn_lh_continuation.py:3268`) and
+`best_fallback` is chosen with a strict `>`, so a tie resolves to whichever
+worker happened to finish first. That is timing-dependent by construction and
+can hide for many runs at a stretch.
+
+It does mean the defect is narrower than "parallel is unsafe", and it points at
+where a fix would go: buffer chunk results and consume them in `chunk_start`
+order, which would make the parallel path bit-identical to serial by
+construction rather than by luck. Until someone does that, keep the serial pin
+in `bridge.py` and keep this warning.
 
 #### Why the multi-core version is not simply built
 
