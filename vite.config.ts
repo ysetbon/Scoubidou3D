@@ -32,6 +32,7 @@ export default defineConfig({
         levels: page('levels/index.html'),
         twist: page('twist/index.html'),
         mxn: page('mxn/index.html'),
+        mxnRate: page('mxn/rate/index.html'),
       },
     },
   },

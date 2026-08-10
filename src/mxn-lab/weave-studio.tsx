@@ -54,7 +54,7 @@ function worstPairs(m: number, n: number) {
 
 type Point = { x: number; y: number };
 type RGBA = { r: number; g: number; b: number; a?: number };
-type Strand = {
+export type Strand = {
   type: "Strand" | "AttachedStrand" | "MaskedStrand";
   start: Point;
   end: Point;
@@ -70,7 +70,7 @@ type Strand = {
   second_selected_strand?: string;
   is_hidden?: boolean;
 };
-type Stage = { level: number; k: number | null; label: string; strands: Strand[] };
+export type Stage = { level: number; k: number | null; label: string; strands: Strand[] };
 type ProgressFrame = {
   level: number;
   k: number;
@@ -82,7 +82,7 @@ type ProgressFrame = {
   extensions: number[];
   strands: Strand[];
 };
-type AuditRow = {
+export type AuditRow = {
   level: number; k: number; expected: number; state: string;
   gap: [number, number]; ext: [number[], number[]];
   across: number; within: number; masks: number; stray: number; broken: number;
@@ -153,7 +153,7 @@ type Params = {
   m: number; n: number; ks: number[]; key: string;
   preferShortArms: boolean; extStep: number | null; comboBudget: number;
 };
-type Bounds = { minX: number; minY: number; maxX: number; maxY: number };
+export type Bounds = { minX: number; minY: number; maxX: number; maxY: number };
 
 function parseKs(raw: string) {
   const cleaned = raw.replace(/[\[\],]/g, " ").trim();
@@ -182,7 +182,7 @@ function cssColor(color: RGBA | undefined, fallback = "#ffffff") {
   return `rgba(${color.r},${color.g},${color.b},${(color.a ?? 255) / 255})`;
 }
 
-function allBounds(stages: Stage[]): Bounds {
+export function allBounds(stages: Stage[]): Bounds {
   const finalStage = stages.at(-1);
   const points = (finalStage?.strands ?? [])
     .filter(strand => strand.type !== "MaskedStrand" && !strand.is_hidden)
@@ -224,7 +224,7 @@ function bandPolygon(start: Point, end: Point, width: number) {
   ];
 }
 
-function drawExactStage(canvas: HTMLCanvasElement, stage: Stage, bounds: Bounds, showLabels = true, fixedSize?: number) {
+export function drawExactStage(canvas: HTMLCanvasElement, stage: Stage, bounds: Bounds, showLabels = true, fixedSize?: number) {
   const rect = canvas.getBoundingClientRect();
   const dpr = fixedSize ? 1 : Math.min(window.devicePixelRatio || 1, 2);
   const width = fixedSize ?? Math.max(1, rect.width);
@@ -965,7 +965,7 @@ export function ContinuationLab() {
         </div>
       </section>
 
-      <footer className="footer"><span>Calculation source · ysetbon/mxn · commit {COMMIT}</span><a href="..">← Scoubidou3D</a><a href="https://github.com/ysetbon/mxn" target="_blank" rel="noreferrer">View source ↗</a></footer>
+      <footer className="footer"><span>Calculation source · ysetbon/mxn · commit {COMMIT}</span><a href="..">← Scoubidou3D</a><a href="rate/">Categoriser →</a><a href="https://github.com/ysetbon/mxn" target="_blank" rel="noreferrer">View source ↗</a></footer>
     </main>
   );
 }

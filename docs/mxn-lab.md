@@ -189,6 +189,23 @@ this repository.
 run** — it was written where Cloudflare was unreachable, so it is reviewed code
 and its first deploy is also its first test.
 
+### Rating what you saved, at /mxn/rate/
+
+A separate page over the same dataset. It pulls unrated rows, draws each
+solution **beside the Lᵥ₋₁ ring it was built on** — a rating is of the step from
+one ring to the next, so the base has to be visible at the same time — and
+PATCHes a 0–100 score.
+
+It reads the worker URL and token from the same `localStorage` keys the lab
+writes, so the token is entered once, in one place.
+
+The list endpoint omits geometry on purpose (it would be megabytes across 500
+rows); the page fetches the full row only for the solution actually on screen.
+Rating advances to the next row automatically, because this is a queue rather
+than something to browse.
+
+`noindex` in the head: it is a private tool over a token-gated dataset.
+
 The `dataset-api-v6` cache key appears in both the worker URL
 (`weave-studio.tsx`) and the Python fetch URL (`exact-worker.js`). Bump both
 together when the engine files change, or returning readers run stale geometry.
