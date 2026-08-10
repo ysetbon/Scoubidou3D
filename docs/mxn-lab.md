@@ -173,6 +173,22 @@ This is the joint search the per-band `prefer_short_arms` tie-break cannot do.
 database table takes — including `parent_strands`, the Lᵥ₋₁ ring it was built
 on, so a later rating always knows what it was rating. Download exports the set.
 
-The `browse-solutions-v5` cache key appears in both the worker URL
+### The dataset API
+
+⭐ always writes to `localStorage`. If a Worker URL and admin token are set in
+the sidebar's *dataset API* panel, it **also** POSTs to
+`worker-api/` — a Cloudflare Worker over D1, deployed separately and entirely
+optional. The local copy is never replaced by the remote one: a bad token or a
+dropped connection must not lose a solution the star just claimed to save.
+
+The token lives in that browser's `localStorage` and nowhere else. It is a
+Worker secret on the other end (`wrangler secret put ADMIN_TOKEN`), never in
+this repository.
+
+`worker-api/README.md` has the five setup commands. **That Worker has never been
+run** — it was written where Cloudflare was unreachable, so it is reviewed code
+and its first deploy is also its first test.
+
+The `dataset-api-v6` cache key appears in both the worker URL
 (`weave-studio.tsx`) and the Python fetch URL (`exact-worker.js`). Bump both
 together when the engine files change, or returning readers run stale geometry.
