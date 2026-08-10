@@ -61,6 +61,15 @@ button, input { font: inherit; color: inherit; }
   background: var(--cat-accent); color: #fff; font: 700 12px/1 system-ui; letter-spacing: .07em;
 }
 .cat-load:hover { filter: brightness(1.08); }
+/* Secondary to Load on purpose: you cannot download before you have loaded, and
+   the two sitting side by side in the same colour would invite the wrong one. */
+.cat-save {
+  height: 44px; padding: 0 18px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--cat-line); background: var(--cat-card);
+  font: 700 12px/1 system-ui; letter-spacing: .07em;
+}
+.cat-save:hover:not(:disabled) { border-color: var(--cat-accent); color: var(--cat-accent); }
+.cat-save:disabled { opacity: .4; cursor: not-allowed; }
 
 .cat-status { padding: 0 clamp(14px, 2vw, 28px) 8px; margin: 0; font-size: 12px; color: var(--cat-muted); }
 
