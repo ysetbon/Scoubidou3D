@@ -959,9 +959,19 @@ export function ContinuationLab() {
                   </dl>
 
                   <p className="compute-note">
-                    <strong>The GPU is not used, and cannot be.</strong> The engine&rsquo;s GPU path is
-                    CuPy, which is CUDA, which is NVIDIA — no Mac has it, and Pyodide could not load
-                    it in a browser regardless. Your GPU draws the diagrams; it does not search.
+                    <strong>The GPU is not used today.</strong> The engine ships a GPU path, but it
+                    is CuPy — CUDA, so NVIDIA-only, with no Metal backend — and WebAssembly reaches
+                    no GPU driver of any kind, so that branch cannot be taken in any browser on any
+                    machine. Your GPU draws the diagrams; it does not search.
+                  </p>
+                  <p className="compute-note">
+                    The route that <em>would</em> work here is WebGPU
+                    {machine.webgpu ? ", which this browser has" : ", which this browser lacks"} —
+                    Metal underneath, on a Mac. The search kernel suits it: batched geometry over
+                    combos × extensions × angles, no data-dependent branching. It needs writing
+                    rather than enabling, and it needs the engine&rsquo;s synchronous search path to
+                    become async first — the same prerequisite the idle cores have, minus the
+                    header problem.
                   </p>
 
                   <p className="compute-note">

@@ -261,12 +261,26 @@ actually uses. Today that is **one core, CPU only**, on every machine.
 
 The panel exists because both limits are invisible and neither is obvious:
 
-- **The GPU cannot be used.** The engine does carry a GPU path
+- **The GPU is not used.** The engine does carry a GPU path
   (`_check_cupy_available`, `_cupy_search_combo_chunks` in
-  `mxn_lh_continuation.py:1518`), but it is CuPy, hence CUDA, hence NVIDIA. No
-  Mac can run it and Pyodide cannot load it in any browser. It is unreachable
-  here twice over, and a reader with a fast GPU should be told that rather than
-  left to assume it is helping.
+  `mxn_lh_continuation.py:1518`), but it is CuPy, hence CUDA, hence NVIDIA with
+  no Metal backend; and WebAssembly reaches no GPU driver at all, so the branch
+  cannot be taken in any browser on any machine. A reader with a fast GPU should
+  be told that rather than left to assume it is helping.
+
+  Wiring a toggle to the existing `use_gpu` flag would be decorative, and
+  measurably so: `can_use_gpu = use_gpu and _check_cupy_available()` collapses to
+  `False`, the search prints `GPU requested but CuPy not available, using CPU`
+  (`mxn_lh_continuation.py:3566`) and runs the same CPU path in the same time.
+  The flag does not reach `bridge.py` at all.
+
+  The route that *would* work in this page is **WebGPU** — Metal underneath on a
+  Mac — and the kernel suits it: `_cupy_2strand_chunk` (`:2054`) is already
+  batched tensor math over combos × extensions × angles with no data-dependent
+  branching, which is compute-shader shape. It has to be written rather than
+  enabled, and it needs the same async search path the idle cores need. It does
+  *not* need SharedArrayBuffer or COOP/COEP, so of the two routes off one core it
+  is the less blocked one.
 - **Only one core searches**, for the reason `bridge.py:29-32` gives.
 
 The estimate row answers "what would the other cores be worth", from the sweep
