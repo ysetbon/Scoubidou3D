@@ -1,0 +1,48 @@
+/* Layered over the lab's stylesheet, so tokens, buttons and typography match.
+   Only the rating-specific layout lives here. */
+.rate-bar {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  padding: 20px clamp(20px, 4vw, 64px);
+  border-bottom: 1px solid var(--ink);
+}
+.rate-bar input[type="url"], .rate-bar input[type="password"] {
+  flex: 1 1 260px; height: 40px; padding: 0 12px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 2px;
+  font: 600 12px/1 monospace; outline: none;
+}
+.rate-bar input:focus { border-color: var(--ink); box-shadow: 0 0 0 3px var(--acid); }
+.rate-bar .run-button, .rate-bar .stop-button { flex: 0 0 auto; padding: 0 22px; }
+.rate-bar .toggle-line { margin-top: 0; }
+
+.rate-status { padding: 14px clamp(20px, 4vw, 64px); font: 600 12px/1.5 monospace; color: var(--muted); }
+
+.rate-card { padding: 0 clamp(20px, 4vw, 64px) 60px; }
+.rate-head { display: grid; gap: 6px; margin-bottom: 18px; font: 600 12px/1.5 monospace; }
+.rate-head strong { font: 400 26px/1 Georgia, serif; }
+.rate-head .ok { color: var(--blue); }
+.rate-head .bad { color: #8f2e22; }
+
+/* Side by side on purpose: a rating is of the step from one ring to the next,
+   so the base has to be visible at the same time as the result. */
+.rate-rings { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.ring { margin: 0; border: 1px solid var(--ink); background: var(--card); }
+.ring figcaption {
+  padding: 9px 12px; border-bottom: 1px solid var(--line);
+  font: 700 10px/1 monospace; text-transform: uppercase; letter-spacing: .07em;
+}
+.ring canvas { display: block; width: 100%; aspect-ratio: 1 / 1; }
+
+.rate-score { display: flex; align-items: center; gap: 14px; margin-top: 22px; flex-wrap: wrap; }
+.rate-score input[type="range"] { flex: 1 1 320px; accent-color: var(--blue); }
+.rate-score b { font: 400 34px/1 Georgia, serif; min-width: 62px; }
+.rate-score em { font: 600 11px/1 monospace; font-style: normal; color: var(--muted); }
+.rate-score .run-button, .rate-score .stop-button { flex: 0 0 auto; padding: 0 22px; height: 44px; }
+
+.rate-quick { display: flex; gap: 8px; margin-top: 14px; }
+.rate-quick button {
+  border: 1px solid var(--line); background: transparent; padding: 7px 16px;
+  border-radius: 100px; font: 700 11px/1 monospace; cursor: pointer;
+}
+.rate-quick button:hover { border-color: var(--ink); background: var(--acid); }
+
+@media (max-width: 860px) { .rate-rings { grid-template-columns: 1fr; } }
