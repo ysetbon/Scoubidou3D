@@ -37,7 +37,7 @@ async function prepare() {
       // Resolved against this worker's own URL rather than the site root: the
       // lab is published under a project-site sub-path, where "/py/..." would
       // miss. Keeps the cache key in step with the one in the Worker URL.
-      const url = new URL(`./py/${name}?v=semi-rate-v7`, import.meta.url);
+      const url = new URL(`./py/${name}?v=semi-sort-v8`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
@@ -88,6 +88,25 @@ const HANDLERS = {
     runtime.globals.set("mxn_level", data.level);
     return ["semi-ready", await runtime.runPythonAsync(
       "bridge.scan_semicomplete(mxn_level)"
+    )];
+  },
+  // Reordering and stepping both read the list the scan already built, so
+  // neither replays a ring: they are list arithmetic, not search.
+  "semi-sort": async (runtime, data) => {
+    runtime.globals.set("mxn_level", data.level);
+    runtime.globals.set("mxn_key", data.key);
+    return ["semi-sorted", await runtime.runPythonAsync(
+      "bridge.sort_semicomplete(mxn_level, mxn_key)"
+    )];
+  },
+  // Answers back as semi-solution: the page has to redraw exactly as it does
+  // after an arrow, and a second message shape would be the same thing twice.
+  "semi-step": async (runtime, data) => {
+    runtime.globals.set("mxn_level", data.level);
+    runtime.globals.set("mxn_band", data.band);
+    runtime.globals.set("mxn_direction", data.direction);
+    return ["semi-solution", await runtime.runPythonAsync(
+      "bridge.step_semicomplete(mxn_level, mxn_band, mxn_direction)"
     )];
   },
   "semi-select": async (runtime, data) => {

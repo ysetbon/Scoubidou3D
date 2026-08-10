@@ -255,8 +255,29 @@ claim that the search discarded extensions it should have kept.
 
 `k = 0` has one configuration and nothing to sweep, so it gets no `◑`.
 
+### Reading the list in a useful order
+
+The scan keeps nearest-first — `deficit`, then `total`. `SORT EXT` flips it to
+shortest-extensions-first, which answers the other question worth asking: of
+the rings that fail, which one fails on the least string. Neither ordering
+re-runs the sweep. `sort_semicomplete` reorders a list that is already in the
+session and returns the head of it, and the ring on screen keeps its place by
+identity rather than by index, so a reorder never silently swaps what is being
+looked at — or what `🚩` would bank.
+
+`H− H+ V− V+` walk one band with the other held. `‹ ›` cannot ask that: they
+step the sorted list, which mixes both bands and every extension together,
+while these hold the other band's *candidate* — not merely its extension value,
+since two candidates can share a value and still be different rings — and move
+to the nearest extension in the direction asked for. That is the shape the
+sweep itself has: every near-miss is one band varied against a partner that
+stayed put, so stepping that way walks the sweep instead of walking the sort.
+Both live in Python beside the list, because only the head of it
+(`SEMI_RETURN_CAP`) ever crosses the worker boundary — sorting or stepping in
+the page would silently work on a prefix.
+
 ### Cache keys
 
-The `semi-rate-v7` cache key appears in both the worker URL
+The `semi-sort-v8` cache key appears in both the worker URL
 (`weave-studio.tsx`) and the Python fetch URL (`exact-worker.js`). Bump both
 together when the engine files change, or returning readers run stale geometry.
