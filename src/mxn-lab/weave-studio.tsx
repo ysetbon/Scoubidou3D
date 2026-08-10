@@ -121,7 +121,10 @@ type SemiMeta = {
   level: number; count: number; listed?: number; truncated: boolean;
   grounded: boolean; refs?: number; reason?: string | null; items: SemiItem[];
   index: number; current?: SemiItem;
+  /** 'near' is nearest-to-closing first, 'ext' is shortest extensions first. */
+  key?: SemiKey;
 };
+type SemiKey = "near" | "ext";
 type SavedSolution = {
   id: string; created_at: string; hand: string; direction: string;
   m: number; n: number; level: number; k: number; ks_prefix: number[];
@@ -524,7 +527,7 @@ export function ContinuationLab() {
 
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
-    const worker = new Worker(`${LAB_BASE}exact-worker.js?v=semi-rate-v7`, { type: "module" });
+    const worker = new Worker(`${LAB_BASE}exact-worker.js?v=semi-sort-v8`, { type: "module" });
     worker.onmessage = (event) => {
       const message = event.data;
       if (message.type === "progress") {
@@ -566,7 +569,7 @@ export function ContinuationLab() {
           listed: message.listed, truncated: message.truncated === true,
           grounded: message.grounded === true, refs: message.refs,
           reason: message.reason,
-          items: message.items ?? [], index: 0,
+          items: message.items ?? [], index: 0, key: message.key ?? "near",
         };
         setSemi(current => ({ ...current, [meta.level]: meta }));
         if (!meta.count) {
@@ -584,6 +587,20 @@ export function ContinuationLab() {
         ensureWorker().postMessage({
           type: "semi-select", id: activeIdRef.current, level: meta.level, index: 0,
         });
+        return;
+      }
+      // A reorder moves the same rings around; the one on screen is still the
+      // right one, so nothing is redrawn and only its position changes.
+      if (message.type === "semi-sorted") {
+        setBrowsingLevel(null);
+        setSemi(current => ({ ...current, [message.level]: {
+          ...current[message.level],
+          items: message.items ?? [], listed: message.listed,
+          index: message.index, count: message.count, key: message.key,
+        } }));
+        setStatus(message.key === "ext"
+          ? `L${message.level} near-misses: shortest extensions first`
+          : `L${message.level} near-misses: nearest to closing first`);
         return;
       }
       if (message.type === "semi-solution") {
@@ -738,6 +755,27 @@ export function ContinuationLab() {
     });
   };
 
+  // Both of these read the list the scan already built, so they are cheap and
+  // the ring on screen only moves for a reason the reader asked for.
+  const sortSemi = (level: number, key: SemiKey) => {
+    if (!semi[level]) return;
+    setBrowsingLevel(level);
+    ensureWorker().postMessage({
+      type: "semi-sort", id: activeIdRef.current, level, key,
+    });
+  };
+
+  // One band at a time, the other held: "keep this V, show me the next H that
+  // also falls short". The ‹ › arrows cannot ask that -- they walk the whole
+  // list in sort order, mixing both bands and every extension together.
+  const stepSemi = (level: number, band: "h" | "v", direction: 1 | -1) => {
+    if (!semi[level]?.current) return;
+    setBrowsingLevel(level);
+    ensureWorker().postMessage({
+      type: "semi-step", id: activeIdRef.current, level, band, direction,
+    });
+  };
+
   const toggleSemi = (level: number) => {
     const on = semiMode[level] === true;
     setSemiMode(current => ({ ...current, [level]: !on }));
@@ -790,8 +828,14 @@ export function ContinuationLab() {
     rows.push(entry);
     const ok = writeSaved(rows);
     setSavedCount(ok ? rows.length : savedCount);
+    // The word follows the button. "Saved a solution" after pressing 🚩 reads
+    // as confirmation that the wrong thing was banked, which is exactly the
+    // doubt the two glyphs exist to remove.
+    const what = near
+      ? `L${stage.level} near-miss ${entry.solution_index} 🚩`
+      : `L${stage.level} solution ${entry.solution_index} ⭐`;
     setStatus(ok
-      ? `Saved L${stage.level} solution ${entry.solution_index} · ${rows.length} held locally`
+      ? `Saved ${what} · ${rows.length} held locally`
       : "Could not save — browser storage is full or blocked");
 
     // A configured API is an ADDITION to the local copy, never a replacement:
@@ -804,7 +848,7 @@ export function ContinuationLab() {
       body: JSON.stringify(entry),
     }).then(response => {
       setStatus(response.ok
-        ? `Saved L${stage.level} solution ${entry.solution_index} to the dataset`
+        ? `Saved ${what} to the dataset · rate it at ${near ? "/mxn/semi/" : "/mxn/rate/"}`
         : `Held locally · dataset rejected it (HTTP ${response.status})`);
     }).catch(() => {
       setStatus("Held locally · dataset unreachable");
@@ -956,7 +1000,7 @@ export function ContinuationLab() {
                 <input id="api-token" type="password" placeholder="ADMIN_TOKEN" value={apiToken}
                   onChange={e => { setApiToken(e.target.value); writeSetting(TOKEN_KEY, e.target.value); }} />
               </div>
-              <p className="compute-note">Kept in this browser only, never in the repository. Stars always save locally as well.</p>
+              <p className="compute-note">Kept in this browser only, never in the repository. ⭐ and 🚩 always save locally as well.</p>
             </details>
 
             {inputError && <div className="error-note" role="alert">{inputError}</div>}
@@ -1059,10 +1103,56 @@ export function ContinuationLab() {
                                 <button type="button" onClick={() => browseSemi(stage.level, (near?.index ?? 0) + 1)}
                                   disabled={busyHere || !near || near.index + 1 >= near.count}
                                   aria-label={`Next near-miss for level ${stage.level}`}>›</button>
-                                <button className="save-solution" type="button" onClick={() => saveSolution(stage)}
+                                {/* One band at a time, the other held. The ‹ ›
+                                    arrows walk the sorted list, which mixes
+                                    both bands and every extension together;
+                                    these ask the question the sweep is made of
+                                    -- keep this V, what is the next H that also
+                                    falls short? */}
+                                {(["h", "v"] as const).map(band => {
+                                  const held = band === "h" ? "V" : "H";
+                                  const heldPx = item
+                                    ? (band === "h" ? item.vExt : item.hExt).reduce((sum, e) => sum + e, 0)
+                                    : 0;
+                                  const herePx = item
+                                    ? (band === "h" ? item.hExt : item.vExt).reduce((sum, e) => sum + e, 0)
+                                    : 0;
+                                  return ([-1, 1] as const).map(direction => (
+                                    <button key={`${band}${direction}`} className="semi-step" type="button"
+                                      onClick={() => stepSemi(stage.level, band, direction)}
+                                      disabled={busyHere || !item}
+                                      title={`${direction > 0 ? "Next" : "Previous"} ${band.toUpperCase()} extension `
+                                        + `(now ${herePx}px), holding ${held} at ${heldPx}px`}
+                                      aria-label={`${direction > 0 ? "Next" : "Previous"} ${band.toUpperCase()} extension for level ${stage.level}, ${held} held`}>
+                                      {band.toUpperCase()}{direction > 0 ? "+" : "−"}
+                                    </button>
+                                  ));
+                                })}
+                                {/* Nearest-first is the queue's own order and
+                                    the right default; shortest-first answers a
+                                    different question -- of the rings that fail,
+                                    which does it on the least string. */}
+                                <button className="semi-sort" type="button"
+                                  onClick={() => sortSemi(stage.level, near?.key === "ext" ? "near" : "ext")}
+                                  disabled={busyHere || !near}
+                                  title={near?.key === "ext"
+                                    ? "Sorted by shortest extensions — click for nearest to closing"
+                                    : "Sorted by nearest to closing — click for shortest extensions"}
+                                  aria-label={`Sort level ${stage.level} near-misses by ${near?.key === "ext" ? "deficit" : "total extension"}`}>
+                                  {near?.key === "ext" ? "SORT EXT" : "SORT NEAR"}
+                                </button>
+                                {/* A flag, not the star. The two buttons do the
+                                    same thing to different objects and land in
+                                    different queues, and a ring that fell short
+                                    is flagged for someone to look at rather than
+                                    kept for being good. Same glyph for both was
+                                    the whole reason near-misses looked like they
+                                    were not saving: the star that was pressed
+                                    was the other one. */}
+                                <button className="save-solution save-semi" type="button" onClick={() => saveSolution(stage)}
                                   disabled={!item}
-                                  title="Save this near-miss for rating"
-                                  aria-label={`Save level ${stage.level} near-miss to the dataset`}>⭐</button>
+                                  title="Flag this near-miss for rating — goes to /mxn/semi/"
+                                  aria-label={`Flag level ${stage.level} near-miss for the dataset`}>🚩</button>
                                 {semiButton}
                               </span>
                             );
@@ -1084,7 +1174,7 @@ export function ContinuationLab() {
                                 disabled={busyHere}
                                 aria-label={`Next solution for level ${stage.level}`}>›</button>
                               <button className="save-solution" type="button" onClick={() => saveSolution(stage)}
-                                title="Save this solution to the dataset"
+                                title="Save this closed ring for rating — goes to /mxn/rate/"
                                 aria-label={`Save level ${stage.level} solution to the dataset`}>⭐</button>
                               {semiButton}
                             </span>

@@ -167,6 +167,9 @@ textarea {
 }
 .solution-nav .save-solution { border-color: transparent; font-size: 14px; width: 26px; }
 .solution-nav .save-solution:hover { border-color: var(--ink); }
+/* The flag is the near-miss twin of the star. It hovers red rather than ink so
+   the button agrees with the strip it sits in about which queue it feeds. */
+.solution-nav .save-semi:hover:not(:disabled) { border-color: var(--red); background: rgba(228, 81, 63, .12); }
 .solution-note { font: 600 9px/1 monospace; color: var(--muted); }
 
 /* Near-miss mode. The whole strip goes red-bordered rather than only the badge:
@@ -179,7 +182,21 @@ textarea {
 .solution-nav em.band-h,
 .solution-nav em.band-v { background: rgba(228, 81, 63, .14); color: #8f2e22; }
 .semi-toggle { font-size: 12px; opacity: .6; }
-.semi-toggle.is-on { opacity: 1; border-color: var(--red); color: #8f2e22; }
+/* On, but not alarmed: the strip around it already says these rings do not
+   close, and a red toggle read as an error rather than as a mode. */
+.semi-toggle.is-on { opacity: 1; border-color: var(--ink); background: var(--acid); }
+/* The band steppers and the sort key. Narrower than the arrows and lettered,
+   because four of them in a row have to stay readable at 9px. */
+.solution-nav .semi-step,
+.solution-nav .semi-sort {
+  width: auto; min-width: 22px; padding: 0 4px;
+  font: 700 9px/1 monospace; letter-spacing: .03em;
+}
+/* Spelled out rather than an arrow glyph: at 9px monospace a ↕ is a smudge,
+   and this button is the one thing in the strip whose meaning is not obvious
+   from its position. */
+.solution-nav .semi-sort { min-width: 58px; color: var(--muted); }
+.solution-nav .semi-sort:hover:not(:disabled) { color: var(--ink); }
 
 .api-settings { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
 .api-settings summary { font: 800 10px/1 monospace; text-transform: uppercase; cursor: pointer; letter-spacing: .08em; }

@@ -356,7 +356,7 @@ export function Categoriser({ kind = "complete" }: { kind?: Kind }) {
       setFocus(0);
       setStatus(list.length ? ""
         : onlyUnrated ? queue.empty
-        : kind === "semi" ? "No near-misses saved yet — star one in the lab’s ◑ mode."
+        : kind === "semi" ? "No near-misses saved yet — flag one with 🚩 in the lab’s ◑ mode. The ⭐ next to it saves closed rings, which land in the other queue."
         : "The dataset is empty.");
     } catch {
       setStatus("Could not reach the dataset.");

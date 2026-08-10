@@ -175,7 +175,7 @@ on, so a later rating always knows what it was rating. Download exports the set.
 
 ### The dataset API
 
-⭐ always writes to `localStorage`. If a Worker URL and admin token are set in
+⭐ and 🚩 always write to `localStorage`. If a Worker URL and admin token are set in
 the sidebar's *dataset API* panel, it **also** POSTs to
 `worker-api/` — a Cloudflare Worker over D1, deployed separately and entirely
 optional. The local copy is never replaced by the remote one: a bad token or a
@@ -243,7 +243,10 @@ membership from the candidate's own `moves` list instead of guessing from the
 arm angles. Reporting a fold against the wrong band would be worse than not
 reporting it.
 
-`◑` again returns the card to rings that close. `⭐` in near-miss mode writes
+`◑` again returns the card to rings that close. Near-miss mode swaps the save
+button from `⭐` to `🚩`, because the two write to different queues and a shared
+glyph made a mis-press invisible: the near-miss appeared not to save when what
+had actually happened was that the closed-ring star was pressed. `🚩` writes
 `kind: "semi"` with the band, the deficit and `refs`, and `/mxn/semi/` is the
 queue over those rows — the same component as the categoriser, tinted amber, so
 a rating cannot be filed against the wrong question by accident. What a score
@@ -252,8 +255,29 @@ claim that the search discarded extensions it should have kept.
 
 `k = 0` has one configuration and nothing to sweep, so it gets no `◑`.
 
+### Reading the list in a useful order
+
+The scan keeps nearest-first — `deficit`, then `total`. `SORT EXT` flips it to
+shortest-extensions-first, which answers the other question worth asking: of
+the rings that fail, which one fails on the least string. Neither ordering
+re-runs the sweep. `sort_semicomplete` reorders a list that is already in the
+session and returns the head of it, and the ring on screen keeps its place by
+identity rather than by index, so a reorder never silently swaps what is being
+looked at — or what `🚩` would bank.
+
+`H− H+ V− V+` walk one band with the other held. `‹ ›` cannot ask that: they
+step the sorted list, which mixes both bands and every extension together,
+while these hold the other band's *candidate* — not merely its extension value,
+since two candidates can share a value and still be different rings — and move
+to the nearest extension in the direction asked for. That is the shape the
+sweep itself has: every near-miss is one band varied against a partner that
+stayed put, so stepping that way walks the sweep instead of walking the sort.
+Both live in Python beside the list, because only the head of it
+(`SEMI_RETURN_CAP`) ever crosses the worker boundary — sorting or stepping in
+the page would silently work on a prefix.
+
 ### Cache keys
 
-The `semi-rate-v7` cache key appears in both the worker URL
+The `semi-sort-v8` cache key appears in both the worker URL
 (`weave-studio.tsx`) and the Python fetch URL (`exact-worker.js`). Bump both
 together when the engine files change, or returning readers run stale geometry.
