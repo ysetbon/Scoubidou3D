@@ -1004,7 +1004,7 @@ export function ContinuationLab() {
             <img src={`${LAB_BASE}extension-origin-l0.svg`} alt="L0 weave arms with purple dots marking the outermost crossings where L1 extension measurement starts, and red dots marking the old endpoints" />
           </figure>
           {!result || !bounds ? (
-            <div className="calculation-panel"><div className="calculation-orbit" /><strong>{status}</strong><span>The images appear after the repository audit finishes.</span></div>
+            <div className="calculation-panel"><div className={`calculation-orbit ${busy ? "is-spinning" : ""}`} /><strong>{status}</strong><span>The images appear after the repository audit finishes.</span></div>
           ) : (
             <div className={`sequence ${busy ? "sequence-updating" : ""}`}>
               {result.stages.map(stage => {
