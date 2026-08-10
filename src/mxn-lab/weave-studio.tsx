@@ -41,6 +41,13 @@ function autoStep(pairs: number, budget: number) {
 
 // A level's two search groups hold 2m and 2n arms, paired outside-in, so the
 // worst group is the one with more pairs.
+// k=0 preserves the continuation and has exactly one solution by construction.
+// Anything else can be paged through, even if the level was solved from a seed
+// and has to enumerate on the first click.
+function browsable(meta: { enumerated: string; reason?: string | null }) {
+  return meta.enumerated === "full" || !(meta.reason ?? "").startsWith("k=0");
+}
+
 function worstPairs(m: number, n: number) {
   return Math.max(Math.ceil((2 * m) / 2), Math.ceil((2 * n) / 2), 1);
 }
@@ -81,10 +88,46 @@ type AuditRow = {
   across: number; within: number; masks: number; stray: number; broken: number;
   applied: string[]; healthy: boolean;
 };
+type SolutionMeta = {
+  level: number;
+  enumerated: "none" | "full";
+  reason?: string | null;
+  hCount: number; vCount: number; candidates: number;
+  enginePick: number; index: number; truncated: boolean;
+  count?: number; countExact?: boolean;
+};
 type ExactResult = {
   m: number; n: number; ks: number[]; expected: number; seconds: number;
-  rows: AuditRow[]; stages: Stage[];
+  rows: AuditRow[]; stages: Stage[]; solutions?: SolutionMeta[];
 };
+type SavedSolution = {
+  id: string; created_at: string; hand: string; direction: string;
+  m: number; n: number; level: number; k: number; ks_prefix: number[];
+  parent_strands: Strand[]; solution_strands: Strand[];
+  h_ext: number[]; v_ext: number[];
+  audit: AuditRow; solution_index: number; rating: number | null;
+};
+
+const SAVE_KEY = "mxn-lab-solutions";
+
+// Same guarded shape as src/model/customSamples.ts: private mode and a full
+// quota both throw, and neither is worth losing the page over.
+function readSaved(): SavedSolution[] {
+  try {
+    return JSON.parse(window.localStorage.getItem(SAVE_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function writeSaved(rows: SavedSolution[]) {
+  try {
+    window.localStorage.setItem(SAVE_KEY, JSON.stringify(rows));
+    return true;
+  } catch {
+    return false;
+  }
+}
 type Params = {
   m: number; n: number; ks: number[]; key: string;
   preferShortArms: boolean; extStep: number | null; comboBudget: number;
@@ -388,6 +431,14 @@ export function ContinuationLab() {
   const [extStep, setExtStep] = useState<ExtStep>("auto");
   const [comboBudget, setComboBudget] = useState(DEFAULT_COMBO_BUDGET);
   const [ranKey, setRanKey] = useState<string | null>(null);
+  const [solutions, setSolutions] = useState<Record<number, SolutionMeta>>({});
+  const [browsingLevel, setBrowsingLevel] = useState<number | null>(null);
+  const [savedCount, setSavedCount] = useState(0);
+  const [healthyOnly, setHealthyOnly] = useState(false);
+  // The viewport is derived from the LAST stage, so once a browsed level
+  // changes geometry every card would rescale on each arrow click. Freeze it
+  // for the lifetime of one generate.
+  const boundsRef = useRef<Bounds | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const busyRef = useRef(false);
   const pendingRef = useRef<Params | null>(null);
@@ -409,7 +460,11 @@ export function ContinuationLab() {
   const overEngineLimit = estimatedCombos > ENGINE_COMBO_LIMIT;
   const paramsKey = `${m}:${n}:${ks.join(",")}:${preferShortArms}:${extStep}:${comboBudget}`;
   const staleParams = ranKey !== null && ranKey !== paramsKey && !busy;
-  const bounds = useMemo(() => result ? allBounds(result.stages) : null, [result]);
+  // Frozen at the end of a run: browsing changes a level's geometry, and a
+  // viewport recomputed from the last stage would rescale every card per click.
+  const bounds = useMemo(
+    () => result ? (boundsRef.current ?? allBounds(result.stages)) : null,
+    [result]);
   const progressStage: Stage | null = progressFrame ? {
     level: progressFrame.level,
     k: progressFrame.k,
@@ -420,7 +475,7 @@ export function ContinuationLab() {
 
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
-    const worker = new Worker(`${LAB_BASE}exact-worker.js?v=short-arms-v4`, { type: "module" });
+    const worker = new Worker(`${LAB_BASE}exact-worker.js?v=browse-solutions-v5`, { type: "module" });
     worker.onmessage = (event) => {
       const message = event.data;
       if (message.type === "progress") {
@@ -433,10 +488,45 @@ export function ContinuationLab() {
         }
         return;
       }
+      if (message.type === "solution") {
+        setBrowsingLevel(null);
+        if (message.meta) {
+          setSolutions(current => ({ ...current, [message.meta.level]: {
+            ...current[message.meta.level], ...message.meta,
+            count: message.count, countExact: message.countExact,
+          } }));
+        }
+        if (message.row && message.strands) {
+          setResult(current => {
+            if (!current) return current;
+            return {
+              ...current,
+              stages: current.stages.map(stage => stage.level === message.level
+                ? { ...stage, strands: message.strands } : stage),
+              rows: current.rows.map(row => row.level === message.level
+                ? message.row : row),
+            };
+          });
+        }
+        return;
+      }
+      if (message.type === "count-ready") {
+        setSolutions(current => ({ ...current, [message.level]: {
+          ...current[message.level], count: message.count,
+          countExact: message.countExact,
+        } }));
+        return;
+      }
       if (message.type === "result") {
         if (message.id === activeIdRef.current) {
           setFullSizeLevels(new Set());
           setResult(message.result as ExactResult);
+          boundsRef.current = allBounds((message.result as ExactResult).stages);
+          const meta: Record<number, SolutionMeta> = {};
+          for (const entry of ((message.result as ExactResult).solutions ?? [])) {
+            meta[entry.level] = entry;
+          }
+          setSolutions(meta);
           setProgressFrame(null);
           setEngineError(null);
           setStatus(`Exact calculation complete · ${message.result.seconds}s`);
@@ -489,6 +579,7 @@ export function ContinuationLab() {
   });
 
   useEffect(() => {
+    setSavedCount(readSaved().length);
     return () => workerRef.current?.terminate();
   }, []);
 
@@ -514,6 +605,59 @@ export function ContinuationLab() {
     setBusy(false);
     setProgressFrame(null);
     setStatus("Stopped · the engine reloads on the next run");
+  };
+
+  // Browsing reuses the session the last generate built, so it deliberately
+  // does NOT go through busyRef/pendingRef — that queue is for whole runs and
+  // would swallow an arrow click.
+  const browse = (level: number, index: number) => {
+    const meta = solutions[level];
+    if (!meta || !browsable(meta) || index < 0) return;
+    setBrowsingLevel(level);
+    if (meta.enumerated === "none") {
+      setStatus(`Enumerating solutions for L${level} — this runs one extra search…`);
+    }
+    ensureWorker().postMessage({
+      type: "select", id: activeIdRef.current, level, index, healthyOnly,
+    });
+  };
+
+  const saveSolution = (stage: Stage) => {
+    if (!result) return;
+    const row = result.rows[stage.level - 1];
+    const parent = result.stages.find(other => other.level === stage.level - 1);
+    if (!row || !parent) return;
+    const entry: SavedSolution = {
+      id: `${result.m}x${result.n}-k${row.k}-L${stage.level}-${Date.now()}`,
+      created_at: new Date().toISOString(),
+      hand: "lh", direction: "cw",
+      m: result.m, n: result.n, level: stage.level, k: row.k,
+      ks_prefix: result.ks.slice(0, stage.level),
+      parent_strands: parent.strands,
+      solution_strands: stage.strands,
+      h_ext: row.ext[0], v_ext: row.ext[1],
+      audit: row,
+      solution_index: solutions[stage.level]?.index ?? 0,
+      rating: null,
+    };
+    const rows = readSaved();
+    rows.push(entry);
+    const ok = writeSaved(rows);
+    setSavedCount(ok ? rows.length : savedCount);
+    setStatus(ok
+      ? `Saved L${stage.level} solution ${entry.solution_index} · ${rows.length} in the dataset`
+      : "Could not save — browser storage is full or blocked");
+  };
+
+  const downloadDataset = () => {
+    const rows = readSaved();
+    const blob = new Blob([JSON.stringify(rows, null, 1)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "mxn-solutions.json";
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const setDimension = (setter: (value: number) => void, value: string) => {
@@ -628,6 +772,16 @@ export function ContinuationLab() {
               </button>
             </div>
             {staleParams && <div className="range-note">Parameters changed since this run — press Run to recalculate.</div>}
+            <label className="toggle-line" htmlFor="healthy-only">
+              <input id="healthy-only" type="checkbox" checked={healthyOnly}
+                onChange={e => setHealthyOnly(e.target.checked)} />
+              <span>browse healthy solutions only</span>
+            </label>
+            <div className="run-row">
+              <button type="button" className="stop-button" onClick={downloadDataset} disabled={!savedCount}>
+                Download {savedCount || ""} saved
+              </button>
+            </div>
 
             {inputError && <div className="error-note" role="alert">{inputError}</div>}
             {engineError && <div className="error-note" role="alert">{engineError}</div>}
@@ -689,6 +843,32 @@ export function ContinuationLab() {
                         <button className={`copy-json ${copiedLevel === stage.level ? "is-copied" : ""}`} type="button" onClick={() => copyStageJson(stage)} aria-label={`Copy JSON for level ${stage.level}`}>
                           {copiedLevel === stage.level ? "Copied ✓" : "Copy JSON"}
                         </button>
+                        {stage.level > 0 && (() => {
+                          const meta = solutions[stage.level];
+                          if (!meta) return null;
+                          if (!browsable(meta)) {
+                            return <span className="solution-note" title={meta.reason ?? ""}>one solution</span>;
+                          }
+                          const busyHere = browsingLevel === stage.level;
+                          const shown = meta.count === undefined
+                            ? `${meta.index + 1}`
+                            : `${meta.index + 1} / ${meta.count}${meta.countExact ? "" : "+"}`;
+                          return (
+                            <span className="solution-nav">
+                              <button type="button" onClick={() => browse(stage.level, meta.index - 1)}
+                                disabled={busyHere || meta.index === 0}
+                                aria-label={`Previous solution for level ${stage.level}`}>‹</button>
+                              <b>{busyHere ? "…" : shown}</b>
+                              {meta.index === meta.enginePick && <em>engine pick</em>}
+                              <button type="button" onClick={() => browse(stage.level, meta.index + 1)}
+                                disabled={busyHere}
+                                aria-label={`Next solution for level ${stage.level}`}>›</button>
+                              <button className="save-solution" type="button" onClick={() => saveSolution(stage)}
+                                title="Save this solution to the dataset"
+                                aria-label={`Save level ${stage.level} solution to the dataset`}>⭐</button>
+                            </span>
+                          );
+                        })()}
                         <button className="resize-level" type="button" onClick={() => toggleLevel(stage.level)} aria-pressed={compact} aria-controls={`level-panel-${stage.level}`} aria-label={`${compact ? "Make larger" : "Make smaller"} diagram for level ${stage.level}`} title={`${compact ? "Make diagram larger" : "Make diagram smaller"}`}>
                           {compact ? "+" : "−"}
                         </button>

@@ -214,6 +214,35 @@ def _candidate_frame_emitter(base_strands, level, k):
     return relay
 
 
+def _register_level(level, k, checkpoint, result, search):
+    """Record what browsing this level needs, and where the engine landed."""
+    cands = result.get("candidates") or {"h": [], "v": []}
+    h_cands, v_cands = cands.get("h") or [], cands.get("v") or []
+    if k == 0:
+        enumerated, reason = "none", "k=0 preserves the continuation"
+    elif not h_cands or not v_cands:
+        # A seeded, pinned or square-mirrored level only ever saw the one
+        # combo it was told to use, so there is no list to page through.
+        enumerated, reason = "none", "this level was solved from a seed"
+    else:
+        enumerated, reason = "full", None
+    engine_h = tuple(result["horizontal"].get("pair_extensions") or ())
+    engine_v = tuple(result["vertical"].get("pair_extensions") or ())
+    pick_h = next((i for i, c in enumerate(h_cands) if c["ext"] == engine_h), 0)
+    pick_v = next((i for i, c in enumerate(v_cands) if c["ext"] == engine_v), 0)
+    _SESSION["levels"][level] = {
+        "level": level, "k": k, "checkpoint": checkpoint,
+        "h_cands": h_cands, "v_cands": v_cands,
+        "search": result.get("search") or {},
+        "enumerated": enumerated, "reason": reason,
+        "engine_pick_hv": (pick_h, pick_v),
+        "engine_pick": 0, "index": 0,
+        "truncated": len(h_cands) >= NX.BAND_CANDIDATE_CAP
+                     or len(v_cands) >= NX.BAND_CANDIDATE_CAP,
+        "found": [], "scan_cursor": 0,
+    }
+
+
 def generate(m, n, ks, hand="lh", direction="cw",
              prefer_short_arms=True, ext_step=None, combo_budget=None):
     m, n = int(m), int(n)
@@ -230,6 +259,10 @@ def generate(m, n, ks, hand="lh", direction="cw",
         search["pair_extension_step"] = int(ext_step)
     if combo_budget:
         search["combo_budget"] = int(combo_budget)
+    search["collect_candidates"] = True
+    _SESSION.clear()
+    _SESSION.update({"m": m, "n": n, "ks": ks, "hand": hand,
+                     "direction": direction, "levels": {}})
     started = time.time()
     rows, stages = [], []
 
@@ -240,6 +273,10 @@ def generate(m, n, ks, hand="lh", direction="cw",
         stages.append({"level": 0, "k": None, "label": "starting stitch",
                        "strands": _stage_strands(starting_json)})
         virtual_to_real = level1_info["virtual_to_real"]
+        # Checkpoint before the level is aligned. deepcopy the pair in ONE
+        # call: level_info["new_masks"] holds references into strands, and
+        # copying them separately would break that aliasing.
+        checkpoint1 = copy.deepcopy((strands, level1_info))
         _send_stage_frame(strands, 1, ks[0], "ring built")
         NX._progress_frame_callback = _candidate_frame_emitter(
             strands, 1, ks[0])
@@ -254,6 +291,7 @@ def generate(m, n, ks, hand="lh", direction="cw",
         stages.append({"level": 1, "k": ks[0], "label": "1st twist",
                        "strands": _stage_strands(NX._snapshot_json(strands))})
     rows.append(describe(result, snapshot, 1, ks[0], expected, sizes))
+    _register_level(1, ks[0], checkpoint1, result, search)
 
     seeds = [(rows[0]["ext"][0], rows[0]["ext"][1])]
     level1_for_k = {ks[0]: (tuple(rows[0]["ext"][0]), tuple(rows[0]["ext"][1]))}
@@ -272,6 +310,7 @@ def generate(m, n, ks, hand="lh", direction="cw",
                 k_prev=ks[level - 2], prev_virtual_to_real=prev_v2r,
                 verbose=False)
             prev_v2r = info["virtual_to_real"]
+            checkpoint = copy.deepcopy((strands, info))
             _send_stage_frame(strands, level, k_level, "ring built")
             NX._progress_frame_callback = _candidate_frame_emitter(
                 strands, level, k_level)
@@ -288,10 +327,171 @@ def generate(m, n, ks, hand="lh", direction="cw",
                            "label": f"twist {level}",
                            "strands": _stage_strands(NX._snapshot_json(strands))})
         rows.append(describe(result, snapshot, level, k_level, expected, sizes))
+        _register_level(level, k_level, checkpoint, result, search)
         seeds.append((rows[-1]["ext"][0], rows[-1]["ext"][1]))
 
     return json.dumps({
         "m": m, "n": n, "ks": ks, "hand": hand, "direction": direction,
         "expected": expected, "seconds": round(time.time() - started, 1),
         "rows": rows, "stages": stages,
+        "solutions": [_solution_meta(_SESSION["levels"][lv])
+                      for lv in sorted(_SESSION["levels"])],
     }, separators=(",", ":"))
+
+# ---------------------------------------------------------------------------
+# Browsing every valid solution for a level.
+#
+# The engine enumerates each band's valid configurations anyway and hands them
+# over through on_config_callback, so the candidate lists cost nothing extra.
+# The two bands are independent -- the V search reads only the V arms and their
+# own parents -- so every (H, V) pair is a reachable configuration. Whether the
+# ring CLOSES is joint, and that is what NX.apply_solution measures, so the walk
+# below tests each pair rather than trusting the per-band validity.
+#
+# Rings are materialised lazily. The full product is dense but large (2x2 k=1 is
+# 101 x 101), and scanning all of it up front costs tens of seconds in Pyodide
+# for a list the reader steps through a handful of.
+# ---------------------------------------------------------------------------
+
+_SESSION = {}
+
+# How many product cells one select_solution call will walk before returning a
+# resume cursor. Keeps a click responsive on a dense level.
+RING_SCAN_BUDGET = 4000
+
+
+def _level_session(level):
+    entry = _SESSION.get("levels", {}).get(level)
+    if entry is None:
+        raise ValueError("level %s has no browsing session; run generate first" % level)
+    return entry
+
+
+def _solution_meta(entry):
+    h, v = entry["h_cands"], entry["v_cands"]
+    return {
+        "level": entry["level"],
+        "enumerated": entry["enumerated"],
+        "reason": entry.get("reason"),
+        "hCount": len(h), "vCount": len(v),
+        "candidates": len(h) * len(v),
+        "enginePick": entry.get("engine_pick", 0),
+        "index": entry.get("index", 0),
+        "truncated": entry.get("truncated", False),
+    }
+
+
+def _walk(entry, want_index, healthy_only, cursor):
+    """Walk the product in search order and materialise the want_index-th ring.
+
+    Order is lexicographic with H outer and V inner -- the same shape attempt()
+    itself uses -- and nothing is re-ranked.
+    """
+    h_cands, v_cands = entry["h_cands"], entry["v_cands"]
+    level, m, n = entry["level"], _SESSION["m"], _SESSION["n"]
+    expected = 4 * m * n
+    found = entry["found"]
+    scanned = 0
+    start = cursor or entry.get("scan_cursor") or 0
+    total_cells = len(h_cands) * len(v_cands)
+
+    while len(found) <= want_index and start < total_cells:
+        if scanned >= RING_SCAN_BUDGET:
+            entry["scan_cursor"] = start
+            return None, True, start
+        i, j = divmod(start, len(v_cands))
+        start += 1
+        scanned += 1
+        strands, info = copy.deepcopy(entry["checkpoint"])
+        crossings = NX.apply_solution(strands, info, level, m, n,
+                                      _SESSION["hand"], h_cands[i], v_cands[j])
+        if crossings != expected:
+            continue
+        row = describe(_synth_result(entry, h_cands[i], v_cands[j]),
+                       [dict(s) for s in strands], level,
+                       entry["k"], expected, (2 * m, 2 * n))
+        if healthy_only and not row["healthy"]:
+            continue
+        found.append({"h": i, "v": j, "row": row,
+                      "strands": _stage_strands(NX._snapshot_json(strands))})
+    entry["scan_cursor"] = start
+    if want_index < len(found):
+        return found[want_index], False, start
+    return None, False, start
+
+
+def _synth_result(entry, h_cand, v_cand):
+    """The shape describe() reads, rebuilt from a candidate pair."""
+    def side(cand):
+        return {"success": True, "is_fallback": False,
+                "average_gap": cand.get("gap") or 0,
+                "pair_extensions": list(cand.get("ext") or ())}
+    return {"horizontal": side(h_cand), "vertical": side(v_cand),
+            "search": entry["search"]}
+
+
+def enumerate_level(level):
+    """Build a candidate list for a level that was solved without one.
+
+    A seeded or pinned level only ever saw the single combo it was told to use,
+    and a square level 1 pins V to H through share_square_extensions, so neither
+    has anything to page through. Re-solve the level from its checkpoint with no
+    seeds and no mirroring, purely to enumerate -- the ring the reader is looking
+    at is left exactly as generate() produced it until they actually step.
+    """
+    entry = _level_session(int(level))
+    if entry["enumerated"] == "full" or entry["k"] == 0:
+        return json.dumps({"level": entry["level"], "meta": _solution_meta(entry)},
+                          separators=(",", ":"))
+    m, n = _SESSION["m"], _SESSION["n"]
+    strands, info = copy.deepcopy(entry["checkpoint"])
+    with contextlib.redirect_stdout(io.StringIO()):
+        result = NX.align_continuation_level(
+            strands, m, n, entry["k"], _SESSION["direction"], _SESSION["hand"],
+            entry["level"], info, mirror_sides=False, seed_extensions=[],
+            collect_candidates=True, verbose=False)
+    cands = result.get("candidates") or {}
+    entry["h_cands"] = cands.get("h") or []
+    entry["v_cands"] = cands.get("v") or []
+    entry["found"] = []
+    entry["scan_cursor"] = 0
+    if entry["h_cands"] and entry["v_cands"]:
+        entry["enumerated"] = "full"
+        entry["reason"] = None
+    return json.dumps({"level": entry["level"], "meta": _solution_meta(entry)},
+                      separators=(",", ":"))
+
+
+def select_solution(level, index, healthy_only=False, cursor=None):
+    """Materialise solution `index` for `level` and make it the live ring."""
+    entry = _level_session(int(level))
+    index = max(0, int(index))
+    if entry["enumerated"] == "none" and entry["k"] != 0:
+        enumerate_level(entry["level"])
+    if entry["enumerated"] == "none":
+        return json.dumps({"level": entry["level"], "partial": False,
+                           "reason": entry.get("reason"),
+                           "meta": _solution_meta(entry)}, separators=(",", ":"))
+    hit, partial, cur = _walk(entry, index, bool(healthy_only), cursor)
+    if hit is None:
+        return json.dumps({"level": entry["level"], "partial": partial,
+                           "cursor": cur, "count": len(entry["found"]),
+                           "meta": _solution_meta(entry)}, separators=(",", ":"))
+    entry["index"] = index
+    return json.dumps({
+        "level": entry["level"], "index": index, "partial": False,
+        "count": len(entry["found"]),
+        "countExact": entry["scan_cursor"] >= len(entry["h_cands"]) * len(entry["v_cands"]),
+        "row": hit["row"], "strands": hit["strands"],
+        "meta": _solution_meta(entry),
+    }, separators=(",", ":"))
+
+
+def count_solutions(level):
+    """Firm up the exact solution count for a level, budget-bounded."""
+    entry = _level_session(int(level))
+    _walk(entry, 1 << 30, False, None)
+    total = len(entry["h_cands"]) * len(entry["v_cands"])
+    return json.dumps({"level": entry["level"], "count": len(entry["found"]),
+                       "countExact": entry["scan_cursor"] >= total},
+                      separators=(",", ":"))

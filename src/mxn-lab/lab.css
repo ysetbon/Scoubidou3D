@@ -140,6 +140,24 @@ textarea {
   opacity: .38; cursor: not-allowed; border-color: var(--line);
 }
 .stop-button:not(:disabled) { border-color: var(--red); color: #8f2e22; }
+
+/* Solution browser, in the card head beside Copy JSON. */
+.solution-nav { display: inline-flex; align-items: center; gap: 4px; }
+.solution-nav button {
+  width: 24px; height: 24px; padding: 0; cursor: pointer;
+  border: 1px solid var(--line); background: transparent; border-radius: 2px;
+  font: 700 13px/1 monospace;
+}
+.solution-nav button:hover:not(:disabled) { border-color: var(--ink); background: var(--acid); }
+.solution-nav button:disabled { opacity: .34; cursor: not-allowed; }
+.solution-nav b { font: 700 10px/1 monospace; min-width: 52px; text-align: center; }
+.solution-nav em {
+  font: 600 9px/1 monospace; font-style: normal; letter-spacing: .04em;
+  padding: 3px 5px; border-radius: 100px; background: rgba(39,107,114,.12); color: var(--blue);
+}
+.solution-nav .save-solution { border-color: transparent; font-size: 14px; width: 26px; }
+.solution-nav .save-solution:hover { border-color: var(--ink); }
+.solution-note { font: 600 9px/1 monospace; color: var(--muted); }
 .stats { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); margin-top: 22px; }
 .stat { padding: 13px; }
 .stat + .stat { border-left: 1px solid var(--line); }

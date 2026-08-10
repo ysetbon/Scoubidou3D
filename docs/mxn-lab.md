@@ -137,6 +137,42 @@ orientation exchange from one level into the next. A copy that loses that will
 still render; it will just quietly stop weaving, which is why the check is on
 the numbers and not on whether a picture appeared.
 
-The `short-arms-v4` cache key appears in both the worker URL
+### Browsing every solution
+
+Each level's card carries `‹ index / count ›` and a ⭐. The engine already
+enumerates every valid configuration per band and hands them over through
+`on_config_callback`, so the candidate lists cost no extra search; stepping a
+solution overlays one H and one V candidate onto a fresh virtual view
+(`NX.apply_solution`) and keeps it only if the joint `_ring_crossings` score is
+complete. Roughly 1 ms per ring, so an arrow click is instant.
+
+Order is lexicographic, H outer, V inner — the same shape `attempt()` uses.
+Nothing is re-ranked, and the engine's own answer sits at its natural position.
+
+Two kinds of level have no list to start from and enumerate on the first click,
+which runs one extra search:
+
+- a **seeded or pinned** level only ever saw the combo it was told to use
+  (`LEVEL_ONE_DEFAULT_SOLUTIONS` makes `2×2 k=1` one of these);
+- a **square level 1** pins V to H through `share_square_extensions`, so V never
+  really searched. Enumeration re-solves with `mirror_sides=False`.
+
+`k = 0` is the one case with genuinely one solution, and says so.
+
+What this buys, measured:
+
+| size · k | engine pick | shortest complete ring while browsing |
+|---|---|---|
+| 1×3 `k=1` | `(170,130,150)(0)` 450 | `(100,0,50)(50)` **200** |
+| 2×2 `k=1` | `(40,10)(40,10)` 100 | `(40,0)(40,0)` **80** |
+
+Both browsed rings audit clean — 12/12 and 16/16 across, 0 within/stray/broken.
+This is the joint search the per-band `prefer_short_arms` tie-break cannot do.
+
+⭐ writes to `localStorage` under `mxn-lab-solutions`, in the shape the eventual
+database table takes — including `parent_strands`, the Lᵥ₋₁ ring it was built
+on, so a later rating always knows what it was rating. Download exports the set.
+
+The `browse-solutions-v5` cache key appears in both the worker URL
 (`weave-studio.tsx`) and the Python fetch URL (`exact-worker.js`). Bump both
 together when the engine files change, or returning readers run stale geometry.
