@@ -495,3 +495,332 @@ def count_solutions(level):
     return json.dumps({"level": entry["level"], "count": len(entry["found"]),
                        "countExact": entry["scan_cursor"] >= total},
                       separators=(",", ":"))
+
+
+# ---------------------------------------------------------------------------
+# Near-misses: rings where one band is good and the other is what failed.
+#
+# The ordinary browse keeps only pairs whose joint crossing count reaches
+# `expected` and throws the rest away, which is too strict to learn anything
+# from. The two bands are searched independently, so a perfectly good set of H
+# extensions can be discarded on account of the V it happened to be tested
+# against; and what decides a borderline pair is the corner detection, which is
+# not yet exact for every k and every m x n.
+#
+# So hold one band at a value taken from a ring that IS complete, sweep every
+# candidate of the other band against it, and keep the ones that fall short.
+# Because the held band is known good, the shortfall is attributable to the
+# swept band -- which is the whole point. Each row then says "this H value
+# failed, against a V that is known to work", and that is a claim a person can
+# look at and judge.
+#
+# One held value is not enough, and getting this wrong is the trap the whole
+# routine is here to avoid. A candidate that fails against one partner may close
+# against another, and THAT kind is already reachable by browsing -- so calling
+# it a near-miss would send a rater to judge something the search never lost.
+# Measured on 2x1 k=1: sweeping against one partner reported 59 near-misses, of
+# which 40 closed as soon as a second distinct partner was tried. So each band
+# is swept against up to SEMI_REFERENCES distinct partners and a candidate is
+# kept only if it closed against none of them.
+#
+# It is still not a proof -- some further partner might close it -- so the number
+# of partners tried travels with every row instead of being rounded up to
+# "never". A rating is only as good as what the rater was told.
+#
+# Cost is (len(h) + len(v)) * partners ring replays, not len(h) * len(v): the
+# product is what makes a full joint scan unaffordable, and a marginal sweep
+# avoids it even several partners deep.
+# ---------------------------------------------------------------------------
+
+# Per band, how many candidates one sweep will replay. 1200 rings is a few
+# seconds in Pyodide; past that the scan reports itself truncated rather than
+# quietly stopping.
+SEMI_BAND_CAP = 1200
+
+# How many budgeted _walk chunks to spend collecting complete rings to take
+# reference partners from, before giving up and holding the engine's own pick.
+SEMI_REF_CHUNKS = 4
+
+# How many complete rings to add per pass while looking for partners, and how
+# many distinct partners to sweep each band against.
+SEMI_REF_SCAN = 12
+SEMI_REFERENCES = 3
+
+# How many of the sorted near-misses to hand back to the page in one reply.
+SEMI_RETURN_CAP = 500
+
+
+def _band_split(strands, level, sizes):
+    """This level's new arms, split into the two direction families and named.
+
+    `_split_direction_families` returns the families in geometric order, with no
+    opinion about which is which. Name them the way `_stage_strands` colours
+    them -- the family whose arms run more up-and-down is the vertical one -- so
+    "V" on a rating card means the indigo band the reader is looking at.
+    """
+    _, _, dst_a, dst_b = NX.level_suffixes(level)
+    arms = [s for s in strands if s.get("type") == "AttachedStrand"
+            and s["layer_name"].endswith((f"_{dst_a}", f"_{dst_b}"))]
+    if len(arms) < 4:
+        return None
+    by_name = {s["layer_name"]: s for s in arms}
+    band_a, band_b, _fan = NX._split_direction_families(by_name, list(by_name), sizes)
+
+    def uprightness(names):
+        if not names:
+            return 0.0
+        total = 0.0
+        for name in names:
+            arm = by_name[name]
+            total += (abs(arm["end"]["y"] - arm["start"]["y"])
+                      - abs(arm["end"]["x"] - arm["start"]["x"]))
+        return total / len(names)
+
+    if uprightness(band_a) > uprightness(band_b):
+        return arms, by_name, list(band_b), list(band_a)
+    return arms, by_name, list(band_a), list(band_b)
+
+
+def band_report(strands, level, expected, sizes, h_arms=None):
+    """Score a ring per band, rather than as one number.
+
+    `_ring_crossings` collapses the ring to `across - within`, which cannot say
+    which band went wrong. Here the same crossings are counted but kept apart:
+    within-band crossings are attributed to the band they happened inside, and
+    every arm's reach across the other band is recorded, so an arm that fell
+    short can be pointed at.
+
+    Note that `across` alone is symmetric -- if one H arm misses a V arm then
+    that V arm equally misses it, so a shortfall in `across` is never by itself
+    evidence against one band. What IS one-sided is a fold: a band whose own
+    arms cross each other is malformed on its own terms. Both are reported, and
+    the sweep below supplies the attribution `across` cannot.
+
+    `h_arms`, when given, names the H band exactly: a candidate's `moves` list
+    every arm that band's search controls, so it settles which band is "H"
+    without a heuristic. That matters on a non-square, where the engine's H
+    group is not always the geometrically horizontal family -- 2x1 puts 1 pair
+    in H and 2 in V, and the direction-family split cuts the other way round.
+    Reporting `withinH` on one axis while labelling the row on the other would
+    put the fold against the wrong band. Falls back to the geometric split for
+    callers with no candidate in hand.
+    """
+    split = _band_split(strands, level, sizes)
+    if split is None:
+        return None
+    arms, _by_name, h_names, v_names = split
+    names = {arm["layer_name"] for arm in arms}
+    stated = set(h_arms or ()) & names
+    if stated and stated != names:
+        h_names, v_names = sorted(stated), sorted(names - stated)
+    h_set = set(h_names)
+    reach = {arm["layer_name"]: 0 for arm in arms}
+    across = within_h = within_v = 0
+    for i, a in enumerate(arms):
+        for b in arms[i + 1:]:
+            if NX._segment_crossing(a, b) is None:
+                continue
+            an, bn = a["layer_name"], b["layer_name"]
+            if (an in h_set) == (bn in h_set):
+                if an in h_set:
+                    within_h += 1
+                else:
+                    within_v += 1
+            else:
+                across += 1
+                reach[an] += 1
+                reach[bn] += 1
+    h_short = sum(1 for name in h_names if reach[name] < len(v_names))
+    v_short = sum(1 for name in v_names if reach[name] < len(h_names))
+    return {
+        "across": across, "expected": expected,
+        "withinH": within_h, "withinV": within_v,
+        "hArms": len(h_names), "vArms": len(v_names),
+        "hShort": h_short, "vShort": v_short,
+        "hPass": not h_short and not within_h,
+        "vPass": not v_short and not within_v,
+        "deficit": expected - (across - within_h - within_v),
+    }
+
+
+def _candidate_arms(candidate):
+    """The `_4/_5` arm names one band's candidate controls.
+
+    `_project_candidate` records one move per arm the band's search wrote, so
+    this is the band's own account of its membership rather than an inference
+    from the geometry.
+    """
+    return [move[0] for move in (candidate.get("moves") or [])]
+
+
+def _reference_partners(entry):
+    """Distinct partners, drawn from rings that close, one list per swept band.
+
+    Sweeping against a single partner cannot tell "this value is bad" from "this
+    value did not suit that one partner", and the difference is the whole point:
+    the second kind is already reachable by browsing, so calling it a near-miss
+    would send a rater to judge something the engine never actually lost.
+
+    Several distinct partners narrow the claim. A candidate that closed against
+    none of them is one the search really does throw away. It is still not a
+    proof -- some further partner might close it -- which is why the count of
+    partners tried travels with every row instead of being rounded up to
+    "never".
+
+    An H candidate's partner is a V and vice versa, so the two lists are the
+    distinct V and H sides of the complete rings found.
+    """
+    # Keep going until BOTH sides are diverse, not just until enough rings have
+    # been found. Complete rings come out H-outer and V-inner, so the first
+    # dozen tend to share one H between them -- and it is the V sweep that needs
+    # distinct H partners. Stopping on ring count alone left that sweep with a
+    # single partner, which is the weak evidence this is here to avoid.
+    total = len(entry["h_cands"]) * len(entry["v_cands"])
+    target = SEMI_REF_SCAN
+    for _ in range(SEMI_REF_CHUNKS):
+        _walk(entry, target, False, None)
+        partners = _partners_from(entry["found"])
+        if min(len(partners["h"]), len(partners["v"])) >= SEMI_REFERENCES:
+            break
+        # Exhaustion is the cursor reaching the end of the product, NOT _walk
+        # returning partial=False -- it returns that whenever it simply found
+        # what it was asked for, which is the common case and would end this
+        # loop after a single pass with whatever diversity that pass happened
+        # to give. Asking for more rings than are currently held is what makes
+        # the next pass go further.
+        if entry.get("scan_cursor", 0) >= total:
+            break
+        target = len(entry["found"]) + SEMI_REF_SCAN
+    rings = entry["found"]
+    if not rings:
+        pick_h, pick_v = entry["engine_pick_hv"]
+        return {"h": [pick_v], "v": [pick_h]}, 0
+    return _partners_from(rings), len(rings)
+
+
+def _partners_from(rings):
+    """Distinct partner indices per swept band; "h" holds V indices, and back."""
+    partners = {"h": [], "v": []}
+    for ring in rings:
+        if ring["v"] not in partners["h"] and len(partners["h"]) < SEMI_REFERENCES:
+            partners["h"].append(ring["v"])
+        if ring["h"] not in partners["v"] and len(partners["v"]) < SEMI_REFERENCES:
+            partners["v"].append(ring["h"])
+    return partners
+
+
+def scan_semicomplete(level):
+    """Sweep both bands against partners that work, and keep what falls short."""
+    entry = _level_session(int(level))
+    if entry["enumerated"] == "none" and entry["k"] != 0:
+        enumerate_level(entry["level"])
+    m, n = _SESSION["m"], _SESSION["n"]
+    expected = 4 * m * n
+    sizes = (2 * m, 2 * n)
+    h_cands, v_cands = entry["h_cands"], entry["v_cands"]
+    if not h_cands or not v_cands:
+        entry["semi"] = []
+        return json.dumps({
+            "level": entry["level"], "items": [], "count": 0, "truncated": False,
+            "grounded": False, "refs": 0,
+            "reason": entry.get("reason") or "this level has no candidate lists",
+        }, separators=(",", ":"))
+
+    partners, complete_seen = _reference_partners(entry)
+    grounded = complete_seen > 0
+    items, truncated = [], False
+    for band, cands in (("h", h_cands), ("v", v_cands)):
+        others = [index for index in partners[band]
+                  if index < len(v_cands if band == "h" else h_cands)]
+        if not others:
+            continue
+        if len(cands) > SEMI_BAND_CAP:
+            truncated = True
+        for index in range(min(len(cands), SEMI_BAND_CAP)):
+            best = None
+            closed = False
+            for other in others:
+                i, j = (index, other) if band == "h" else (other, index)
+                strands, info = copy.deepcopy(entry["checkpoint"])
+                NX.apply_solution(strands, info, entry["level"], m, n,
+                                  _SESSION["hand"], h_cands[i], v_cands[j])
+                report = band_report(strands, entry["level"], expected, sizes,
+                                     _candidate_arms(h_cands[i]))
+                if report is None:
+                    continue
+                if report["deficit"] <= 0:
+                    # This value closes the ring with a real partner, so it is
+                    # not lost and the ordinary browse already reaches it.
+                    closed = True
+                    break
+                if best is None or report["deficit"] < best[0]["deficit"]:
+                    best = (report, i, j)
+            if closed or best is None:
+                continue
+            report, i, j = best
+            swept = h_cands[i] if band == "h" else v_cands[j]
+            items.append({
+                "band": band, "index": index, "h": i, "v": j,
+                "refs": len(others),
+                "ext": list(swept.get("ext") or ()),
+                "heldExt": list((v_cands[j] if band == "h" else h_cands[i]).get("ext") or ()),
+                "angle": swept.get("angle"), "gap": swept.get("gap"),
+                "hExt": list(h_cands[i].get("ext") or ()),
+                "vExt": list(v_cands[j].get("ext") or ()),
+                "total": sum(int(e) for e in (h_cands[i].get("ext") or ()))
+                         + sum(int(e) for e in (v_cands[j].get("ext") or ())),
+                "across": report["across"], "expected": expected,
+                "withinH": report["withinH"], "withinV": report["withinV"],
+                "deficit": report["deficit"],
+                "folded": (report["withinH"] > 0) if band == "h"
+                          else (report["withinV"] > 0),
+            })
+
+    # Nearest misses first: a ring one crossing short is where the corner test is
+    # most likely to be the thing that is wrong, and it is the cheapest to judge.
+    items.sort(key=lambda item: (item["deficit"], item["total"], item["band"], item["index"]))
+    entry["semi"] = items
+    return json.dumps({
+        "level": entry["level"], "count": len(items), "truncated": truncated,
+        "grounded": grounded, "refs": max(len(partners["h"]), len(partners["v"])),
+        "reason": None if grounded else
+                  "no complete ring was found to sweep against, so the engine's own "
+                  "pick is standing in and the band labels are not proof",
+        # The full list stays in the session for select_semicomplete to index
+        # into; only the head of it crosses the worker boundary, because a dense
+        # level can produce a couple of thousand of these and the page walks
+        # them one at a time anyway.
+        "items": items[:SEMI_RETURN_CAP],
+        "listed": min(len(items), SEMI_RETURN_CAP),
+    }, separators=(",", ":"))
+
+
+def select_semicomplete(level, index):
+    """Materialise near-miss `index` so it can be drawn, audited and starred."""
+    entry = _level_session(int(level))
+    items = entry.get("semi")
+    if items is None:
+        scan_semicomplete(entry["level"])
+        items = entry.get("semi") or []
+    index = max(0, int(index))
+    if not items:
+        return json.dumps({"level": entry["level"], "count": 0,
+                           "reason": "nothing fell short for this level"},
+                          separators=(",", ":"))
+    index = min(index, len(items) - 1)
+    item = items[index]
+    m, n = _SESSION["m"], _SESSION["n"]
+    expected = 4 * m * n
+    strands, info = copy.deepcopy(entry["checkpoint"])
+    NX.apply_solution(strands, info, entry["level"], m, n, _SESSION["hand"],
+                      entry["h_cands"][item["h"]], entry["v_cands"][item["v"]])
+    row = describe(_synth_result(entry, entry["h_cands"][item["h"]],
+                                 entry["v_cands"][item["v"]]),
+                   [dict(s) for s in strands], entry["level"], entry["k"],
+                   expected, (2 * m, 2 * n))
+    entry["semi_index"] = index
+    return json.dumps({
+        "level": entry["level"], "index": index, "count": len(items),
+        "item": item, "row": row,
+        "strands": _stage_strands(NX._snapshot_json(strands)),
+    }, separators=(",", ":"))

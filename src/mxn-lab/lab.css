@@ -169,6 +169,18 @@ textarea {
 .solution-nav .save-solution:hover { border-color: var(--ink); }
 .solution-note { font: 600 9px/1 monospace; color: var(--muted); }
 
+/* Near-miss mode. The whole strip goes red-bordered rather than only the badge:
+   these rings do NOT close, and the card is otherwise identical to one that
+   does, so the distinction has to be visible at a glance. */
+.solution-nav.is-semi {
+  border: 1px dashed var(--red); border-radius: 4px; padding: 2px 4px;
+  background: rgba(228, 81, 63, .05);
+}
+.solution-nav em.band-h,
+.solution-nav em.band-v { background: rgba(228, 81, 63, .14); color: #8f2e22; }
+.semi-toggle { font-size: 12px; opacity: .6; }
+.semi-toggle.is-on { opacity: 1; border-color: var(--red); color: #8f2e22; }
+
 .api-settings { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
 .api-settings summary { font: 800 10px/1 monospace; text-transform: uppercase; cursor: pointer; letter-spacing: .08em; }
 .api-settings .field { margin-top: 12px; margin-bottom: 0; }

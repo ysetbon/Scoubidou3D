@@ -112,13 +112,25 @@ async function createSolution(request: Request, env: Env) {
   const audit = body.audit as Record<string, unknown>;
   const id = typeof body.id === "string" && body.id ? body.id : crypto.randomUUID();
 
+  // A row is a near-miss only if it says so. Anything written by a page that
+  // predates near-misses is a closed ring, which is what the column default
+  // already says — stating it here keeps INSERT OR REPLACE from blanking it.
+  const kind = body.kind === "semi" ? "semi" : "complete";
+  const band = kind === "semi" && (body.band === "h" || body.band === "v")
+    ? body.band : null;
+  const deficit = Number.isInteger(body.deficit as number)
+    ? Math.max(0, body.deficit as number) : 0;
+  const refs = Number.isInteger(body.refs as number)
+    ? Math.max(0, body.refs as number) : 0;
+
   await env.DB.prepare(
     `INSERT OR REPLACE INTO solutions
        (id, created_at, hand, direction, m, n, level, k, ks_prefix,
         parent_strands, solution_strands, h_ext, v_ext, total_ext,
-        audit, healthy, solution_index, rating, rated_at)
+        audit, healthy, solution_index, kind, band, deficit, refs,
+        rating, rated_at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
-             ?15, ?16, ?17, ?18, ?19)`
+             ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)`
   ).bind(
     id,
     (body.created_at as string) || new Date().toISOString(),
@@ -134,6 +146,7 @@ async function createSolution(request: Request, env: Env) {
     JSON.stringify(audit),
     audit.healthy ? 1 : 0,
     body.solution_index,
+    kind, band, deficit, refs,
     Number.isInteger(body.rating as number) ? body.rating : null,
     Number.isInteger(body.rating as number) ? new Date().toISOString() : null,
   ).run();
@@ -154,15 +167,30 @@ async function listSolutions(request: Request, env: Env) {
   }
   if (params.get("unrated") === "1") where.push("rating IS NULL");
   if (params.get("healthy") === "1") where.push("healthy = 1");
+  const kind = params.get("kind");
+  if (kind === "semi" || kind === "complete") {
+    where.push(`kind = ?${binds.length + 1}`);
+    binds.push(kind);
+  }
+  const band = params.get("band");
+  if (band === "h" || band === "v") {
+    where.push(`band = ?${binds.length + 1}`);
+    binds.push(band);
+  }
 
   const limit = Math.min(Math.max(Number(params.get("limit")) || 100, 1), 500);
-  // Shortest first: total_ext exists precisely so this is not a JSON scan.
+  // Closed rings sort shortest first; near-misses sort by how near they came,
+  // because a ring one crossing short is the one most worth a person's eyes.
+  // Both columns exist precisely so neither ordering is a JSON scan.
+  const order = kind === "semi"
+    ? "deficit ASC, total_ext ASC, created_at ASC"
+    : "total_ext ASC, created_at ASC";
   const rows = await env.DB.prepare(
     `SELECT id, created_at, m, n, level, k, ks_prefix, h_ext, v_ext, total_ext,
-            audit, healthy, solution_index, rating
+            audit, healthy, solution_index, kind, band, deficit, refs, rating
        FROM solutions
        ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-       ORDER BY total_ext ASC, created_at ASC
+       ORDER BY ${order}
        LIMIT ${limit}`
   ).bind(...binds).all();
 

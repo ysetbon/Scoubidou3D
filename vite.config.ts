@@ -33,6 +33,7 @@ export default defineConfig({
         twist: page('twist/index.html'),
         mxn: page('mxn/index.html'),
         mxnRate: page('mxn/rate/index.html'),
+        mxnSemi: page('mxn/semi/index.html'),
       },
     },
   },

@@ -206,6 +206,54 @@ than something to browse.
 
 `noindex` in the head: it is a private tool over a token-gated dataset.
 
-The `dataset-api-v6` cache key appears in both the worker URL
+### Near-misses, at /mxn/semi/
+
+The browse above keeps only pairs whose joint crossing count reaches `expected`
+and throws the rest away, which is too strict to learn from. The two bands are
+searched independently, so a good set of H extensions can be lost on account of
+the V it happened to be tested against — and what decides a borderline pair is
+the corner detection, which is not yet exact for every `k` and every `m × n`.
+
+The `◑` button on a level's card sweeps for those. Rather than the full `H × V`
+product, it holds one band at a value taken from a ring that **does** close and
+varies the other, so a sweep costs `len(h) + len(v)` replays instead of
+`len(h) × len(v)` — a second or two, not minutes.
+
+One reference partner is not enough. A candidate that fails against one partner
+may close against another, and that kind is already reachable by browsing, so
+calling it a near-miss would send a rater to judge something the search never
+lost. Each band is therefore swept against up to **three distinct** partners and
+a candidate is kept only if it closed against none of them. On `3×1 k=1` that
+prunes 224 apparent near-misses to 165; on `2×2 k=1`, 6 to 3. It is still not a
+proof — some further partner might close it — so `refs`, the number of partners
+tried, is stored on every row and shown on every card rather than being rounded
+up to "never".
+
+Collecting those partners has one trap. Complete rings enumerate H-outer and
+V-inner, so the first dozen share one H between them; taking partners from a
+fixed number of rings left the V sweep — the side that carries nearly all the
+near-misses on a non-square — with a single partner. The walk now continues
+until *both* sides are diverse, or the product is exhausted and however few
+exist is all there are.
+
+Attribution rests on naming the bands correctly, and that is not a geometric
+question. `2×1` puts one pair in the engine's H group and two in V, while the
+direction-family split cuts the other way, so `band_report` takes the H
+membership from the candidate's own `moves` list instead of guessing from the
+arm angles. Reporting a fold against the wrong band would be worse than not
+reporting it.
+
+`◑` again returns the card to rings that close. `⭐` in near-miss mode writes
+`kind: "semi"` with the band, the deficit and `refs`, and `/mxn/semi/` is the
+queue over those rows — the same component as the categoriser, tinted amber, so
+a rating cannot be filed against the wrong question by accident. What a score
+means there is different: it is about one band's numbers only, and 100 is a
+claim that the search discarded extensions it should have kept.
+
+`k = 0` has one configuration and nothing to sweep, so it gets no `◑`.
+
+### Cache keys
+
+The `semi-rate-v7` cache key appears in both the worker URL
 (`weave-studio.tsx`) and the Python fetch URL (`exact-worker.js`). Bump both
 together when the engine files change, or returning readers run stale geometry.
