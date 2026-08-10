@@ -74,7 +74,17 @@ h1 em { color: var(--blue); font-weight: 400; }
   border-right: 1px solid var(--ink);
   background: rgba(251,248,239,.72);
 }
-.controls-inner { position: sticky; top: 98px; }
+/* Sticky, but bounded: the panel now holds parameters, the step grid, run
+   controls and the dataset settings, which overflows a laptop viewport. A
+   sticky box taller than the screen simply cuts its own bottom off -- scrolling
+   the page moves the results column, not the stuck sidebar -- so it has to
+   carry its own scrollbar. */
+.controls-inner {
+  position: sticky; top: 98px;
+  max-height: calc(100vh - 98px - 24px);
+  overflow-y: auto;
+  padding-right: 6px;
+}
 .section-kicker { display: flex; justify-content: space-between; align-items: center; margin-bottom: 26px; }
 .section-kicker h2 { font: 800 12px/1 monospace; letter-spacing: .12em; text-transform: uppercase; margin: 0; }
 .live { font: 800 10px/1 monospace; text-transform: uppercase; color: var(--blue); display: flex; align-items: center; gap: 6px; }
