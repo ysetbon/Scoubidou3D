@@ -1,48 +1,87 @@
 /* Layered over the lab's stylesheet, so tokens, buttons and typography match.
-   Only the rating-specific layout lives here. */
+   Only the rating-specific layout lives here.
+
+   The whole page is built to fit one screen without scrolling: rating is a
+   repeated act, and a scroll between every judgement is the thing that makes a
+   few hundred rows feel like work. */
 .rate-bar {
   display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
-  padding: 20px clamp(20px, 4vw, 64px);
+  padding: 14px clamp(16px, 3vw, 48px);
   border-bottom: 1px solid var(--ink);
 }
 .rate-bar input[type="url"], .rate-bar input[type="password"] {
-  flex: 1 1 260px; height: 40px; padding: 0 12px;
+  flex: 1 1 220px; height: 34px; padding: 0 10px;
   background: var(--card); border: 1px solid var(--line); border-radius: 2px;
-  font: 600 12px/1 monospace; outline: none;
+  font: 600 11px/1 monospace; outline: none;
 }
 .rate-bar input:focus { border-color: var(--ink); box-shadow: 0 0 0 3px var(--acid); }
-.rate-bar .run-button, .rate-bar .stop-button { flex: 0 0 auto; padding: 0 22px; }
+.rate-bar .run-button { flex: 0 0 auto; padding: 0 20px; height: 34px; }
 .rate-bar .toggle-line { margin-top: 0; }
 
-.rate-status { padding: 14px clamp(20px, 4vw, 64px); font: 600 12px/1.5 monospace; color: var(--muted); }
+.rate-status { padding: 8px clamp(16px, 3vw, 48px); font: 600 11px/1.5 monospace; color: var(--muted); margin: 0; }
 
-.rate-card { padding: 0 clamp(20px, 4vw, 64px) 60px; }
-.rate-head { display: grid; gap: 6px; margin-bottom: 18px; font: 600 12px/1.5 monospace; }
-.rate-head strong { font: 400 26px/1 Georgia, serif; }
-.rate-head .ok { color: var(--blue); }
-.rate-head .bad { color: #8f2e22; }
+.rate-card { padding: 0 clamp(16px, 3vw, 48px) 20px; }
+
+/* One line of chips: size, k, level and health readable in a single glance,
+   because the reader is deciding in a couple of seconds. */
+.rate-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.rate-head h1 { margin: 0; font: 400 30px/1 Georgia, serif; letter-spacing: -.03em; }
+.chip {
+  font: 700 10px/1 monospace; padding: 5px 8px; border-radius: 100px;
+  border: 1px solid var(--line); white-space: nowrap;
+}
+.chip.total { background: var(--acid); border-color: var(--ink); }
+.chip.ok { color: var(--blue); border-color: var(--blue); }
+.chip.bad { color: #8f2e22; border-color: var(--red); background: rgba(228,81,63,.08); }
+.chip.rated { background: rgba(39,107,114,.12); }
+
+.rate-body { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 16px; align-items: start; }
 
 /* Side by side on purpose: a rating is of the step from one ring to the next,
-   so the base has to be visible at the same time as the result. */
-.rate-rings { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+   so the base has to be visible at the same time as the result. Capped by
+   viewport height rather than width so both stay on screen with the buttons. */
+.rate-rings { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .ring { margin: 0; border: 1px solid var(--ink); background: var(--card); }
 .ring figcaption {
-  padding: 9px 12px; border-bottom: 1px solid var(--line);
-  font: 700 10px/1 monospace; text-transform: uppercase; letter-spacing: .07em;
+  padding: 6px 9px; border-bottom: 1px solid var(--line);
+  font: 700 9px/1 monospace; text-transform: uppercase; letter-spacing: .07em;
 }
-.ring canvas { display: block; width: 100%; aspect-ratio: 1 / 1; }
+.ring canvas { display: block; width: 100%; height: min(42vh, 340px); }
 
-.rate-score { display: flex; align-items: center; gap: 14px; margin-top: 22px; flex-wrap: wrap; }
-.rate-score input[type="range"] { flex: 1 1 320px; accent-color: var(--blue); }
-.rate-score b { font: 400 34px/1 Georgia, serif; min-width: 62px; }
-.rate-score em { font: 600 11px/1 monospace; font-style: normal; color: var(--muted); }
-.rate-score .run-button, .rate-score .stop-button { flex: 0 0 auto; padding: 0 22px; height: 44px; }
-
-.rate-quick { display: flex; gap: 8px; margin-top: 14px; }
-.rate-quick button {
-  border: 1px solid var(--line); background: transparent; padding: 7px 16px;
-  border-radius: 100px; font: 700 11px/1 monospace; cursor: pointer;
+.rate-detail table { width: 100%; border-collapse: collapse; font: 600 11px/1.5 monospace; }
+.rate-detail th {
+  text-align: left; padding: 4px 8px 4px 0; color: var(--muted);
+  font-weight: 700; text-transform: uppercase; font-size: 9px; letter-spacing: .06em;
+  white-space: nowrap; vertical-align: top;
 }
-.rate-quick button:hover { border-color: var(--ink); background: var(--acid); }
+.rate-detail td { padding: 4px 0; }
+.rate-detail td b {
+  display: inline-block; margin-right: 5px; padding: 2px 6px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 2px;
+}
+.rate-detail details { margin-top: 10px; font: 600 10px/1.5 monospace; }
+.rate-detail summary { cursor: pointer; color: var(--blue); }
+.rate-detail ul { margin: 8px 0 0; padding-left: 16px; }
+.rate-detail li { margin-bottom: 2px; }
+.rate-detail details p { color: var(--muted); margin: 8px 0 0; }
 
-@media (max-width: 860px) { .rate-rings { grid-template-columns: 1fr; } }
+/* The scale is the point of the page, so it gets the whole width and targets
+   big enough to hit without aiming. */
+.rate-scores { display: flex; gap: 6px; margin-top: 16px; flex-wrap: wrap; }
+.rate-scores button {
+  flex: 1 1 0; min-width: 56px; height: 52px;
+  border: 1px solid var(--ink); background: var(--card); border-radius: 2px;
+  font: 700 15px/1 monospace; cursor: pointer;
+}
+.rate-scores button:hover:not(:disabled) { background: var(--acid); box-shadow: 0 0 0 3px var(--acid); }
+.rate-scores button:disabled { opacity: .4; cursor: not-allowed; }
+.rate-scores button.high { background: rgba(219,234,101,.4); }
+.rate-scores button.skip { flex: 0 0 84px; border-color: var(--red); color: #8f2e22; font-size: 11px; }
+
+@media (max-width: 980px) {
+  .rate-body { grid-template-columns: 1fr; }
+  .ring canvas { height: min(34vh, 280px); }
+}
+@media (max-width: 620px) {
+  .rate-rings { grid-template-columns: 1fr; }
+}
