@@ -56,14 +56,80 @@ const QUEUES = {
     help: "Hover or arrow to a row, then 0–9 scores 0–90, Q 95, W 100, S skips. Rating moves to the next row.",
     empty: "Nothing left unrated.",
     other: { href: "../semi/", label: "Near-misses →" },
+    file: "mxn-closed-rings",
   },
   semi: {
     chip: "NEAR-MISSES",
     help: "These rings do not close. Score the marked band's numbers only — the other band was held at values taken from rings that do close, so 100 means the search threw away extensions it should have kept.",
     empty: "No unrated near-misses.",
     other: { href: "../rate/", label: "Closed rings →" },
+    file: "mxn-near-misses",
   },
 } as const;
+
+/** RFC 4180: quote only fields that need it, so the common case stays legible. */
+function csvCell(value: unknown) {
+  const text = value === null || value === undefined ? "" : String(value);
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+/**
+ * The loaded queue as a spreadsheet.
+ *
+ * Geometry is left out on purpose: the list endpoint does not return it, and
+ * pulling it for 500 rows to write strand coordinates nobody reads in a
+ * spreadsheet would cost megabytes for nothing. The columns are the ones the
+ * card already shows, so a sheet sorted by deficit or rating says the same
+ * thing as the page — plus `id`, which is what takes you back to a single row.
+ *
+ * The near-miss columns (band, deficit, refs) only exist on that queue, so the
+ * closed-ring export does not carry three empty columns to no purpose.
+ */
+function toCsv(rows: Row[], kind: Kind) {
+  const columns: [string, (row: Row, audit: Partial<AuditRow>) => unknown][] = [
+    ["id", r => r.id],
+    ["created_at", r => r.created_at],
+    ["m", r => r.m],
+    ["n", r => r.n],
+    ["level", r => r.level],
+    ["k", r => r.k],
+    ["ks_prefix", r => parseJson<number[]>(r.ks_prefix, []).join(" ")],
+    ["solution_index", r => r.solution_index],
+    ["h_ext", r => parseJson<number[]>(r.h_ext, []).join(" ")],
+    ["v_ext", r => parseJson<number[]>(r.v_ext, []).join(" ")],
+    ["total_ext", r => r.total_ext],
+    ...(kind === "semi" ? [
+      ["band", (r: Row) => r.band ?? ""],
+      ["deficit", (r: Row) => r.deficit ?? ""],
+      ["refs", (r: Row) => r.refs ?? 0],
+    ] as [string, (row: Row, audit: Partial<AuditRow>) => unknown][] : []),
+    ["across", (_r, a) => a.across ?? ""],
+    ["expected", (_r, a) => a.expected ?? ""],
+    ["within", (_r, a) => a.within ?? ""],
+    ["masks", (_r, a) => a.masks ?? ""],
+    ["gap_h", (_r, a) => a.gap ? a.gap[0].toFixed(2) : ""],
+    ["gap_v", (_r, a) => a.gap ? a.gap[1].toFixed(2) : ""],
+    ["healthy", r => r.healthy],
+    ["rating", r => r.rating ?? ""],
+  ];
+  const lines = [columns.map(([name]) => name).join(",")];
+  for (const row of rows) {
+    const audit = parseJson<Partial<AuditRow>>(row.audit, {});
+    lines.push(columns.map(([, read]) => csvCell(read(row, audit))).join(","));
+  }
+  return lines.join("\r\n");
+}
+
+function saveFile(name: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  // Revoking immediately can beat the download on some browsers; a tick is
+  // enough, and the object lives only until then either way.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 function readSetting(key: string) {
   try { return window.localStorage.getItem(key) || ""; } catch { return ""; }
@@ -297,6 +363,17 @@ export function Categoriser({ kind = "complete" }: { kind?: Kind }) {
     }
   };
 
+  // Everything loaded, not the ten on screen. The page is for judging one ring
+  // at a time; the file is for looking at the run as a set -- which extensions
+  // keep coming back, how the deficits are spread -- so it follows whatever
+  // Load pulled, filter and all, rather than the current page.
+  const download = () => {
+    if (!rows.length) { setStatus("Nothing loaded to download."); return; }
+    const day = new Date().toISOString().slice(0, 10);
+    saveFile(`${queue.file}-${day}.csv`, toCsv(rows, kind));
+    setStatus(`Saved ${rows.length} row${rows.length === 1 ? "" : "s"}.`);
+  };
+
   // The list endpoint omits geometry -- it would be megabytes across 500 rows.
   // Pull it for the ten actually on screen, in parallel, and keep what arrives
   // so paging back is instant.
@@ -399,6 +476,8 @@ export function Categoriser({ kind = "complete" }: { kind?: Kind }) {
           <span>Unrated only</span>
         </label>
         <button type="button" className="cat-load" onClick={load}>LOAD →</button>
+        <button type="button" className="cat-save" onClick={download} disabled={!rows.length}
+          title="Save the loaded rows as CSV">↓ CSV</button>
       </section>
 
       <p className="cat-status">
