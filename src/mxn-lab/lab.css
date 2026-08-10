@@ -191,6 +191,17 @@ textarea {
 }
 .api-settings input:focus { border-color: var(--ink); box-shadow: 0 0 0 3px var(--acid); }
 .api-settings .compute-note { margin-top: 10px; }
+
+/* The machine panel sits above the run button rather than with the dataset
+   settings below it: it explains the step and budget fields directly above it,
+   and a reader wondering why a run is slow should meet it before they wait. */
+.machine-panel { margin-top: 18px; }
+.machine-panel > summary { color: var(--blue); }
+.machine-rows { margin: 12px 0 0; display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.machine-rows > div { display: flex; justify-content: space-between; gap: 10px; padding: 7px 9px; background: var(--card); }
+.machine-rows dt { font: 700 9px/1.4 monospace; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.machine-rows dd { margin: 0; font: 700 10px/1.4 monospace; text-align: right; word-break: break-word; }
+.machine-rows dd.is-limit { color: var(--red); }
 .stats { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); margin-top: 22px; }
 .stat { padding: 13px; }
 .stat + .stat { border-left: 1px solid var(--line); }

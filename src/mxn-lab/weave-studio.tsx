@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  CORES_IN_USE, detectMachine, estimateSpeedup, usableWorkers, type Machine,
+} from "./machine";
+
 // Upstream the lab sits at the root of its own host, so its runtime assets were
 // plain "/exact-worker.js" and "/extension-origin-l0.svg". Here it is one page
 // of a project site published under /Scoubidou3D/, and those would resolve
@@ -476,6 +480,9 @@ export function ContinuationLab() {
   const [extStep, setExtStep] = useState<ExtStep>("auto");
   const [comboBudget, setComboBudget] = useState(DEFAULT_COMBO_BUDGET);
   const [ranKey, setRanKey] = useState<string | null>(null);
+  // Detected once, after mount: WebGL probing needs a document, and this
+  // component is rendered into a page that may be server-rendered upstream.
+  const [machine, setMachine] = useState<Machine | null>(null);
   const [solutions, setSolutions] = useState<Record<number, SolutionMeta>>({});
   const [semi, setSemi] = useState<Record<number, SemiMeta>>({});
   const [semiMode, setSemiMode] = useState<Record<number, boolean>>({});
@@ -507,6 +514,10 @@ export function ContinuationLab() {
   const resolvedStep = extStep === "auto" ? autoStep(worstPairCount, comboBudget) : Number(extStep);
   const estimatedCombos = comboCount(resolvedStep, worstPairCount);
   const overEngineLimit = estimatedCombos > ENGINE_COMBO_LIMIT;
+  // Total sweep for this run: every level searches its own combo space.
+  const estimatedWork = estimatedCombos * Math.max(ks.length, 1);
+  const workers = usableWorkers(machine?.cores ?? null);
+  const potentialSpeedup = estimateSpeedup(estimatedWork, workers);
   const paramsKey = `${m}:${n}:${ks.join(",")}:${preferShortArms}:${extStep}:${comboBudget}`;
   const staleParams = ranKey !== null && ranKey !== paramsKey && !busy;
   // Frozen at the end of a run: browsing changes a level's geometry, and a
@@ -521,6 +532,8 @@ export function ContinuationLab() {
     strands: progressFrame.strands,
   } : null;
   const progressBounds = progressStage ? allBounds([progressStage]) : null;
+
+  useEffect(() => { setMachine(detectMachine()); }, []);
 
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
@@ -924,6 +937,67 @@ export function ContinuationLab() {
               {" "}({worstPairCount} {worstPairCount === 1 ? "pair" : "pairs"} at step {resolvedStep})
               {overEngineLimit && <><br /><strong>Over the engine&rsquo;s {ENGINE_COMBO_LIMIT.toLocaleString()} combo limit — the search will refuse. Raise the step.</strong></>}
             </div>
+
+            <details className="api-settings machine-panel" open>
+              <summary>
+                this machine {machine
+                  ? `· ${machine.isMac ? (machine.appleSilicon ? "Mac, Apple silicon" : "Mac") : "not a Mac"}`
+                    + `${machine.cores ? `, ${machine.cores} cores` : ""}`
+                  : "· detecting"}
+              </summary>
+              {machine && (
+                <>
+                  <dl className="machine-rows">
+                    <div><dt>cores</dt><dd>{machine.cores ?? "not reported"}</dd></div>
+                    <div><dt>GPU</dt><dd>{machine.gpu ?? "not reported by this browser"}</dd></div>
+                    <div><dt>WebGPU</dt><dd>{machine.webgpu ? "available" : "absent"}</dd></div>
+                    <div>
+                      <dt>search uses</dt>
+                      <dd className="is-limit">
+                        {CORES_IN_USE} core{machine.cores && machine.cores > 1 ? ` of ${machine.cores}` : ""} · CPU only
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <p className="compute-note">
+                    <strong>The GPU is not used, and cannot be.</strong> The engine&rsquo;s GPU path is
+                    CuPy, which is CUDA, which is NVIDIA — no Mac has it, and Pyodide could not load
+                    it in a browser regardless. Your GPU draws the diagrams; it does not search.
+                  </p>
+
+                  <p className="compute-note">
+                    <strong>Only one core searches.</strong> The engine ships a working process pool,
+                    but Web Workers have no Python subprocesses, so it is pinned to a single worker.
+                    {machine.cores && machine.cores > 1 && (
+                      <> On this machine that leaves {machine.cores - 1} cores idle during a run.</>
+                    )}
+                    {" "}Reaching them needs either cross-origin isolation — unavailable here, since
+                    GitHub Pages cannot send the COOP/COEP headers SharedArrayBuffer requires
+                    {machine.crossOriginIsolated ? " (this page has it)" : " (this page does not have it)"} —
+                    or an async rewrite of the vendored search path.
+                  </p>
+
+                  {workers > 1 && (
+                    <p className="compute-note">
+                      Were those cores reachable, this run
+                      {" "}(<b>{estimatedWork.toLocaleString()}</b> combos across {ks.length || 1}{" "}
+                      level{ks.length === 1 ? "" : "s"}) estimates at about{" "}
+                      <b>{potentialSpeedup.toFixed(1)}×</b> on {workers} workers. Estimate only,
+                      fitted to measurements of the real engine on 4 cores: 1.4× on 2×2, 3.6× on 3×3
+                      and 3×2. Small searches gain little; the sweep has to be big enough to pay for
+                      splitting it.
+                    </p>
+                  )}
+
+                  <p className="compute-note">
+                    What does speed this up today is <b>step</b>, above. Cost is
+                    (200/step + 1)<sup>pairs</sup>, so 10 → 20 is roughly 7× fewer combos at 3 pairs
+                    — on a coarser extension grid, which may find longer arms or miss a ring the
+                    finer grid closes.
+                  </p>
+                </>
+              )}
+            </details>
 
             <div className="run-row">
               <button type="button" className="run-button" onClick={runNow} disabled={busy || !!inputError || !ks.length}>

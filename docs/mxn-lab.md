@@ -252,6 +252,65 @@ claim that the search discarded extensions it should have kept.
 
 `k = 0` has one configuration and nothing to sweep, so it gets no `◑`.
 
+### What this machine brings, in the sidebar
+
+`src/mxn-lab/machine.ts` detects the reader's hardware and the panel above the
+Run button reports it: core count, GPU renderer string, WebGPU presence, and —
+in red, because it is the number that matters — how much of that the search
+actually uses. Today that is **one core, CPU only**, on every machine.
+
+The panel exists because both limits are invisible and neither is obvious:
+
+- **The GPU cannot be used.** The engine does carry a GPU path
+  (`_check_cupy_available`, `_cupy_search_combo_chunks` in
+  `mxn_lh_continuation.py:1518`), but it is CuPy, hence CUDA, hence NVIDIA. No
+  Mac can run it and Pyodide cannot load it in any browser. It is unreachable
+  here twice over, and a reader with a fast GPU should be told that rather than
+  left to assume it is helping.
+- **Only one core searches**, for the reason `bridge.py:29-32` gives.
+
+The estimate row answers "what would the other cores be worth", from measured
+speedups of the real engine's own process pool on 4 cores, serial as reference:
+
+| case | serial | 4-core | speedup |
+|---|---|---|---|
+| 2×2 `[1]` | 0.32s | 0.23s | 1.4× |
+| 2×2 `[1,2,2]` | 3.21s | 2.00s | 1.6× |
+| 3×3 `[1]` | 28.20s | 7.80s | 3.6× |
+| 3×2 `[1]` | 30.17s | 8.44s | 3.6× |
+
+3.6× of 4 is ~90% efficiency, so the sweep parallelises nearly perfectly once it
+is large enough to be worth splitting; the small cases are dominated by
+per-level work that does not. Solving Amdahl per row gives a parallel fraction
+that tracks `log(combos × levels)`, which is the fit in `machine.ts`. It is
+labelled an estimate in the UI and should stay labelled: it is four native
+measurements extrapolated across wasm and core counts neither was taken at.
+
+Those are native CPython timings. Under Pyodide the same work is slower, so
+treat the table as the shape of the speedup rather than the wall clock.
+
+#### Why the multi-core version is not simply built
+
+The shard boundary looks ready — `_evaluate_cpu_combo_chunk`
+(`mxn_lh_continuation.py:2876`) is module-level, pure, and takes an explicit
+`(combo_start, combo_end)`, precisely so it can be pickled to a process pool. A
+JS worker pool could drive it. Two things stop that being mechanical:
+
+- The search is **synchronous Python called deep inside the level solve**.
+  Handing chunks out to JS workers mid-search means either blocking the calling
+  worker on `Atomics.wait` — which needs `SharedArrayBuffer`, which needs
+  cross-origin isolation, which needs COOP/COEP headers **GitHub Pages cannot
+  send** — or making the whole call chain `async` down from `bridge.generate`.
+- That chain lives in the **vendored copy** of the engine. Per the top of this
+  file, the lab is maintained upstream; an async rewrite of its search path
+  would fork it in the one place a re-copy cannot survive.
+
+Sharding across whole runs instead does not substitute: levels are sequential by
+construction, since Lᵥ is built on the ring Lᵥ₋₁ chose.
+
+So the reachable levers today are the ones in the sidebar — `step` and `budget`,
+where cost is `(200/step + 1) ** pairs` — and the panel points at them.
+
 ### Cache keys
 
 The `semi-rate-v7` cache key appears in both the worker URL
