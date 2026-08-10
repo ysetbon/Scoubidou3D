@@ -57,6 +57,7 @@
   const notes = document.querySelectorAll('[data-count-note]');
   if (notes.length) {
     for (const note of notes) note.hidden = false;
+    showTotal();
     return;
   }
 
@@ -69,4 +70,33 @@
     'color:currentColor', 'pointer-events:none', 'user-select:none',
   ].join(';');
   document.body.appendChild(note);
+  showTotal();
+
+  /* The visible tally.
+   *
+   * Separate from the script above: that one RECORDS a visit, this one READS
+   * the running total back. GoatCounter serves it only if "allow adding visitor
+   * counts to your website" is enabled in the site settings, so until that is
+   * switched on this quietly does nothing and the note reads as before — a
+   * counter that renders "NaN" or "0" would be worse than no counter.
+   *
+   * TOTAL rather than this page's own path: the per-path endpoint wants the
+   * recorded path URL-encoded into the URL, which is fiddly to get right under
+   * a project-site prefix, and the site-wide number is the one worth showing.
+   */
+  function showTotal() {
+    fetch(`https://${CODE}.goatcounter.com/counter/TOTAL.json`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        const visits = body && (body.count_unique || body.count);
+        if (!visits) return;
+        for (const el of document.querySelectorAll('[data-count-note]')) {
+          const tally = document.createElement('span');
+          tally.dataset.countTotal = '';
+          tally.textContent = `${visits} visits · `;
+          el.insertBefore(tally, el.firstChild);
+        }
+      })
+      .catch(() => {});
+  }
 })();
