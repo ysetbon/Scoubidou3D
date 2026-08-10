@@ -45,8 +45,28 @@
   s.dataset.goatcounter = `https://${CODE}.goatcounter.com/count`;
   document.head.appendChild(s);
 
-  /* Say so in the footer, but only from here — a note written into the HTML
-   * would claim a thing that is not happening for as long as CODE is empty.
-   * This module is deferred, so the footer is parsed by the time we look. */
-  for (const note of document.querySelectorAll('[data-count-note]')) note.hidden = false;
+  /* Say so, but only from here — a note written into the HTML would claim a
+   * thing that is not happening for as long as CODE is empty. This module is
+   * deferred, so the document is parsed by the time we look.
+   *
+   * A page that has its own slot gets it unhidden in place. Every other page
+   * gets one appended, because the alternative is counting readers who were
+   * never told: only the front page has a footer to put a note in, and the app,
+   * levels, twist and mxn pages would otherwise stay silent. Doing it here
+   * rather than in five templates also means a page added later cannot forget. */
+  const notes = document.querySelectorAll('[data-count-note]');
+  if (notes.length) {
+    for (const note of notes) note.hidden = false;
+    return;
+  }
+
+  const note = document.createElement('small');
+  note.dataset.countNote = '';
+  note.textContent = 'Visits counted without cookies';
+  note.style.cssText = [
+    'position:fixed', 'right:8px', 'bottom:6px', 'z-index:2147483647',
+    'font:400 10px/1.2 system-ui,sans-serif', 'opacity:.5',
+    'color:currentColor', 'pointer-events:none', 'user-select:none',
+  ].join(';');
+  document.body.appendChild(note);
 })();
