@@ -133,6 +133,64 @@
       </a>
     </section>
 
+    <!-- The studio is not the only thing here. These three are separate apps on
+         the same site, and until now they existed only as nav links, which is
+         how the MXN lab went unnoticed by the person who commissioned it. Each
+         card carries real art: the MXN one is the lab's own L0-to-L1 diagram,
+         3.5 KB of SVG rather than the 1.4 MB social card. -->
+    <section class="section tools" id="tools">
+      <div class="heading">
+        <div>
+          <p class="kicker">Also on this site</p>
+          <h2>Three more apps,<br /><em>past the studio.</em></h2>
+        </div>
+        <p>Each one runs in the browser, with nothing to install and no account to make.</p>
+      </div>
+
+      <div class="toolGrid">
+        <a class="toolCard" href="./mxn/">
+          <span class="toolArt">
+            <img src="./mxn/extension-origin-l0.svg" width="720" height="720" loading="lazy"
+              decoding="async" alt="An L0 continuation ring with the purple crossing that extension is measured from" />
+          </span>
+          <span class="toolBody">
+            <b>MXN lab</b>
+            <span>Give it m, n and a rotation per level. It runs the real Python continuation
+              engine in your browser and draws every ring, with the audit beside it — then lets
+              you page through every valid solution and keep the tightest.</span>
+            <em>Open the lab →</em>
+          </span>
+        </a>
+
+        <a class="toolCard" href="./twist/">
+          <span class="toolArt">
+            <img class="shot light" src="./site/shots/twist-stitch-10-light.webp" width="780" height="722"
+              loading="lazy" decoding="async" alt="A twist stitch rendered in the studio" />
+            <img class="shot dark" src="./site/shots/twist-stitch-10-dark.webp" width="780" height="722"
+              loading="lazy" decoding="async" alt="" aria-hidden="true" />
+          </span>
+          <span class="toolBody">
+            <b>The twist stitch</b>
+            <span>What the twist costs and what it buys, measured per face across every size —
+              including the row where a gap closes to 1.1&nbsp;px.</span>
+            <em>Read the tables →</em>
+          </span>
+        </a>
+
+        <a class="toolCard" href="./levels/">
+          <span class="toolArt levelsArt" aria-hidden="true">
+            <i></i><i></i><i></i><i></i>
+          </span>
+          <span class="toolBody">
+            <b>Levels</b>
+            <span>How a stitch stacks: each face of the cube, level by level, with the layer
+              order that makes it hold together.</span>
+            <em>See the levels →</em>
+          </span>
+        </a>
+      </div>
+    </section>
+
     <!-- Every card below is a real built-in. The picture is a SCREENSHOT of that
          scene in the studio's own 3D canvas, shot by scripts/site-shots.mjs, the
          counts are that scene's own strands / masks / levels, and the link opens
