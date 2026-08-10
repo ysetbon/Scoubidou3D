@@ -1792,3 +1792,58 @@ footer small {
     transition: none !important;
   }
 }
+
+/* Also on this site — the three apps that are not the studio.
+   Until this existed they were nav links only, which is how the MXN lab went
+   unnoticed. Same card grammar as .projectArt: art on top, copy beneath, whole
+   card is the link. */
+.toolGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 18px;
+}
+.toolCard {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--cream);
+  transition: border-color .15s, transform .15s;
+}
+.toolCard:hover, .toolCard:focus-visible {
+  border-color: var(--edge);
+  transform: translateY(-2px);
+  outline: none;
+}
+.toolArt {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+}
+.toolArt img { width: 100%; height: 100%; object-fit: contain; padding: 10px; }
+/* The twist card ships a shot per theme; site.css already swaps .shot on
+   [data-theme], so only the sizing belongs here. */
+.toolArt .shot { object-fit: cover; padding: 0; }
+
+/* Levels has no screenshot, so it gets four stacked bars rather than a broken
+   image or a card that looks unfinished next to the other two. */
+.levelsArt { position: relative; }
+.levelsArt i {
+  position: absolute; left: 22%; width: 56%; height: 11%; border-radius: 3px;
+  border: 1px solid var(--ink);
+}
+.levelsArt i:nth-child(1) { top: 22%; background: #f5c837; }
+.levelsArt i:nth-child(2) { top: 37%; background: #e27a26; left: 18%; }
+.levelsArt i:nth-child(3) { top: 52%; background: #3caaaf; left: 26%; }
+.levelsArt i:nth-child(4) { top: 67%; background: var(--ink); left: 20%; }
+
+.toolBody { display: grid; align-content: start; gap: 8px; padding: 16px 18px 18px; }
+.toolBody b { font-size: 18px; letter-spacing: -.01em; }
+.toolBody span { font-size: 14px; line-height: 1.55; color: var(--muted); }
+.toolBody em { font-style: normal; font-weight: 700; font-size: 13px; color: var(--teal); }
