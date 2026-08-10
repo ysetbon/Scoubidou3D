@@ -1,0 +1,20 @@
+name = "mxn-solutions-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# Deployed separately from the GitHub Pages site. Nothing in the Pages build
+# depends on this Worker existing, and the lab keeps working without it.
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mxn-solutions"
+# Filled in by `wrangler d1 create mxn-solutions` -- it prints the id to paste
+# here. Left blank on purpose so a deploy fails loudly rather than silently
+# writing to the wrong database.
+database_id = ""
+
+[vars]
+# Origins allowed to call the API. The lab's own Pages origin plus the vite dev
+# server. ADMIN_TOKEN is NOT here -- it is a secret, set with:
+#   wrangler secret put ADMIN_TOKEN
+ALLOWED_ORIGINS = "https://ysetbon.github.io,http://localhost:5173"

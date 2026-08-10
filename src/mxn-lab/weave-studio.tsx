@@ -109,6 +109,27 @@ type SavedSolution = {
 };
 
 const SAVE_KEY = "mxn-lab-solutions";
+const API_KEY = "mxn-lab-api";
+const TOKEN_KEY = "mxn-lab-token";
+
+// The dataset API is optional. Without it the star still works, locally — the
+// lab is a static page and must keep working with no backend at all.
+function readSetting(key: string) {
+  try {
+    return window.localStorage.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+function writeSetting(key: string, value: string) {
+  try {
+    if (value) window.localStorage.setItem(key, value);
+    else window.localStorage.removeItem(key);
+  } catch {
+    /* private mode: the field simply will not persist */
+  }
+}
 
 // Same guarded shape as src/model/customSamples.ts: private mode and a full
 // quota both throw, and neither is worth losing the page over.
@@ -435,6 +456,8 @@ export function ContinuationLab() {
   const [browsingLevel, setBrowsingLevel] = useState<number | null>(null);
   const [savedCount, setSavedCount] = useState(0);
   const [healthyOnly, setHealthyOnly] = useState(false);
+  const [apiUrl, setApiUrl] = useState("");
+  const [apiToken, setApiToken] = useState("");
   // The viewport is derived from the LAST stage, so once a browsed level
   // changes geometry every card would rescale on each arrow click. Freeze it
   // for the lifetime of one generate.
@@ -475,7 +498,7 @@ export function ContinuationLab() {
 
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
-    const worker = new Worker(`${LAB_BASE}exact-worker.js?v=browse-solutions-v5`, { type: "module" });
+    const worker = new Worker(`${LAB_BASE}exact-worker.js?v=dataset-api-v6`, { type: "module" });
     worker.onmessage = (event) => {
       const message = event.data;
       if (message.type === "progress") {
@@ -580,6 +603,8 @@ export function ContinuationLab() {
 
   useEffect(() => {
     setSavedCount(readSaved().length);
+    setApiUrl(readSetting(API_KEY));
+    setApiToken(readSetting(TOKEN_KEY));
     return () => workerRef.current?.terminate();
   }, []);
 
@@ -645,8 +670,24 @@ export function ContinuationLab() {
     const ok = writeSaved(rows);
     setSavedCount(ok ? rows.length : savedCount);
     setStatus(ok
-      ? `Saved L${stage.level} solution ${entry.solution_index} · ${rows.length} in the dataset`
+      ? `Saved L${stage.level} solution ${entry.solution_index} · ${rows.length} held locally`
       : "Could not save — browser storage is full or blocked");
+
+    // A configured API is an ADDITION to the local copy, never a replacement:
+    // if the network or the token is wrong, the star must not silently lose the
+    // solution it just claimed to save.
+    if (!apiUrl || !apiToken) return;
+    fetch(`${apiUrl.replace(/\/+$/, "")}/solutions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiToken}` },
+      body: JSON.stringify(entry),
+    }).then(response => {
+      setStatus(response.ok
+        ? `Saved L${stage.level} solution ${entry.solution_index} to the dataset`
+        : `Held locally · dataset rejected it (HTTP ${response.status})`);
+    }).catch(() => {
+      setStatus("Held locally · dataset unreachable");
+    });
   };
 
   const downloadDataset = () => {
@@ -782,6 +823,20 @@ export function ContinuationLab() {
                 Download {savedCount || ""} saved
               </button>
             </div>
+            <details className="api-settings">
+              <summary>dataset API {apiUrl && apiToken ? "· connected" : "· local only"}</summary>
+              <div className="field">
+                <label htmlFor="api-url">worker url</label>
+                <input id="api-url" type="url" placeholder="https://….workers.dev" value={apiUrl}
+                  onChange={e => { setApiUrl(e.target.value); writeSetting(API_KEY, e.target.value); }} />
+              </div>
+              <div className="field">
+                <label htmlFor="api-token">admin token</label>
+                <input id="api-token" type="password" placeholder="ADMIN_TOKEN" value={apiToken}
+                  onChange={e => { setApiToken(e.target.value); writeSetting(TOKEN_KEY, e.target.value); }} />
+              </div>
+              <p className="compute-note">Kept in this browser only, never in the repository. Stars always save locally as well.</p>
+            </details>
 
             {inputError && <div className="error-note" role="alert">{inputError}</div>}
             {engineError && <div className="error-note" role="alert">{engineError}</div>}
