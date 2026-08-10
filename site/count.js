@@ -19,7 +19,7 @@
  * put its code below — the <code> part of https://<code>.goatcounter.com.
  */
 (() => {
-  const CODE = '';
+  const CODE = 'scoubidou3d';
 
   if (!CODE) return;
 
