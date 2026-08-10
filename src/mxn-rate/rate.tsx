@@ -21,16 +21,49 @@ const SCORES = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100];
 // gets through a meaningful batch without paging.
 const PAGE = 10;
 
+type Kind = "complete" | "semi";
+
 type Row = {
   id: string; created_at: string;
   m: number; n: number; level: number; k: number;
   ks_prefix: string; h_ext: string; v_ext: string; total_ext: number;
   audit: string; healthy: number; solution_index: number;
   rating: number | null;
+  /** 'complete' on rows written before near-misses existed. */
+  kind?: string;
+  /** For a near-miss, the band the shortfall is attributed to. */
+  band?: string | null;
+  deficit?: number;
+  /** How many distinct working partners the band's value failed against. */
+  refs?: number;
   /** Only present on the single-row endpoint. */
   parent_strands?: string;
   solution_strands?: string;
 };
+
+/**
+ * What the two queues are for, in the words the page uses.
+ *
+ * The distinction is not cosmetic. On /mxn/rate/ the ring closes and the score
+ * says how good a weave it is. On /mxn/semi/ the ring does NOT close, and the
+ * score is about one band only: the other was held at a value taken from a ring
+ * that does close, so a high score here is a claim that the engine rejected a
+ * set of extensions it should have kept.
+ */
+const QUEUES = {
+  complete: {
+    chip: "CATEGORIZER",
+    help: "Hover or arrow to a row, then 0–9 scores 0–90, Q 95, W 100, S skips. Rating moves to the next row.",
+    empty: "Nothing left unrated.",
+    other: { href: "../semi/", label: "Near-misses →" },
+  },
+  semi: {
+    chip: "NEAR-MISSES",
+    help: "These rings do not close. Score the marked band's numbers only — the other band was held at values taken from rings that do close, so 100 means the search threw away extensions it should have kept.",
+    empty: "No unrated near-misses.",
+    other: { href: "../rate/", label: "Closed rings →" },
+  },
+} as const;
 
 function readSetting(key: string) {
   try { return window.localStorage.getItem(key) || ""; } catch { return ""; }
@@ -125,14 +158,16 @@ function Ring({ strands, tag }: { strands: Strand[]; tag: string }) {
   );
 }
 
-function Card({ row, detail, focused, saving, onRate, onFocus }: {
-  row: Row; detail: Row | undefined; focused: boolean; saving: boolean;
+function Card({ row, detail, kind, focused, saving, onRate, onFocus }: {
+  row: Row; detail: Row | undefined; kind: Kind; focused: boolean; saving: boolean;
   onRate: (value: number) => void; onFocus: () => void;
 }) {
   const audit = parseJson<Partial<AuditRow>>(row.audit, {});
   const hExt = parseJson<number[]>(row.h_ext, []);
   const vExt = parseJson<number[]>(row.v_ext, []);
   const ks = parseJson<number[]>(row.ks_prefix, []);
+  const semi = kind === "semi";
+  const blamed = row.band === "h" || row.band === "v" ? row.band : null;
   const parent = parseJson<Strand[]>(detail?.parent_strands, []);
   const solution = parseJson<Strand[]>(detail?.solution_strands, []);
   const arms = armDetails(solution, row.level);
@@ -141,7 +176,7 @@ function Card({ row, detail, focused, saving, onRate, onFocus }: {
 
   return (
     <article
-      className={`card ${focused ? "is-focused" : ""} ${row.rating !== null ? "is-rated" : ""}`}
+      className={`card ${focused ? "is-focused" : ""} ${row.rating !== null ? "is-rated" : ""} ${semi ? "is-semi" : ""}`}
       onMouseEnter={onFocus}
       onFocusCapture={onFocus}
     >
@@ -152,9 +187,31 @@ function Card({ row, detail, focused, saving, onRate, onFocus }: {
         <span className="chip">ks [{ks.join(", ")}]</span>
         <span className="chip">#{row.solution_index}</span>
         <span className="chip chip-total">{row.total_ext}px</span>
-        <span className={`chip ${row.healthy ? "chip-good" : "chip-bad"}`}>
-          {row.healthy ? "Weave" : "NOT a weave"} {audit.across}/{audit.expected}
-        </span>
+        {semi ? (
+          <>
+            {/* The band under judgement leads, because it is the whole question
+                the card is asking. Everything after it is context. */}
+            <span className={`chip chip-band band-${blamed ?? "x"}`}>
+              {blamed === "h" ? "Judge H · V held good"
+                : blamed === "v" ? "Judge V · H held good"
+                : "Band not recorded"}
+            </span>
+            <span className="chip chip-bad">
+              {audit.across}/{audit.expected}
+              {row.deficit ? ` · ${row.deficit} short` : ""}
+            </span>
+            {/* One working partner is weak evidence, three is strong. The card
+                says which it is rather than letting the score imply certainty
+                the scan never had. */}
+            <span className="chip" title="distinct working partners this value failed against">
+              vs {row.refs ?? 0} good {row.refs === 1 ? "partner" : "partners"}
+            </span>
+          </>
+        ) : (
+          <span className={`chip ${row.healthy ? "chip-good" : "chip-bad"}`}>
+            {row.healthy ? "Weave" : "NOT a weave"} {audit.across}/{audit.expected}
+          </span>
+        )}
         {row.rating !== null && <span className="chip chip-rated">Rated {row.rating}</span>}
       </div>
 
@@ -166,15 +223,20 @@ function Card({ row, detail, focused, saving, onRate, onFocus }: {
         </div>
 
         <dl className="card-metrics">
-          <div><dt>H EXT</dt><dd className="nums">{hExt.length ? hExt.map((e, i) => <b key={i}>{e}</b>) : "—"}</dd></div>
-          <div><dt>V EXT</dt><dd className="nums">{vExt.length ? vExt.map((e, i) => <b key={i}>{e}</b>) : "—"}</dd></div>
-          <div><dt>H ANGLE</dt><dd>{hAngle === null ? "—" : `${hAngle.toFixed(2)}°`}</dd></div>
-          <div><dt>V ANGLE</dt><dd>{vAngle === null ? "—" : `${vAngle.toFixed(2)}°`}</dd></div>
+          <div className={blamed === "h" ? "is-judged" : ""}><dt>H EXT</dt><dd className="nums">{hExt.length ? hExt.map((e, i) => <b key={i}>{e}</b>) : "—"}</dd></div>
+          <div className={blamed === "v" ? "is-judged" : ""}><dt>V EXT</dt><dd className="nums">{vExt.length ? vExt.map((e, i) => <b key={i}>{e}</b>) : "—"}</dd></div>
+          <div className={blamed === "h" ? "is-judged" : ""}><dt>H ANGLE</dt><dd>{hAngle === null ? "—" : `${hAngle.toFixed(2)}°`}</dd></div>
+          <div className={blamed === "v" ? "is-judged" : ""}><dt>V ANGLE</dt><dd>{vAngle === null ? "—" : `${vAngle.toFixed(2)}°`}</dd></div>
           {/* Two averages, one per band -- the engine records no gap per pair,
               so this does not pretend to show one. */}
           <div><dt>AVG GAP</dt><dd>{audit.gap
             ? `H ${audit.gap[0].toFixed(2)} · V ${audit.gap[1].toFixed(2)}` : "—"}</dd></div>
-          <div><dt>MASKS</dt><dd>{audit.masks ?? "—"}</dd></div>
+          {semi
+            /* On a near-miss, a band whose own arms cross each other is
+               malformed on its own terms — that is worth a 0 without looking
+               any further, so it gets a slot of its own. */
+            ? <div className={audit.within ? "is-judged" : ""}><dt>WITHIN</dt><dd>{audit.within ?? "—"}</dd></div>
+            : <div><dt>MASKS</dt><dd>{audit.masks ?? "—"}</dd></div>}
         </dl>
       </div>
 
@@ -189,7 +251,8 @@ function Card({ row, detail, focused, saving, onRate, onFocus }: {
   );
 }
 
-export function Categoriser() {
+export function Categoriser({ kind = "complete" }: { kind?: Kind }) {
+  const queue = QUEUES[kind];
   const [apiUrl, setApiUrl] = useState("");
   const [token, setToken] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
@@ -216,15 +279,19 @@ export function Categoriser() {
     if (!urlOk || !tokenOk) { setStatus("Enter the worker URL and admin token."); return; }
     setStatus("Loading…");
     try {
-      const response = await fetch(
-        `${base}/solutions${onlyUnrated ? "?unrated=1&limit=500" : "?limit=500"}`,
+      const query = new URLSearchParams({ kind, limit: "500" });
+      if (onlyUnrated) query.set("unrated", "1");
+      const response = await fetch(`${base}/solutions?${query}`,
         { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) { setStatus(`Dataset said HTTP ${response.status}.`); return; }
       const list: Row[] = (await response.json()).solutions ?? [];
       setRows(list);
       setPage(0);
       setFocus(0);
-      setStatus(list.length ? "" : onlyUnrated ? "Nothing left unrated." : "The dataset is empty.");
+      setStatus(list.length ? ""
+        : onlyUnrated ? queue.empty
+        : kind === "semi" ? "No near-misses saved yet — star one in the lab’s ◑ mode."
+        : "The dataset is empty.");
     } catch {
       setStatus("Could not reach the dataset.");
     }
@@ -296,13 +363,14 @@ export function Categoriser() {
   const rated = rows.filter(r => r.rating !== null).length;
 
   return (
-    <div className="cat">
+    <div className={`cat ${kind === "semi" ? "cat-semi" : ""}`}>
       <header className="cat-top">
         <a className="cat-brand" href="..">
           <span className="cat-mark">M</span>
           <b>MXN</b>
-          <span className="cat-chip-solid">CATEGORIZER</span>
+          <span className="cat-chip-solid">{queue.chip}</span>
         </a>
+        <a className="cat-switch" href={queue.other.href}>{queue.other.label}</a>
         <span className="cat-progress">
           {rows.length ? `${rated} / ${rows.length} rated · page ${page + 1} of ${pages}` : "—"}
         </span>
@@ -334,14 +402,12 @@ export function Categoriser() {
       </section>
 
       <p className="cat-status">
-        {status || (rows.length
-          ? "Hover or arrow to a row, then 0–9 scores 0–90, Q 95, W 100, S skips. Rating moves to the next row."
-          : "Connect the dataset and press Load.")}
+        {status || (rows.length ? queue.help : "Connect the dataset and press Load.")}
       </p>
 
       <div className="cat-list">
         {pageRows.map((row, index) => (
-          <Card key={row.id} row={row} detail={details[row.id]}
+          <Card key={row.id} row={row} detail={details[row.id]} kind={kind}
             focused={index === focus} saving={saving}
             onRate={value => rate(row.id, value)}
             onFocus={() => setFocus(index)} />

@@ -143,3 +143,42 @@ button, input { font: inherit; color: inherit; }
   .card-scale { flex-wrap: wrap; }
   .card-scale button { flex: 1 1 18%; }
 }
+
+/* ---------------------------------------------------------------------------
+   The near-miss queue, at /mxn/semi/.
+   Same component, same dataset, different question: these rings do not close,
+   and the score is about ONE band. The page is tinted amber throughout so it
+   can never be mistaken for the closed-ring queue mid-session — the cards are
+   otherwise identical, and a misfiled rating is worse than no rating.
+   --------------------------------------------------------------------------- */
+.cat-semi {
+  --cat-accent: #b4630a;
+  /* Painted on .cat rather than only redefining --cat-bg: body's background is
+     resolved from :root, so a token override scoped to this div would leave the
+     page the same colour as the other queue. */
+  background: #fbf8f3;
+  min-height: 100vh;
+}
+.cat-semi .cat-chip-solid { background: #fbeedd; color: #b4630a; }
+.cat-switch {
+  margin-left: auto; margin-right: 14px;
+  font: 700 11px/1 system-ui; letter-spacing: .04em;
+  color: var(--cat-accent); text-decoration: none;
+  border: 1px solid currentColor; border-radius: 100px; padding: 7px 11px;
+}
+.cat-switch:hover { background: #fff; }
+/* cat-progress sat at the end of a flex row that now has a link before it; the
+   link takes the auto margin, so this keeps its own spacing rather than
+   inheriting the gap. */
+.cat-top .cat-progress { margin-left: 0; }
+
+.card.is-semi { border-left: 4px solid var(--cat-accent); }
+.chip-band {
+  background: var(--cat-ink); color: #fff; border-color: var(--cat-ink);
+  letter-spacing: .04em;
+}
+/* The two metric rows for the band under judgement, picked out so the eye goes
+   to the numbers being graded rather than reading all four. */
+.card-metrics .is-judged dt { color: var(--cat-accent); }
+.card-metrics .is-judged dd { color: var(--cat-ink); }
+.card-metrics .is-judged .nums b { background: #fbeedd; }

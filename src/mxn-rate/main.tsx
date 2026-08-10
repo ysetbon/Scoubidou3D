@@ -6,4 +6,9 @@ import "./rate.css";
 
 const host = document.getElementById("rate");
 if (!host) throw new Error("#rate is missing from the document");
-createRoot(host).render(<Categoriser />);
+// Two pages, one component. /mxn/rate/ grades rings that close; /mxn/semi/
+// grades the ones that did not, where one band was held at a value known to
+// work. They differ in which rows they pull and what the score means, not in
+// how a ring is drawn, so a data attribute is the whole difference.
+const kind = host.dataset.kind === "semi" ? "semi" : "complete";
+createRoot(host).render(<Categoriser kind={kind} />);

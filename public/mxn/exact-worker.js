@@ -37,7 +37,7 @@ async function prepare() {
       // Resolved against this worker's own URL rather than the site root: the
       // lab is published under a project-site sub-path, where "/py/..." would
       // miss. Keeps the cache key in step with the one in the Worker URL.
-      const url = new URL(`./py/${name}?v=dataset-api-v6`, import.meta.url);
+      const url = new URL(`./py/${name}?v=semi-rate-v7`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
@@ -78,6 +78,23 @@ const HANDLERS = {
     runtime.globals.set("mxn_level", data.level);
     return ["count-ready", await runtime.runPythonAsync(
       "bridge.count_solutions(mxn_level)"
+    )];
+  },
+  // Near-misses. The scan is a marginal sweep of both bands against a partner
+  // taken from a complete ring, so it costs len(h) + len(v) replays rather than
+  // the product -- seconds, not minutes, but still long enough that the page
+  // asks for it explicitly instead of doing it after every run.
+  "semi-scan": async (runtime, data) => {
+    runtime.globals.set("mxn_level", data.level);
+    return ["semi-ready", await runtime.runPythonAsync(
+      "bridge.scan_semicomplete(mxn_level)"
+    )];
+  },
+  "semi-select": async (runtime, data) => {
+    runtime.globals.set("mxn_level", data.level);
+    runtime.globals.set("mxn_index", data.index);
+    return ["semi-solution", await runtime.runPythonAsync(
+      "bridge.select_semicomplete(mxn_level, mxn_index)"
     )];
   },
 };

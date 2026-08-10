@@ -67,13 +67,20 @@ the dataset is not public.
 |---|---|---|
 | `GET` | `/health` | counts rows, so it proves the D1 binding, not just the Worker |
 | `POST` | `/solutions` | stores one starred solution |
-| `GET` | `/solutions?m=&n=&k=&level=&unrated=1&healthy=1&limit=` | lists, shortest `total_ext` first |
+| `GET` | `/solutions?m=&n=&k=&level=&kind=&band=&unrated=1&healthy=1&limit=` | lists |
 | `GET` | `/solutions/:id` | one row, geometry included |
 | `PATCH` | `/solutions/:id` | `{"rating": 0..100}` |
 
 `total_ext` is stored on write so "shortest first" is an indexed sort rather
-than a scan through JSON. `healthy` is lifted out of the audit blob for the
-same reason.
+than a scan through JSON. `healthy` and `deficit` are lifted out of the audit
+blob for the same reason.
+
+`kind` selects which queue you are reading. `complete` rings sort shortest
+first; `semi` rings — near-misses, where one band was held at a value taken
+from a ring that closes and the other was swept — sort by `deficit`, nearest
+first, because a ring one crossing short is the one most worth looking at.
+`band` narrows those to the side being blamed. Omit `kind` and you get
+everything, in `total_ext` order.
 
 CORS echoes the caller's origin only when it is in `ALLOWED_ORIGINS`. A wildcard
 would let any page a browser loads read the dataset with a token taken from
@@ -91,5 +98,25 @@ worst, and stars are a human-rate event.
   access, this wants replacing with real auth rather than extending.
 - **No delete.** Ratings are the point; removing rows is a `wrangler d1
   execute` away and does not need an endpoint that could be called by accident.
-- **No migrations.** `schema.sql` is `CREATE TABLE IF NOT EXISTS`, so re-running
-  it is safe, but changing a column later means writing the `ALTER` yourself.
+- **No migration framework.** `schema.sql` is `CREATE TABLE IF NOT EXISTS`, so
+  re-running it is safe — and therefore does nothing to a table that already
+  exists. Column changes go in `migrations/` and are run by hand, once, in
+  order. There is one database and one operator; anything more is machinery
+  with nothing to manage.
+
+## Migrations
+
+Run each of these once, in order, against a database that already has rows. A
+database created fresh from `schema.sql` today already has everything and needs
+none of them.
+
+```bash
+npx wrangler d1 execute mxn-solutions --remote --file=./migrations/0001_semicomplete.sql
+```
+
+| file | adds |
+|---|---|
+| `0001_semicomplete.sql` | `kind`, `band`, `deficit` and the near-miss index |
+
+`ALTER TABLE ... ADD COLUMN` errors if the column is already there, so a second
+run fails loudly rather than half-applying. That is intended.

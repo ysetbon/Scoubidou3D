@@ -100,12 +100,36 @@ type ExactResult = {
   m: number; n: number; ks: number[]; expected: number; seconds: number;
   rows: AuditRow[]; stages: Stage[]; solutions?: SolutionMeta[];
 };
+/**
+ * One near-miss: a ring that did not close, with the blame on one band.
+ *
+ * `band` is the band that was varied. The other one was held at a value taken
+ * from a ring that DOES close, so "H failed" here means this H value failed
+ * against a V that is known to work — not merely that the pair happened not to
+ * close, which says nothing about either side.
+ */
+type SemiItem = {
+  band: "h" | "v"; index: number; h: number; v: number;
+  /** How many distinct working partners this value failed against. */
+  refs: number;
+  ext: number[]; heldExt: number[]; angle: number | null; gap: number | null;
+  hExt: number[]; vExt: number[]; total: number;
+  across: number; expected: number; withinH: number; withinV: number;
+  deficit: number; folded: boolean;
+};
+type SemiMeta = {
+  level: number; count: number; listed?: number; truncated: boolean;
+  grounded: boolean; refs?: number; reason?: string | null; items: SemiItem[];
+  index: number; current?: SemiItem;
+};
 type SavedSolution = {
   id: string; created_at: string; hand: string; direction: string;
   m: number; n: number; level: number; k: number; ks_prefix: number[];
   parent_strands: Strand[]; solution_strands: Strand[];
   h_ext: number[]; v_ext: number[];
   audit: AuditRow; solution_index: number; rating: number | null;
+  kind: "complete" | "semi"; band: "h" | "v" | null; deficit: number;
+  refs: number;
 };
 
 const SAVE_KEY = "mxn-lab-solutions";
@@ -453,6 +477,8 @@ export function ContinuationLab() {
   const [comboBudget, setComboBudget] = useState(DEFAULT_COMBO_BUDGET);
   const [ranKey, setRanKey] = useState<string | null>(null);
   const [solutions, setSolutions] = useState<Record<number, SolutionMeta>>({});
+  const [semi, setSemi] = useState<Record<number, SemiMeta>>({});
+  const [semiMode, setSemiMode] = useState<Record<number, boolean>>({});
   const [browsingLevel, setBrowsingLevel] = useState<number | null>(null);
   const [savedCount, setSavedCount] = useState(0);
   const [healthyOnly, setHealthyOnly] = useState(false);
@@ -498,7 +524,7 @@ export function ContinuationLab() {
 
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
-    const worker = new Worker(`${LAB_BASE}exact-worker.js?v=dataset-api-v6`, { type: "module" });
+    const worker = new Worker(`${LAB_BASE}exact-worker.js?v=semi-rate-v7`, { type: "module" });
     worker.onmessage = (event) => {
       const message = event.data;
       if (message.type === "progress") {
@@ -533,6 +559,56 @@ export function ContinuationLab() {
         }
         return;
       }
+      if (message.type === "semi-ready") {
+        setBrowsingLevel(null);
+        const meta: SemiMeta = {
+          level: message.level, count: message.count ?? 0,
+          listed: message.listed, truncated: message.truncated === true,
+          grounded: message.grounded === true, refs: message.refs,
+          reason: message.reason,
+          items: message.items ?? [], index: 0,
+        };
+        setSemi(current => ({ ...current, [meta.level]: meta }));
+        if (!meta.count) {
+          setStatus(meta.reason
+            ? `L${meta.level}: ${meta.reason}`
+            : `L${meta.level}: every candidate closed the ring — no near-misses.`);
+          setSemiMode(current => ({ ...current, [meta.level]: false }));
+          return;
+        }
+        setStatus(`L${meta.level}: ${meta.count} near-miss${meta.count === 1 ? "" : "es"}${
+          meta.truncated ? " (list truncated)" : ""}${
+          meta.grounded ? "" : " — no complete ring to compare against, so the band labels are not proof"}`);
+        // The scan only measures; showing the first one is a second call.
+        setBrowsingLevel(meta.level);
+        ensureWorker().postMessage({
+          type: "semi-select", id: activeIdRef.current, level: meta.level, index: 0,
+        });
+        return;
+      }
+      if (message.type === "semi-solution") {
+        setBrowsingLevel(null);
+        if (message.item === undefined) {
+          setStatus(message.reason || "No near-miss at that position.");
+          return;
+        }
+        setSemi(current => ({ ...current, [message.level]: {
+          ...current[message.level],
+          index: message.index, count: message.count,
+          current: message.item as SemiItem,
+        } }));
+        setResult(current => {
+          if (!current) return current;
+          return {
+            ...current,
+            stages: current.stages.map(stage => stage.level === message.level
+              ? { ...stage, strands: message.strands } : stage),
+            rows: current.rows.map(row => row.level === message.level
+              ? message.row : row),
+          };
+        });
+        return;
+      }
       if (message.type === "count-ready") {
         setSolutions(current => ({ ...current, [message.level]: {
           ...current[message.level], count: message.count,
@@ -550,6 +626,10 @@ export function ContinuationLab() {
             meta[entry.level] = entry;
           }
           setSolutions(meta);
+          // A new run invalidates every near-miss list: they index into the
+          // candidate lists of the session that has just been replaced.
+          setSemi({});
+          setSemiMode({});
           setProgressFrame(null);
           setEngineError(null);
           setStatus(`Exact calculation complete · ${message.result.seconds}s`);
@@ -647,13 +727,48 @@ export function ContinuationLab() {
     });
   };
 
+  // Near-misses reuse the browse lane for the same reason: they read the
+  // session the last generate built, and must not be queued behind a run.
+  const browseSemi = (level: number, index: number) => {
+    const near = semi[level];
+    if (!near || index < 0 || index >= near.count) return;
+    setBrowsingLevel(level);
+    ensureWorker().postMessage({
+      type: "semi-select", id: activeIdRef.current, level, index,
+    });
+  };
+
+  const toggleSemi = (level: number) => {
+    const on = semiMode[level] === true;
+    setSemiMode(current => ({ ...current, [level]: !on }));
+    if (on) {
+      // Back to closed rings: the card is showing near-miss geometry, so put
+      // the complete solution the reader was on back on screen.
+      browse(level, solutions[level]?.index ?? 0);
+      return;
+    }
+    if (semi[level]) {
+      browseSemi(level, semi[level].index);
+      return;
+    }
+    setBrowsingLevel(level);
+    setStatus(`Sweeping both bands for L${level} near-misses — every candidate against up to three partners that work…`);
+    ensureWorker().postMessage({
+      type: "semi-scan", id: activeIdRef.current, level,
+    });
+  };
+
   const saveSolution = (stage: Stage) => {
     if (!result) return;
     const row = result.rows[stage.level - 1];
     const parent = result.stages.find(other => other.level === stage.level - 1);
     if (!row || !parent) return;
+    // What the star banks depends on which list the card is showing. A
+    // near-miss carries the band it is blaming and how far short it fell,
+    // because without those the row is just a broken ring nobody can grade.
+    const near = semiMode[stage.level] ? semi[stage.level]?.current : undefined;
     const entry: SavedSolution = {
-      id: `${result.m}x${result.n}-k${row.k}-L${stage.level}-${Date.now()}`,
+      id: `${result.m}x${result.n}-k${row.k}-L${stage.level}-${near ? "semi-" : ""}${Date.now()}`,
       created_at: new Date().toISOString(),
       hand: "lh", direction: "cw",
       m: result.m, n: result.n, level: stage.level, k: row.k,
@@ -662,8 +777,14 @@ export function ContinuationLab() {
       solution_strands: stage.strands,
       h_ext: row.ext[0], v_ext: row.ext[1],
       audit: row,
-      solution_index: solutions[stage.level]?.index ?? 0,
+      solution_index: near
+        ? (semi[stage.level]?.index ?? 0)
+        : (solutions[stage.level]?.index ?? 0),
       rating: null,
+      kind: near ? "semi" : "complete",
+      band: near ? near.band : null,
+      deficit: near ? near.deficit : 0,
+      refs: near ? near.refs : 0,
     };
     const rows = readSaved();
     rows.push(entry);
@@ -901,10 +1022,54 @@ export function ContinuationLab() {
                         {stage.level > 0 && (() => {
                           const meta = solutions[stage.level];
                           if (!meta) return null;
-                          if (!browsable(meta)) {
+                          const busyHere = browsingLevel === stage.level;
+                          const near = semi[stage.level];
+                          const onSemi = semiMode[stage.level] === true;
+                          // k=0 has one configuration and nothing to sweep, so
+                          // it gets neither list.
+                          const canSemi = browsable(meta);
+                          const semiButton = canSemi ? (
+                            <button className={`semi-toggle ${onSemi ? "is-on" : ""}`} type="button"
+                              onClick={() => toggleSemi(stage.level)} disabled={busyHere}
+                              title={onSemi
+                                ? "Back to rings that close"
+                                : "Near-misses: one band held at a value that works, the other swept"}
+                              aria-pressed={onSemi}
+                              aria-label={`${onSemi ? "Show complete rings" : "Show near-misses"} for level ${stage.level}`}>◑</button>
+                          ) : null;
+
+                          if (onSemi) {
+                            const item = near?.current;
+                            return (
+                              <span className="solution-nav is-semi">
+                                <button type="button" onClick={() => browseSemi(stage.level, (near?.index ?? 0) - 1)}
+                                  disabled={busyHere || !near || near.index === 0}
+                                  aria-label={`Previous near-miss for level ${stage.level}`}>‹</button>
+                                <b>{busyHere || !near ? "…"
+                                  : `${near.index + 1} / ${near.count}${near.truncated ? "+" : ""}`}</b>
+                                {item && (
+                                  <em className={item.band === "h" ? "band-h" : "band-v"}
+                                    title={`${item.deficit} crossing${item.deficit === 1 ? "" : "s"} short against `
+                                      + `${item.refs} partner${item.refs === 1 ? "" : "s"} that do close`
+                                      + (item.folded ? " · this band's own arms cross each other" : "")}>
+                                    {item.band === "h" ? "V ok · H short" : "H ok · V short"}
+                                    {" "}{item.across}/{item.expected}
+                                  </em>
+                                )}
+                                <button type="button" onClick={() => browseSemi(stage.level, (near?.index ?? 0) + 1)}
+                                  disabled={busyHere || !near || near.index + 1 >= near.count}
+                                  aria-label={`Next near-miss for level ${stage.level}`}>›</button>
+                                <button className="save-solution" type="button" onClick={() => saveSolution(stage)}
+                                  disabled={!item}
+                                  title="Save this near-miss for rating"
+                                  aria-label={`Save level ${stage.level} near-miss to the dataset`}>⭐</button>
+                                {semiButton}
+                              </span>
+                            );
+                          }
+                          if (!canSemi) {
                             return <span className="solution-note" title={meta.reason ?? ""}>one solution</span>;
                           }
-                          const busyHere = browsingLevel === stage.level;
                           const shown = meta.count === undefined
                             ? `${meta.index + 1}`
                             : `${meta.index + 1} / ${meta.count}${meta.countExact ? "" : "+"}`;
@@ -921,6 +1086,7 @@ export function ContinuationLab() {
                               <button className="save-solution" type="button" onClick={() => saveSolution(stage)}
                                 title="Save this solution to the dataset"
                                 aria-label={`Save level ${stage.level} solution to the dataset`}>⭐</button>
+                              {semiButton}
                             </span>
                           );
                         })()}
@@ -965,7 +1131,7 @@ export function ContinuationLab() {
         </div>
       </section>
 
-      <footer className="footer"><span>Calculation source · ysetbon/mxn · commit {COMMIT}</span><a href="..">← Scoubidou3D</a><a href="rate/">Categoriser →</a><a href="https://github.com/ysetbon/mxn" target="_blank" rel="noreferrer">View source ↗</a></footer>
+      <footer className="footer"><span>Calculation source · ysetbon/mxn · commit {COMMIT}</span><a href="..">← Scoubidou3D</a><a href="rate/">Categoriser →</a><a href="semi/">Near-misses →</a><a href="https://github.com/ysetbon/mxn" target="_blank" rel="noreferrer">View source ↗</a></footer>
     </main>
   );
 }
