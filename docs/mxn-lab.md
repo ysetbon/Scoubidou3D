@@ -173,6 +173,18 @@ This is the joint search the per-band `prefer_short_arms` tie-break cannot do.
 database table takes — including `parent_strands`, the Lᵥ₋₁ ring it was built
 on, so a later rating always knows what it was rating. Download exports the set.
 
+### The level widget
+
+Each card carries a drawer at its foot, opened and closed per level rather than
+once for the page: two Lᵥ can be held open side by side, which a single shared
+panel could not do — it would only ever describe the last card clicked. Open
+state lives in `openWidgets`, a `Set` of level numbers, beside `fullSizeLevels`
+which does the same job for the card's `+`/`−` size toggle.
+
+The drawer is deliberately empty at the moment. What it holds is still to be
+decided; the slot, its per-card state and its place below the audit strip are
+what is settled.
+
 ### The dataset API
 
 ⭐ and 🚩 always write to `localStorage`. If a Worker URL and admin token are set in
@@ -214,10 +226,18 @@ searched independently, so a good set of H extensions can be lost on account of
 the V it happened to be tested against — and what decides a borderline pair is
 the corner detection, which is not yet exact for every `k` and every `m × n`.
 
-The `◑` button on a level's card sweeps for those. Rather than the full `H × V`
-product, it holds one band at a value taken from a ring that **does** close and
-varies the other, so a sweep costs `len(h) + len(v)` replays instead of
-`len(h) × len(v)` — a second or two, not minutes.
+The `⚑H` and `⚑V` buttons on a level's card sweep for those, one band each.
+Rather than the full `H × V` product, a sweep holds the *other* band at a value
+taken from a ring that **does** close and varies the flagged one, so it costs
+`len(band)` replays instead of `len(h) × len(v)` — a second or two, not minutes.
+
+Two buttons rather than one toggle, because a near-miss is always blamed on one
+band and "which H values did the search throw away?" is a different question
+from the V one. `scan_semicomplete(level, band)` sweeps only the band asked for,
+so pressing one flag costs half of what the old both-bands scan did and the list
+it fills needs no reading of a per-row band label. Pressing the lit flag returns
+the card to rings that close; pressing the other swaps the question, which is a
+fresh sweep — the session holds one band's list at a time.
 
 One reference partner is not enough. A candidate that fails against one partner
 may close against another, and that kind is already reachable by browsing, so
@@ -243,7 +263,7 @@ membership from the candidate's own `moves` list instead of guessing from the
 arm angles. Reporting a fold against the wrong band would be worse than not
 reporting it.
 
-`◑` again returns the card to rings that close. Near-miss mode swaps the save
+Near-miss mode swaps the save
 button from `⭐` to `🚩`, because the two write to different queues and a shared
 glyph made a mis-press invisible: the near-miss appeared not to save when what
 had actually happened was that the closed-ring star was pressed. `🚩` writes
@@ -253,7 +273,7 @@ a rating cannot be filed against the wrong question by accident. What a score
 means there is different: it is about one band's numbers only, and 100 is a
 claim that the search discarded extensions it should have kept.
 
-`k = 0` has one configuration and nothing to sweep, so it gets no `◑`.
+`k = 0` has one configuration and nothing to sweep, so it gets no flags.
 
 ### Reading the list in a useful order
 
@@ -265,11 +285,12 @@ session and returns the head of it, and the ring on screen keeps its place by
 identity rather than by index, so a reorder never silently swaps what is being
 looked at — or what `🚩` would bank.
 
-`H− H+ V− V+` walk one band with the other held. `‹ ›` cannot ask that: they
-step the sorted list, which mixes both bands and every extension together,
-while these hold the other band's *candidate* — not merely its extension value,
-since two candidates can share a value and still be different rings — and move
-to the nearest extension in the direction asked for. That is the shape the
+`H− H+` (or `V− V+`, whichever band the list is for) walk the swept band with
+the other held. `‹ ›` cannot ask that: they step the sorted list, which mixes
+every extension together, while these hold the other band's *candidate* — not
+merely its extension value, since two candidates can share a value and still be
+different rings — and move to the nearest extension in the direction asked for.
+That is the shape the
 sweep itself has: every near-miss is one band varied against a partner that
 stayed put, so stepping that way walks the sweep instead of walking the sort.
 Both live in Python beside the list, because only the head of it
@@ -278,7 +299,7 @@ the page would silently work on a prefix.
 
 ### Cache keys
 
-The `semi-sort-v8` cache key appears in both the worker URL
+The `semi-band-v10` cache key appears in both the worker URL
 (`weave-studio.tsx`) and the Python fetch URL (`exact-worker.js`). Bump both
 together when the engine files change, or returning readers run stale geometry.
 
@@ -317,28 +338,21 @@ Measured serial — the path Pyodide takes — every row byte-identical:
 12 sequences over 5 sizes, 118.6 s → 18.4 s, and the `2×2 [1,2,2]` oracle above
 still gives `(40,10)`, `(50,60)`, `(60,50)` at 16/0/8/0/0 per level.
 
-### The trace panel
+## The trace census
 
-`◎` on a level card runs `bridge.trace_level`, which answers what the band search
-ruled out and on which test. The census lives in `public/mxn/py/mxn_trace.py`:
-the same tests in the same order, but it records a verdict for every
-`(combo, angle)` instead of stopping at the first failure, and sweeps ±40° so the
-angles production never reaches are marked `WINDOW` rather than left out.
-In-window verdicts use the engine's own per-combo grid, so the `BEST` count
-equals the number of valid configurations the real search reports.
+`bridge.trace_level` answers what the band search ruled out and on which test.
+The census lives in `public/mxn/py/mxn_trace.py`: the same tests in the same
+order, but it records a verdict for every `(combo, angle)` instead of stopping
+at the first failure, and sweeps ±40° so the angles production never reaches are
+marked `WINDOW` rather than left out. In-window verdicts use the engine's own
+per-combo grid, so the `BEST` count equals the number of valid configurations
+the real search reports.
 
-The panel draws three things — the combo grid, the angle sweep inside the
-selected combo, and the strands themselves — and each legend entry is a filter
-that dims everything which ended on a different test. `Record` captures the
-canvas with `MediaRecorder` and downloads a webm, so the animation is a page
-feature rather than something rendered offline.
+It has no button on the lab any more. The `◎` that opened an in-page panel is
+gone from the level cards, which now carry the two near-miss flags and nothing
+else; the worker still exposes the `trace` message and the offline scripts below
+still render it. Two things worth knowing if it is wired back up:
 
-Three things worth knowing:
-
-- **Only the census crosses the worker boundary.** Geometry is affine in the
-  extensions, so the page recomputes the handful of points it needs to draw one
-  cell from `origins`, `directions` and `targets` instead of receiving every
-  configuration. 2×1 is 140 KB; 3×3 is 2.9 MB and about 8 s.
 - **It forces the vectorised scan on**, whichever page it runs from. The replay
   is a full search and the census is roughly two more on top; without the
   vectorised path a 3×3 trace is tens of seconds.
@@ -348,7 +362,7 @@ Three things worth knowing:
 
 Like `enumerate_level`, the replay passes `mirror_sides=False`, so a square
 level 1 traces the search its V band *would* have run rather than the pinned one
-it actually used. The panel says so.
+it actually used.
 
 `scripts/mxn_trace.py` is the offline half — it pulls band inputs out of a real
 generate and keeps the per-combo geometry — and `scripts/mxn_trace_video.py`

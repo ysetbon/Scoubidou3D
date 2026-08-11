@@ -797,29 +797,41 @@ def _partners_from(rings):
     return partners
 
 
-def scan_semicomplete(level):
-    """Sweep both bands against partners that work, and keep what falls short."""
+def scan_semicomplete(level, band=None):
+    """Sweep a band against partners that work, and keep what falls short.
+
+    `band` is "h" or "v" and names the band to sweep -- the one the shortfall
+    would be attributed to. The page asks for one at a time because that is the
+    question it puts on screen ("which H values did the search throw away?"),
+    and sweeping only that band halves the replays. None sweeps both, which is
+    what the offline callers want.
+    """
     entry = _level_session(int(level))
     if entry["enumerated"] == "none" and entry["k"] != 0:
         enumerate_level(entry["level"])
+    want = str(band) if band in ("h", "v") else None
     m, n = _SESSION["m"], _SESSION["n"]
     expected = 4 * m * n
     sizes = (2 * m, 2 * n)
     h_cands, v_cands = entry["h_cands"], entry["v_cands"]
     if not h_cands or not v_cands:
         entry["semi"] = []
+        entry["semi_band"] = want
+        entry["semi_index"] = 0
         return json.dumps({
             "level": entry["level"], "items": [], "count": 0, "truncated": False,
-            "grounded": False, "refs": 0,
+            "grounded": False, "refs": 0, "band": want,
             "reason": entry.get("reason") or "this level has no candidate lists",
         }, separators=(",", ":"))
 
     partners, complete_seen = _reference_partners(entry)
     grounded = complete_seen > 0
     items, truncated = [], False
-    for band, cands in (("h", h_cands), ("v", v_cands)):
-        others = [index for index in partners[band]
-                  if index < len(v_cands if band == "h" else h_cands)]
+    for side, cands in (("h", h_cands), ("v", v_cands)):
+        if want is not None and side != want:
+            continue
+        others = [index for index in partners[side]
+                  if index < len(v_cands if side == "h" else h_cands)]
         if not others:
             continue
         if len(cands) > SEMI_BAND_CAP:
@@ -828,7 +840,7 @@ def scan_semicomplete(level):
             best = None
             closed = False
             for other in others:
-                i, j = (index, other) if band == "h" else (other, index)
+                i, j = (index, other) if side == "h" else (other, index)
                 strands, info = copy.deepcopy(entry["checkpoint"])
                 NX.apply_solution(strands, info, entry["level"], m, n,
                                   _SESSION["hand"], h_cands[i], v_cands[j])
@@ -846,12 +858,12 @@ def scan_semicomplete(level):
             if closed or best is None:
                 continue
             report, i, j = best
-            swept = h_cands[i] if band == "h" else v_cands[j]
+            swept = h_cands[i] if side == "h" else v_cands[j]
             items.append({
-                "band": band, "index": index, "h": i, "v": j,
+                "band": side, "index": index, "h": i, "v": j,
                 "refs": len(others),
                 "ext": list(swept.get("ext") or ()),
-                "heldExt": list((v_cands[j] if band == "h" else h_cands[i]).get("ext") or ()),
+                "heldExt": list((v_cands[j] if side == "h" else h_cands[i]).get("ext") or ()),
                 "angle": swept.get("angle"), "gap": swept.get("gap"),
                 "hExt": list(h_cands[i].get("ext") or ()),
                 "vExt": list(v_cands[j].get("ext") or ()),
@@ -860,7 +872,7 @@ def scan_semicomplete(level):
                 "across": report["across"], "expected": expected,
                 "withinH": report["withinH"], "withinV": report["withinV"],
                 "deficit": report["deficit"],
-                "folded": (report["withinH"] > 0) if band == "h"
+                "folded": (report["withinH"] > 0) if side == "h"
                           else (report["withinV"] > 0),
             })
 
@@ -869,9 +881,11 @@ def scan_semicomplete(level):
     items.sort(key=_semi_order("near"))
     entry["semi"] = items
     entry["semi_key"] = "near"
+    entry["semi_band"] = want
+    entry["semi_index"] = 0
     return json.dumps({
         "level": entry["level"], "count": len(items), "truncated": truncated,
-        "key": "near",
+        "key": "near", "band": want,
         "grounded": grounded, "refs": max(len(partners["h"]), len(partners["v"])),
         "reason": None if grounded else
                   "no complete ring was found to sweep against, so the engine's own "
@@ -907,7 +921,7 @@ def sort_semicomplete(level, key):
     entry = _level_session(int(level))
     items = entry.get("semi")
     if items is None:
-        scan_semicomplete(entry["level"])
+        scan_semicomplete(entry["level"], entry.get("semi_band"))
         items = entry.get("semi") or []
     key = "ext" if str(key) == "ext" else "near"
     position = entry.get("semi_index", 0)
@@ -942,7 +956,7 @@ def step_semicomplete(level, band, direction):
     entry = _level_session(int(level))
     items = entry.get("semi")
     if items is None:
-        scan_semicomplete(entry["level"])
+        scan_semicomplete(entry["level"], entry.get("semi_band"))
         items = entry.get("semi") or []
     position = entry.get("semi_index", 0)
     if not items or not (0 <= position < len(items)):
@@ -990,7 +1004,7 @@ def select_semicomplete(level, index):
     entry = _level_session(int(level))
     items = entry.get("semi")
     if items is None:
-        scan_semicomplete(entry["level"])
+        scan_semicomplete(entry["level"], entry.get("semi_band"))
         items = entry.get("semi") or []
     index = max(0, int(index))
     if not items:

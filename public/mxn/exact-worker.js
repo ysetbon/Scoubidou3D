@@ -38,7 +38,7 @@ async function prepare() {
       // Resolved against this worker's own URL rather than the site root: the
       // lab is published under a project-site sub-path, where "/py/..." would
       // miss. Keeps the cache key in step with the one in the Worker URL.
-      const url = new URL(`./py/${name}?v=trace-v9`, import.meta.url);
+      const url = new URL(`./py/${name}?v=semi-band-v10`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
@@ -90,14 +90,17 @@ const HANDLERS = {
       "bridge.count_solutions(mxn_level)"
     )];
   },
-  // Near-misses. The scan is a marginal sweep of both bands against a partner
-  // taken from a complete ring, so it costs len(h) + len(v) replays rather than
-  // the product -- seconds, not minutes, but still long enough that the page
-  // asks for it explicitly instead of doing it after every run.
+  // Near-misses. The scan is a marginal sweep of one band against a partner
+  // taken from a complete ring, so it costs len(band) replays rather than the
+  // product -- seconds, not minutes, but still long enough that the page asks
+  // for it explicitly instead of doing it after every run. The page asks per
+  // band because that is the question it puts on screen; a null band sweeps
+  // both, as the offline callers want.
   "semi-scan": async (runtime, data) => {
     runtime.globals.set("mxn_level", data.level);
+    runtime.globals.set("mxn_band", data.band ?? null);
     return ["semi-ready", await runtime.runPythonAsync(
-      "bridge.scan_semicomplete(mxn_level)"
+      "bridge.scan_semicomplete(mxn_level, mxn_band)"
     )];
   },
   // Reordering and stepping both read the list the scan already built, so
