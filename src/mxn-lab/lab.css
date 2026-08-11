@@ -349,11 +349,23 @@ textarea {
 /* The trace bleeds to the drawer's edges: it is the widget's whole content, not
    a block sitting inside it. */
 .level-widget-body:has(.trace-panel) { padding: 0; }
-/* A card showing a trace takes the whole grid row. The census is drawn on a
-   1120px canvas, and scaled into half a card its labels are unreadable; the
-   levels after it reflow down rather than being overlapped by anything. Scoped
-   to the trace, so a smaller tool in this slot keeps the card its own size. */
+.trace-canvas-wrap { width: 100%; }
+
+/* Closed, the widget is a strip at the foot of the card. Open, it moves to the
+   right of the diagram and takes the card's whole row with it, so the levels
+   after it reflow down rather than sitting beside a panel three times their
+   height. Scoped to .trace-panel: a smaller tool in this slot later keeps the
+   card its own size and its own footer. */
+.level-body { display: grid; grid-template-columns: minmax(0, 1fr); }
+.level-main { min-width: 0; }
 .diagram-card:has(.trace-panel) { grid-column: 1 / -1; }
+.diagram-card:has(.trace-panel) .level-body {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  align-items: start;
+}
+.diagram-card:has(.trace-panel) .level-widget {
+  border-top: 0; border-left: 1px solid var(--line); height: 100%;
+}
 .trace-pending { padding: 4px 0 10px; }
 .trace-pending-actions { display: flex; gap: 8px; margin-top: 10px; }
 .trace-pending-actions button {
@@ -427,6 +439,12 @@ textarea {
   .controls { padding: 22px clamp(20px, 7vw, 70px); }
   .sequence { grid-template-columns: 1fr; }
   .diagram-card:first-child { grid-column: auto; }
+  /* One column already: the trace goes back under its own diagram, still
+     inside its own card, so it cannot reach the level below. */
+  .diagram-card:has(.trace-panel) .level-body { grid-template-columns: 1fr; }
+  .diagram-card:has(.trace-panel) .level-widget {
+    border-top: 1px solid var(--line); border-left: 0;
+  }
   .sheet-stage { padding: 18px; }
   .method-grid { grid-template-columns: 1fr 1fr; }
   .method-step:nth-child(3) { border-left: 0; border-top: 1px solid #56544d; }

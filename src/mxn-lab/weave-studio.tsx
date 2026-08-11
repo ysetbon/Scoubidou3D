@@ -1362,7 +1362,8 @@ export function ContinuationLab() {
                         </button>
                       </div>
                     </div>
-                    <div id={`level-panel-${stage.level}`}>
+                    <div id={`level-panel-${stage.level}`} className="level-body">
+                      <div className="level-main">
                       <div className="canvas-wrap exact-canvas"><ExactCanvas stage={stage} bounds={bounds} /><span className="canvas-corner">{row ? `${row.state} · ${row.healthy ? "WEAVE" : "NOT A WEAVE"}` : "starting stitch"}</span></div>
                       <div className="card-foot exact-metrics">
                         <div className="metric"><span>suffixes</span><strong>{suffixLabel(stage.level)}</strong></div>
@@ -1378,7 +1379,8 @@ export function ContinuationLab() {
                         <span><b>broken</b>{row.broken}</span>
                         <em>{row.applied.length ? row.applied.join(" · ") : "k-based groups"}</em>
                       </div>}
-                      {/* The level widget: a drawer at the foot of the card,
+                      </div>
+                      {/* The level widget: beside the diagram when it is open,
                           one per Lᵥ and opened or closed per card, so two
                           levels can be held open side by side rather than the
                           page having a single panel that only ever describes
