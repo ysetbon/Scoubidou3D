@@ -26,6 +26,12 @@ type ExtStep = (typeof EXT_STEP_CHOICES)[number];
 // in the Python — adding it there changes what every existing stitch picks.
 const EXT_STEPS = [10, 20, 25, 40, 50, 100];
 
+// The busy indicator is a contact sheet of the candidates the engine actually
+// produced. Tiles are drawn at twice their 72px slot so they stay crisp on a
+// retina panel while costing a fraction of a full-size card render.
+const SHEET_TILES = 24;
+const TILE_PIXELS = 144;
+
 // Same formula as pick_extension_step(): the grid per pair is 0..ext_max in
 // `step` increments, and pairs are independent.
 function comboCount(step: number, pairs: number, extMax = MAX_PAIR_EXTENSION) {
@@ -72,6 +78,9 @@ export type Strand = {
 };
 export type Stage = { level: number; k: number | null; label: string; strands: Strand[] };
 type ProgressFrame = {
+  /** The generation this candidate belongs to, so a requeued run can tell its
+      own frames from the ones still draining out of the previous search. */
+  id: number;
   level: number;
   k: number;
   phase: string;
@@ -462,6 +471,76 @@ function formatExtensions(values: number[]) {
   return values.length ? `(${values.join(", ")})` : "—";
 }
 
+/**
+ * The ticking dots on the "thinking" plaque.
+ *
+ * Deliberately on their own beat rather than the engine's: when a search
+ * stalls the tiles behind the plaque freeze and the dots keep going, which is
+ * the difference between a slow band and a hung worker. Its own component so a
+ * dot does not re-render the sheet.
+ */
+function ThinkingDots() {
+  const [count, setCount] = useState(1);
+  useEffect(() => {
+    const slow = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const id = window.setInterval(() => setCount(value => (value % 3) + 1), slow ? 900 : 380);
+    return () => window.clearInterval(id);
+  }, []);
+  return <i>{".".repeat(count)}</i>;
+}
+
+/**
+ * The last SHEET_TILES candidates, drawn small — the busy state's whole
+ * content. These are real search output, so the rate the sheet fills at IS the
+ * search rate: a slow band visibly slows it.
+ *
+ * Tiles are written imperatively into a fixed pool of canvases instead of
+ * being re-rendered from a state array, so one candidate costs one small
+ * canvas draw no matter how full the sheet already is.
+ */
+function CandidateSheet({ frame }: { frame: ProgressFrame | null }) {
+  const tiles = useRef<(HTMLCanvasElement | null)[]>([]);
+  const cursor = useRef(0);
+  const runId = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!frame) return;
+    // A requeued run reuses this mounted sheet, so wipe the previous
+    // generation's tiles rather than interleaving two searches.
+    if (frame.id !== runId.current) {
+      runId.current = frame.id;
+      cursor.current = 0;
+      tiles.current.forEach(tile => {
+        if (!tile) return;
+        tile.getContext("2d")?.clearRect(0, 0, tile.width, tile.height);
+        tile.classList.add("is-void");
+        tile.classList.remove("is-fresh");
+      });
+    }
+    const canvas = tiles.current[cursor.current % SHEET_TILES];
+    if (!canvas) return;
+    const stage: Stage = {
+      level: frame.level,
+      k: frame.k,
+      label: frame.phase,
+      strands: frame.strands,
+    };
+    drawExactStage(canvas, stage, allBounds([stage]), false, TILE_PIXELS);
+    tiles.current.forEach(tile => tile?.classList.remove("is-fresh"));
+    canvas.classList.remove("is-void");
+    canvas.classList.add("is-fresh");
+    cursor.current += 1;
+  }, [frame]);
+
+  return (
+    <div className="sheet-grid" aria-hidden="true">
+      {Array.from({ length: SHEET_TILES }, (_, index) => (
+        <canvas key={index} className="is-void" ref={element => { tiles.current[index] = element; }} />
+      ))}
+    </div>
+  );
+}
+
 export function ContinuationLab() {
   const [m, setM] = useState(2);
   const [n, setN] = useState(2);
@@ -517,13 +596,6 @@ export function ContinuationLab() {
   const bounds = useMemo(
     () => result ? (boundsRef.current ?? allBounds(result.stages)) : null,
     [result]);
-  const progressStage: Stage | null = progressFrame ? {
-    level: progressFrame.level,
-    k: progressFrame.k,
-    label: progressFrame.phase,
-    strands: progressFrame.strands,
-  } : null;
-  const progressBounds = progressStage ? allBounds([progressStage]) : null;
 
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
@@ -1027,35 +1099,37 @@ export function ContinuationLab() {
         </aside>
 
         <div className="results">
-          {/* Live search drawing lives in the results column — not the sidebar —
-              so opening Advanced (or any other controls) cannot bury it. This is
-              the same place finished diagrams land. */}
-          {busy && progressFrame && progressStage && progressBounds && (
-            <figure className="search-preview search-preview-main" aria-label={`Live search candidate for level ${progressFrame.level}`}>
+          {/* The busy state, and the whole of it: candidates as they are found,
+              drawn small, in the results column — not the sidebar — so opening
+              Advanced cannot bury it. This is where finished diagrams land too.
+              It replaces a spinner that reported nothing beyond "not frozen";
+              the sheet fills at whatever rate the search is managing. */}
+          {busy && (
+            <figure className="candidate-sheet" aria-label="Live search candidates">
               <figcaption>
-                <span>live candidate · L{progressFrame.level} · k={progressFrame.k}</span>
-                <b>{progressFrame.phase}</b>
+                <span>
+                  live candidates
+                  {progressFrame ? ` · L${progressFrame.level} · k=${progressFrame.k}` : ""}
+                </span>
+                <b>{progressFrame?.phase ?? "starting search"}</b>
                 <em>
-                  {progressFrame.total > 0
+                  {progressFrame && progressFrame.total > 0
                     ? `${progressFrame.completed.toLocaleString()} / ${progressFrame.total.toLocaleString()}`
                     : "preparing search"}
-                  {progressFrame.valid > 0 ? ` · ${progressFrame.valid} valid` : ""}
+                  {progressFrame && progressFrame.valid > 0 ? ` · ${progressFrame.valid} valid` : ""}
                 </em>
               </figcaption>
-              <div className="search-preview-canvas">
-                <ExactCanvas
-                  stage={progressStage}
-                  bounds={progressBounds}
-                  showLabels={false}
-                  fixedSize={512}
-                  label={`512 pixel low-quality search candidate for level ${progressFrame.level}`}
-                />
+              <div className="sheet-stage">
+                <CandidateSheet frame={progressFrame} />
+                {/* aria-hidden: the engine status line already carries this
+                    state politely, and ticking dots are not worth announcing. */}
+                <div className="thinking-plaque" aria-hidden="true">thinking<ThinkingDots /></div>
               </div>
             </figure>
           )}
           {!result || !bounds ? (
-            busy && progressFrame ? null : (
-              <div className="calculation-panel"><div className={`calculation-orbit ${busy ? "is-spinning" : ""}`} /><strong>{status}</strong><span>The images appear after the repository audit finishes.</span></div>
+            busy ? null : (
+              <div className="calculation-panel"><div className="calculation-orbit" /><strong>{status}</strong><span>The images appear after the repository audit finishes.</span></div>
             )
           ) : (
             <div className={`sequence ${busy ? "sequence-updating" : ""}`}>

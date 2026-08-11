@@ -221,30 +221,49 @@ textarea {
 .engine-status.is-busy .engine-pulse { background: var(--red); animation: enginePulse 1.15s ease-in-out infinite; }
 .compute-note { margin: 13px 0 0; color: var(--muted); font: 600 9px/1.5 monospace; }
 @keyframes enginePulse { 50% { opacity: .28; transform: scale(.72); } }
-/* Live search preview sits in .results so sidebar scroll / Advanced expand
-   never covers it. Sized like a diagram card, not a sidebar thumbnail. */
-.search-preview {
+/* The busy indicator. Lives in .results so sidebar scroll / Advanced expand
+   never covers it, and is sized like a diagram card rather than a sidebar
+   thumbnail. Contents are real candidates, so the rate it fills at is the
+   search rate — which is the whole point of it replacing a spinner. */
+.candidate-sheet {
   margin: 0 0 20px; overflow: hidden; border: 1px solid var(--ink);
-  background: #f2f2f7; box-shadow: var(--shadow);
+  background: var(--card); box-shadow: var(--shadow);
 }
-.search-preview figcaption {
+.candidate-sheet figcaption {
   display: grid; grid-template-columns: 1fr auto; gap: 4px 10px;
   padding: 12px 14px; border-bottom: 1px solid var(--ink);
   background: var(--card); font: 700 10px/1.3 monospace;
 }
-.search-preview figcaption span {
+.candidate-sheet figcaption span {
   grid-column: 1 / -1; color: var(--blue); letter-spacing: .07em;
   text-transform: uppercase;
 }
-.search-preview figcaption b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.search-preview figcaption em { color: var(--muted); font-style: normal; white-space: nowrap; }
-.search-preview-canvas {
-  width: min(100%, 560px); aspect-ratio: 1; margin: 0 auto;
-  max-height: min(70vh, 560px);
+.candidate-sheet figcaption b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.candidate-sheet figcaption em { color: var(--muted); font-style: normal; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sheet-stage { position: relative; display: grid; place-items: center; padding: 26px; background: #f2f2f7; }
+/* auto-fill rather than a fixed 8: the column is narrower on a laptop than on
+   a desktop, and the tiles should reflow instead of overflowing. */
+.sheet-grid {
+  display: grid; gap: 9px; grid-template-columns: repeat(auto-fill, 72px);
+  justify-content: center; max-width: 639px; margin: 0 auto;
 }
-.search-preview canvas {
-  display: block; width: 100%; height: 100%; image-rendering: auto;
+.sheet-grid canvas {
+  display: block; width: 72px; height: 72px;
+  border: 1px solid var(--line); background: #f2f2f7;
+  transition: opacity .12s linear, transform .12s ease-out;
 }
+/* Slots the search has not reached yet. */
+.sheet-grid canvas.is-void { opacity: .12; }
+.sheet-grid canvas.is-fresh { transform: scale(1.06); border-color: var(--ink); }
+.thinking-plaque {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 2;
+  display: inline-flex; align-items: baseline; gap: 2px;
+  padding: 8px 12px; background: var(--card); border: 1px solid var(--ink);
+  font: 800 11px/1 monospace; letter-spacing: .14em; text-transform: uppercase;
+  box-shadow: 0 6px 18px rgba(23, 23, 19, .14);
+}
+/* Fixed width so the plaque does not jitter between one dot and three. */
+.thinking-plaque i { font-style: normal; color: var(--red); width: 1.6em; letter-spacing: .16em; }
 
 .results { min-width: 0; padding: 22px clamp(20px, 4vw, 56px) 70px; }
 .sequence { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
@@ -302,9 +321,10 @@ textarea {
 }
 .calculation-panel strong { font: 400 26px/1.15 Georgia, serif; max-width: 520px; }
 .calculation-panel span { color: var(--muted); font: 600 10px/1.5 monospace; margin-top: 9px; }
-/* Idle: a plain ring with a dot in it — a mark, not a stopped spinner. Nothing
-   is being calculated before Run is pressed, and a wheel turning against an
-   empty page says the opposite. */
+/* Idle only — a plain ring with a dot in it, a mark rather than a stopped
+   spinner. Nothing is being calculated before Run is pressed. There is no
+   running variant: once a search starts, .candidate-sheet takes the column and
+   shows the search's own output instead of a wheel. */
 .calculation-orbit {
   position: relative; width: 54px; height: 54px; margin-bottom: 22px;
   border: 2px solid var(--line); border-radius: 50%;
@@ -312,16 +332,6 @@ textarea {
 .calculation-orbit::after {
   content: ""; position: absolute; inset: 0; margin: auto;
   width: 12px; height: 12px; border-radius: 50%; background: var(--line);
-}
-/* Running: the same ring, coloured on two sides and turning. */
-.calculation-orbit.is-spinning {
-  border-top-color: var(--red); border-right-color: var(--blue);
-  animation: orbit 1.1s linear infinite;
-}
-.calculation-orbit.is-spinning::after { display: none; }
-@keyframes orbit { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) {
-  .calculation-orbit.is-spinning { animation: none; }
 }
 
 .method { border-top: 1px solid var(--ink); padding: 54px clamp(20px, 4vw, 64px) 72px; background: var(--ink); color: var(--paper); }
@@ -344,7 +354,7 @@ textarea {
   .controls { padding: 22px clamp(20px, 7vw, 70px); }
   .sequence { grid-template-columns: 1fr; }
   .diagram-card:first-child { grid-column: auto; }
-  .search-preview-canvas { width: 100%; max-height: none; }
+  .sheet-stage { padding: 18px; }
   .method-grid { grid-template-columns: 1fr 1fr; }
   .method-step:nth-child(3) { border-left: 0; border-top: 1px solid #56544d; }
   .method-step:nth-child(4) { border-top: 1px solid #56544d; }
@@ -359,6 +369,9 @@ textarea {
   .footer { flex-direction: column; }
   .canvas-wrap { min-height: 230px; }
   .exact-canvas { min-height: 300px; }
+  .sheet-stage { padding: 14px; }
+  .sheet-grid { gap: 7px; grid-template-columns: repeat(auto-fill, 56px); }
+  .sheet-grid canvas { width: 56px; height: 56px; }
   .exact-metrics { grid-template-columns: 1fr 1fr; }
   .exact-metrics .metric:nth-child(3) { border-left: 0; border-top: 1px solid var(--line); }
   .exact-metrics .metric:nth-child(4) { border-top: 1px solid var(--line); }
