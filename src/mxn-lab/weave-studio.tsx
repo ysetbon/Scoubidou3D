@@ -1187,11 +1187,6 @@ export function ContinuationLab() {
                                   title="Flag this near-miss for rating — goes to /mxn/semi/"
                                   aria-label={`Flag level ${stage.level} near-miss for the dataset`}>🚩</button>
                                 {semiButton}
-                                <button className="trace-toggle" type="button"
-                                  onClick={() => openTrace(stage.level, "v")}
-                                  disabled={busyHere}
-                                  title="Trace: every combo against every angle, including the ones the search never tries"
-                                  aria-label={`Trace the search for level ${stage.level}`}>◎</button>
                               </span>
                             );
                           }
@@ -1215,6 +1210,11 @@ export function ContinuationLab() {
                                 title="Save this closed ring for rating — goes to /mxn/rate/"
                                 aria-label={`Save level ${stage.level} solution to the dataset`}>⭐</button>
                               {semiButton}
+                              <button className="trace-toggle" type="button"
+                                onClick={() => openTrace(stage.level, "v")}
+                                disabled={busyHere}
+                                title="Trace: every combo against every angle, including the ones the search never tries"
+                                aria-label={`Trace the search for level ${stage.level}`}>◎</button>
                             </span>
                           );
                         })()}
