@@ -43,6 +43,15 @@ async function prepare() {
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
     }));
     await runtime.runPythonAsync("import sys; sys.path.insert(0, '/home/py'); import bridge");
+    // /mxn/fast/ passes engine=fast on this worker's own URL. It selects the
+    // vectorised angle scan, which returns the same winner as the default path
+    // (verified against the docs/mxn-lab.md oracle) with the per-angle Python
+    // loop batched. Nothing else about the run changes.
+    if (new URL(self.location.href).searchParams.get("engine") === "fast") {
+      await runtime.runPythonAsync(
+        "import mxn_lh_continuation as _lh; _lh.FAST_ANGLE_SCAN = True");
+      self.postMessage({ type: "progress", message: "Vectorised angle scan enabled." });
+    }
     pyodide = runtime;
     return runtime;
   })();

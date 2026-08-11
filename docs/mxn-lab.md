@@ -281,3 +281,63 @@ the page would silently work on a prefix.
 The `semi-sort-v8` cache key appears in both the worker URL
 (`weave-studio.tsx`) and the Python fetch URL (`exact-worker.js`). Bump both
 together when the engine files change, or returning readers run stale geometry.
+
+## The vectorised angle scan, at /mxn/fast/
+
+`_numpy_try_all_angles` measures as roughly three quarters of a run's time.
+Despite the name it batches only its *setup* across angles: the scoring is a
+Python `for ai in valid_angle_indices` loop doing small numpy calls on arrays of
+a handful of elements, where dispatch overhead dwarfs the arithmetic. A 3×3
+`k=1` run made 773,975 `np.any` calls — about one per angle per combo.
+
+`_rank_angles_vectorised` does that loop's work over the angle axis in one pass
+and hands the loop its angles already ordered by the key the loop minimises,
+`(first_last_distance, gap_variance)`, earliest angle first on a tie. The loop
+then takes the winner on its first iteration and rejects everything after, so
+the selected angle and the result dict built from it are unchanged; only the
+rejected angles stop being visited one at a time. When a ranked winner's
+configuration fails to build, the scan replays unaccelerated rather than answer
+differently.
+
+It is off by default. `/mxn/fast/` is the same component, the same engine files
+and the same build as `/mxn/`, with `data-engine="fast"` on `#lab`; that rides
+to Pyodide on the worker URL as `engine=fast` and sets `FAST_ANGLE_SCAN`. Two
+links off one build, so an A/B compares the scan and nothing else.
+
+Measured serial — the path Pyodide takes — every row byte-identical:
+
+| size · ks | default | fast |
+|---|---|---|
+| 2×2 `[1,2,2]` | 2.47 s | **0.60 s** |
+| 2×2 `[-1]` | 1.25 s | **0.24 s** |
+| 2×3 `[1]` | 22.69 s | **3.26 s** |
+| 3×3 `[1]` | 21.16 s | **3.32 s** |
+| 3×3 `[2]` | 20.91 s | **2.89 s** |
+
+12 sequences over 5 sizes, 118.6 s → 18.4 s, and the `2×2 [1,2,2]` oracle above
+still gives `(40,10)`, `(50,60)`, `(60,50)` at 16/0/8/0/0 per level.
+
+### Seeing what the search does
+
+`scripts/mxn_trace.py` is an instrumented twin of the band search: same tests in
+the same order, but it records a verdict for every `(combo, angle)` instead of
+stopping at the first failure, and it sweeps ±40° so the angles production never
+reaches are marked `WINDOW` rather than left out. In-window verdicts use the
+engine's own per-combo angle grid, so its `BEST` count matches the engine's
+valid count exactly. `scripts/mxn_trace_video.py` renders that census to a webm
+(ffmpeg here is Playwright's build: JPEG in over `pipe:0`, VP8 out — no H.264,
+so no mp4).
+
+`2×1 k=1`, both bands, 110,880 evaluations:
+
+| verdict | share | |
+|---|---|---|
+| `WINDOW` | 66.2% | outside ±20°, never tried |
+| `ORDER` | 17.4% | gaps disagree in sign — strands out of order |
+| `TOOFAR` | 11.5% | a gap above `max_gap` |
+| `OVERLAP` | 4.5% | a gap below `min_gap` |
+| `VALID` | 0.3% | every test passed |
+
+`REACH` never fires at this size. Two thirds of the space is ruled out by the
+angle window before any geometry is computed, and of what the engine does test,
+order is the dominant rejection.

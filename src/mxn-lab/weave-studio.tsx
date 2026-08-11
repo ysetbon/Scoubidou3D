@@ -10,6 +10,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 // working under either.
 const LAB_BASE = `${import.meta.env.BASE_URL}mxn/`;
 
+// /mxn/ and /mxn/fast/ mount the same component against the same engine files;
+// the page says which angle-scan path to use via data-engine on #lab, and the
+// choice rides to Pyodide on the worker URL. Two links, one build, so an A/B
+// compares the scan and nothing else.
+const FAST_ENGINE = document.getElementById("lab")?.dataset.engine === "fast";
+
 const COMMIT = "984d9ed";
 const PRESETS = ["1", "1 1 -1", "1 1 -1 -1 -1 -1 -1", "1 1 1", "1 -1 1 -1", "-1 -1"];
 
@@ -527,7 +533,10 @@ export function ContinuationLab() {
 
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
-    const worker = new Worker(`${LAB_BASE}exact-worker.js?v=semi-sort-v8`, { type: "module" });
+    const worker = new Worker(
+      `${LAB_BASE}exact-worker.js?v=semi-sort-v8${FAST_ENGINE ? "&engine=fast" : ""}`,
+      { type: "module" },
+    );
     worker.onmessage = (event) => {
       const message = event.data;
       if (message.type === "progress") {
