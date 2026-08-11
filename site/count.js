@@ -21,6 +21,21 @@
 (() => {
   const CODE = 'scoubidou3d';
 
+  /* Reading the running total back is a second thing, switched on separately.
+   *
+   * GoatCounter serves /counter/TOTAL.json only when "Allow adding visitor
+   * counts to your website" is enabled under Settings → Site settings; with it
+   * off the endpoint answers 403, and — because that error response carries no
+   * Access-Control-Allow-Origin header — the browser reports it as a CORS
+   * failure as well. Both land in every reader's console, and neither can be
+   * silenced from JavaScript: a rejected fetch is logged before .catch() ever
+   * runs. So the request is not made at all until the dashboard setting that
+   * makes it succeed is actually on.
+   *
+   * To turn the tally on: enable that setting, then set this to true. Counting
+   * itself does not depend on it — visits are recorded either way. */
+  const SHOW_TOTAL = false;
+
   if (!CODE) return;
 
   /* Settings have to exist before count.js runs, because it reads them on load.
@@ -75,16 +90,20 @@
   /* The visible tally.
    *
    * Separate from the script above: that one RECORDS a visit, this one READS
-   * the running total back. GoatCounter serves it only if "allow adding visitor
-   * counts to your website" is enabled in the site settings, so until that is
-   * switched on this quietly does nothing and the note reads as before — a
-   * counter that renders "NaN" or "0" would be worse than no counter.
+   * the running total back. Gated on SHOW_TOTAL, for the reason given there —
+   * a request that is certain to fail is worse than no request, because the
+   * failure is written into the console of everyone who opens the page.
+   *
+   * Even once it is on, a failure leaves the note reading as before rather than
+   * rendering "NaN" or "0", which would be worse than no counter.
    *
    * TOTAL rather than this page's own path: the per-path endpoint wants the
    * recorded path URL-encoded into the URL, which is fiddly to get right under
    * a project-site prefix, and the site-wide number is the one worth showing.
    */
   function showTotal() {
+    if (!SHOW_TOTAL) return;
+
     fetch(`https://${CODE}.goatcounter.com/counter/TOTAL.json`)
       .then((r) => (r.ok ? r.json() : null))
       .then((body) => {

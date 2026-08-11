@@ -40,6 +40,32 @@ Nothing else changes. The footer note ("Visits counted without cookies") is
 hidden in the HTML and unhidden by `count.js` only when it actually runs, so the
 page never claims to be counting while `CODE` is empty.
 
+## The visible tally is a second switch
+
+`count.js` can also print the running total into that footer note ("1,234 visits
+· Visits counted without cookies"). That reads `/counter/TOTAL.json` back from
+GoatCounter, which is a different permission from recording a visit, and it is
+**off by default**:
+
+```js
+const SHOW_TOTAL = false;
+```
+
+Leaving it off costs nothing — visits are still recorded and still show up in the
+dashboard. Turning it on takes two steps, in this order:
+
+1. In GoatCounter, under *Settings → Site settings*, enable **"Allow adding
+   visitor counts to your website"**. Until this is on, the endpoint answers
+   `403`.
+2. Set `SHOW_TOTAL = true` in `site/count.js` and push.
+
+Doing step 2 without step 1 puts two errors in the console of every reader —
+the `403` itself, and a CORS complaint on top of it, because GoatCounter's error
+response carries no `Access-Control-Allow-Origin` header. Neither can be caught
+and silenced from JavaScript: the browser logs a failed request before any
+`.catch()` runs. That is why the flag exists instead of just letting the fetch
+fail quietly.
+
 ## What you get, and what you don't
 
 GoatCounter resolves a **country and region** from the request's IP and then
