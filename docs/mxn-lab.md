@@ -348,10 +348,15 @@ marked `WINDOW` rather than left out. In-window verdicts use the engine's own
 per-combo grid, so the `BEST` count equals the number of valid configurations
 the real search reports.
 
-It has no button on the lab any more. The `◎` that opened an in-page panel is
-gone from the level cards, which now carry the two near-miss flags and nothing
-else; the worker still exposes the `trace` message and the offline scripts below
-still render it. Two things worth knowing if it is wired back up:
+It has no button on the lab any more. The `◎` that expanded a per-level trace
+drawer is gone from the level cards, which now carry the two near-miss flags and
+nothing else, and the drawer went with it. The worker still exposes the `trace`
+message, `src/mxn-lab/trace-layout.ts` still holds the combo grid as arithmetic
+— the combo index is a base-E number with one digit per extension pair, so the
+grid is that number de-interleaved, even place-value exponents on x and odd on
+y, with `npm run check:trace` holding `place` and `unplace` to being inverses —
+and the offline scripts below still render the census. Two things worth knowing
+if a panel is wired back up:
 
 - **It forces the vectorised scan on**, whichever page it runs from. The replay
   is a full search and the census is roughly two more on top; without the
