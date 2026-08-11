@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { traceKey } from "./trace-band";
+import { TracePanel, type TracePayload } from "./trace-panel";
+
 // Upstream the lab sits at the root of its own host, so its runtime assets were
 // plain "/exact-worker.js" and "/extension-origin-l0.svg". Here it is one page
 // of a project site published under /Scoubidou3D/, and those would resolve
@@ -574,6 +577,11 @@ export function ContinuationLab() {
   // the two ⚑ ask different questions of the same level.
   const [semiMode, setSemiMode] = useState<Record<number, Band | undefined>>({});
   const [openWidgets, setOpenWidgets] = useState<Set<number>>(() => new Set());
+  // One trace per level and band. A trace costs a replay of the level plus
+  // two sweeps of it, so closing the widget keeps what it found.
+  const [traces, setTraces] = useState<Record<string, TracePayload>>({});
+  const [traceFailed, setTraceFailed] = useState<Record<string, string>>({});
+  const [traceBand, setTraceBand] = useState<Record<number, Band>>({});
   const [browsingLevel, setBrowsingLevel] = useState<number | null>(null);
   const [savedCount, setSavedCount] = useState(0);
   const [healthyOnly, setHealthyOnly] = useState(false);
@@ -648,6 +656,22 @@ export function ContinuationLab() {
             };
           });
         }
+        return;
+      }
+      if (message.type === "trace-ready") {
+        setBrowsingLevel(null);
+        // message.band is the engine's spelling ("horizontal"), not the page's
+        // ("h"); traceKey collapses both onto one key.
+        const key = traceKey(message.level, message.band);
+        if (message.unavailable) {
+          setStatus(`L${message.level}: ${message.reason}`);
+          setTraceFailed(current => ({
+            ...current, [key]: message.reason || "This band cannot be traced.",
+          }));
+          return;
+        }
+        setTraces(current => ({ ...current, [key]: message as TracePayload }));
+        setStatus(`L${message.level} ${message.band} band traced — nothing skipped.`);
         return;
       }
       if (message.type === "semi-ready") {
@@ -735,6 +759,10 @@ export function ContinuationLab() {
           // candidate lists of the session that has just been replaced.
           setSemi({});
           setSemiMode({});
+          setTraces({});
+          setTraceFailed({});
+          setTraceBand({});
+          setOpenWidgets(new Set());
           setProgressFrame(null);
           setEngineError(null);
           setStatus(`Exact calculation complete · ${message.result.seconds}s`);
@@ -890,12 +918,33 @@ export function ContinuationLab() {
     });
   };
 
+  // Replays the level and sweeps it twice over, so it is only ever asked for
+  // by opening a widget -- never as part of a generate.
+  const requestTrace = (level: number, band: Band) => {
+    const key = traceKey(level, band);
+    if (traces[key] || traceFailed[key]) return;
+    setBrowsingLevel(level);
+    setStatus(`Tracing the L${level} ${band === "h" ? "horizontal" : "vertical"} band — every combo against every angle…`);
+    ensureWorker().postMessage({
+      type: "trace", id: activeIdRef.current, level, band,
+    });
+  };
+
+  const showBand = (level: number, band: Band) => {
+    setTraceBand(current => ({ ...current, [level]: band }));
+    requestTrace(level, band);
+  };
+
   const toggleWidget = (level: number) => {
+    const opening = !openWidgets.has(level);
     setOpenWidgets(current => {
       const next = new Set(current);
       if (!next.delete(level)) next.add(level);
       return next;
     });
+    // L0 is the starting stitch: it is not aligned, so it has no band search to
+    // trace. Every other level opens on the band it was last shown at.
+    if (opening && level > 0) requestTrace(level, traceBand[level] ?? "v");
   };
 
   const saveSolution = (stage: Stage) => {
@@ -1347,7 +1396,33 @@ export function ContinuationLab() {
                         </button>
                         {widgetOpen && (
                           <div className="level-widget-body" id={`level-widget-${stage.level}`}>
-                            <p>Empty for now — this is the slot for the L{stage.level === 0 ? "₀" : stage.level} tool.</p>
+                            {(() => {
+                              if (stage.level === 0) {
+                                return <p>L₀ is the starting stitch. It is built, not
+                                  searched, so there is no band census to show.</p>;
+                              }
+                              const band = traceBand[stage.level] ?? "v";
+                              const key = traceKey(stage.level, band);
+                              const payload = traces[key];
+                              const failed = traceFailed[key];
+                              if (payload) {
+                                return <TracePanel data={payload}
+                                  onClose={() => toggleWidget(stage.level)}
+                                  onBand={b => showBand(stage.level, b)} />;
+                              }
+                              return (
+                                <div className="trace-pending">
+                                  <p>{failed ?? `Replaying L${stage.level} and sweeping every combo of its `
+                                    + `${band === "h" ? "horizontal" : "vertical"} band against every angle…`}</p>
+                                  <div className="trace-pending-actions">
+                                    {(["h", "v"] as const).map(b => (
+                                      <button key={b} type="button" aria-pressed={band === b}
+                                        onClick={() => showBand(stage.level, b)}>{b.toUpperCase()}</button>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>

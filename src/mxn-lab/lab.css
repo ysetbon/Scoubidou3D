@@ -346,6 +346,45 @@ textarea {
   background: rgba(220,218,232,.14);
 }
 .level-widget-body p { margin: 10px 0 0; color: var(--muted); font: 600 10px/1.5 monospace; }
+/* The trace bleeds to the drawer's edges: it is the widget's whole content, not
+   a block sitting inside it. */
+.level-widget-body:has(.trace-panel) { padding: 0; }
+/* A card showing a trace takes the whole grid row. The census is drawn on a
+   1120px canvas, and scaled into half a card its labels are unreadable; the
+   levels after it reflow down rather than being overlapped by anything. Scoped
+   to the trace, so a smaller tool in this slot keeps the card its own size. */
+.diagram-card:has(.trace-panel) { grid-column: 1 / -1; }
+.trace-pending { padding: 4px 0 10px; }
+.trace-pending-actions { display: flex; gap: 8px; margin-top: 10px; }
+.trace-pending-actions button {
+  font: 700 10px/1 monospace; padding: 6px 10px;
+  border: 1px solid var(--line); background: var(--card); cursor: pointer;
+}
+.trace-pending-actions button[aria-pressed="true"] { background: var(--ink); color: var(--acid); }
+
+.trace-panel { padding: 14px 13px 16px; background: transparent; }
+.trace-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.trace-head strong { font: 800 10px/1 monospace; text-transform: uppercase; letter-spacing: .08em; }
+.trace-head span { color: var(--muted); font: 600 10px/1 monospace; margin-right: auto; }
+.trace-head button {
+  font: 700 10px/1 monospace; padding: 5px 9px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--card);
+}
+.trace-head button:hover, .trace-head button:focus-visible { border-color: var(--ink); background: var(--acid); outline: none; }
+.trace-head button[aria-pressed="true"] { background: var(--ink); color: var(--acid); border-color: var(--ink); }
+.trace-panel canvas { width: 100%; height: auto; display: block; cursor: crosshair; background: #f4f0e6; }
+.trace-legend { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+/* Each entry is a filter: pressing one dims every cell that ended elsewhere. */
+.trace-legend button {
+  display: flex; align-items: baseline; gap: 6px; cursor: pointer;
+  font: 600 10px/1 monospace; padding: 5px 8px;
+  border: 1px solid var(--line); background: var(--card);
+}
+.trace-legend button.is-only { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.trace-legend i { width: 10px; height: 10px; display: inline-block; }
+.trace-legend span { font-variant-numeric: tabular-nums; }
+.trace-legend em { color: var(--muted); font-style: normal; }
+.trace-note { margin: 10px 0 0; color: var(--muted); font: 600 10px/1.6 monospace; max-width: 90ch; }
 
 .sequence-updating { opacity: .54; transition: opacity .2s ease; }
 .calculation-panel {
