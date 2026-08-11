@@ -575,7 +575,8 @@ def trace_level(level, band="v"):
     # the census swept, and re-grabbing them would cost another full replay.
     entry.setdefault("trace_bands", {})[want] = grabbed[0]
 
-    payload = mxn_trace.pack(mxn_trace.census(grabbed[0]))
+    counted = mxn_trace.census(grabbed[0])
+    payload = mxn_trace.pack(counted)
     if payload.get("over_budget"):
         return json.dumps({
             "level": entry["level"], "band": want, "unavailable": True,
@@ -591,10 +592,30 @@ def trace_level(level, band="v"):
         "k": entry["k"],
         "applied": list(cands[picked]["ext"]) if picked < len(cands) else [],
     })
+
+    # The engine's own pick, woven up front. The panel lands on this cell at
+    # the angle its ranking selects, so its preview must not cost a worker
+    # round trip -- by the time the census is on screen the weave is too.
+    # Best-effort: a pick the census grid cannot place just falls back to the
+    # panel's ordinary request path.
+    try:
+        applied = payload["applied"]
+        if applied:
+            vals = counted["vals"]
+            idx = 0
+            for e in applied:
+                idx = idx * len(vals) + vals.index(float(e))
+            best_i = int(counted["best"][idx])
+            angle = (float(counted["angle0"][idx])
+                     + max(best_i, 0) * float(counted["step"]))
+            payload["weave"] = _weave_cell(entry, want, applied, angle)
+    except Exception:
+        pass
+
     return json.dumps(payload, separators=(",", ":"))
 
 
-def trace_weave(level, band, ext, angle_deg):
+def _weave_cell(entry, want, ext, angle_deg):
     """Materialise the ring one traced (combo, angle) cell would produce.
 
     The traced band's arms take the given extensions at the given heading --
@@ -604,21 +625,20 @@ def trace_weave(level, band, ext, angle_deg):
     failing combo looks like woven is exactly what the preview is for.
 
     Reads the band inputs trace_level left in the session, so it costs one
-    checkpoint replay per call rather than a fresh search.
+    checkpoint replay per call rather than a fresh search. Returns a dict:
+    trace_weave sends it alone, trace_level embeds one for the engine's pick.
     """
     import math
 
-    entry = _level_session(int(level))
-    want = "vertical" if str(band).lower().startswith("v") else "horizontal"
     ext = [float(e) for e in ext]
     angle_deg = float(angle_deg)
     data = (entry.get("trace_bands") or {}).get(want)
     if data is None:
-        return json.dumps({
+        return {
             "level": entry["level"], "band": want, "unavailable": True,
             "ext": [int(e) for e in ext], "angle": angle_deg,
             "reason": "trace this band first; the weave preview reads its inputs",
-        }, separators=(",", ":"))
+        }
 
     import mxn_trace
 
@@ -659,12 +679,20 @@ def trace_weave(level, band, ext, angle_deg):
     row = describe(_synth_result(entry, h_cand or {}, v_cand or {}),
                    [dict(s) for s in strands], entry["level"], entry["k"],
                    expected, (2 * m, 2 * n))
-    return json.dumps({
+    return {
         "level": entry["level"], "band": want, "unavailable": False,
         "ext": [int(e) for e in ext], "angle": angle_deg,
         "crossings": crossings, "row": row,
         "strands": _stage_strands(NX._snapshot_json(strands)),
-    }, separators=(",", ":"))
+    }
+
+
+def trace_weave(level, band, ext, angle_deg):
+    """One traced cell, woven -- _weave_cell as the worker message."""
+    entry = _level_session(int(level))
+    want = "vertical" if str(band).lower().startswith("v") else "horizontal"
+    return json.dumps(_weave_cell(entry, want, ext, angle_deg),
+                      separators=(",", ":"))
 
 
 def select_solution(level, index, healthy_only=False, cursor=None):

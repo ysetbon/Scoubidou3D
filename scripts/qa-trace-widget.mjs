@@ -51,8 +51,12 @@ await page.addInitScript(({ result, traces, weaves }) => {
       const reply = (msg) => setTimeout(() => this.onmessage?.({ data: msg }), 30);
       if (data.type === 'generate') reply({ type: 'result', id: data.id, result });
       if (data.type === 'trace') {
+        // Slower than the other replies, so the sweep animation that fills the
+        // wait is actually on screen long enough to be asserted about.
         const t = traces[String(data.band).toLowerCase().startsWith('v') ? 'v' : 'h'];
-        reply({ type: 'trace-ready', id: data.id, ...t });
+        setTimeout(() => this.onmessage?.({
+          data: { type: 'trace-ready', id: data.id, ...t },
+        }), 350);
       }
       if (data.type === 'trace-weave') {
         // A real woven ring for the strands; ext and angle echo the request so
@@ -99,6 +103,23 @@ ok('closed, it is a rail rather than a footer',
 // ---- open L1 ----
 const l1 = page.locator('.diagram-card', { hasText: 'L1' }).first();
 await l1.locator('.level-widget-head').click();
+
+// ---- while the census computes, the sweep animation is on screen ----
+await page.waitForSelector('.trace-pending .trace-sweep', { timeout: 5000 });
+await page.waitForTimeout(120);
+const sweepInk = await page.evaluate(() => {
+  const cv = document.querySelector('.trace-pending .trace-sweep');
+  if (!cv) return -1;
+  const { data } = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
+  let inked = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    // Anything that is not the paper colour is the animation drawing.
+    if (data[i + 3] && !(data[i] === 244 && data[i + 1] === 240 && data[i + 2] === 230)) inked += 1;
+  }
+  return inked;
+});
+ok('tracing shows the sweep animation, not bare text', sweepInk > 500, `${sweepInk} inked px`);
+
 await page.waitForSelector('.trace-panel canvas', { timeout: 20000 });
 ok('opening the widget shows the trace (band key round-trips)', true);
 
@@ -120,16 +141,14 @@ const painted = await page.evaluate(() => {
 });
 ok('the census is drawn, not blank', painted.colours > 5, `${painted.colours} distinct colours`);
 
-// ---- the weave preview asks for the combo on screen, and draws it ----
-// The panel lands on the applied combo, debounces 250ms, and the fake worker
-// answers 30ms later with a real woven ring.
-await page.waitForTimeout(600);
+// ---- the engine's pick arrives already woven: instant, no request ----
+// The payload embeds the applied combo's weave and the studio seeds the cache
+// from it, so the box must be painted before the 250ms request debounce could
+// even have fired — that is what proves the seeded key matches the panel's.
+await page.waitForTimeout(120);
 const weaveAsks = await page.evaluate(() => window.__posted.filter(m => m.type === 'trace-weave'));
-ok('opening asks to weave the combo on screen', weaveAsks.length === 1,
+ok('the default weave costs no worker round trip', weaveAsks.length === 0,
    `${weaveAsks.length} requests`);
-ok('it asks for the combo the level adopted',
-   JSON.stringify(weaveAsks[0]?.ext) === JSON.stringify(fixtures.traces.v.applied),
-   JSON.stringify(weaveAsks[0]?.ext));
 const weavePaint = await page.evaluate(() => {
   const cv = document.querySelector('.trace-panel canvas');
   const dpr = cv.width / cv.getBoundingClientRect().width;
@@ -147,8 +166,8 @@ const weavePaint = await page.evaluate(() => {
   }
   return { white, indigo };
 });
-ok('the weave pattern is drawn in the widget', weavePaint.white > 200 && weavePaint.indigo > 200,
-   JSON.stringify(weavePaint));
+ok('the weave pattern is drawn instantly for the engine pick',
+   weavePaint.white > 200 && weavePaint.indigo > 200, JSON.stringify(weavePaint));
 
 // ---- the cell under the cursor is the combo the level adopted ----
 const caption = async () => page.evaluate(() => {

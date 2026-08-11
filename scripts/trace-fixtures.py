@@ -35,6 +35,9 @@ for band in ("v", "h"):
     print(f"L1 {band}: band={t['band']!r} unavailable={t.get('unavailable')} "
           f"P={t.get('P')} vals={len(t.get('vals') or [])} angles={t.get('nAngles')} "
           f"counts={t.get('counts')}")
+    embedded = t.get("weave")
+    print(f"  embedded weave: ext={embedded['ext'] if embedded else None} "
+          f"angle={embedded and round(embedded['angle'], 2)}")
 
     # The weave of the combo the panel lands on: the applied one, at the angle
     # its ranking selects. The QA's fake worker echoes the requested ext/angle
