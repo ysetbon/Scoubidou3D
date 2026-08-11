@@ -4,6 +4,7 @@
 // wrong search.
 //
 //     npm run check:trace
+import { bandKey, traceKey } from "../src/mxn-lab/trace-band";
 import { layoutFor } from "../src/mxn-lab/trace-layout";
 
 let failures = 0;
@@ -77,6 +78,19 @@ check("P=2 row is pair 0", two.place(17 * 21 + 19).y === 17 && two.place(17 * 21
 const three = layoutFor(3, 21);
 check("P=3 is not a 21:1 ribbon", three.cols / three.rows < 2,
       `${three.cols}x${three.rows}`);
+
+// A trace is asked for as "v" and comes back calling itself "vertical". Both
+// spellings have to land on the same cache key, or the widget waits forever for
+// a payload it already has.
+check("ask and answer agree, vertical", traceKey(1, "v") === traceKey(1, "vertical"),
+      `${traceKey(1, "v")} vs ${traceKey(1, "vertical")}`);
+check("ask and answer agree, horizontal", traceKey(1, "h") === traceKey(1, "horizontal"),
+      `${traceKey(1, "h")} vs ${traceKey(1, "horizontal")}`);
+check("the two bands stay apart", traceKey(1, "vertical") !== traceKey(1, "horizontal"));
+check("levels stay apart", traceKey(1, "v") !== traceKey(2, "v"));
+// bridge.trace_level decides with startswith("v"); anything else is horizontal.
+check("bandKey mirrors the bridge",
+      bandKey("Vertical") === "v" && bandKey("horizontal") === "h" && bandKey("") === "h");
 
 console.log(failures ? `\n${failures} failure(s)` : "\nall trace-layout checks passed");
 process.exit(failures ? 1 : 0);
