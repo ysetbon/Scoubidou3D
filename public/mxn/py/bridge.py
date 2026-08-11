@@ -462,6 +462,94 @@ def enumerate_level(level):
                       separators=(",", ":"))
 
 
+def trace_level(level, band="v"):
+    """Census every (combo, angle) one band of `level` could be asked about.
+
+    Replays the level from its checkpoint the way enumerate_level does, but with
+    the band search hooked so its inputs can be handed to mxn_trace. The replay
+    is a full search and the census is roughly another two on top of it, so the
+    vectorised angle scan is forced on for the duration whatever the page is
+    running -- without it a 3x3 trace is tens of seconds.
+
+    Only the verdict census crosses the worker boundary; the page recomputes the
+    geometry for whichever cell is being looked at.
+    """
+    import mxn_lh_continuation as LH
+    import mxn_trace
+
+    entry = _level_session(int(level))
+    want = "vertical" if str(band).lower().startswith("v") else "horizontal"
+    m, n = _SESSION["m"], _SESSION["n"]
+
+    grabbed = []
+    real_search = LH._search_combo_space_cpu
+    was_fast = LH.FAST_ANGLE_SCAN
+
+    def hook(strands_list, pairs, pair_directions, pair_originals, ext_range_values,
+             angle_step_degrees, max_extension, strand_width,
+             custom_angle_min, custom_angle_max, angle_mode,
+             on_config_callback=None, direction_type="horizontal",
+             num_opposite_pairs=1):
+        if direction_type == want and not grabbed:
+            grabbed.append({
+                "strands_list": copy.deepcopy(strands_list),
+                "pair_indices": LH._encode_pair_indices(strands_list, pairs),
+                "pair_directions": copy.deepcopy(pair_directions),
+                "pair_originals": copy.deepcopy(pair_originals),
+                "ext_range_values": list(ext_range_values),
+                "angle_step_degrees": angle_step_degrees,
+                "max_extension": max_extension,
+                "strand_width": strand_width,
+                "angle_mode": angle_mode,
+                "num_opposite_pairs": num_opposite_pairs,
+                "direction_type": direction_type,
+                "num_strands": len(strands_list),
+                "pairs_n": len(pairs),
+            })
+        return real_search(strands_list, pairs, pair_directions, pair_originals,
+                           ext_range_values, angle_step_degrees, max_extension,
+                           strand_width, custom_angle_min, custom_angle_max,
+                           angle_mode, on_config_callback, direction_type,
+                           num_opposite_pairs)
+
+    strands, info = copy.deepcopy(entry["checkpoint"])
+    LH._search_combo_space_cpu = hook
+    LH.FAST_ANGLE_SCAN = True
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            NX.align_continuation_level(
+                strands, m, n, entry["k"], _SESSION["direction"], _SESSION["hand"],
+                entry["level"], info, mirror_sides=False, seed_extensions=[],
+                collect_candidates=False, verbose=False)
+    finally:
+        LH._search_combo_space_cpu = real_search
+        LH.FAST_ANGLE_SCAN = was_fast
+
+    if not grabbed:
+        return json.dumps({
+            "level": entry["level"], "band": want, "unavailable": True,
+            "reason": "this level solved its %s band without a search" % want,
+        }, separators=(",", ":"))
+
+    payload = mxn_trace.pack(mxn_trace.census(grabbed[0]))
+    if payload.get("over_budget"):
+        return json.dumps({
+            "level": entry["level"], "band": want, "unavailable": True,
+            "reason": "%d combos x %d angles is over the %d trace ceiling"
+                      % (payload["combos"], payload["angles"], payload["budget"]),
+            "combos": payload["combos"], "angles": payload["angles"],
+        }, separators=(",", ":"))
+
+    picked = entry["engine_pick_hv"][0 if want == "horizontal" else 1]
+    cands = entry["h_cands"] if want == "horizontal" else entry["v_cands"]
+    payload.update({
+        "level": entry["level"], "band": want, "unavailable": False,
+        "k": entry["k"],
+        "applied": list(cands[picked]["ext"]) if picked < len(cands) else [],
+    })
+    return json.dumps(payload, separators=(",", ":"))
+
+
 def select_solution(level, index, healthy_only=False, cursor=None):
     """Materialise solution `index` for `level` and make it the live ring."""
     entry = _level_session(int(level))

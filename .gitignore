@@ -6,3 +6,6 @@ dist/
 
 # artifact build scratch (see artifacts/README.md)
 artifacts/*/.work/
+
+# python bytecode from the trace scripts
+scripts/__pycache__/

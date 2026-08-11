@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MXN Continuation Lab (fast engine) — Scoubidou3D</title>
+<meta name="description" content="Generate every Lᵥ continuation diagram from m, n, and a sequence of k rotations.">
+<!-- Absolute, because a crawler resolves og:image against nothing. Upstream the
+     Next layer built this from the request host; a static page states it. -->
+<meta property="og:title" content="MXN Continuation Lab (fast engine)">
+<meta property="og:description" content="Generate every Lᵥ continuation diagram from m, n, and a sequence of k rotations.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://ysetbon.github.io/Scoubidou3D/mxn/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="MXN Continuation Lab (fast engine)">
+<meta name="twitter:description" content="Generate every Lᵥ continuation diagram from m, n, and a sequence of k rotations.">
+<meta name="twitter:image" content="https://ysetbon.github.io/Scoubidou3D/mxn/og.png">
+<link rel="icon" href="../../favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="../../icon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="../../icon-192.png">
+<link rel="apple-touch-icon" href="../../icon-180.png">
+<!-- No theme script here, unlike the other pages: the lab is drafting paper and
+     black rule by design, one palette only, and has no dark counterpart to
+     switch to. It still counts, like every other page. -->
+<script type="module" src="../../site/count.js"></script>
+<style>
+  /* The lab paints its own background; this only stops a white flash in the
+     moment before its stylesheet and bundle arrive. Same value as --paper. */
+  html { background: #f4f0e6; }
+</style>
+</head>
+<body>
+  <!-- The A/B twin of /mxn/. Same component, same engine files, same build;
+       data-engine="fast" is the only difference, and it switches the Python
+       angle scan to the vectorised path. Kept as a second page rather than a
+       toggle so the two can be opened side by side and timed against each
+       other on identical input. -->
+  <div id="lab" data-engine="fast"></div>
+  <script type="module" src="../../src/mxn-lab/main.tsx"></script>
+</body>
+</html>

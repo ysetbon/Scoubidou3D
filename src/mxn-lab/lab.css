@@ -381,3 +381,100 @@ textarea {
 }
 
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; } }
+
+/* Trace panel --------------------------------------------------------------
+   Every combo against every angle for one band, including the angles the real
+   search never reaches. Asked for by the ◎ on a level card; never automatic. */
+.trace-toggle {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.trace-panel {
+  margin: 18px 0 0;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--rule, #c8c2b4);
+  background: #fbf9f3;
+}
+
+.trace-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.trace-head span {
+  color: #7a756a;
+  font-size: 13px;
+  margin-right: auto;
+}
+
+.trace-head button {
+  font: inherit;
+  font-size: 13px;
+  padding: 3px 10px;
+  border: 1px solid var(--rule, #c8c2b4);
+  background: #fff;
+  cursor: pointer;
+}
+
+.trace-head button[aria-pressed="true"] {
+  background: #c63c28;
+  border-color: #c63c28;
+  color: #fff;
+}
+
+.trace-panel canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  cursor: crosshair;
+}
+
+.trace-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+/* Each entry is a filter: pressing one dims every cell that ended elsewhere. */
+.trace-legend button {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--rule, #c8c2b4);
+  background: #fff;
+  cursor: pointer;
+}
+
+.trace-legend button.is-only {
+  border-color: #1a1a1a;
+  box-shadow: inset 0 0 0 1px #1a1a1a;
+}
+
+.trace-legend i {
+  width: 10px;
+  height: 10px;
+  display: inline-block;
+}
+
+.trace-legend span {
+  font-variant-numeric: tabular-nums;
+}
+
+.trace-legend em {
+  color: #7a756a;
+  font-style: normal;
+}
+
+.trace-note {
+  margin: 10px 0 0;
+  color: #7a756a;
+  font-size: 12px;
+  max-width: 70ch;
+}
