@@ -153,10 +153,37 @@ function glyph(ctx: CanvasRenderingContext2D, x: number, y: number,
   ctx.restore();
 }
 
-const GRID_X = 400, GRID_Y = 34;      // the grid's origin inside the canvas
-const CANVAS_W = 1120;
-const GRID_MAX_H = 560;
+// The panel was laid out on a fixed 1120px canvas and left to CSS to stretch,
+// which is what made it soft: a 1120px backing store blown up to 1300 CSS px
+// resamples every line. It now draws at its own measured width, at device
+// resolution, so nothing is scaled after the fact.
+//
+// DESIGN_W is that width at full size; the panel renders at 70% of it, which is
+// the size it wants beside a diagram rather than under one.
+const DESIGN_W = 1120;
+const SCALE = 0.7;
+const PANEL_W = Math.round(DESIGN_W * SCALE);
 const GLYPH_MIN_CELL = 12;            // below this a per-cell glyph is mud
+
+/** Everything the drawing measures, in CSS pixels, for a panel this wide. */
+function metricsFor(width: number) {
+  const k = width / DESIGN_W;
+  return {
+    k,
+    gridX: Math.round(400 * k),
+    gridY: Math.round(34 * k),
+    pad: Math.round(16 * k),
+    strand: { x: Math.round(16 * k), y: Math.round(34 * k),
+              w: Math.round(360 * k), h: Math.round(300 * k) },
+    gridMaxH: Math.round(560 * k),
+    maxCell: Math.max(3, Math.round(14 * k)),
+    strip: Math.round(26 * k),
+    // Type stops shrinking before it stops being type; below this the labels
+    // are decoration, and a smaller panel is not worth an unreadable one.
+    body: Math.max(10, Math.round(12 * k)),
+    lead: Math.max(11, Math.round(13 * k)),
+  };
+}
 
 export function TracePanel({ data, onClose, onBand }: {
   data: TracePayload;
@@ -164,6 +191,10 @@ export function TracePanel({ data, onClose, onBand }: {
   onBand?: (band: "h" | "v") => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  // The panel draws at whatever width it is given, capped at PANEL_W, so a
+  // narrow column shrinks the drawing rather than squashing it afterwards.
+  const [width, setWidth] = useState(PANEL_W);
   const [combo, setCombo] = useState(0);
   const [angleIdx, setAngleIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -180,6 +211,17 @@ export function TracePanel({ data, onClose, onBand }: {
   }, [data]);
 
   const layout = useMemo(() => layoutFor(data.P, E), [data.P, E]);
+  const M = useMemo(() => metricsFor(width), [width]);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return undefined;
+    const measure = () => setWidth(Math.max(320, Math.min(PANEL_W, el.clientWidth)));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // One verdict per combo: the angle it settled on if it found one, else the
   // test that ended the most of its in-window angles.
@@ -197,9 +239,9 @@ export function TracePanel({ data, onClose, onBand }: {
     return out;
   }, [verdicts, best, nCombos, data.nAngles]);
 
-  const cell = useMemo(() => Math.max(1, Math.min(14,
-    Math.floor((CANVAS_W - GRID_X - 16) / layout.cols),
-    Math.floor(GRID_MAX_H / layout.rows))), [layout]);
+  const cell = useMemo(() => Math.max(1, Math.min(M.maxCell,
+    Math.floor((width - M.gridX - M.pad) / layout.cols),
+    Math.floor(M.gridMaxH / layout.rows))), [layout, M, width]);
 
   // Below the per-cell glyph size, label whole regions instead: the biggest
   // areas, at most two per verdict. Twenty-one identical ORDER glyphs, one per
@@ -254,8 +296,9 @@ export function TracePanel({ data, onClose, onBand }: {
   }, [layout, cellCode, cell]);
 
   const gridH = layout.rows * cell;
-  const canvasH = Math.max(400, GRID_Y + gridH + 120);
-  const stripY = GRID_Y + gridH + 32;
+  const stripY = M.gridY + gridH + M.body + Math.round(14 * M.k);
+  const canvasH = Math.max(M.strand.y + M.strand.h + Math.round(20 * M.k),
+                           stripY + M.strip + M.lead * 2 + 20);
 
   const appliedIdx = useMemo(() => {
     let idx = 0;
@@ -289,7 +332,17 @@ export function TracePanel({ data, onClose, onBand }: {
     if (!cv) return;
     const ctx = cv.getContext("2d");
     if (!ctx) return;
-    const W = cv.width, H = cv.height;
+    // Backing store at device resolution, drawing in CSS pixels. Without this
+    // the canvas is resampled by the browser and every rule goes soft.
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    const W = width, H = canvasH;
+    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) {
+      cv.width = Math.round(W * dpr);
+      cv.height = Math.round(H * dpr);
+    }
+    cv.style.width = `${W}px`;
+    cv.style.height = `${H}px`;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = "#f4f0e6";
     ctx.fillRect(0, 0, W, H);
 
@@ -298,23 +351,24 @@ export function TracePanel({ data, onClose, onBand }: {
     const verdict = verdicts[combo * data.nAngles + angleIdx];
 
     // ---- strand view ----
-    const gx = 16, gy = 34, gw = 360, gh = 300;
+    const gx = M.strand.x, gy = M.strand.y, gw = M.strand.w, gh = M.strand.h;
     ctx.strokeStyle = "#c8c2b4";
     ctx.strokeRect(gx, gy, gw, gh);
     ctx.fillStyle = "#1a1a1a";
-    ctx.font = "12px system-ui, sans-serif";
+    ctx.font = `${M.body}px system-ui, sans-serif`;
     ctx.fillText("strands at this combo and angle", gx + 6, gy - 8);
     const pts = [...g.starts, ...g.ends];
     const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
     const bx0 = Math.min(...xs), bx1 = Math.max(...xs);
     const by0 = Math.min(...ys), by1 = Math.max(...ys);
-    const sc = Math.min((gw - 48) / Math.max(bx1 - bx0, 1e-6),
-                        (gh - 48) / Math.max(by1 - by0, 1e-6));
-    const ox = gx + 24 + ((gw - 48) - (bx1 - bx0) * sc) / 2;
-    const oy = gy + 24 + ((gh - 48) - (by1 - by0) * sc) / 2;
+    const inset = Math.round(48 * M.k);
+    const sc = Math.min((gw - inset) / Math.max(bx1 - bx0, 1e-6),
+                        (gh - inset) / Math.max(by1 - by0, 1e-6));
+    const ox = gx + inset / 2 + ((gw - inset) - (bx1 - bx0) * sc) / 2;
+    const oy = gy + inset / 2 + ((gh - inset) - (by1 - by0) * sc) / 2;
     const P = (p: number[]) => [ox + (p[0] - bx0) * sc, oy + (p[1] - by0) * sc];
 
-    ctx.lineWidth = 4;
+    ctx.lineWidth = Math.max(2, 4 * M.k);
     ctx.strokeStyle = "#5a5852";
     g.starts.forEach((s, i) => {
       const A = P(s), B = P(g.ends[i]);
@@ -338,22 +392,22 @@ export function TracePanel({ data, onClose, onBand }: {
     });
     ctx.fillStyle = "#96917f";
     ctx.fillText(`gap must land in ${data.minGap.toFixed(0)}–${data.maxGap.toFixed(0)} px`,
-                 gx + 6, gy + gh - 8);
+                 gx + 6, gy + gh - Math.round(M.body * 0.6));
 
     // ---- combo grid ----
     ctx.fillStyle = "#1a1a1a";
-    ctx.font = "12px system-ui, sans-serif";
-    ctx.fillText("every extension combo", GRID_X, GRID_Y - 8);
+    ctx.font = `${M.body}px system-ui, sans-serif`;
+    ctx.fillText("every extension combo", M.gridX, M.gridY - Math.round(M.body * 0.6));
     for (let i = 0; i < nCombos; i += 1) {
       const code = cellCode[i];
       const { x, y } = layout.place(i);
       const dim = only != null && code !== only;
       ctx.fillStyle = dim ? "#e6e1d4" : COLOUR[code];
-      ctx.fillRect(GRID_X + x * cell, GRID_Y + y * cell,
+      ctx.fillRect(M.gridX + x * cell, M.gridY + y * cell,
                    Math.max(cell - (cell > 3 ? 1 : 0), 1),
                    Math.max(cell - (cell > 3 ? 1 : 0), 1));
       if (cell >= GLYPH_MIN_CELL && !dim) {
-        glyph(ctx, GRID_X + x * cell + cell / 2, GRID_Y + y * cell + cell / 2,
+        glyph(ctx, M.gridX + x * cell + cell / 2, M.gridY + y * cell + cell / 2,
               code, cell * 0.28, "#1a1a1a");
       }
     }
@@ -365,14 +419,14 @@ export function TracePanel({ data, onClose, onBand }: {
       ctx.lineWidth = tier === 0 ? 2 : 1;
       for (let k = span; k < layout.cols; k += span) {
         ctx.beginPath();
-        ctx.moveTo(GRID_X + k * cell - 0.5, GRID_Y);
-        ctx.lineTo(GRID_X + k * cell - 0.5, GRID_Y + gridH);
+        ctx.moveTo(M.gridX + k * cell - 0.5, M.gridY);
+        ctx.lineTo(M.gridX + k * cell - 0.5, M.gridY + gridH);
         ctx.stroke();
       }
       for (let k = span; k < layout.rows; k += span) {
         ctx.beginPath();
-        ctx.moveTo(GRID_X, GRID_Y + k * cell - 0.5);
-        ctx.lineTo(GRID_X + layout.cols * cell, GRID_Y + k * cell - 0.5);
+        ctx.moveTo(M.gridX, M.gridY + k * cell - 0.5);
+        ctx.lineTo(M.gridX + layout.cols * cell, M.gridY + k * cell - 0.5);
         ctx.stroke();
       }
     });
@@ -380,15 +434,15 @@ export function TracePanel({ data, onClose, onBand }: {
     // A region names itself, once, when the cells are too small to each carry
     // a glyph of their own.
     labels.forEach(({ code, x, y }) => {
-      const cx = GRID_X + x * cell + cell / 2, cy = GRID_Y + y * cell + cell / 2;
+      const cx = M.gridX + x * cell + cell / 2, cy = M.gridY + y * cell + cell / 2;
       ctx.beginPath();
-      ctx.arc(cx, cy, 11, 0, Math.PI * 2);
+      ctx.arc(cx, cy, Math.max(8, 11 * M.k), 0, Math.PI * 2);
       ctx.fillStyle = "#f4f0e6";
       ctx.fill();
       ctx.strokeStyle = "#c8c2b4";
       ctx.lineWidth = 1;
       ctx.stroke();
-      glyph(ctx, cx, cy, code, 6, "#1a1a1a");
+      glyph(ctx, cx, cy, code, Math.max(4.5, 6 * M.k), "#1a1a1a");
     });
 
     if (appliedIdx >= 0) {
@@ -396,8 +450,8 @@ export function TracePanel({ data, onClose, onBand }: {
       // second box, so it never reads as the cursor sitting somewhere else --
       // and never as a star, which now means BEST on the cells themselves.
       const a = layout.place(appliedIdx);
-      const ax = GRID_X + a.x * cell + cell / 2 - 0.5;
-      const ay = GRID_Y + a.y * cell + cell / 2 - 0.5;
+      const ax = M.gridX + a.x * cell + cell / 2 - 0.5;
+      const ay = M.gridY + a.y * cell + cell / 2 - 0.5;
       ctx.strokeStyle = "#1a1a1a";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -407,13 +461,13 @@ export function TracePanel({ data, onClose, onBand }: {
     const cur = layout.place(combo);
     ctx.strokeStyle = "#c63c28";
     ctx.lineWidth = 2;
-    ctx.strokeRect(GRID_X + cur.x * cell - 1, GRID_Y + cur.y * cell - 1,
+    ctx.strokeRect(M.gridX + cur.x * cell - 1, M.gridY + cur.y * cell - 1,
                    cell + 1, cell + 1);
 
     // ---- angle strip ----
-    const sx = GRID_X, sy = stripY, sw = W - GRID_X - 16, sh = 26;
+    const sx = M.gridX, sy = stripY, sw = W - M.gridX - M.pad, sh = M.strip;
     ctx.fillStyle = "#1a1a1a";
-    ctx.fillText("every angle inside this combo", sx, sy - 8);
+    ctx.fillText("every angle inside this combo", sx, sy - Math.round(M.body * 0.6));
     const bw = sw / data.nAngles;
     for (let j = 0; j < data.nAngles; j += 1) {
       const code = verdicts[combo * data.nAngles + j];
@@ -428,27 +482,30 @@ export function TracePanel({ data, onClose, onBand }: {
     ctx.stroke();
 
     ctx.fillStyle = "#1a1a1a";
-    ctx.font = "13px system-ui, sans-serif";
+    ctx.font = `${M.lead}px system-ui, sans-serif`;
     ctx.fillText(`combo ${combo + 1} / ${nCombos}   ext (${g.ext.join(", ")})`
-                 + `   angle ${angleDeg.toFixed(1)}°`, sx, sy + sh + 24);
+                 + `   angle ${angleDeg.toFixed(1)}°`, sx, sy + sh + M.lead + 6);
     ctx.fillStyle = COLOUR[verdict];
-    ctx.fillText(`${data.names[verdict]} — ${BLURB[verdict]}`, sx, sy + sh + 44);
+    ctx.fillText(`${data.names[verdict]} — ${BLURB[verdict]}`,
+                 sx, sy + sh + M.lead * 2 + 12);
   }, [data, combo, angleIdx, verdicts, angle0, best, nCombos, only, appliedIdx,
-      layout, cellCode, cell, labels, gridH, stripY]);
+      layout, cellCode, cell, labels, gridH, stripY, M, width, canvasH]);
 
   const pick = (ev: React.MouseEvent<HTMLCanvasElement>) => {
     const cv = canvasRef.current;
     if (!cv) return;
+    // The canvas is drawn in CSS pixels, so a client offset is already in the
+    // drawing's own units -- no backing-store scale to undo.
     const r = cv.getBoundingClientRect();
-    const x = ((ev.clientX - r.left) / r.width) * cv.width;
-    const y = ((ev.clientY - r.top) / r.height) * cv.height;
-    if (x < GRID_X) return;
-    if (y >= GRID_Y && y < GRID_Y + gridH) {
-      const i = layout.unplace(Math.floor((x - GRID_X) / cell),
-                              Math.floor((y - GRID_Y) / cell));
+    const x = ev.clientX - r.left;
+    const y = ev.clientY - r.top;
+    if (x < M.gridX) return;
+    if (y >= M.gridY && y < M.gridY + gridH) {
+      const i = layout.unplace(Math.floor((x - M.gridX) / cell),
+                              Math.floor((y - M.gridY) / cell));
       if (i != null && i < nCombos) { setCombo(i); setAngleIdx(best[i] >= 0 ? best[i] : 0); }
     } else if (y >= stripY - 6 && y <= stripY + 32) {
-      const j = Math.floor(((x - GRID_X) / (cv.width - GRID_X - 16)) * data.nAngles);
+      const j = Math.floor(((x - M.gridX) / (width - M.gridX - M.pad)) * data.nAngles);
       setAngleIdx(Math.max(0, Math.min(data.nAngles - 1, j)));
     }
   };
@@ -507,7 +564,13 @@ export function TracePanel({ data, onClose, onBand }: {
         </button>
         <button type="button" onClick={onClose} aria-label="Close trace">×</button>
       </div>
-      <canvas ref={canvasRef} width={CANVAS_W} height={canvasH} onClick={pick} />
+      <div className="trace-canvas-wrap" ref={wrapRef}>
+        {/* The layout the drawing used, so a test can address a cell without
+            re-deriving metrics that live here. */}
+        <canvas ref={canvasRef} onClick={pick}
+          data-grid-x={M.gridX} data-grid-y={M.gridY} data-cell={cell}
+          data-cols={layout.cols} data-rows={layout.rows} />
+      </div>
       <div className="trace-legend">
         {data.names.map((name, code) => (
           data.counts[code] ? (
