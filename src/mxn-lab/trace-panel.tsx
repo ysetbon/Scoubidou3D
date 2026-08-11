@@ -7,6 +7,7 @@
 // here from the same inputs the engine used.
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { allBounds, drawExactStage, type Stage, type Strand } from "./exact-draw";
 import { bandKey } from "./trace-band";
 import { layoutFor } from "./trace-layout";
 
@@ -33,6 +34,28 @@ export type TracePayload = {
   targets: [number, number][];
   applied: number[];
 };
+
+/**
+ * One traced cell, woven: the ring bridge.trace_weave materialised for a combo
+ * and angle, with the audit the level card would print for it. An unavailable
+ * entry is cached like a real one — the reason is its content, and a held
+ * entry is what stops the panel asking for the same cell again.
+ */
+export type TraceWeave = {
+  level: number;
+  band: string;
+  unavailable?: boolean;
+  reason?: string;
+  ext: number[];
+  angle: number;
+  crossings?: number;
+  row?: { state: string; healthy: boolean; across: number; expected: number };
+  strands?: Strand[];
+};
+
+/** One traced cell's identity, as the weave cache keys it on both sides. */
+export const weaveKey = (ext: number[], angleDeg: number) =>
+  `${ext.join(",")}@${angleDeg.toFixed(2)}`;
 
 // Verdict codes, in the order mxn_trace applies the tests. REACH, DEGEN and
 // ORDER are drawn straight from the census by index, so only the codes this
@@ -175,6 +198,10 @@ function metricsFor(width: number) {
     pad: Math.round(16 * k),
     strand: { x: Math.round(16 * k), y: Math.round(34 * k),
               w: Math.round(360 * k), h: Math.round(300 * k) },
+    // Under the strand view: the same combo woven into the ring, so the lines
+    // above can be read against the weave they would actually produce.
+    weave: { x: Math.round(16 * k), y: Math.round(368 * k),
+             w: Math.round(360 * k), h: Math.round(300 * k) },
     gridMaxH: Math.round(560 * k),
     maxCell: Math.max(3, Math.round(14 * k)),
     strip: Math.round(26 * k),
@@ -185,8 +212,12 @@ function metricsFor(width: number) {
   };
 }
 
-export function TracePanel({ data, onClose, onBand }: {
+export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
   data: TracePayload;
+  /** Woven cells for this level and band, keyed by weaveKey. */
+  weaves?: Record<string, TraceWeave>;
+  /** Ask for a cell's weave. Costs a ring replay, so calls are debounced. */
+  onWeave?: (ext: number[], angleDeg: number) => void;
   onClose: () => void;
   onBand?: (band: "h" | "v") => void;
 }) {
@@ -201,6 +232,9 @@ export function TracePanel({ data, onClose, onBand }: {
   const [only, setOnly] = useState<number | null>(null);
   const [recording, setRecording] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
+  // The weave preview's own backing store, blitted into the panel canvas so
+  // the whole drawing stays one surface for clicks, capture and recording.
+  const weaveCanvas = useRef<HTMLCanvasElement | null>(null);
 
   const { verdicts, angle0, best, E, nCombos } = useMemo(() => {
     const v = b64(data.verdicts);
@@ -297,8 +331,33 @@ export function TracePanel({ data, onClose, onBand }: {
 
   const gridH = layout.rows * cell;
   const stripY = M.gridY + gridH + M.body + Math.round(14 * M.k);
-  const canvasH = Math.max(M.strand.y + M.strand.h + Math.round(20 * M.k),
+  const canvasH = Math.max(M.weave.y + M.weave.h + Math.round(20 * M.k),
                            stripY + M.strip + M.lead * 2 + 20);
+
+  // The cell on screen, by the identity the weave cache keys on. `ext` is the
+  // combo decoded the way geometry() decodes it; the angle is the strip's.
+  const ext = useMemo(() => {
+    const out: number[] = [];
+    let rest = combo;
+    for (let p = data.P - 1; p >= 0; p -= 1) {
+      out[p] = data.vals[rest % E];
+      rest = Math.floor(rest / E);
+    }
+    return out;
+  }, [combo, data, E]);
+  const angleDeg = angle0[combo] + angleIdx * data.step;
+  const weave = weaves?.[weaveKey(ext, angleDeg)];
+
+  // Ask for the weave of whatever cell the reader settles on. Debounced, and
+  // held entirely while playing or recording: at 24 combos a second the worker
+  // would only ever be a queue of stale replays.
+  const onWeaveRef = useRef(onWeave);
+  useEffect(() => { onWeaveRef.current = onWeave; });
+  useEffect(() => {
+    if (!onWeaveRef.current || weave || playing || recording) return undefined;
+    const id = window.setTimeout(() => onWeaveRef.current?.(ext, angleDeg), 250);
+    return () => window.clearTimeout(id);
+  }, [ext, angleDeg, weave, playing, recording]);
 
   const appliedIdx = useMemo(() => {
     let idx = 0;
@@ -346,7 +405,6 @@ export function TracePanel({ data, onClose, onBand }: {
     ctx.fillStyle = "#f4f0e6";
     ctx.fillRect(0, 0, W, H);
 
-    const angleDeg = angle0[combo] + angleIdx * data.step;
     const g = geometry(data, combo, angleDeg);
     const verdict = verdicts[combo * data.nAngles + angleIdx];
 
@@ -393,6 +451,42 @@ export function TracePanel({ data, onClose, onBand }: {
     ctx.fillStyle = "#96917f";
     ctx.fillText(`gap must land in ${data.minGap.toFixed(0)}–${data.maxGap.toFixed(0)} px`,
                  gx + 6, gy + gh - Math.round(M.body * 0.6));
+
+    // ---- weave pattern ----
+    // The same cell woven into the ring, straight from the engine: the traced
+    // band at this combo and angle, the other band held at the engine's pick.
+    const wbx = M.weave.x, wby = M.weave.y, wbw = M.weave.w, wbh = M.weave.h;
+    ctx.strokeStyle = "#c8c2b4";
+    ctx.strokeRect(wbx, wby, wbw, wbh);
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillText("weave pattern (this combo)", wbx + 6, wby - 8);
+    if (weave && !weave.unavailable && weave.strands?.length) {
+      const stage: Stage = { level: data.level, k: null, label: "traced cell",
+                             strands: weave.strands };
+      const off = weaveCanvas.current ?? document.createElement("canvas");
+      weaveCanvas.current = off;
+      const inset = Math.round(6 * M.k);
+      const capH = M.body + Math.round(10 * M.k);
+      const side = Math.min(wbw - inset * 2, wbh - inset - capH);
+      drawExactStage(off, stage, allBounds([stage]), true,
+                     Math.round(side * dpr), "#f4f0e6");
+      ctx.drawImage(off, wbx + (wbw - side) / 2, wby + inset, side, side);
+      if (weave.row) {
+        const capY = wby + wbh - Math.round(M.body * 0.6);
+        ctx.fillStyle = weave.row.healthy ? "#96917f" : "#c63c28";
+        ctx.fillText(`${weave.row.state.toUpperCase()} · ${
+          weave.row.healthy ? "WEAVE" : "NOT A WEAVE"}`, wbx + 6, capY);
+        const cross = `${weave.row.across}/${weave.row.expected}`;
+        ctx.fillText(cross, wbx + wbw - 6 - ctx.measureText(cross).width, capY);
+      }
+    } else {
+      ctx.fillStyle = "#96917f";
+      ctx.fillText(
+        weave?.unavailable ? (weave.reason ?? "no weave for this band")
+          : playing || recording ? "pause to weave the combo on screen"
+          : "weaving this combo…",
+        wbx + 6, wby + wbh / 2);
+    }
 
     // ---- combo grid ----
     ctx.fillStyle = "#1a1a1a";
@@ -488,8 +582,9 @@ export function TracePanel({ data, onClose, onBand }: {
     ctx.fillStyle = COLOUR[verdict];
     ctx.fillText(`${data.names[verdict]} — ${BLURB[verdict]}`,
                  sx, sy + sh + M.lead * 2 + 12);
-  }, [data, combo, angleIdx, verdicts, angle0, best, nCombos, only, appliedIdx,
-      layout, cellCode, cell, labels, gridH, stripY, M, width, canvasH]);
+  }, [data, combo, angleIdx, angleDeg, verdicts, angle0, best, nCombos, only,
+      appliedIdx, layout, cellCode, cell, labels, gridH, stripY, M, width,
+      canvasH, weave, playing, recording]);
 
   const pick = (ev: React.MouseEvent<HTMLCanvasElement>) => {
     const cv = canvasRef.current;
@@ -569,7 +664,9 @@ export function TracePanel({ data, onClose, onBand }: {
             re-deriving metrics that live here. */}
         <canvas ref={canvasRef} onClick={pick}
           data-grid-x={M.gridX} data-grid-y={M.gridY} data-cell={cell}
-          data-cols={layout.cols} data-rows={layout.rows} />
+          data-cols={layout.cols} data-rows={layout.rows}
+          data-weave-x={M.weave.x} data-weave-y={M.weave.y}
+          data-weave-w={M.weave.w} data-weave-h={M.weave.h} />
       </div>
       <div className="trace-legend">
         {data.names.map((name, code) => (
