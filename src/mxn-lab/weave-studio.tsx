@@ -8,8 +8,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 // against ysetbon.github.io itself. BASE_URL carries whatever vite was built
 // with — "/Scoubidou3D/" for Pages, "/" for a root build — so the page keeps
 // working under either.
-import { TracePanel, type TracePayload } from "./trace-panel";
-
 const LAB_BASE = `${import.meta.env.BASE_URL}mxn/`;
 
 // /mxn/ and /mxn/fast/ mount the same component against the same engine files;
@@ -138,10 +136,13 @@ type SemiMeta = {
   level: number; count: number; listed?: number; truncated: boolean;
   grounded: boolean; refs?: number; reason?: string | null; items: SemiItem[];
   index: number; current?: SemiItem;
+  /** Which band this list was swept for — the ⚑ that produced it. */
+  band: Band;
   /** 'near' is nearest-to-closing first, 'ext' is shortest extensions first. */
   key?: SemiKey;
 };
 type SemiKey = "near" | "ext";
+type Band = "h" | "v";
 type SavedSolution = {
   id: string; created_at: string; hand: string; direction: string;
   m: number; n: number; level: number; k: number; ks_prefix: number[];
@@ -568,12 +569,11 @@ export function ContinuationLab() {
   const [ranKey, setRanKey] = useState<string | null>(null);
   const [solutions, setSolutions] = useState<Record<number, SolutionMeta>>({});
   const [semi, setSemi] = useState<Record<number, SemiMeta>>({});
-  // One trace per level and band, kept so that collapsing a drawer and opening
-  // it again does not re-run a search that takes as long as the level did.
-  const [traces, setTraces] = useState<Record<string, TracePayload>>({});
-  const [traceFailed, setTraceFailed] = useState<Record<string, string>>({});
-  const [traceBand, setTraceBand] = useState<Record<number, "h" | "v">>({});
-  const [semiMode, setSemiMode] = useState<Record<number, boolean>>({});
+  // Which band's near-misses a level is showing, if any. A level is either on
+  // closed rings or on one band's shortfalls — never on both at once, because
+  // the two ⚑ ask different questions of the same level.
+  const [semiMode, setSemiMode] = useState<Record<number, Band | undefined>>({});
+  const [openWidgets, setOpenWidgets] = useState<Set<number>>(() => new Set());
   const [browsingLevel, setBrowsingLevel] = useState<number | null>(null);
   const [savedCount, setSavedCount] = useState(0);
   const [healthyOnly, setHealthyOnly] = useState(false);
@@ -613,7 +613,7 @@ export function ContinuationLab() {
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
     const worker = new Worker(
-      `${LAB_BASE}exact-worker.js?v=trace-v9${FAST_ENGINE ? "&engine=fast" : ""}`,
+      `${LAB_BASE}exact-worker.js?v=semi-band-v10${FAST_ENGINE ? "&engine=fast" : ""}`,
       { type: "module" },
     );
     worker.onmessage = (event) => {
@@ -650,38 +650,24 @@ export function ContinuationLab() {
         }
         return;
       }
-      if (message.type === "trace-ready") {
-        setBrowsingLevel(null);
-        const key = `${message.level}:${message.band}`;
-        if (message.unavailable) {
-          setStatus(`L${message.level}: ${message.reason}`);
-          setTraceFailed(current => ({
-            ...current, [key]: message.reason || "This band cannot be traced.",
-          }));
-          return;
-        }
-        setTraces(current => ({ ...current, [key]: message as TracePayload }));
-        setStatus(`L${message.level} ${message.band} band traced — nothing skipped.`);
-        return;
-      }
       if (message.type === "semi-ready") {
         setBrowsingLevel(null);
         const meta: SemiMeta = {
           level: message.level, count: message.count ?? 0,
           listed: message.listed, truncated: message.truncated === true,
           grounded: message.grounded === true, refs: message.refs,
-          reason: message.reason,
+          reason: message.reason, band: message.band === "v" ? "v" : "h",
           items: message.items ?? [], index: 0, key: message.key ?? "near",
         };
         setSemi(current => ({ ...current, [meta.level]: meta }));
         if (!meta.count) {
           setStatus(meta.reason
             ? `L${meta.level}: ${meta.reason}`
-            : `L${meta.level}: every candidate closed the ring — no near-misses.`);
-          setSemiMode(current => ({ ...current, [meta.level]: false }));
+            : `L${meta.level}: every ${meta.band.toUpperCase()} candidate closed the ring — no ${meta.band.toUpperCase()} near-misses.`);
+          setSemiMode(current => ({ ...current, [meta.level]: undefined }));
           return;
         }
-        setStatus(`L${meta.level}: ${meta.count} near-miss${meta.count === 1 ? "" : "es"}${
+        setStatus(`L${meta.level}: ${meta.count} ${meta.band.toUpperCase()} near-miss${meta.count === 1 ? "" : "es"}${
           meta.truncated ? " (list truncated)" : ""}${
           meta.grounded ? "" : " — no complete ring to compare against, so the band labels are not proof"}`);
         // The scan only measures; showing the first one is a second call.
@@ -746,13 +732,9 @@ export function ContinuationLab() {
           }
           setSolutions(meta);
           // A new run invalidates every near-miss list: they index into the
-          // candidate lists of the session that has just been replaced. The
-          // traces go with them -- same reason, same session.
+          // candidate lists of the session that has just been replaced.
           setSemi({});
           setSemiMode({});
-          setTraces({});
-          setTraceFailed({});
-          setTraceBand({});
           setProgressFrame(null);
           setEngineError(null);
           setStatus(`Exact calculation complete · ${message.result.seconds}s`);
@@ -871,10 +853,10 @@ export function ContinuationLab() {
     });
   };
 
-  // One band at a time, the other held: "keep this V, show me the next H that
-  // also falls short". The ‹ › arrows cannot ask that -- they walk the whole
-  // list in sort order, mixing both bands and every extension together.
-  const stepSemi = (level: number, band: "h" | "v", direction: 1 | -1) => {
+  // The swept band, the other held: "keep this V, show me the next H that also
+  // falls short". The ‹ › arrows cannot ask that -- they walk the whole list in
+  // sort order, mixing every extension together.
+  const stepSemi = (level: number, band: Band, direction: 1 | -1) => {
     if (!semi[level]?.current) return;
     setBrowsingLevel(level);
     ensureWorker().postMessage({
@@ -882,53 +864,38 @@ export function ContinuationLab() {
     });
   };
 
-  const toggleSemi = (level: number) => {
-    const on = semiMode[level] === true;
-    setSemiMode(current => ({ ...current, [level]: !on }));
-    if (on) {
+  // One ⚑ per band. Pressing the band already on turns near-misses off; pressing
+  // the other one swaps the question, which is a fresh sweep — the list in the
+  // session holds one band at a time, so the H list cannot answer for V.
+  const toggleSemi = (level: number, band: Band) => {
+    const on = semiMode[level];
+    if (on === band) {
       // Back to closed rings: the card is showing near-miss geometry, so put
       // the complete solution the reader was on back on screen.
+      setSemiMode(current => ({ ...current, [level]: undefined }));
       browse(level, solutions[level]?.index ?? 0);
       return;
     }
-    if (semi[level]) {
-      browseSemi(level, semi[level].index);
+    setSemiMode(current => ({ ...current, [level]: band }));
+    const near = semi[level];
+    if (near && near.band === band) {
+      browseSemi(level, near.index);
       return;
     }
+    const held = band === "h" ? "V" : "H";
     setBrowsingLevel(level);
-    setStatus(`Sweeping both bands for L${level} near-misses — every candidate against up to three partners that work…`);
+    setStatus(`Sweeping the ${band.toUpperCase()} band for L${level} near-misses — every ${band.toUpperCase()} candidate against up to three ${held} partners that work…`);
     ensureWorker().postMessage({
-      type: "semi-scan", id: activeIdRef.current, level,
+      type: "semi-scan", id: activeIdRef.current, level, band,
     });
   };
 
-  // Replays the level and sweeps it twice over, so it is only ever asked for
-  // by this button -- never as part of a generate.
-  const requestTrace = (level: number, band: "h" | "v") => {
-    const key = `${level}:${band}`;
-    if (traces[key] || traceFailed[key]) return;
-    setBrowsingLevel(level);
-    setStatus(`Tracing the L${level} ${band === "h" ? "horizontal" : "vertical"} band — every combo against every angle…`);
-    ensureWorker().postMessage({
-      type: "trace", id: activeIdRef.current, level, band,
-    });
-  };
-
-  // The drawer is per level, and its open state is the band it is showing.
-  // Closing it keeps whatever was traced, so reopening costs nothing.
-  const toggleTrace = (level: number) => {
-    setTraceBand(current => {
-      const next = { ...current };
-      if (next[level]) { delete next[level]; return next; }
-      next[level] = "v";
+  const toggleWidget = (level: number) => {
+    setOpenWidgets(current => {
+      const next = new Set(current);
+      if (!next.delete(level)) next.add(level);
       return next;
     });
-    if (!traceBand[level]) requestTrace(level, "v");
-  };
-
-  const showBand = (level: number, band: "h" | "v") => {
-    setTraceBand(current => ({ ...current, [level]: band }));
-    requestTrace(level, band);
   };
 
   const saveSolution = (stage: Stage) => {
@@ -1199,8 +1166,9 @@ export function ContinuationLab() {
               {result.stages.map(stage => {
                 const row = stage.level ? result.rows[stage.level - 1] : null;
                 const compact = !fullSizeLevels.has(stage.level);
+                const widgetOpen = openWidgets.has(stage.level);
                 return (
-                  <article className={`diagram-card ${compact ? "is-compact" : ""} ${traceBand[stage.level] ? "is-tracing" : ""}`} key={`${result.m}-${result.n}-${result.ks.join("-")}-${stage.level}`}>
+                  <article className={`diagram-card ${compact ? "is-compact" : ""}`} key={`${result.m}-${result.n}-${result.ks.join("-")}-${stage.level}`}>
                     <div className="card-head">
                       <div className="level-title"><strong>{stage.level === 0 ? "L₀" : `L${stage.level}`}</strong><span>{stage.label}</span></div>
                       <div className="card-actions">
@@ -1213,19 +1181,32 @@ export function ContinuationLab() {
                           if (!meta) return null;
                           const busyHere = browsingLevel === stage.level;
                           const near = semi[stage.level];
-                          const onSemi = semiMode[stage.level] === true;
+                          const band = semiMode[stage.level];
+                          const onSemi = band !== undefined;
                           // k=0 has one configuration and nothing to sweep, so
                           // it gets neither list.
                           const canSemi = browsable(meta);
-                          const semiButton = canSemi ? (
-                            <button className={`semi-toggle ${onSemi ? "is-on" : ""}`} type="button"
-                              onClick={() => toggleSemi(stage.level)} disabled={busyHere}
-                              title={onSemi
-                                ? "Back to rings that close"
-                                : "Near-misses: one band held at a value that works, the other swept"}
-                              aria-pressed={onSemi}
-                              aria-label={`${onSemi ? "Show complete rings" : "Show near-misses"} for level ${stage.level}`}>◑</button>
-                          ) : null;
+                          // One flag per band, and nothing else: a near-miss is
+                          // always blamed on one band, so "show me the H ones"
+                          // and "show me the V ones" are the two questions a
+                          // level card can be asked. A single toggle answered
+                          // both at once and left the reader to spot the band
+                          // on each row as they walked the mixed list.
+                          const semiFlags = canSemi ? (["h", "v"] as const).map(side => {
+                            const held = side === "h" ? "V" : "H";
+                            const active = band === side;
+                            return (
+                              <button key={`flag-${side}`} className={`semi-flag ${active ? "is-on" : ""}`}
+                                type="button" onClick={() => toggleSemi(stage.level, side)} disabled={busyHere}
+                                title={active
+                                  ? `Back to rings that close`
+                                  : `${side.toUpperCase()} near-misses: ${held} held at a value that closes, ${side.toUpperCase()} swept`}
+                                aria-pressed={active}
+                                aria-label={`${active ? "Show complete rings" : `Show ${side.toUpperCase()} band near-misses`} for level ${stage.level}`}>
+                                ⚑<i>{side.toUpperCase()}</i>
+                              </button>
+                            );
+                          }) : null;
 
                           if (onSemi) {
                             const item = near?.current;
@@ -1248,13 +1229,15 @@ export function ContinuationLab() {
                                 <button type="button" onClick={() => browseSemi(stage.level, (near?.index ?? 0) + 1)}
                                   disabled={busyHere || !near || near.index + 1 >= near.count}
                                   aria-label={`Next near-miss for level ${stage.level}`}>›</button>
-                                {/* One band at a time, the other held. The ‹ ›
+                                {/* The swept band, the other held. The ‹ ›
                                     arrows walk the sorted list, which mixes
-                                    both bands and every extension together;
-                                    these ask the question the sweep is made of
-                                    -- keep this V, what is the next H that also
-                                    falls short? */}
-                                {(["h", "v"] as const).map(band => {
+                                    every extension together; these ask the
+                                    question the sweep is made of -- keep this
+                                    V, what is the next H that also falls short?
+                                    Only the swept band gets steppers: the held
+                                    one is fixed by the sweep, so a V± inside an
+                                    H list has nowhere to step to. */}
+                                {(() => {
                                   const held = band === "h" ? "V" : "H";
                                   const heldPx = item
                                     ? (band === "h" ? item.vExt : item.hExt).reduce((sum, e) => sum + e, 0)
@@ -1272,7 +1255,7 @@ export function ContinuationLab() {
                                       {band.toUpperCase()}{direction > 0 ? "+" : "−"}
                                     </button>
                                   ));
-                                })}
+                                })()}
                                 {/* Nearest-first is the queue's own order and
                                     the right default; shortest-first answers a
                                     different question -- of the rings that fail,
@@ -1298,7 +1281,7 @@ export function ContinuationLab() {
                                   disabled={!item}
                                   title="Flag this near-miss for rating — goes to /mxn/semi/"
                                   aria-label={`Flag level ${stage.level} near-miss for the dataset`}>🚩</button>
-                                {semiButton}
+                                {semiFlags}
                               </span>
                             );
                           }
@@ -1321,15 +1304,7 @@ export function ContinuationLab() {
                               <button className="save-solution" type="button" onClick={() => saveSolution(stage)}
                                 title="Save this closed ring for rating — goes to /mxn/rate/"
                                 aria-label={`Save level ${stage.level} solution to the dataset`}>⭐</button>
-                              {semiButton}
-                              <button className={`trace-toggle ${traceBand[stage.level] ? "is-on" : ""}`}
-                                type="button"
-                                onClick={() => toggleTrace(stage.level)}
-                                disabled={busyHere}
-                                aria-expanded={Boolean(traceBand[stage.level])}
-                                aria-controls={`trace-drawer-${stage.level}`}
-                                title="Trace: every combo against every angle, including the ones the search never tries"
-                                aria-label={`${traceBand[stage.level] ? "Hide" : "Show"} the trace for level ${stage.level}`}>◎</button>
+                              {semiFlags}
                             </span>
                           );
                         })()}
@@ -1338,8 +1313,7 @@ export function ContinuationLab() {
                         </button>
                       </div>
                     </div>
-                    <div id={`level-panel-${stage.level}`} className="level-body">
-                      <div className="level-main">
+                    <div id={`level-panel-${stage.level}`}>
                       <div className="canvas-wrap exact-canvas"><ExactCanvas stage={stage} bounds={bounds} /><span className="canvas-corner">{row ? `${row.state} · ${row.healthy ? "WEAVE" : "NOT A WEAVE"}` : "starting stitch"}</span></div>
                       <div className="card-foot exact-metrics">
                         <div className="metric"><span>suffixes</span><strong>{suffixLabel(stage.level)}</strong></div>
@@ -1355,46 +1329,34 @@ export function ContinuationLab() {
                         <span><b>broken</b>{row.broken}</span>
                         <em>{row.applied.length ? row.applied.join(" · ") : "k-based groups"}</em>
                       </div>}
+                      {/* The level widget: a drawer at the foot of the card,
+                          one per Lᵥ and opened or closed per card, so two
+                          levels can be held open side by side rather than the
+                          page having a single panel that only ever describes
+                          the last thing clicked. Its contents are still to be
+                          decided; the drawer, its state and its place on the
+                          card are what is settled here. */}
+                      <div className={`level-widget ${widgetOpen ? "is-open" : ""}`}>
+                        <button type="button" className="level-widget-head"
+                          onClick={() => toggleWidget(stage.level)}
+                          aria-expanded={widgetOpen}
+                          aria-controls={`level-widget-${stage.level}`}>
+                          <b>L{stage.level === 0 ? "₀" : stage.level} widget</b>
+                          <span>{widgetOpen ? "close" : "open"}</span>
+                          <i aria-hidden="true">{widgetOpen ? "−" : "+"}</i>
+                        </button>
+                        {widgetOpen && (
+                          <div className="level-widget-body" id={`level-widget-${stage.level}`}>
+                            <p>Empty for now — this is the slot for the L{stage.level === 0 ? "₀" : stage.level} tool.</p>
+                          </div>
+                        )}
                       </div>
-                      {/* The drawer sits in flow beside the diagram, and the
-                          card it belongs to spans the whole row while it is
-                          open. Nothing overlaps a neighbouring level: the grid
-                          reflows the later cards down instead. */}
-                      {(() => {
-                        const band = traceBand[stage.level];
-                        if (!band) return null;
-                        const key = `${stage.level}:${band}`;
-                        const payload = traces[key];
-                        const failed = traceFailed[key];
-                        return (
-                          <aside className="trace-drawer" id={`trace-drawer-${stage.level}`}>
-                            {payload ? (
-                              <TracePanel data={payload}
-                                onClose={() => toggleTrace(stage.level)}
-                                onBand={b => showBand(stage.level, b)} />
-                            ) : (
-                              <div className="trace-pending">
-                                <strong>Trace · L{stage.level} · {band} band</strong>
-                                <p>{failed ?? "Replaying this level and sweeping every combo against every angle…"}</p>
-                                <div className="trace-pending-actions">
-                                  {(["h", "v"] as const).map(b => (
-                                    <button key={b} type="button" aria-pressed={band === b}
-                                      onClick={() => showBand(stage.level, b)}>{b.toUpperCase()}</button>
-                                  ))}
-                                  <button type="button" onClick={() => toggleTrace(stage.level)}>Close</button>
-                                </div>
-                              </div>
-                            )}
-                          </aside>
-                        );
-                      })()}
                     </div>
                   </article>
                 );
               })}
             </div>
           )}
-
         </div>
       </section>
 
