@@ -185,7 +185,12 @@ The drawer holds the trace panel (see *The trace census* below): opening a
 level's widget requests `bridge.trace_level` for the band it was last shown at
 (V by default), and the H/V buttons in the panel's head swap the question.
 Traces are cached per level and band in `traces`, so reopening a widget never
-re-runs a census.
+re-runs a census. While a census computes, the drawer shows `TraceSweep` — a
+schematic of the work being waited on, in the finished panel's own palette:
+one combo of strands at a time swept across the angle range, each landing
+named and coloured by verdict, a strip of combos filling below. It is purely
+time-driven — activity, not progress — the engine status line still carries
+the truth about the worker.
 
 Beside the census the panel shows a **weave pattern (this combo)** box: the
 cell being looked at, woven. It is engine geometry, not a sketch —
@@ -195,6 +200,10 @@ engine's own pick, then audits the result, so the caption carries the same
 `ok/ok · WEAVE` verdict and crossing count the level card prints. Requests are
 debounced 250 ms, suppressed while the panel is playing or recording, and
 cached per cell (`TRACE_WEAVE_CACHE` entries per level and band, oldest out).
+The engine's own pick costs no request at all: the trace payload embeds it
+already woven (`payload["weave"]`), the studio seeds the cache from it on
+`trace-ready`, and since the panel lands on that cell at that angle, the
+default preview is on screen the moment the census is.
 
 ### The dataset API
 
@@ -338,7 +347,7 @@ fake-worker arrangement as `qa:trace`.
 
 ### Cache keys
 
-The `trace-weave-v12` cache key appears in both the worker URL
+The `trace-weave-v13` cache key appears in both the worker URL
 (`weave-studio.tsx`) and the Python fetch URL (`exact-worker.js`). Bump both
 together when the engine files change, or returning readers run stale geometry.
 

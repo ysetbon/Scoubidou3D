@@ -33,6 +33,8 @@ export type TracePayload = {
   pairIndices: [number, number | null][];
   targets: [number, number][];
   applied: number[];
+  /** The applied combo already woven, embedded so the first view is instant. */
+  weave?: TraceWeave;
 };
 
 /**
@@ -78,6 +80,122 @@ const BLURB = [
   "every test passed",
   "the angle this combo's ranking selects",
 ];
+
+// The census names, for the sweep animation that runs before a payload (and
+// its own names array) exists. Order matches the verdict codes above.
+const SWEEP_NAMES = ["WINDOW", "REACH", "DEGEN", "ORDER",
+                     "OVERLAP", "TOOFAR", "VALID", "BEST"];
+
+/**
+ * The trace's busy state: a schematic of the sweep the engine is running.
+ *
+ * Not real data — the census only exists once it is finished — but the real
+ * choreography: one combo of strands at a time, the heading swept across the
+ * ±40° range, each landing scored in the verdict palette the finished panel
+ * uses, and a strip of combos filling as they are ruled on. Purely
+ * time-driven, so it promises activity rather than progress; the engine
+ * status line still carries the truth about the worker.
+ */
+export function TraceSweep({ band }: { band: "h" | "v" }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const cv = ref.current;
+    const ctx = cv?.getContext("2d");
+    if (!cv || !ctx) return undefined;
+    const slow = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const W = 336, H = 208;
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    cv.width = Math.round(W * dpr);
+    cv.height = Math.round(H * dpr);
+    cv.style.width = `${W}px`;
+    cv.style.height = `${H}px`;
+
+    const CELLS = 40;
+    const COMBO_SECONDS = slow ? 3.6 : 1.2;
+    // What a landing can score, weighted the way a real census leans: order
+    // dominates, a valid cell is rare enough to feel like one.
+    const LANDS = [ORDER, ORDER, ORDER, TOOFAR, TOOFAR, OVERLAP, VALID];
+    const hash = (n: number) => {
+      let x = (n | 0) + 0x9e3779b9;
+      x = Math.imul(x ^ (x >>> 16), 0x21f0aaad);
+      x = Math.imul(x ^ (x >>> 15), 0x735a2d97);
+      return ((x ^ (x >>> 15)) >>> 0) / 4294967296;
+    };
+
+    let raf = 0;
+    const t0 = performance.now();
+    const draw = (now: number) => {
+      raf = requestAnimationFrame(draw);
+      const t = (now - t0) / 1000;
+      const combo = Math.floor(t / COMBO_SECONDS);
+      const phase = (t % COMBO_SECONDS) / COMBO_SECONDS;
+      const sweep = -40 + 80 * (phase < 0.5 ? phase * 2 : (1 - phase) * 2);
+      const inWindow = Math.abs(sweep) <= 20;
+      const verdict = inWindow
+        ? LANDS[Math.floor(hash(combo * 97 + Math.round(sweep / 5)) * LANDS.length)]
+        : WINDOW;
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = "#f4f0e6";
+      ctx.fillRect(0, 0, W, H);
+
+      // This combo's strands, heading swept across the range. H bands lie
+      // flatter, V bands stand more upright, as on the finished panel.
+      const base = band === "h" ? -18 : 64;
+      const a = ((base + sweep * 0.6) * Math.PI) / 180;
+      const ux = Math.cos(a), uy = Math.sin(a);
+      const px = -uy, py = ux;
+      const cx = W / 2, cy = 82, L = 116;
+      const starts = [0, 1, 2].map(i => {
+        const extension = Math.floor(hash(combo * 31 + i) * 5) * 8;
+        return [cx + px * (i - 1) * 27 - ux * (L / 2 + extension - 16),
+                cy + py * (i - 1) * 27 - uy * (L / 2 + extension - 16)];
+      });
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#5a5852";
+      starts.forEach(([sx, sy]) => {
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx + ux * L, sy + uy * L);
+        ctx.stroke();
+      });
+      // The gap ticks, in the landing's colour — grey outside the window.
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = COLOUR[verdict];
+      for (let i = 0; i < 2; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(starts[i][0] + ux * L * 0.55, starts[i][1] + uy * L * 0.55);
+        ctx.lineTo(starts[i + 1][0] + ux * L * 0.55,
+                   starts[i + 1][1] + uy * L * 0.55);
+        ctx.stroke();
+      }
+
+      // What this landing scored, in the finished panel's own words.
+      ctx.font = "600 11px ui-monospace, monospace";
+      ctx.fillStyle = COLOUR[verdict];
+      ctx.fillText(SWEEP_NAMES[verdict], 12, H - 44);
+      ctx.fillStyle = "#96917f";
+      const angleLabel = `sweeping ${sweep >= 0 ? "+" : ""}${sweep.toFixed(0)}°`;
+      ctx.fillText(angleLabel, W - 12 - ctx.measureText(angleLabel).width, H - 44);
+
+      // Combos already ruled on, filling left to right and starting over. The
+      // +8 is a beat of rest on the full strip before it clears.
+      const round = Math.floor(combo / (CELLS + 8));
+      const done = combo % (CELLS + 8);
+      const cellW = (W - 24) / CELLS;
+      for (let i = 0; i < CELLS; i += 1) {
+        ctx.fillStyle = i < done
+          ? COLOUR[LANDS[Math.floor(hash(i * 13 + round * 7) * LANDS.length)]]
+          : "#e6e1d4";
+        ctx.fillRect(12 + i * cellW, H - 32, Math.max(cellW - 1, 1), 16);
+      }
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, [band]);
+  // aria-hidden: the pending text beside it already says what is happening.
+  return <canvas ref={ref} className="trace-sweep" aria-hidden="true" />;
+}
 
 const b64 = (s: string) => {
   const bin = atob(s);
@@ -359,6 +477,18 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
     return () => window.clearTimeout(id);
   }, [ext, angleDeg, weave, playing, recording]);
 
+  // The pending text's ticking dots, on their own beat like ThinkingDots: a
+  // cell stuck behind a long worker job still visibly waits rather than
+  // reading as a panel that forgot to draw.
+  const weavePending = !weave && !playing && !recording;
+  const [weaveTick, setWeaveTick] = useState(0);
+  useEffect(() => {
+    if (!weavePending) return undefined;
+    const slow = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const id = window.setInterval(() => setWeaveTick(v => v + 1), slow ? 900 : 380);
+    return () => window.clearInterval(id);
+  }, [weavePending]);
+
   const appliedIdx = useMemo(() => {
     let idx = 0;
     data.applied.forEach((e) => { idx = idx * E + Math.max(0, data.vals.indexOf(e)); });
@@ -484,7 +614,7 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
       ctx.fillText(
         weave?.unavailable ? (weave.reason ?? "no weave for this band")
           : playing || recording ? "pause to weave the combo on screen"
-          : "weaving this combo…",
+          : `weaving this combo${".".repeat((weaveTick % 3) + 1)}`,
         wbx + 6, wby + wbh / 2);
     }
 
@@ -584,7 +714,7 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
                  sx, sy + sh + M.lead * 2 + 12);
   }, [data, combo, angleIdx, angleDeg, verdicts, angle0, best, nCombos, only,
       appliedIdx, layout, cellCode, cell, labels, gridH, stripY, M, width,
-      canvasH, weave, playing, recording]);
+      canvasH, weave, weaveTick, playing, recording]);
 
   const pick = (ev: React.MouseEvent<HTMLCanvasElement>) => {
     const cv = canvasRef.current;
