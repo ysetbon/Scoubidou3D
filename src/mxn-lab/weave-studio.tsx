@@ -8,7 +8,7 @@ import {
 } from "./exact-draw";
 import { traceKey } from "./trace-band";
 import {
-  TracePanel, weaveKey, type TracePayload, type TraceWeave,
+  TracePanel, TraceSweep, weaveKey, type TracePayload, type TraceWeave,
 } from "./trace-panel";
 
 // The renderer moved to exact-draw.ts so the trace panel can use it too; these
@@ -399,7 +399,7 @@ export function ContinuationLab() {
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
     const worker = new Worker(
-      `${LAB_BASE}exact-worker.js?v=trace-weave-v12${FAST_ENGINE ? "&engine=fast" : ""}`,
+      `${LAB_BASE}exact-worker.js?v=trace-weave-v13${FAST_ENGINE ? "&engine=fast" : ""}`,
       { type: "module" },
     );
     worker.onmessage = (event) => {
@@ -449,6 +449,15 @@ export function ContinuationLab() {
           return;
         }
         setTraces(current => ({ ...current, [key]: message as TracePayload }));
+        // The payload carries the engine's pick already woven — the cell the
+        // panel lands on first. Seeding it here is what makes the default
+        // preview instant instead of a debounce plus a worker round trip.
+        const seeded = (message as TracePayload).weave;
+        if (seeded?.ext) {
+          setTraceWeaves(current => ({ ...current, [key]: {
+            ...current[key], [weaveKey(seeded.ext, seeded.angle)]: seeded,
+          } }));
+        }
         setStatus(`L${message.level} ${message.band} band traced — nothing skipped.`);
         return;
       }
@@ -1201,6 +1210,9 @@ export function ContinuationLab() {
                               }
                               return (
                                 <div className="trace-pending">
+                                  {/* The census being swept, schematically: a
+                                      failed band explains itself instead. */}
+                                  {!failed && <TraceSweep band={band} />}
                                   <p>{failed ?? `Replaying L${stage.level} and sweeping every combo of its `
                                     + `${band === "h" ? "horizontal" : "vertical"} band against every angle…`}</p>
                                   <div className="trace-pending-actions">
