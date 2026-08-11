@@ -1021,47 +1021,42 @@ export function ContinuationLab() {
             {engineError && <div className="error-note" role="alert">{engineError}</div>}
             {hasDeepMaxK && <div className="edge-note">Max-k beyond L1 is an open research edge in this commit and may fail its weave audit.</div>}
             <div className={`engine-status ${busy ? "is-busy" : ""}`} aria-live="polite"><span className="engine-pulse" />{status}</div>
-            {busy && progressFrame && progressStage && progressBounds && (
-              <figure className="search-preview" aria-label={`Live search candidate for level ${progressFrame.level}`}>
-                <figcaption>
-                  <span>live candidate · L{progressFrame.level} · k={progressFrame.k}</span>
-                  <b>{progressFrame.phase}</b>
-                  <em>
-                    {progressFrame.total > 0
-                      ? `${progressFrame.completed.toLocaleString()} / ${progressFrame.total.toLocaleString()}`
-                      : "preparing search"}
-                    {progressFrame.valid > 0 ? ` · ${progressFrame.valid} valid` : ""}
-                  </em>
-                </figcaption>
-                <div className="search-preview-canvas">
-                  <ExactCanvas
-                    stage={progressStage}
-                    bounds={progressBounds}
-                    showLabels={false}
-                    fixedSize={512}
-                    label={`512 pixel low-quality search candidate for level ${progressFrame.level}`}
-                  />
-                </div>
-              </figure>
-            )}
             <div className="stats"><div className="stat"><strong>{ks.length || "—"}</strong><span>twist levels</span></div><div className="stat"><strong>{expected}</strong><span>crossings / ring</span></div></div>
             <p className="compute-note">The exact search runs locally in your browser. Deep or 3×3+ sequences can take several minutes.</p>
           </div>
         </aside>
 
         <div className="results">
-          <figure className="origin-guide">
-            <div className="origin-guide-copy">
-              <span className="origin-kicker">L0 → L1 measurement origin</span>
-              <h3>Extension starts at purple.</h3>
-              <p>For every L0 arm, the outermost crossing with the other band is extension&nbsp;0. The L1 search moves outward from that purple point along the parent arm&apos;s axis.</p>
-              <div className="origin-equation"><b>extension</b> = distance from <i>purple anchor</i> to the new L1 start</div>
-              <div className="origin-legend"><span className="purple-key">purple · calculation origin</span><span className="red-key">red · old endpoint, not the origin</span></div>
-            </div>
-            <img src={`${LAB_BASE}extension-origin-l0.svg`} alt="L0 weave arms with purple dots marking the outermost crossings where L1 extension measurement starts, and red dots marking the old endpoints" />
-          </figure>
+          {/* Live search drawing lives in the results column — not the sidebar —
+              so opening Advanced (or any other controls) cannot bury it. This is
+              the same place finished diagrams land. */}
+          {busy && progressFrame && progressStage && progressBounds && (
+            <figure className="search-preview search-preview-main" aria-label={`Live search candidate for level ${progressFrame.level}`}>
+              <figcaption>
+                <span>live candidate · L{progressFrame.level} · k={progressFrame.k}</span>
+                <b>{progressFrame.phase}</b>
+                <em>
+                  {progressFrame.total > 0
+                    ? `${progressFrame.completed.toLocaleString()} / ${progressFrame.total.toLocaleString()}`
+                    : "preparing search"}
+                  {progressFrame.valid > 0 ? ` · ${progressFrame.valid} valid` : ""}
+                </em>
+              </figcaption>
+              <div className="search-preview-canvas">
+                <ExactCanvas
+                  stage={progressStage}
+                  bounds={progressBounds}
+                  showLabels={false}
+                  fixedSize={512}
+                  label={`512 pixel low-quality search candidate for level ${progressFrame.level}`}
+                />
+              </div>
+            </figure>
+          )}
           {!result || !bounds ? (
-            <div className="calculation-panel"><div className={`calculation-orbit ${busy ? "is-spinning" : ""}`} /><strong>{status}</strong><span>The images appear after the repository audit finishes.</span></div>
+            busy && progressFrame ? null : (
+              <div className="calculation-panel"><div className={`calculation-orbit ${busy ? "is-spinning" : ""}`} /><strong>{status}</strong><span>The images appear after the repository audit finishes.</span></div>
+            )
           ) : (
             <div className={`sequence ${busy ? "sequence-updating" : ""}`}>
               {result.stages.map(stage => {
