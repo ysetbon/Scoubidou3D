@@ -8,7 +8,8 @@ import {
 } from "./exact-draw";
 import { traceKey } from "./trace-band";
 import {
-  TracePanel, TraceSweep, weaveKey, type TracePayload, type TraceWeave,
+  TracePanel, TraceSweep, weaveKey,
+  type TracePayload, type TracePlan, type TraceProgress, type TraceWeave,
 } from "./trace-panel";
 
 // The renderer moved to exact-draw.ts so the trace panel can use it too; these
@@ -59,11 +60,11 @@ const TRACE_WEAVE_CACHE = 40;
 
 // Same formula as pick_extension_step(): the grid per pair is 0..ext_max in
 // `step` increments, and pairs are independent.
-function comboCount(step: number, pairs: number, extMax = MAX_PAIR_EXTENSION) {
+export function comboCount(step: number, pairs: number, extMax = MAX_PAIR_EXTENSION) {
   return Math.pow(Math.floor(extMax / step) + 1, Math.max(pairs, 1));
 }
 
-function autoStep(pairs: number, budget: number) {
+export function autoStep(pairs: number, budget: number) {
   for (const step of EXT_STEPS) {
     if (comboCount(step, pairs) <= budget) return step;
   }
@@ -79,7 +80,7 @@ function browsable(meta: { enumerated: string; reason?: string | null }) {
   return meta.enumerated === "full" || !(meta.reason ?? "").startsWith("k=0");
 }
 
-function worstPairs(m: number, n: number) {
+export function worstPairs(m: number, n: number) {
   return Math.max(Math.ceil((2 * m) / 2), Math.ceil((2 * n) / 2), 1);
 }
 
@@ -100,7 +101,7 @@ const SEMI_SORTS = [
 ] as const;
 type SemiKey = (typeof SEMI_SORTS)[number]["key"];
 
-type ProgressFrame = {
+export type ProgressFrame = {
   /** The generation this candidate belongs to, so a requeued run can tell its
       own frames from the ones still draining out of the previous search. */
   id: number;
@@ -282,13 +283,13 @@ function ThinkingDots() {
  * notifies only the components that subscribed — the busy figure — so a
  * frame costs one small subtree render no matter how big the results grid is.
  */
-type FrameStore = {
+export type FrameStore = {
   get: () => ProgressFrame | null;
   set: (next: ProgressFrame | null) => void;
   subscribe: (listener: () => void) => () => void;
 };
 
-function createFrameStore(): FrameStore {
+export function createFrameStore(): FrameStore {
   let frame: ProgressFrame | null = null;
   const listeners = new Set<() => void>();
   return {
@@ -354,14 +355,62 @@ function CandidateSheet({ frame }: { frame: ProgressFrame | null }) {
 }
 
 /**
+ * How much searching this run can possibly do.
+ *
+ * Every level searches both groups, and a group is the extension grid the
+ * engine will walk: (ext_max / step + 1) choices per pair, pairs independent —
+ * the same formula pick_extension_step() sizes a run with. It is a ceiling,
+ * not a forecast: the search stops a group early when it has what it needs, so
+ * the run finishes at or before this. That is the point of showing it. A bar
+ * against a number that can be beaten is a promise the engine can keep.
+ */
+export function worstCase(m: number, n: number, levels: number, step: number) {
+  const perLevel = comboCount(step, m) + comboCount(step, n);
+  return { perLevel, groups: levels * 2, total: perLevel * levels };
+}
+
+/** Which group of the run a frame belongs to, counting from one. */
+function groupIndex(frame: ProgressFrame) {
+  const vertical = frame.phase.toLowerCase().startsWith("v");
+  return (frame.level - 1) * 2 + (vertical ? 2 : 1);
+}
+
+/**
  * The busy state, and the whole of it: candidates as they are found, drawn
  * small, in the results column — not the sidebar — so opening Advanced cannot
  * bury it. It replaces a spinner that reported nothing beyond "not frozen";
  * the sheet fills at whatever rate the search is managing. Its own component
  * so the per-frame renders stop at this figure instead of the whole lab.
+ *
+ * The plaque carries the run's whole scale: the group's own bar, the ceiling
+ * every group is measured against, and how many groups are left. Dots alone
+ * said the tab had not frozen; they never said whether the wait was ten
+ * seconds or ten minutes, which is the question anyone watching it has.
  */
-function LiveCandidateFigure({ store }: { store: FrameStore }) {
+export function LiveCandidateFigure({ store, worst }: {
+  store: FrameStore;
+  /** The run's ceiling, from the parameters it was started with. */
+  worst: { perLevel: number; groups: number; total: number };
+}) {
   const frame = useSyncExternalStore(store.subscribe, store.get);
+  const group = frame ? groupIndex(frame) : 0;
+  const within = frame && frame.total > 0
+    ? Math.min(1, frame.completed / frame.total) : 0;
+  // Groups already behind this one count as done: the engine finishes a group
+  // before it starts the next, so a finished group is finished work whether or
+  // not it walked its whole grid.
+  const reached = worst.groups
+    ? Math.min(1, (Math.max(0, group - 1) + within) / worst.groups) : 0;
+  // A high-water mark, because the group number is read off the phase and the
+  // engine is free to take a level's two groups in either order. Work already
+  // done does not become undone, so the run bar never walks backwards.
+  // Kept per generation: a requeued run reuses this figure, and its first
+  // frame must not inherit the last search's mark.
+  const high = useRef({ id: -1, at: 0 });
+  if (frame && frame.id !== high.current.id) high.current = { id: frame.id, at: 0 };
+  if (reached > high.current.at) high.current.at = reached;
+  const overall = high.current.at;
+
   return (
     <figure className="candidate-sheet" aria-label="Live search candidates">
       <figcaption>
@@ -380,8 +429,24 @@ function LiveCandidateFigure({ store }: { store: FrameStore }) {
       <div className="sheet-stage">
         <CandidateSheet frame={frame} />
         {/* aria-hidden: the engine status line already carries this state
-            politely, and ticking dots are not worth announcing. */}
-        <div className="thinking-plaque" aria-hidden="true">thinking<ThinkingDots /></div>
+            politely, and a bar that moves every frame is not worth announcing.
+            Kept to one plaque-width column so it covers no more of the sheet
+            than the word "thinking" did. */}
+        <div className="thinking-plaque" aria-hidden="true">
+          <span className="thinking-word">thinking<ThinkingDots /></span>
+          {/* Two bars, one track: the pale fill is the whole run against its
+              ceiling, the solid one is the group being searched now. */}
+          <span className="thinking-track">
+            <i className="thinking-run" style={{ width: `${overall * 100}%` }} />
+            <b className="thinking-group" style={{ width: `${within * 100}%` }} />
+          </span>
+          <span className="thinking-scale">
+            {frame && frame.total > 0
+              ? `${Math.round(within * 100)}% of group ${group}/${worst.groups}`
+              : `group 1/${worst.groups}`}
+            <em>≤ {worst.total.toLocaleString()} combos</em>
+          </span>
+        </div>
       </div>
     </figure>
   );
@@ -400,6 +465,8 @@ export function ContinuationLab() {
   // Deliberately not useState: see FrameStore. useState(createFrameStore)
   // makes the factory the lazy initialiser, so one store per mount.
   const [frameStore] = useState(createFrameStore);
+  // What the run in flight could cost at worst. Frozen at dispatch; see below.
+  const [runScale, setRunScale] = useState(() => worstCase(2, 2, 1, 20));
   const [copiedLevel, setCopiedLevel] = useState<number | null>(null);
   const [fullSizeLevels, setFullSizeLevels] = useState<Set<number>>(() => new Set());
   const [preferShortArms, setPreferShortArms] = useState(true);
@@ -416,6 +483,11 @@ export function ContinuationLab() {
   // One trace per level and band. A trace costs a replay of the level plus
   // two sweeps of it, so closing the widget keeps what it found.
   const [traces, setTraces] = useState<Record<string, TracePayload>>({});
+  // What the census is about to sweep, and how far into it the worker is.
+  // Both land while the widget is still waiting, which is what the pending
+  // sweep is drawn from — see TraceSweep.
+  const [tracePlans, setTracePlans] = useState<Record<string, TracePlan>>({});
+  const [traceProgress, setTraceProgress] = useState<Record<string, TraceProgress>>({});
   const [traceFailed, setTraceFailed] = useState<Record<string, string>>({});
   const [traceBand, setTraceBand] = useState<Record<number, Band>>({});
   // Woven previews of traced cells, keyed by trace then by combo-and-angle.
@@ -461,7 +533,7 @@ export function ContinuationLab() {
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
     const worker = new Worker(
-      `${LAB_BASE}exact-worker.js?v=fast-frames-v14${FAST_ENGINE ? "&engine=fast" : ""}`,
+      `${LAB_BASE}exact-worker.js?v=trace-plan-v15${FAST_ENGINE ? "&engine=fast" : ""}`,
       { type: "module" },
     );
     worker.onmessage = (event) => {
@@ -496,6 +568,23 @@ export function ContinuationLab() {
             };
           });
         }
+        return;
+      }
+      // The band's own inputs, ahead of the census that sweeps them. The
+      // pending widget draws from these; an unavailable band is left to the
+      // trace-ready that follows, which carries the same reason.
+      if (message.type === "trace-plan-ready") {
+        if (!message.unavailable) {
+          setTracePlans(current => ({
+            ...current, [traceKey(message.level, message.band)]: message as TracePlan,
+          }));
+        }
+        return;
+      }
+      if (message.type === "trace-progress") {
+        setTraceProgress(current => ({
+          ...current, [traceKey(message.level, message.band)]: message as TraceProgress,
+        }));
         return;
       }
       if (message.type === "trace-ready") {
@@ -622,6 +711,8 @@ export function ContinuationLab() {
           setSemi({});
           setSemiMode({});
           setTraces({});
+          setTracePlans({});
+          setTraceProgress({});
           setTraceFailed({});
           setTraceBand({});
           setTraceWeaves({});
@@ -665,6 +756,12 @@ export function ContinuationLab() {
       setBusy(true);
       setEngineError(null);
       frameStore.set(null);
+      // The ceiling the busy figure measures against, taken from the values
+      // this run was dispatched with rather than from whatever is in the
+      // fields now — the two part company the moment anyone types during a run.
+      setRunScale(worstCase(
+        params.m, params.n, params.ks.length,
+        params.extStep ?? autoStep(worstPairs(params.m, params.n), params.comboBudget)));
       setStatus("Loading the exact MXN engine…");
       setRanKey(params.key);
       const id = ++activeIdRef.current;
@@ -1045,7 +1142,7 @@ export function ContinuationLab() {
           {/* The busy figure renders itself from the frame store — frames
               arrive too fast to route through this component's state. This is
               where finished diagrams land too. */}
-          {busy && <LiveCandidateFigure store={frameStore} />}
+          {busy && <LiveCandidateFigure store={frameStore} worst={runScale} />}
           {!result || !bounds ? (
             busy ? null : (
               <div className="calculation-panel"><div className="calculation-orbit" /><strong>{status}</strong><span>The images appear after the repository audit finishes.</span></div>
@@ -1248,11 +1345,25 @@ export function ContinuationLab() {
                               }
                               return (
                                 <div className="trace-pending">
-                                  {/* The census being swept, schematically: a
-                                      failed band explains itself instead. */}
-                                  {!failed && <TraceSweep band={band} />}
-                                  <p>{failed ?? `Replaying L${stage.level} and sweeping every combo of its `
-                                    + `${band === "h" ? "horizontal" : "vertical"} band against every angle…`}</p>
+                                  {/* The band itself, swept here while the
+                                      worker sweeps it there: real combos, real
+                                      angles, and the worker's own position
+                                      under them. A failed band explains itself
+                                      instead. */}
+                                  {!failed && <TraceSweep band={band}
+                                    level={stage.level}
+                                    plan={tracePlans[key]}
+                                    progress={traceProgress[key]} />}
+                                  {/* Once the plan lands the wait can be
+                                      described in the band's own numbers
+                                      rather than in the shape of the job. */}
+                                  <p>{failed ?? (tracePlans[key]
+                                    ? `Sweeping all ${tracePlans[key].combos.toLocaleString()} extension `
+                                      + `combos of L${stage.level}'s ${band === "h" ? "horizontal" : "vertical"} `
+                                      + `band against ${tracePlans[key].nAngles} angles each — `
+                                      + `${tracePlans[key].evaluations.toLocaleString()} tests, none skipped.`
+                                    : `Replaying L${stage.level} and sweeping every combo of its `
+                                      + `${band === "h" ? "horizontal" : "vertical"} band against every angle…`)}</p>
                                   <div className="trace-pending-actions">
                                     {(["h", "v"] as const).map(b => (
                                       <button key={b} type="button" aria-pressed={band === b}

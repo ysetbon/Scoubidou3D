@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MXN Lab — busy-state widgets (mock)</title>
+<!--
+  Dev-only. Not a vite build input, so nothing here is published.
+
+      npm run dev
+      open http://localhost:5173/Scoubidou3D/mocks/widgets.html
+
+  Unlike thinking-indicator-mock.html — which copied the CSS and faked the
+  drawing so a design could be judged before it existed — this one mounts the
+  real components and feeds them payloads the real engine produced. What it
+  stands in for is the worker: the census progress and the candidate stream are
+  driven on a timer here, because Pyodide's CDN is not reachable everywhere
+  this gets looked at. Regenerate the payloads with:
+
+      python3 scripts/mock-fixtures.py
+-->
+<style>
+  html { background: #f4f0e6; }
+  body { margin: 0; }
+  .mock-shell { font-family: system-ui, sans-serif; padding: 0 0 60px; }
+  .mock-masthead {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 12px clamp(14px, 3vw, 40px); background: #171713; color: #f4f0e6;
+    font: 700 10px/1.3 ui-monospace, monospace; letter-spacing: .07em;
+    text-transform: uppercase;
+  }
+  .mock-masthead b { color: #dbea65; letter-spacing: .12em; }
+  .mock-masthead span { color: #918e85; text-transform: none; letter-spacing: 0; font-weight: 500; }
+  .mock-masthead a { margin-left: auto; color: #dbea65; }
+  .mock-error { margin: 20px clamp(14px, 3vw, 40px); color: #8f2e22; font: 600 12px/1.5 ui-monospace, monospace; }
+  .mock-case { padding: 26px clamp(14px, 3vw, 40px) 6px; }
+  .mock-case + .mock-case { border-top: 1px solid #d7d0c0; margin-top: 26px; }
+  .mock-case > header {
+    display: flex; align-items: center; gap: 14px 20px; flex-wrap: wrap; margin-bottom: 16px;
+  }
+  .mock-case h2 { margin: 0; font: 800 11px/1 ui-monospace, monospace; letter-spacing: .1em; text-transform: uppercase; }
+  .mock-controls { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; margin-left: auto; }
+  .mock-controls label { font: 700 10px/1 ui-monospace, monospace; text-transform: uppercase; display: inline-flex; align-items: center; gap: 6px; }
+  .mock-controls input { width: 46px; padding: 5px 6px; border: 1px solid #171713; background: #fbf8ef; font: 700 11px/1 ui-monospace, monospace; }
+  .mock-switch { display: inline-flex; border: 1px solid #171713; }
+  .mock-switch button, .mock-toggle {
+    border: 0; background: #fbf8ef; padding: 6px 11px; cursor: pointer;
+    font: 700 10px/1 ui-monospace, monospace; letter-spacing: .07em; text-transform: uppercase;
+  }
+  .mock-switch button + button { border-left: 1px solid #171713; }
+  .mock-toggle { border: 1px solid #171713; }
+  .mock-switch button[aria-pressed="true"], .mock-toggle[aria-pressed="true"] { background: #171713; color: #dbea65; }
+  /* The lab's own surfaces, so the widgets sit on what they sit on there. */
+  .mock-frame { background: #fbf8ef; border: 1px solid #171713; padding: 14px; max-width: 430px; }
+  .mock-frame.is-results { max-width: 900px; padding: 0; border: 0; background: transparent; }
+  .mock-facts { display: flex; flex-wrap: wrap; gap: 0; margin: 14px 0 0; border: 1px solid #d7d0c0; width: fit-content; }
+  .mock-facts > div { padding: 8px 14px; }
+  .mock-facts > div + div { border-left: 1px solid #d7d0c0; }
+  .mock-facts dt { font: 700 8px/1 ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; color: #69675f; }
+  .mock-facts dd { margin: 5px 0 0; font: 700 12px/1 ui-monospace, monospace; }
+</style>
+</head>
+<body>
+  <div id="mock"></div>
+  <script type="module" src="../src/mxn-lab/mock-widgets.tsx"></script>
+</body>
+</html>

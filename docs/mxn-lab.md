@@ -173,6 +173,33 @@ This is the joint search the per-band `prefer_short_arms` tie-break cannot do.
 database table takes — including `parent_strands`, the Lᵥ₋₁ ring it was built
 on, so a later rating always knows what it was rating. Download exports the set.
 
+### The busy state
+
+A run shows `LiveCandidateFigure` in the results column — a contact sheet of the
+candidates the engine is producing, not a spinner. Frames arrive up to ~28 a
+second (`FRAME_MIN_INTERVAL`, capped at `FRAME_MAX_DUTY` of the worker's time),
+so they are held in a `FrameStore` outside React state and only that figure
+subscribes; a frame costs one small canvas draw rather than a re-render of every
+diagram on the page. The rate the sheet fills at *is* the search rate.
+
+The `thinking …` plaque over it carries the run's scale:
+
+- **the group's own bar**, `completed / total` straight off the frame — `total`
+  is the extension grid the engine is walking for that band;
+- **the run's bar** behind it, groups finished plus the fraction of this one,
+  over `levels × 2` groups. Kept to a high-water mark: the group number is read
+  off the frame's phase, and the engine may take a level's two bands in either
+  order, but work already done does not become undone;
+- **the ceiling**, `≤ N combos` — `worstCase()`, which is the same formula
+  `pick_extension_step()` sizes a run with, summed over both groups of every
+  level. It is what the run can cost at worst, not a forecast: a group that has
+  what it needs stops early, so the run finishes at or before it. That is the
+  point of showing a number that can be beaten.
+
+The dots keep their own beat rather than the engine's: when a search stalls the
+tiles freeze and the dots carry on, which is the difference between a slow band
+and a hung worker.
+
 ### The level widget
 
 Each card carries a drawer at its foot, opened and closed per level rather than
@@ -182,15 +209,33 @@ state lives in `openWidgets`, a `Set` of level numbers, beside `fullSizeLevels`
 which does the same job for the card's `+`/`−` size toggle.
 
 The drawer holds the trace panel (see *The trace census* below): opening a
-level's widget requests `bridge.trace_level` for the band it was last shown at
+level's widget sends the worker a `trace` for the band it was last shown at
 (V by default), and the H/V buttons in the panel's head swap the question.
 Traces are cached per level and band in `traces`, so reopening a widget never
-re-runs a census. While a census computes, the drawer shows `TraceSweep` — a
-schematic of the work being waited on, in the finished panel's own palette:
-one combo of strands at a time swept across the angle range, each landing
-named and coloured by verdict, a strip of combos filling below. It is purely
-time-driven — activity, not progress — the engine status line still carries
-the truth about the worker.
+re-runs a census.
+
+While the census computes, the drawer shows `TraceSweep` — **the band itself**,
+swept here as it is swept there. It used to be a schematic: three strands from
+a hash, a heading rocking back and forth, verdicts drawn from a weighted table.
+It looked like work without being any, and it could not say how much was left.
+It now runs on the plan (below), which is the band search's own arguments.
+Geometry is affine in the extensions, so the widget walks the real combo grid,
+places the real arms, and applies the real tests at the real angles: every cell
+it paints is a verdict the census will paint the same colour, and the strip is
+the same picture the finished grid shows. Once it has previewed every combo it
+keeps stepping through them rather than freezing.
+
+Two clocks, deliberately kept apart:
+
+- the **combo strip** is this preview's own position, which is local and says so;
+- the **bar under it** is the worker's, reported from inside the sweep by
+  `emitTrace`, and is the one that answers how much is left. Beside it sits the
+  size of the whole job — `combos × angles` — because a bar with no denominator
+  is not an answer to "how long".
+
+Before the plan lands there is nothing yet to sweep, and the widget says so:
+the replay is named, and the bar is an indeterminate shuttle rather than a fill
+of an unknown fraction.
 
 Beside the census the panel shows a **weave pattern (this combo)** box: the
 cell being looked at, woven. It is engine geometry, not a sketch —
@@ -345,9 +390,24 @@ quantities the four orders sort on are readable from the row being looked at.
 from the real bridge (`python3 scripts/semi-fixtures.py`), in the same
 fake-worker arrangement as `qa:trace`.
 
+### Checking the page's copy of the tests
+
+`src/mxn-lab/trace-census.ts` is a port of `mxn_trace.sweep_combo`, and a port
+that quietly disagrees with the engine would be a widget that lies confidently.
+`npm run check:census` holds the two to the same answers over every combo of
+both L1 bands at every in-window angle — 37,422 verdicts — against references
+from `python3 scripts/census-fixtures.py`. Both sides run over one fixed angle
+grid (the probe's, the one `trace_plan` sends) rather than the census's
+per-combo windows: what is checked is the arithmetic of the tests, not where the
+window sits.
+
+`npm run qa:widgets` drives both busy states through `mocks/widgets.html`, which
+mounts the real components against real engine payloads with only the worker
+standing in. See `mocks/README.md`.
+
 ### Cache keys
 
-The `trace-weave-v13` cache key appears in both the worker URL
+The `trace-plan-v15` cache key appears in both the worker URL
 (`weave-studio.tsx`) and the Python fetch URL (`exact-worker.js`). Bump both
 together when the engine files change, or returning readers run stale geometry.
 
@@ -388,7 +448,7 @@ still gives `(40,10)`, `(50,60)`, `(60,50)` at 16/0/8/0/0 per level.
 
 ## The trace census
 
-`bridge.trace_level` answers what the band search ruled out and on which test.
+`bridge.trace_census` answers what the band search ruled out and on which test.
 The census lives in `public/mxn/py/mxn_trace.py`: the same tests in the same
 order, but it records a verdict for every `(combo, angle)` instead of stopping
 at the first failure, and sweeps ±40° so the angles production never reaches are
@@ -397,7 +457,28 @@ per-combo grid, so the `BEST` count equals the number of valid configurations
 the real search reports.
 
 On the lab it lives in the level widget (see *The level widget* above); the
-worker carries it as the `trace` message. `src/mxn-lab/trace-layout.ts` holds
+worker carries it as the `trace` message, and answers in two parts:
+
+- **`trace-plan-ready`**, from `bridge.trace_plan`. Costs the level replay and
+  one probe placement, and carries the band search's own arguments — the
+  extension grid, the angle window and step, the gap bounds, and the geometry
+  (`origins`, `directions`, `pairIndices`, `targets`) every configuration is
+  affine in — plus `combos` and `evaluations`, the size of the job. The pending
+  widget is drawn from this.
+- **`trace-ready`**, from `bridge.trace_census`, with `trace-progress` messages
+  arriving from inside the sweep on the way (`mxn_trace.PROGRESS_STEPS` of
+  them at most). This is the census itself.
+
+Both read band inputs cached on the session by `_trace_band_inputs`, so the
+split costs no second replay. `bridge.trace_level` is still there as
+plan-then-census in one call, for the offline callers that have nothing to
+report progress to.
+
+`src/mxn-lab/trace-census.ts` is the page's copy of `sweep_combo`, one combo at
+a time: the pending sweep runs it over the plan, and the finished panel draws a
+cell with it rather than having the census carry geometry it can recompute.
+
+`src/mxn-lab/trace-layout.ts` holds
 the combo grid as arithmetic — the combo index is a base-E number with one
 digit per extension pair, so the grid is that number de-interleaved, even
 place-value exponents on x and odd on y, with `npm run check:trace` holding
@@ -415,7 +496,7 @@ Like `enumerate_level`, the replay passes `mirror_sides=False`, so a square
 level 1 traces the search its V band *would* have run rather than the pinned one
 it actually used.
 
-`trace_level` keeps the grabbed band inputs in the session, and
+The replay keeps the grabbed band inputs in the session, and
 `bridge.trace_weave(level, band, ext, angle)` reads them to materialise one
 cell: the traced band's arms placed at those extensions and that heading — the
 same affine placement `mxn_trace.place` sweeps — applied through

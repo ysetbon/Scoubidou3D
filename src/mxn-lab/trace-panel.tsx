@@ -9,32 +9,69 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { allBounds, drawExactStage, type Stage, type Strand } from "./exact-draw";
 import { bandKey } from "./trace-band";
+import {
+  BEST, DEGEN, ORDER, OVERLAP, REACH, TOOFAR, VALID, VERDICT_BLURB,
+  VERDICT_COLOUR, VERDICT_NAMES, WINDOW,
+  comboCount, comboExt, placeStarts, sweepAngle, sweepCombo,
+  type TraceInputs,
+} from "./trace-census";
 import { layoutFor } from "./trace-layout";
 
-export type TracePayload = {
+export type TracePayload = TraceInputs & {
   level: number;
   band: string;
   unavailable?: boolean;
   reason?: string;
-  P: number;
-  vals: number[];
-  nAngles: number;
-  step: number;
   nStrands: number;
-  minGap: number;
-  maxGap: number;
   verdicts: string;
   angle0: string;
   best: string;
   counts: number[];
   names: string[];
-  origins: ([number, number] | null)[][];
-  directions: number[][];
-  pairIndices: [number, number | null][];
-  targets: [number, number][];
   applied: number[];
+  /** The size of the job the census just did, as the plan reported it. */
+  combos?: number;
+  evaluations?: number;
   /** The applied combo already woven, embedded so the first view is instant. */
   weave?: TraceWeave;
+};
+
+/**
+ * What the census is about to sweep, sent before it sweeps it.
+ *
+ * bridge.trace_plan costs the level replay alone — the census is the expensive
+ * half — and carries the band search's own inputs: the extension grid it will
+ * walk, its angle window and step, and the gap bounds it tests against. It is
+ * what lets the pending sweep show this band rather than a drawing of one.
+ */
+export type TracePlan = TraceInputs & {
+  level: number;
+  band: string;
+  unavailable?: boolean;
+  reason?: string;
+  nStrands: number;
+  applied: number[];
+  /** Combos, and combos × angles: the whole job, none of it skipped. */
+  combos: number;
+  evaluations: number;
+  budget: number;
+  overBudget: boolean;
+  /** The probe combo's angle grid, and where the ±20° window sits inside it. */
+  angleFrom: number;
+  insideFrom: number;
+  insideCount: number;
+  windowLo: number;
+  windowHi: number;
+  sweepHalfWidth: number;
+};
+
+/** How far the worker's census has got, straight from inside the sweep. */
+export type TraceProgress = {
+  level: number;
+  band: string;
+  combosDone: number;
+  combos: number;
+  nAngles: number;
 };
 
 /**
@@ -59,141 +96,288 @@ export type TraceWeave = {
 export const weaveKey = (ext: number[], angleDeg: number) =>
   `${ext.join(",")}@${angleDeg.toFixed(2)}`;
 
-// Verdict codes, in the order mxn_trace applies the tests. REACH, DEGEN and
-// ORDER are drawn straight from the census by index, so only the codes this
-// file names explicitly are bound here.
-const WINDOW = 0;
-const REACH = 1, DEGEN = 2, ORDER = 3;
-const OVERLAP = 4, TOOFAR = 5, VALID = 6, BEST = 7;
+const COLOUR = VERDICT_COLOUR;
+const BLURB = VERDICT_BLURB;
 
-const COLOUR = [
-  "#b0aca0", "#c63c28", "#781414", "#e28a1c",
-  "#924ab0", "#3474c4", "#3a9c58", "#d4a81e",
-];
-const BLURB = [
-  "outside the ±20° window — the real search never tries it",
-  "a strand cannot reach its target at this angle",
-  "a strand's line collapsed",
-  "the gaps disagree in sign — the strands run out of order",
-  "a gap is below the minimum — too close to fit",
-  "a gap is above the maximum — the band has pulled apart",
-  "every test passed",
-  "the angle this combo's ranking selects",
-];
+const SWEEP_W = 336;
+const SWEEP_H = 242;
 
-// The census names, for the sweep animation that runs before a payload (and
-// its own names array) exists. Order matches the verdict codes above.
-const SWEEP_NAMES = ["WINDOW", "REACH", "DEGEN", "ORDER",
-                     "OVERLAP", "TOOFAR", "VALID", "BEST"];
+/** The verdict most of a combo's angles ended on, ignoring WINDOW. */
+function modal(codes: number[]) {
+  const tally = new Array(8).fill(0);
+  codes.forEach(code => { if (code !== WINDOW) tally[code] += 1; });
+  let best = WINDOW, top = -1;
+  for (let c = 1; c < 8; c += 1) if (tally[c] > top) { top = tally[c]; best = c; }
+  return best;
+}
 
 /**
- * The trace's busy state: a schematic of the sweep the engine is running.
+ * The trace's busy state: the band being censused, swept here as it is swept
+ * there.
  *
- * Not real data — the census only exists once it is finished — but the real
- * choreography: one combo of strands at a time, the heading swept across the
- * ±40° range, each landing scored in the verdict palette the finished panel
- * uses, and a strip of combos filling as they are ruled on. Purely
- * time-driven, so it promises activity rather than progress; the engine
- * status line still carries the truth about the worker.
+ * This used to be a schematic — three strands from a hash, a heading rocking
+ * back and forth, verdicts drawn from a weighted table — which looked like
+ * work without being any. It now runs on `plan`, the band search's own inputs,
+ * which bridge.trace_plan sends as soon as the level replay recovers them and
+ * long before the census finishes. Geometry is affine in the extensions, so
+ * this walks the real combo grid, places the real arms, and applies the real
+ * tests at the real angles: every cell it paints is a verdict the census will
+ * paint the same colour.
+ *
+ * Two clocks, deliberately kept apart. The upper strip is this preview's own
+ * position, which is honest about being local. The bar underneath is the
+ * worker's, reported from inside the sweep, and is the one that answers how
+ * much is left.
  */
-export function TraceSweep({ band }: { band: "h" | "v" }) {
+export function TraceSweep({ band, level, plan, progress }: {
+  band: "h" | "v";
+  level?: number;
+  /** The band's own inputs. Absent until the level replay lands. */
+  plan?: TracePlan;
+  /** Where the worker's census has got to, if it has said yet. */
+  progress?: TraceProgress;
+}) {
   const ref = useRef<HTMLCanvasElement | null>(null);
+  // Redrawn from a ref rather than a prop so a progress message does not
+  // restart the preview it arrives during.
+  const liveProgress = useRef(progress);
+  liveProgress.current = progress;
+
   useEffect(() => {
     const cv = ref.current;
     const ctx = cv?.getContext("2d");
     if (!cv || !ctx) return undefined;
     const slow = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const W = 336, H = 208;
+    const W = SWEEP_W, H = SWEEP_H;
     const dpr = Math.min(3, window.devicePixelRatio || 1);
     cv.width = Math.round(W * dpr);
     cv.height = Math.round(H * dpr);
     cv.style.width = `${W}px`;
     cv.style.height = `${H}px`;
 
-    const CELLS = 40;
-    const COMBO_SECONDS = slow ? 3.6 : 1.2;
-    // What a landing can score, weighted the way a real census leans: order
-    // dominates, a valid cell is rare enough to feel like one.
-    const LANDS = [ORDER, ORDER, ORDER, TOOFAR, TOOFAR, OVERLAP, VALID];
-    const hash = (n: number) => {
-      let x = (n | 0) + 0x9e3779b9;
-      x = Math.imul(x ^ (x >>> 16), 0x21f0aaad);
-      x = Math.imul(x ^ (x >>> 15), 0x735a2d97);
-      return ((x ^ (x >>> 15)) >>> 0) / 4294967296;
+    const bandWord = band === "h" ? "horizontal" : "vertical";
+    // Where each row of the drawing sits. Kept as constants because both
+    // states — waiting for the plan, and sweeping — use the same frame.
+    const VIEW = { x: 10, y: 10, w: W - 20, h: 112 };
+    const CAPTION_Y = 136;
+    const ANGLES_Y = 158, ANGLES_H = 12;
+    const COMBOS_Y = 190, COMBOS_H = 14;
+    const BAR_Y = 224, BAR_H = 9;
+
+    const label = (text: string, x: number, y: number, colour = "#96917f",
+                   weight = "600") => {
+      ctx.font = `${weight} 9px ui-monospace, monospace`;
+      ctx.fillStyle = colour;
+      ctx.fillText(text, x, y);
+    };
+    const rightLabel = (text: string, y: number, colour = "#96917f") => {
+      ctx.font = `600 9px ui-monospace, monospace`;
+      ctx.fillStyle = colour;
+      ctx.fillText(text, W - 10 - ctx.measureText(text).width, y);
+    };
+    const frame = () => {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = "#f4f0e6";
+      ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = "#dcd6c8";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(VIEW.x + 0.5, VIEW.y + 0.5, VIEW.w - 1, VIEW.h - 1);
     };
 
     let raf = 0;
     const t0 = performance.now();
+
+    // ---- no plan yet: the level is still being replayed ----
+    // Nothing is drawn that is not known. The bar is indeterminate because the
+    // replay reports no position, and says so rather than implying one.
+    if (!plan) {
+      const draw = (now: number) => {
+        raf = requestAnimationFrame(draw);
+        const t = (now - t0) / 1000;
+        frame();
+        ctx.font = "600 10px ui-monospace, monospace";
+        ctx.fillStyle = "#7d7a70";
+        const line = `replaying L${level ?? ""} to recover its ${bandWord} band search`;
+        ctx.fillText(line, VIEW.x + 10, VIEW.y + VIEW.h / 2);
+        label("the census can only be sized once the search hands over its grid",
+              VIEW.x + 10, VIEW.y + VIEW.h / 2 + 16);
+        ctx.fillStyle = "#e6e1d4";
+        ctx.fillRect(10, BAR_Y, W - 20, BAR_H);
+        // A shuttle, not a fill: it must not read as a fraction of anything.
+        const span = (W - 20) * 0.28;
+        const travel = (W - 20) - span;
+        const phase = (t / (slow ? 4 : 2.2)) % 2;
+        const at = 10 + travel * (phase < 1 ? phase : 2 - phase);
+        ctx.fillStyle = "#c8c2b4";
+        ctx.fillRect(at, BAR_Y, span, BAR_H);
+        label("replaying…", 10, BAR_Y - 5);
+        rightLabel("no census position yet", BAR_Y - 5);
+      };
+      raf = requestAnimationFrame(draw);
+      return () => cancelAnimationFrame(raf);
+    }
+
+    // ---- the band itself ----
+    const nCombos = comboCount(plan);
+    // The ±20° window: the angles the real search actually visits. The census
+    // sweeps 40° past it on each side to show what it rules out; a preview of
+    // the search itself has no reason to.
+    const angles = Array.from({ length: plan.insideCount },
+      (_, j) => plan.angleFrom + (plan.insideFrom + j) * plan.step);
+    const verdicts = new Uint8Array(nCombos);      // 0 = not previewed yet
+    const appliedIdx = (() => {
+      if (!plan.applied?.length) return -1;
+      let idx = 0;
+      plan.applied.forEach(e => {
+        idx = idx * plan.vals.length + Math.max(0, plan.vals.indexOf(e));
+      });
+      return idx < nCombos ? idx : -1;
+    })();
+
+    let cursor = 0;
+    let shownIdx = 0;
+    let shown = sweepCombo(plan, 0, angles);
+    let shownAt = 0;
+    // The preview must never be the reason the page stutters: the worker is
+    // the thing doing the real work. One frame's batch is whatever fits in a
+    // slice of a frame, measured rather than guessed.
+    const SLICE_MS = slow ? 2 : 5;
+    const SHOW_EVERY = slow ? 700 : 110;
+
     const draw = (now: number) => {
       raf = requestAnimationFrame(draw);
-      const t = (now - t0) / 1000;
-      const combo = Math.floor(t / COMBO_SECONDS);
-      const phase = (t % COMBO_SECONDS) / COMBO_SECONDS;
-      const sweep = -40 + 80 * (phase < 0.5 ? phase * 2 : (1 - phase) * 2);
-      const inWindow = Math.abs(sweep) <= 20;
-      const verdict = inWindow
-        ? LANDS[Math.floor(hash(combo * 97 + Math.round(sweep / 5)) * LANDS.length)]
-        : WINDOW;
+      if (cursor < nCombos) {
+        const until = performance.now() + SLICE_MS;
+        do {
+          const run = sweepCombo(plan, cursor, angles);
+          // Scored the way the finished grid scores a combo: the angle it
+          // settles on if it found one, else the test that ended the most of
+          // its angles. The preview strip is then the same picture, cell for
+          // cell, as the census panel that replaces it.
+          verdicts[cursor] = run.verdicts.includes(VALID) ? BEST : modal(run.verdicts);
+          if (now - shownAt >= SHOW_EVERY) {
+            shown = run; shownIdx = cursor; shownAt = now;
+          }
+          cursor += 1;
+        } while (cursor < nCombos && performance.now() < until);
+      } else if (now - shownAt >= SHOW_EVERY) {
+        // The grid is fully previewed and the worker is still censusing it.
+        // Walk the map instead of redrawing it: every step is a real combo at
+        // its own angle, which is the thing worth looking at while waiting.
+        shownIdx = (shownIdx + 1) % nCombos;
+        shown = sweepCombo(plan, shownIdx, angles);
+        shownAt = now;
+      }
 
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = "#f4f0e6";
-      ctx.fillRect(0, 0, W, H);
+      frame();
 
-      // This combo's strands, heading swept across the range. H bands lie
-      // flatter, V bands stand more upright, as on the finished panel.
-      const base = band === "h" ? -18 : 64;
-      const a = ((base + sweep * 0.6) * Math.PI) / 180;
-      const ux = Math.cos(a), uy = Math.sin(a);
-      const px = -uy, py = ux;
-      const cx = W / 2, cy = 82, L = 116;
-      const starts = [0, 1, 2].map(i => {
-        const extension = Math.floor(hash(combo * 31 + i) * 5) * 8;
-        return [cx + px * (i - 1) * 27 - ux * (L / 2 + extension - 16),
-                cy + py * (i - 1) * 27 - uy * (L / 2 + extension - 16)];
-      });
-      ctx.lineWidth = 3;
+      // ---- the arms, where this combo puts them ----
+      const pts = [...shown.swept.starts, ...shown.swept.ends];
+      const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+      const bx0 = Math.min(...xs), bx1 = Math.max(...xs);
+      const by0 = Math.min(...ys), by1 = Math.max(...ys);
+      const inset = 26;
+      const sc = Math.min((VIEW.w - inset) / Math.max(bx1 - bx0, 1e-6),
+                          (VIEW.h - inset) / Math.max(by1 - by0, 1e-6));
+      const ox = VIEW.x + (VIEW.w - (bx1 - bx0) * sc) / 2;
+      const oy = VIEW.y + (VIEW.h - (by1 - by0) * sc) / 2;
+      const P = (p: number[]) => [ox + (p[0] - bx0) * sc, oy + (p[1] - by0) * sc];
+
+      ctx.lineWidth = 2.5;
       ctx.strokeStyle = "#5a5852";
-      starts.forEach(([sx, sy]) => {
-        ctx.beginPath();
-        ctx.moveTo(sx, sy);
-        ctx.lineTo(sx + ux * L, sy + uy * L);
-        ctx.stroke();
+      shown.swept.starts.forEach((s, i) => {
+        const A = P(s), B = P(shown.swept.ends[i]);
+        ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]); ctx.stroke();
       });
-      // The gap ticks, in the landing's colour — grey outside the window.
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = COLOUR[verdict];
-      for (let i = 0; i < 2; i += 1) {
+      // The gaps this combo is being judged on, each in the colour of the
+      // bound it is inside or outside — the same test, the same palette, as
+      // the finished panel draws.
+      ctx.lineWidth = 1.5;
+      shown.swept.gaps.forEach((gap, i) => {
+        const s0 = shown.swept.starts[i], e0 = shown.swept.ends[i];
+        const ux = e0[0] - s0[0], uy = e0[1] - s0[1];
+        const nu = (ux * ux + uy * uy) || 1;
+        const wx = shown.swept.starts[i + 1][0] - s0[0];
+        const wy = shown.swept.starts[i + 1][1] - s0[1];
+        const dot = (wx * ux + wy * uy) / nu;
+        const A = P(shown.swept.starts[i + 1]);
+        const B = P([s0[0] + dot * ux, s0[1] + dot * uy]);
+        ctx.strokeStyle = gap < plan.minGap ? COLOUR[OVERLAP]
+          : gap > plan.maxGap ? COLOUR[TOOFAR] : COLOUR[VALID];
+        ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]); ctx.stroke();
+      });
+
+      const verdict = shown.verdicts[shown.pick];
+      label(VERDICT_NAMES[verdict], 10, CAPTION_Y, COLOUR[verdict], "700");
+      const named = ctx.measureText(VERDICT_NAMES[verdict]).width;
+      label(` · gap must land in ${plan.minGap.toFixed(0)}–${
+        plan.maxGap.toFixed(0)} px`, 10 + named, CAPTION_Y);
+      rightLabel(`ext (${shown.ext.join(", ")}) · ${
+        angles[shown.pick].toFixed(1)}°`, CAPTION_Y);
+
+      // ---- this combo, against every angle in the window ----
+      label(`this combo · ${plan.insideCount} angles at ${plan.step}°`, 10, ANGLES_Y - 5);
+      const aw = (W - 20) / shown.verdicts.length;
+      shown.verdicts.forEach((code, j) => {
+        ctx.fillStyle = COLOUR[code];
+        ctx.fillRect(10 + j * aw, ANGLES_Y, Math.max(aw, 1), ANGLES_H);
+      });
+      ctx.strokeStyle = "#1a1a1a";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(10 + shown.pick * aw, ANGLES_Y - 3);
+      ctx.lineTo(10 + shown.pick * aw, ANGLES_Y + ANGLES_H + 3);
+      ctx.stroke();
+
+      // ---- every combo, as this preview rules on it ----
+      const swept = cursor >= nCombos;
+      label(swept ? "every combo, previewed here" : "combos previewed here",
+            10, COMBOS_Y - 5);
+      rightLabel(swept
+        ? `showing ${(shownIdx + 1).toLocaleString()} of ${nCombos.toLocaleString()}`
+        : `${cursor.toLocaleString()} / ${nCombos.toLocaleString()}`, COMBOS_Y - 5);
+      const cw = (W - 20) / nCombos;
+      ctx.fillStyle = "#e6e1d4";
+      ctx.fillRect(10, COMBOS_Y, W - 20, COMBOS_H);
+      for (let i = 0; i < cursor; i += 1) {
+        ctx.fillStyle = COLOUR[verdicts[i]];
+        ctx.fillRect(10 + i * cw, COMBOS_Y, Math.max(cw, 1), COMBOS_H);
+      }
+      if (appliedIdx >= 0) {
+        // Where the level's own answer sits in the grid, so the preview is
+        // read against the combo the engine kept.
+        ctx.strokeStyle = "#1a1a1a";
+        ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(starts[i][0] + ux * L * 0.55, starts[i][1] + uy * L * 0.55);
-        ctx.lineTo(starts[i + 1][0] + ux * L * 0.55,
-                   starts[i + 1][1] + uy * L * 0.55);
+        ctx.moveTo(10 + appliedIdx * cw + 0.5, COMBOS_Y - 2);
+        ctx.lineTo(10 + appliedIdx * cw + 0.5, COMBOS_Y + COMBOS_H + 2);
         ctx.stroke();
       }
+      // Which cell the drawing above is of, so the two read as one thing.
+      ctx.strokeStyle = "#c63c28";
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(10 + shownIdx * cw - 1, COMBOS_Y - 1,
+                     Math.max(cw, 1) + 2, COMBOS_H + 2);
 
-      // What this landing scored, in the finished panel's own words.
-      ctx.font = "600 11px ui-monospace, monospace";
-      ctx.fillStyle = COLOUR[verdict];
-      ctx.fillText(SWEEP_NAMES[verdict], 12, H - 44);
-      ctx.fillStyle = "#96917f";
-      const angleLabel = `sweeping ${sweep >= 0 ? "+" : ""}${sweep.toFixed(0)}°`;
-      ctx.fillText(angleLabel, W - 12 - ctx.measureText(angleLabel).width, H - 44);
-
-      // Combos already ruled on, filling left to right and starting over. The
-      // +8 is a beat of rest on the full strip before it clears.
-      const round = Math.floor(combo / (CELLS + 8));
-      const done = combo % (CELLS + 8);
-      const cellW = (W - 24) / CELLS;
-      for (let i = 0; i < CELLS; i += 1) {
-        ctx.fillStyle = i < done
-          ? COLOUR[LANDS[Math.floor(hash(i * 13 + round * 7) * LANDS.length)]]
-          : "#e6e1d4";
-        ctx.fillRect(12 + i * cellW, H - 32, Math.max(cellW - 1, 1), 16);
-      }
+      // ---- the worker's own position ----
+      const live = liveProgress.current;
+      const done = live && live.combos ? live.combosDone / live.combos : 0;
+      ctx.fillStyle = "#e6e1d4";
+      ctx.fillRect(10, BAR_Y, W - 20, BAR_H);
+      ctx.fillStyle = "#3474c4";
+      ctx.fillRect(10, BAR_Y, (W - 20) * Math.min(1, done), BAR_H);
+      label(live ? `census ${(done * 100).toFixed(0)}%` : "census starting…",
+            10, BAR_Y - 5, "#3474c4", "700");
+      rightLabel(`${plan.combos.toLocaleString()} combos × ${
+        plan.nAngles} angles = ${plan.evaluations.toLocaleString()} tests`,
+        BAR_Y - 5);
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [band]);
-  // aria-hidden: the pending text beside it already says what is happening.
+  }, [band, level, plan]);
+
+  // aria-hidden: the pending text beside it already says what is happening,
+  // and it says it politely rather than on every frame.
   return <canvas ref={ref} className="trace-sweep" aria-hidden="true" />;
 }
 
@@ -206,42 +390,8 @@ const b64 = (s: string) => {
 
 /** One cell's geometry, recomputed the way the engine computes it. */
 function geometry(t: TracePayload, comboIdx: number, angleDeg: number) {
-  const E = t.vals.length;
-  const ext: number[] = [];
-  let rest = comboIdx;
-  for (let p = t.P - 1; p >= 0; p -= 1) { ext[p] = t.vals[rest % E]; rest = Math.floor(rest / E); }
-
-  const starts: [number, number][] = t.targets.map(() => [0, 0]);
-  t.pairIndices.forEach(([li, ri], p) => {
-    const [lnx, lny, rnx, rny] = t.directions[p];
-    const [lo, ro] = t.origins[p];
-    if (lo) starts[li] = [lo[0] + ext[p] * lnx, lo[1] + ext[p] * lny];
-    if (ri != null && ro) starts[ri] = [ro[0] + ext[p] * rnx, ro[1] + ext[p] * rny];
-  });
-
-  const d = starts.map((s, i) => [t.targets[i][0] - s[0], t.targets[i][1] - s[1]]);
-  const ref = Math.atan2(d[0][1], d[0][0]);
-  const a = (angleDeg * Math.PI) / 180;
-  const ends: [number, number][] = [];
-  const proj: number[] = [];
-  d.forEach((di, i) => {
-    const pos = di[0] * Math.cos(ref) + di[1] * Math.sin(ref) >= 0;
-    const sa = pos ? a : a + Math.PI;
-    const pr = di[0] * Math.cos(sa) + di[1] * Math.sin(sa);
-    proj.push(pr);
-    ends.push([starts[i][0] + pr * Math.cos(sa), starts[i][1] + pr * Math.sin(sa)]);
-  });
-
-  const gaps: number[] = [];
-  for (let i = 0; i < starts.length - 1; i += 1) {
-    const ldx = ends[i][0] - starts[i][0];
-    const ldy = ends[i][1] - starts[i][1];
-    const ll = Math.hypot(ldx, ldy) || 1;
-    const vx = starts[i + 1][0] - starts[i][0];
-    const vy = starts[i + 1][1] - starts[i][1];
-    gaps.push(Math.abs((ldy * vx - ldx * vy) / ll));
-  }
-  return { ext, starts, ends, gaps, proj };
+  const ext = comboExt(t, comboIdx);
+  return { ext, ...sweepAngle(t, placeStarts(t, ext), angleDeg) };
 }
 
 /** The legend's glyph, drawn on a canvas. Colour is redundant with the fill. */
@@ -454,15 +604,7 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
 
   // The cell on screen, by the identity the weave cache keys on. `ext` is the
   // combo decoded the way geometry() decodes it; the angle is the strip's.
-  const ext = useMemo(() => {
-    const out: number[] = [];
-    let rest = combo;
-    for (let p = data.P - 1; p >= 0; p -= 1) {
-      out[p] = data.vals[rest % E];
-      rest = Math.floor(rest / E);
-    }
-    return out;
-  }, [combo, data, E]);
+  const ext = useMemo(() => comboExt(data, combo), [combo, data]);
   const angleDeg = angle0[combo] + angleIdx * data.step;
   const weave = weaves?.[weaveKey(ext, angleDeg)];
 

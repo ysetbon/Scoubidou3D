@@ -41,7 +41,7 @@ const failedUrls = [];
 page.on('requestfailed', r => failedUrls.push(`${r.url()} (${r.failure()?.errorText})`));
 
 // Stand in for exact-worker.js, before any page script runs.
-await page.addInitScript(({ result, traces, weaves }) => {
+await page.addInitScript(({ result, traces, plans, weaves }) => {
   const posted = [];
   window.__posted = posted;
   window.Worker = class FakeWorker {
@@ -51,12 +51,23 @@ await page.addInitScript(({ result, traces, weaves }) => {
       const reply = (msg) => setTimeout(() => this.onmessage?.({ data: msg }), 30);
       if (data.type === 'generate') reply({ type: 'result', id: data.id, result });
       if (data.type === 'trace') {
-        // Slower than the other replies, so the sweep animation that fills the
-        // wait is actually on screen long enough to be asserted about.
-        const t = traces[String(data.band).toLowerCase().startsWith('v') ? 'v' : 'h'];
+        // Three replies, as the real worker sends them: the plan the level
+        // replay recovers, the census's own progress from inside the sweep,
+        // and the census. Slower than the other replies, so the pending sweep
+        // is on screen long enough to be asserted about.
+        const key = String(data.band).toLowerCase().startsWith('v') ? 'v' : 'h';
+        const plan = plans[key];
         setTimeout(() => this.onmessage?.({
-          data: { type: 'trace-ready', id: data.id, ...t },
-        }), 350);
+          data: { type: 'trace-plan-ready', id: data.id, ...plan },
+        }), 60);
+        [0.25, 0.5, 0.75].forEach((at, i) => setTimeout(() => this.onmessage?.({
+          data: { type: 'trace-progress', id: data.id,
+                  level: plan.level, band: plan.band, nAngles: plan.nAngles,
+                  combos: plan.combos, combosDone: Math.round(plan.combos * at) },
+        }), 120 + i * 60));
+        setTimeout(() => this.onmessage?.({
+          data: { type: 'trace-ready', id: data.id, ...traces[key] },
+        }), 600);
       }
       if (data.type === 'trace-weave') {
         // A real woven ring for the strands; ext and angle echo the request so
@@ -119,6 +130,16 @@ const sweepInk = await page.evaluate(() => {
   return inked;
 });
 ok('tracing shows the sweep animation, not bare text', sweepInk > 500, `${sweepInk} inked px`);
+
+// ---- and it is drawn from the band, not from a schematic ----
+// The plan lands before the census, and once it has the pending text can count
+// the job in the engine's own numbers. 441 combos x 240 angles for this band.
+let planned = true;
+await page.waitForFunction(
+  () => /105,840 tests/.test(document.querySelector('.trace-pending p')?.textContent ?? ''),
+  { timeout: 5000 }).catch(() => { planned = false; });
+ok('the plan sizes the wait in real numbers', planned,
+   planned ? '' : await page.textContent('.trace-pending p'));
 
 await page.waitForSelector('.trace-panel canvas', { timeout: 20000 });
 ok('opening the widget shows the trace (band key round-trips)', true);

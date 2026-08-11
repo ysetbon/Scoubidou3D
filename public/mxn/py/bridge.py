@@ -17,12 +17,15 @@ from ui_utils import _get_active_strands
 
 
 try:
-    from js import emitFrame, emitProgress
+    from js import emitFrame, emitProgress, emitTrace
 except ImportError:
     def emitFrame(_payload):
         pass
 
     def emitProgress(_message):
+        pass
+
+    def emitTrace(_payload):
         pass
 
 
@@ -502,25 +505,29 @@ def enumerate_level(level):
                       separators=(",", ":"))
 
 
-def trace_level(level, band="v"):
-    """Census every (combo, angle) one band of `level` could be asked about.
+def _band_name(band):
+    return "vertical" if str(band).lower().startswith("v") else "horizontal"
+
+
+def _trace_band_inputs(entry, want):
+    """The band search's own arguments, grabbed by replaying the level.
 
     Replays the level from its checkpoint the way enumerate_level does, but with
     the band search hooked so its inputs can be handed to mxn_trace. The replay
-    is a full search and the census is roughly another two on top of it, so the
-    vectorised angle scan is forced on for the duration whatever the page is
-    running -- without it a 3x3 trace is tens of seconds.
+    is a full search, so the vectorised angle scan is forced on for the duration
+    whatever the page is running -- without it a 3x3 trace is tens of seconds.
 
-    Only the verdict census crosses the worker boundary; the page recomputes the
-    geometry for whichever cell is being looked at.
+    Cached on the session entry: the plan, the census and every weave preview
+    read the same inputs, and re-grabbing them would cost another full replay.
+    Returns None when this level solved the band without a search at all.
     """
     import mxn_lh_continuation as LH
-    import mxn_trace
 
-    entry = _level_session(int(level))
-    want = "vertical" if str(band).lower().startswith("v") else "horizontal"
+    held = (entry.get("trace_bands") or {}).get(want)
+    if held is not None:
+        return held
+
     m, n = _SESSION["m"], _SESSION["n"]
-
     grabbed = []
     real_search = LH._search_combo_space_cpu
     was_fast = LH.FAST_ANGLE_SCAN
@@ -566,31 +573,115 @@ def trace_level(level, band="v"):
         LH.FAST_ANGLE_SCAN = was_fast
 
     if not grabbed:
-        return json.dumps({
-            "level": entry["level"], "band": want, "unavailable": True,
-            "reason": "this level solved its %s band without a search" % want,
-        }, separators=(",", ":"))
+        return None
 
-    # Kept for trace_weave: rebuilding one cell's ring needs the same inputs
-    # the census swept, and re-grabbing them would cost another full replay.
     entry.setdefault("trace_bands", {})[want] = grabbed[0]
+    return grabbed[0]
 
-    counted = mxn_trace.census(grabbed[0])
-    payload = mxn_trace.pack(counted)
-    if payload.get("over_budget"):
-        return json.dumps({
-            "level": entry["level"], "band": want, "unavailable": True,
-            "reason": "%d combos x %d angles is over the %d trace ceiling"
-                      % (payload["combos"], payload["angles"], payload["budget"]),
-            "combos": payload["combos"], "angles": payload["angles"],
-        }, separators=(",", ":"))
 
+def _no_search(entry, want):
+    return {
+        "level": entry["level"], "band": want, "unavailable": True,
+        "reason": "this level solved its %s band without a search" % want,
+    }
+
+
+def _over_ceiling(entry, want, combos, angles, budget):
+    return {
+        "level": entry["level"], "band": want, "unavailable": True,
+        "reason": "%d combos x %d angles is over the %d trace ceiling"
+                  % (combos, angles, budget),
+        "combos": combos, "angles": angles,
+    }
+
+
+def _applied_ext(entry, want):
     picked = entry["engine_pick_hv"][0 if want == "horizontal" else 1]
     cands = entry["h_cands"] if want == "horizontal" else entry["v_cands"]
+    return list(cands[picked]["ext"]) if picked < len(cands) else []
+
+
+def trace_plan(level, band="v"):
+    """What tracing this band is about to sweep, before it sweeps it.
+
+    Costs the level replay and one probe placement -- the census that follows is
+    the expensive half -- so the page can be told the size of the job and handed
+    the band's own geometry while the sweep is still running. Sent first, then
+    trace_census sends the census itself.
+    """
+    import mxn_trace
+
+    entry = _level_session(int(level))
+    want = _band_name(band)
+    data = _trace_band_inputs(entry, want)
+    if data is None:
+        return json.dumps(_no_search(entry, want), separators=(",", ":"))
+
+    ahead = mxn_trace.plan(data)
+    if ahead["overBudget"]:
+        return json.dumps(
+            _over_ceiling(entry, want, ahead["combos"], ahead["nAngles"],
+                          ahead["budget"]), separators=(",", ":"))
+    ahead.update({
+        "level": entry["level"], "band": want, "unavailable": False,
+        "k": entry["k"], "applied": _applied_ext(entry, want),
+    })
+    return json.dumps(ahead, separators=(",", ":"))
+
+
+def _trace_reporter(level, want, total_angles):
+    """Where the sweep has got to, on its way to the page.
+
+    A census is one long synchronous call, so without this the page can only
+    say that a trace started. emitTrace is a no-op outside the worker, which is
+    what the offline callers want.
+    """
+    def report(done, total):
+        emitTrace(json.dumps({
+            "level": level, "band": want, "combosDone": int(done),
+            "combos": int(total), "nAngles": int(total_angles),
+        }, separators=(",", ":")))
+    return report
+
+
+def trace_census(level, band="v", on_progress=None):
+    """Census every (combo, angle) one band of `level` could be asked about.
+
+    Runs the same tests the shipped search runs, in the same order, over a wider
+    sweep, and records a verdict for every pair instead of stopping at the first
+    failure. Reads the band inputs trace_plan left in the session, and replays
+    the level itself when called without one.
+
+    Only the verdict census crosses the worker boundary; the page recomputes the
+    geometry for whichever cell is being looked at.
+    """
+    import mxn_trace
+
+    entry = _level_session(int(level))
+    want = _band_name(band)
+    data = _trace_band_inputs(entry, want)
+    if data is None:
+        return json.dumps(_no_search(entry, want), separators=(",", ":"))
+
+    ahead = mxn_trace.plan(data)
+    counted = mxn_trace.census(
+        data, ahead=ahead,
+        on_progress=on_progress or _trace_reporter(
+            entry["level"], want, ahead["nAngles"]))
+    payload = mxn_trace.pack(counted)
+    if payload.get("over_budget"):
+        return json.dumps(
+            _over_ceiling(entry, want, payload["combos"], payload["angles"],
+                          payload["budget"]), separators=(",", ":"))
+
     payload.update({
         "level": entry["level"], "band": want, "unavailable": False,
         "k": entry["k"],
-        "applied": list(cands[picked]["ext"]) if picked < len(cands) else [],
+        "applied": _applied_ext(entry, want),
+        # What the plan already told the page, echoed so a census that arrives
+        # without one (an offline caller, or a page that missed the plan) still
+        # carries the size of the job it just did.
+        "combos": ahead["combos"], "evaluations": ahead["evaluations"],
     })
 
     # The engine's own pick, woven up front. The panel lands on this cell at
@@ -613,6 +704,16 @@ def trace_level(level, band="v"):
         pass
 
     return json.dumps(payload, separators=(",", ":"))
+
+
+def trace_level(level, band="v"):
+    """Plan and census in one call, for callers with nothing to report to.
+
+    The page splits these so it can draw the band while the sweep runs; the
+    offline scripts want the finished census and nothing else. The plan is not
+    wasted work either way -- the census reads the same cached band inputs.
+    """
+    return trace_census(level, band)
 
 
 def _weave_cell(entry, want, ext, angle_deg):
