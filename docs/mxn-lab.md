@@ -277,29 +277,57 @@ claim that the search discarded extensions it should have kept.
 
 ### Reading the list in a useful order
 
-The scan keeps nearest-first — `deficit`, then `total`. `SORT EXT` flips it to
-shortest-extensions-first, which answers the other question worth asking: of
-the rings that fail, which one fails on the least string. Neither ordering
-re-runs the sweep. `sort_semicomplete` reorders a list that is already in the
+`SORT` offers four named orders, one lit — the one the list is actually in, and
+disabled because pressing it would ask for the sort it already has. They are
+`bridge.SEMI_KEYS`, and the comparators live in `_semi_order` beside the list:
+
+| button | orders by | the question it answers |
+| --- | --- | --- |
+| `NEAR` | `deficit`, then `total` | which ring came closest to closing |
+| `H` | H total, then H's worst pair, then `deficit` | which H answer is best |
+| `V` | V total, then V's worst pair, then `deficit` | which V answer is best |
+| `BEST` | `peak`, then `total`, then `deficit` | which ring is best-formed |
+
+`H` and `V` rank one band by *its own* string. That is what the previous pair of
+orders could not do: `SORT EXT` sorted on `total`, which adds the swept band's
+extension to the held one's, so an H list came out ordered partly by the number
+the sweep was holding still — and on these lists `deficit` is very often
+constant, which left `SORT NEAR` and `SORT EXT` printing near-identical lists
+and neither of them answering "which H did the search throw away, and which of
+those was the tidiest H".
+
+`BEST` is minimax over the pairs, and it is the one order whose leading term is
+never a constant. `peak` — stamped on every row by `scan_semicomplete` — is the
+ring's *longest single pair extension*. A `total` can hide one pair stretched to
+`MAX_PAIR_EXTENSION` behind several short ones, and that pair is the one that
+fails first, so of the rings that fell short the one whose worst pair is mildest
+is the best-formed. On `3×1 k=1` it visibly reorders a 165-row list that `NEAR`,
+`H` and `V` all leave in the same order.
+
+Every key is a *total* order — band and index close it — so a reorder is
+reproducible, and `sort_semicomplete` can find the row that is on screen again
+afterwards. No ordering re-runs the sweep: it reorders a list already in the
 session and returns the head of it, and the ring on screen keeps its place by
 identity rather than by index, so a reorder never silently swaps what is being
-looked at — or what `🚩` would bank.
+looked at — or what `🚩` would bank. The comparators live in Python beside the
+list, because only its head (`SEMI_RETURN_CAP`) ever crosses the worker
+boundary — sorting in the page would silently work on a prefix.
 
-`H− H+` (or `V− V+`, whichever band the list is for) walk the swept band with
-the other held. `‹ ›` cannot ask that: they step the sorted list, which mixes
-every extension together, while these hold the other band's *candidate* — not
-merely its extension value, since two candidates can share a value and still be
-different rings — and move to the nearest extension in the direction asked for.
-That is the shape the
-sweep itself has: every near-miss is one band varied against a partner that
-stayed put, so stepping that way walks the sweep instead of walking the sort.
-Both live in Python beside the list, because only the head of it
-(`SEMI_RETURN_CAP`) ever crosses the worker boundary — sorting or stepping in
-the page would silently work on a prefix.
+There are no `H− H+` / `V− V+` steppers. They walked the swept band with the
+other band's candidate held, which is the shape the sweep has, but it is not a
+question about the list: it asked to see one more failing extension when what
+the strip is for is putting the failures in an order and reading down them. The
+numbers they carried in their tooltips — this band's px, the held band's px —
+are on the near-miss badge's own tooltip instead, next to the worst pair, so the
+quantities the four orders sort on are readable from the row being looked at.
+
+`npm run qa:semi` drives the strip through the real UI against payloads captured
+from the real bridge (`python3 scripts/semi-fixtures.py`), in the same
+fake-worker arrangement as `qa:trace`.
 
 ### Cache keys
 
-The `semi-band-v10` cache key appears in both the worker URL
+The `semi-band-v11` cache key appears in both the worker URL
 (`weave-studio.tsx`) and the Python fetch URL (`exact-worker.js`). Bump both
 together when the engine files change, or returning readers run stale geometry.
 

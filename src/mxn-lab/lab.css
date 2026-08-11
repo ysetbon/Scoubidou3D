@@ -182,18 +182,27 @@ textarea {
 /* On, but not alarmed: the strip around it already says these rings do not
    close, and a red toggle read as an error rather than as a mode. */
 .solution-nav .semi-flag.is-on { opacity: 1; border-color: var(--ink); background: var(--acid); }
-/* The band steppers and the sort key. Narrower than the arrows and lettered,
-   because a strip of them has to stay readable at 9px. */
-.solution-nav .semi-step,
+/* The sort group: a dim SORT caption, then one button per order. The caption is
+   what lets the buttons be a bare NEAR / H / V / BEST — read on their own, "H"
+   in a strip that also holds a ⚑H would be the band flag twice. */
+.solution-nav .semi-sorts { display: inline-flex; align-items: center; gap: 3px; }
+.solution-nav .semi-sorts i {
+  font: 700 8px/1 monospace; font-style: normal;
+  letter-spacing: .1em; color: var(--muted);
+}
+/* Narrower than the arrows and lettered, because four of them have to stay
+   readable at 9px on a half-width card. */
 .solution-nav .semi-sort {
   width: auto; min-width: 22px; padding: 0 4px;
-  font: 700 9px/1 monospace; letter-spacing: .03em;
+  font: 700 9px/1 monospace; letter-spacing: .03em; color: var(--muted);
 }
-/* Spelled out rather than an arrow glyph: at 9px monospace a ↕ is a smudge,
-   and this button is the one thing in the strip whose meaning is not obvious
-   from its position. */
-.solution-nav .semi-sort { min-width: 58px; color: var(--muted); }
 .solution-nav .semi-sort:hover:not(:disabled) { color: var(--ink); }
+/* The order the list is actually in. It is disabled — pressing it would ask for
+   the sort it already has — but not faded: the generic :disabled dim would hide
+   the one button in the group that says where the list stands. */
+.solution-nav .semi-sort.is-on {
+  opacity: 1; color: var(--ink); border-color: var(--ink); background: var(--acid);
+}
 
 .advanced-settings,
 .api-settings { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 12px; }

@@ -67,6 +67,23 @@ function worstPairs(m: number, n: number) {
   return Math.max(Math.ceil((2 * m) / 2), Math.ceil((2 * n) / 2), 1);
 }
 
+// How a near-miss list can be ordered. Four named buttons rather than one
+// button that cycled: the label on a cycling toggle says where the list IS
+// while the click says where it goes, so H and V were never a question the
+// strip could be asked directly -- it only ever offered "by deficit" or "by
+// both extensions added together", and a sum over the held band and the swept
+// one sorts an H list partly by the number the sweep is holding still.
+//
+// Keys must match bridge.SEMI_KEYS; the ordering itself lives in Python beside
+// the list, because only its head crosses the worker boundary.
+const SEMI_SORTS = [
+  { key: "near", label: "NEAR", hint: "nearest to closing first — fewest crossings missing" },
+  { key: "h", label: "H", hint: "best H answers first — shortest H extension, worst H pair breaking the tie" },
+  { key: "v", label: "V", hint: "best V answers first — shortest V extension, worst V pair breaking the tie" },
+  { key: "best", label: "BEST", hint: "best solution first — the ring whose longest single pair extension is the shortest" },
+] as const;
+type SemiKey = (typeof SEMI_SORTS)[number]["key"];
+
 type Point = { x: number; y: number };
 type RGBA = { r: number; g: number; b: number; a?: number };
 export type Strand = {
@@ -132,6 +149,8 @@ type SemiItem = {
   refs: number;
   ext: number[]; heldExt: number[]; angle: number | null; gap: number | null;
   hExt: number[]; vExt: number[]; total: number;
+  /** The ring's longest single pair extension — what the BEST order minimises. */
+  peak: number;
   across: number; expected: number; withinH: number; withinV: number;
   deficit: number; folded: boolean;
 };
@@ -141,10 +160,9 @@ type SemiMeta = {
   index: number; current?: SemiItem;
   /** Which band this list was swept for — the ⚑ that produced it. */
   band: Band;
-  /** 'near' is nearest-to-closing first, 'ext' is shortest extensions first. */
+  /** Which of SEMI_SORTS the list is currently in. */
   key?: SemiKey;
 };
-type SemiKey = "near" | "ext";
 type Band = "h" | "v";
 type SavedSolution = {
   id: string; created_at: string; hand: string; direction: string;
@@ -621,7 +639,7 @@ export function ContinuationLab() {
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
     const worker = new Worker(
-      `${LAB_BASE}exact-worker.js?v=semi-band-v10${FAST_ENGINE ? "&engine=fast" : ""}`,
+      `${LAB_BASE}exact-worker.js?v=semi-band-v11${FAST_ENGINE ? "&engine=fast" : ""}`,
       { type: "module" },
     );
     worker.onmessage = (event) => {
@@ -710,9 +728,9 @@ export function ContinuationLab() {
           items: message.items ?? [], listed: message.listed,
           index: message.index, count: message.count, key: message.key,
         } }));
-        setStatus(message.key === "ext"
-          ? `L${message.level} near-misses: shortest extensions first`
-          : `L${message.level} near-misses: nearest to closing first`);
+        setStatus(`L${message.level} near-misses: ${
+          SEMI_SORTS.find(sort => sort.key === message.key)?.hint
+          ?? "nearest to closing first"}`);
         return;
       }
       if (message.type === "semi-solution") {
@@ -871,24 +889,14 @@ export function ContinuationLab() {
     });
   };
 
-  // Both of these read the list the scan already built, so they are cheap and
-  // the ring on screen only moves for a reason the reader asked for.
+  // Reads the list the scan already built, so it is cheap and the ring on
+  // screen only moves for a reason the reader asked for: a reorder keeps it
+  // selected by identity and only its position changes.
   const sortSemi = (level: number, key: SemiKey) => {
-    if (!semi[level]) return;
+    if (!semi[level] || semi[level].key === key) return;
     setBrowsingLevel(level);
     ensureWorker().postMessage({
       type: "semi-sort", id: activeIdRef.current, level, key,
-    });
-  };
-
-  // The swept band, the other held: "keep this V, show me the next H that also
-  // falls short". The ‹ › arrows cannot ask that -- they walk the whole list in
-  // sort order, mixing every extension together.
-  const stepSemi = (level: number, band: Band, direction: 1 | -1) => {
-    if (!semi[level]?.current) return;
-    setBrowsingLevel(level);
-    ensureWorker().postMessage({
-      type: "semi-step", id: activeIdRef.current, level, band, direction,
     });
   };
 
@@ -1270,7 +1278,14 @@ export function ContinuationLab() {
                                   <em className={item.band === "h" ? "band-h" : "band-v"}
                                     title={`${item.deficit} crossing${item.deficit === 1 ? "" : "s"} short against `
                                       + `${item.refs} partner${item.refs === 1 ? "" : "s"} that do close`
-                                      + (item.folded ? " · this band's own arms cross each other" : "")}>
+                                      + (item.folded ? " · this band's own arms cross each other" : "")
+                                      // The numbers the sort keys are built out of. They used to be
+                                      // readable only from the H± tooltips, which are gone, and
+                                      // without them a reader cannot see why one row sorts above
+                                      // another.
+                                      + ` · H ${item.hExt.reduce((sum, e) => sum + e, 0)}px`
+                                      + ` · V ${item.vExt.reduce((sum, e) => sum + e, 0)}px`
+                                      + ` · worst pair ${item.peak}px`}>
                                     {item.band === "h" ? "V ok · H short" : "H ok · V short"}
                                     {" "}{item.across}/{item.expected}
                                   </em>
@@ -1278,46 +1293,29 @@ export function ContinuationLab() {
                                 <button type="button" onClick={() => browseSemi(stage.level, (near?.index ?? 0) + 1)}
                                   disabled={busyHere || !near || near.index + 1 >= near.count}
                                   aria-label={`Next near-miss for level ${stage.level}`}>›</button>
-                                {/* The swept band, the other held. The ‹ ›
-                                    arrows walk the sorted list, which mixes
-                                    every extension together; these ask the
-                                    question the sweep is made of -- keep this
-                                    V, what is the next H that also falls short?
-                                    Only the swept band gets steppers: the held
-                                    one is fixed by the sweep, so a V± inside an
-                                    H list has nowhere to step to. */}
-                                {(() => {
-                                  const held = band === "h" ? "V" : "H";
-                                  const heldPx = item
-                                    ? (band === "h" ? item.vExt : item.hExt).reduce((sum, e) => sum + e, 0)
-                                    : 0;
-                                  const herePx = item
-                                    ? (band === "h" ? item.hExt : item.vExt).reduce((sum, e) => sum + e, 0)
-                                    : 0;
-                                  return ([-1, 1] as const).map(direction => (
-                                    <button key={`${band}${direction}`} className="semi-step" type="button"
-                                      onClick={() => stepSemi(stage.level, band, direction)}
-                                      disabled={busyHere || !item}
-                                      title={`${direction > 0 ? "Next" : "Previous"} ${band.toUpperCase()} extension `
-                                        + `(now ${herePx}px), holding ${held} at ${heldPx}px`}
-                                      aria-label={`${direction > 0 ? "Next" : "Previous"} ${band.toUpperCase()} extension for level ${stage.level}, ${held} held`}>
-                                      {band.toUpperCase()}{direction > 0 ? "+" : "−"}
-                                    </button>
-                                  ));
-                                })()}
-                                {/* Nearest-first is the queue's own order and
-                                    the right default; shortest-first answers a
-                                    different question -- of the rings that fail,
-                                    which does it on the least string. */}
-                                <button className="semi-sort" type="button"
-                                  onClick={() => sortSemi(stage.level, near?.key === "ext" ? "near" : "ext")}
-                                  disabled={busyHere || !near}
-                                  title={near?.key === "ext"
-                                    ? "Sorted by shortest extensions — click for nearest to closing"
-                                    : "Sorted by nearest to closing — click for shortest extensions"}
-                                  aria-label={`Sort level ${stage.level} near-misses by ${near?.key === "ext" ? "deficit" : "total extension"}`}>
-                                  {near?.key === "ext" ? "SORT EXT" : "SORT NEAR"}
-                                </button>
+                                {/* Four orders, one lit. NEAR is the sweep's own
+                                    and stays the default; H and V rank one band's
+                                    answer by that band's own string, which is the
+                                    question the ⚑ next to them asked; BEST ranks
+                                    by the worst single pair, so the ring nothing
+                                    had to be stretched far for comes first. */}
+                                <span className="semi-sorts" role="group"
+                                  aria-label={`Sort level ${stage.level} near-misses`}>
+                                  <i aria-hidden="true">SORT</i>
+                                  {SEMI_SORTS.map(sort => {
+                                    const active = (near?.key ?? "near") === sort.key;
+                                    return (
+                                      <button key={sort.key} className={`semi-sort ${active ? "is-on" : ""}`}
+                                        type="button" onClick={() => sortSemi(stage.level, sort.key)}
+                                        disabled={busyHere || !near || active}
+                                        aria-pressed={active}
+                                        title={`${active ? "Sorted" : "Sort"}: ${sort.hint}`}
+                                        aria-label={`Sort level ${stage.level} near-misses: ${sort.hint}`}>
+                                        {sort.label}
+                                      </button>
+                                    );
+                                  })}
+                                </span>
                                 {/* A flag, not the star. The two buttons do the
                                     same thing to different objects and land in
                                     different queues, and a ring that fell short

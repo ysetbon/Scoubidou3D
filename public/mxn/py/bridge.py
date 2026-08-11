@@ -869,6 +869,13 @@ def scan_semicomplete(level, band=None):
                 "vExt": list(v_cands[j].get("ext") or ()),
                 "total": sum(int(e) for e in (h_cands[i].get("ext") or ()))
                          + sum(int(e) for e in (v_cands[j].get("ext") or ())),
+                # The longest single pair extension in the ring. A total says
+                # how much string was spent; this says how far the worst pair
+                # had to be stretched, which is what the "best" ordering below
+                # minimises.
+                "peak": max((int(e) for e in
+                             list(h_cands[i].get("ext") or ())
+                             + list(v_cands[j].get("ext") or ())), default=0),
                 "across": report["across"], "expected": expected,
                 "withinH": report["withinH"], "withinV": report["withinV"],
                 "deficit": report["deficit"],
@@ -899,13 +906,60 @@ def scan_semicomplete(level, band=None):
     }, separators=(",", ":"))
 
 
+# The orderings the page can put the list in. Every one of them is a TOTAL
+# order -- band and index close it -- so a reorder is reproducible and
+# `sort_semicomplete` can find the row that is on screen again afterwards.
+SEMI_KEYS = ("near", "h", "v", "best")
+
+
+def _semi_sum(item, band):
+    """One band's total extension, in px."""
+    return sum(int(e) for e in (item.get("hExt" if band == "h" else "vExt") or ()))
+
+
+def _semi_band_peak(item, band):
+    """One band's longest single pair extension, in px."""
+    return max((int(e) for e in (item.get("hExt" if band == "h" else "vExt") or ())),
+               default=0)
+
+
+def _semi_peak(item):
+    """The ring's worst pair. Recomputed when a row predates the stored field."""
+    stored = item.get("peak")
+    if stored is not None:
+        return int(stored)
+    return max(_semi_band_peak(item, "h"), _semi_band_peak(item, "v"))
+
+
 def _semi_order(key):
-    """The two orderings, as sort keys over one near-miss."""
-    if key == "ext":
-        # Shortest first. Two rings that fall equally short are not equally
-        # interesting: the one that does it on less string is the one worth
-        # looking at, so total breaks nothing and deficit breaks the tie.
-        return lambda item: (item["total"], item["deficit"], item["band"], item["index"])
+    """One near-miss ordering, as a sort key.
+
+    `near` is the sweep's own order: fewest crossings missing first, because a
+    ring one crossing short is where the corner test is most likely to be the
+    thing that is wrong, and it is the cheapest to judge.
+
+    `h` and `v` judge one band's answer rather than the whole ring. Shortest
+    total extension in that band first, its own worst pair breaking the tie: a
+    band that reaches with less string is the better answer to the same
+    question, which is what the engine's `prefer_short_arms` already assumes
+    when it picks. The band sorted on is the band the reader is looking at --
+    ordering an H list by V would sort it by the number the sweep is holding
+    still, which is the ordering that made no sense.
+
+    `best` is minimax over the pairs: the ring whose LONGEST single pair
+    extension is shortest. A total can hide one pair stretched to the limit
+    behind several short ones, and that pair is the one that fails first, so of
+    the rings that fell short the one whose worst pair is mildest is the
+    best-formed -- the closest thing this list has to a best solution.
+    """
+    if key in ("h", "v"):
+        other = "v" if key == "h" else "h"
+        return lambda item: (_semi_sum(item, key), _semi_band_peak(item, key),
+                             item["deficit"], _semi_sum(item, other),
+                             item["band"], item["index"])
+    if key == "best":
+        return lambda item: (_semi_peak(item), item["total"], item["deficit"],
+                             item["band"], item["index"])
     return lambda item: (item["deficit"], item["total"], item["band"], item["index"])
 
 
@@ -923,7 +977,7 @@ def sort_semicomplete(level, key):
     if items is None:
         scan_semicomplete(entry["level"], entry.get("semi_band"))
         items = entry.get("semi") or []
-    key = "ext" if str(key) == "ext" else "near"
+    key = str(key) if str(key) in SEMI_KEYS else "near"
     position = entry.get("semi_index", 0)
     current = items[position] if 0 <= position < len(items) else None
     items.sort(key=_semi_order(key))
@@ -937,66 +991,6 @@ def sort_semicomplete(level, key):
         "count": len(items), "listed": min(len(items), SEMI_RETURN_CAP),
         "items": items[:SEMI_RETURN_CAP],
     }, separators=(",", ":"))
-
-
-def step_semicomplete(level, band, direction):
-    """
-    Move along one band's extension with the other band held where it is.
-
-    The ‹ › arrows walk the whole list in whatever order it is sorted, which
-    mixes both bands and every extension at once. This asks a narrower
-    question -- keep this V, what is the next H that also falls short? -- and
-    it is the question the sweep is built out of, since every near-miss is one
-    band varied against a partner that stayed put.
-
-    "Next" is by extension, not by candidate index: the index is enumeration
-    order and means nothing to the eye, while the extension is the number on
-    the card.
-    """
-    entry = _level_session(int(level))
-    items = entry.get("semi")
-    if items is None:
-        scan_semicomplete(entry["level"], entry.get("semi_band"))
-        items = entry.get("semi") or []
-    position = entry.get("semi_index", 0)
-    if not items or not (0 <= position < len(items)):
-        return json.dumps({"level": entry["level"], "count": len(items or []),
-                           "reason": "no near-miss is selected"},
-                          separators=(",", ":"))
-
-    band = "h" if str(band) == "h" else "v"
-    forward = int(direction) >= 0
-    current = items[position]
-    # Hold the OTHER band's candidate, so the ring on screen changes in one
-    # axis only. Holding by candidate index rather than by extension value is
-    # deliberate: two candidates can share an extension and still be different
-    # rings, and swapping to one of those is not "held".
-    held = "v" if band == "h" else "h"
-    measure = (lambda item: sum(item["hExt"])) if band == "h" \
-        else (lambda item: sum(item["vExt"]))
-    here = measure(current)
-
-    best = None
-    for index, item in enumerate(items):
-        if index == position or item[held] != current[held]:
-            continue
-        value = measure(item)
-        if forward and value <= here:
-            continue
-        if not forward and value >= here:
-            continue
-        # Nearest step in the asked-for direction, so repeated clicks walk the
-        # extensions in order instead of jumping to the end of the run.
-        if best is None or (value < best[0] if forward else value > best[0]):
-            best = (value, index)
-
-    if best is None:
-        return json.dumps({
-            "level": entry["level"], "index": position, "count": len(items),
-            "reason": "no {0} near-miss {1} {2}px with this {3} held".format(
-                band.upper(), "above" if forward else "below", here, held.upper()),
-        }, separators=(",", ":"))
-    return select_semicomplete(entry["level"], best[1])
 
 
 def select_semicomplete(level, index):
