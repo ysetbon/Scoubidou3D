@@ -10,6 +10,13 @@ self.emitFrame = (payload) => self.postMessage({
   id: activeGenerationId,
   ...JSON.parse(payload),
 });
+// A census is one long synchronous call, so it reports where it has got to
+// from inside the sweep rather than only when it lands.
+self.emitTrace = (payload) => self.postMessage({
+  type: "trace-progress",
+  id: activeGenerationId,
+  ...JSON.parse(payload),
+});
 
 async function prepare() {
   if (pyodide) return pyodide;
@@ -38,7 +45,7 @@ async function prepare() {
       // Resolved against this worker's own URL rather than the site root: the
       // lab is published under a project-site sub-path, where "/py/..." would
       // miss. Keeps the cache key in step with the one in the Worker URL.
-      const url = new URL(`./py/${name}?v=fast-frames-v14`, import.meta.url);
+      const url = new URL(`./py/${name}?v=trace-plan-v15`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
@@ -117,11 +124,22 @@ const HANDLERS = {
   // ones outside the +/-20 window that the real search never reaches. It replays
   // the level and then sweeps it twice over, so it is asked for explicitly and
   // never runs as part of a generate.
-  trace: async (runtime, data) => {
+  //
+  // Sent in two parts. The plan costs the replay alone and carries the band's
+  // own geometry and the size of the job, so the page can draw the real sweep
+  // and a real ceiling while the census -- the expensive half -- is still
+  // running. Progress arrives on its own from inside the sweep, via emitTrace.
+  trace: async (runtime, data, post) => {
     runtime.globals.set("mxn_level", data.level);
     runtime.globals.set("mxn_band", data.band);
+    const plan = JSON.parse(await runtime.runPythonAsync(
+      "bridge.trace_plan(mxn_level, mxn_band)"
+    ));
+    post("trace-plan-ready", plan);
+    // An unavailable band has nothing to census; the reason is the whole reply.
+    if (plan.unavailable) return ["trace-ready", JSON.stringify(plan)];
     return ["trace-ready", await runtime.runPythonAsync(
-      "bridge.trace_level(mxn_level, mxn_band)"
+      "bridge.trace_census(mxn_level, mxn_band)"
     )];
   },
   // One traced cell, materialised: the traced band at that combo and angle,
@@ -155,7 +173,11 @@ self.onmessage = async (event) => {
   if (data.type === "generate") activeGenerationId = id;
   try {
     const runtime = await prepare();
-    const [replyType, json] = await handler(runtime, data);
+    // Handlers that have something to say before they finish post it through
+    // here, so the id and the envelope stay in one place.
+    const post = (replyType, payload) =>
+      self.postMessage({ type: replyType, id, ...payload });
+    const [replyType, json] = await handler(runtime, data, post);
     const payload = JSON.parse(json);
     self.postMessage(
       replyType === "result"

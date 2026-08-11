@@ -28,8 +28,15 @@ import numpy as np  # noqa: E402
 
 result = json.loads(bridge.generate(2, 1, [1], "lh", "cw"))
 traces = {}
+plans = {}
 weaves = {}
 for band in ("v", "h"):
+    # The two halves the worker sends: the band's own inputs first, then the
+    # census over them. The QA replays both, in that order.
+    plans[band] = json.loads(bridge.trace_plan(1, band))
+    print(f"L1 {band} plan: combos={plans[band].get('combos')} "
+          f"angles={plans[band].get('nAngles')} "
+          f"tests={plans[band].get('evaluations')}")
     traces[band] = json.loads(bridge.trace_level(1, band))
     t = traces[band]
     print(f"L1 {band}: band={t['band']!r} unavailable={t.get('unavailable')} "
@@ -55,7 +62,8 @@ for band in ("v", "h"):
           f"crossings={w.get('crossings')} healthy={w['row']['healthy']} "
           f"strands={len(w['strands'])}")
 
-json.dump({"result": result, "traces": traces, "weaves": weaves}, open(OUT, "w"))
+json.dump({"result": result, "traces": traces, "plans": plans, "weaves": weaves},
+          open(OUT, "w"))
 print("wrote", OUT, os.path.getsize(OUT), "bytes")
 print("levels:", [s["level"] for s in result["stages"]])
 print("applied L1 ext:", result["rows"][0]["ext"])

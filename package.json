@@ -14,10 +14,12 @@
     "check:twofan": "esbuild scripts/check-twofan.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-twofan.mjs --log-level=warning && node node_modules/.cache/check-twofan.mjs",
     "check:swirl": "esbuild scripts/check-swirl.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-swirl.mjs --log-level=warning && node node_modules/.cache/check-swirl.mjs",
     "check:trace": "esbuild scripts/check-trace-layout.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-trace-layout.mjs --log-level=warning && node node_modules/.cache/check-trace-layout.mjs",
+    "check:census": "esbuild scripts/check-census.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-census.mjs --log-level=warning && node node_modules/.cache/check-census.mjs",
     "check:box": "esbuild scripts/check-box.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-box.mjs --log-level=warning && node node_modules/.cache/check-box.mjs",
     "art": "esbuild scripts/sample-art.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/sample-art.mjs --log-level=warning && node node_modules/.cache/sample-art.mjs",
     "qa:trace": "node scripts/qa-trace-widget.mjs",
     "qa:semi": "node scripts/qa-semi-sort.mjs",
+    "qa:widgets": "node scripts/qa-widgets.mjs",
     "shots": "node scripts/site-shots.mjs",
     "icon": "node scripts/icon-shot.mjs",
     "artifact": "node artifacts/build.mjs"

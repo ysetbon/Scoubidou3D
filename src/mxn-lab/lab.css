@@ -275,13 +275,39 @@ textarea {
 .sheet-grid canvas.is-fresh { transform: scale(1.06); border-color: var(--ink); }
 .thinking-plaque {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 2;
-  display: inline-flex; align-items: baseline; gap: 2px;
-  padding: 8px 12px; background: var(--card); border: 1px solid var(--ink);
+  display: grid; gap: 7px; justify-items: stretch;
+  padding: 8px 12px 9px; background: var(--card); border: 1px solid var(--ink);
   font: 800 11px/1 monospace; letter-spacing: .14em; text-transform: uppercase;
   box-shadow: 0 6px 18px rgba(23, 23, 19, .14);
+  /* Wide enough for the numbers, narrow enough to sit inside one tile row:
+     the sheet behind it is the other half of what the reader is watching. */
+  min-width: 178px;
 }
+.thinking-word { display: inline-flex; align-items: baseline; gap: 2px; }
 /* Fixed width so the plaque does not jitter between one dot and three. */
 .thinking-plaque i { font-style: normal; color: var(--red); width: 1.6em; letter-spacing: .16em; }
+/* One track, two fills. The pale one is the whole run against its ceiling; the
+   solid one is the group being searched now, so a long run still shows
+   movement inside a bar that has barely started. */
+.thinking-track {
+  position: relative; display: block; height: 5px;
+  background: #e6e1d4; border: 1px solid var(--line); overflow: hidden;
+}
+.thinking-track i, .thinking-track b {
+  position: absolute; left: 0; top: 0; bottom: 0; display: block;
+  transition: width .12s linear;
+}
+.thinking-track .thinking-run { background: #c4d0cf; }
+.thinking-track .thinking-group { background: var(--blue); opacity: .85; }
+.thinking-scale {
+  display: flex; justify-content: space-between; gap: 8px;
+  font: 700 8px/1 monospace; letter-spacing: .06em; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.thinking-scale em { font-style: normal; text-transform: none; letter-spacing: .02em; }
+@media (prefers-reduced-motion: reduce) {
+  .thinking-track i, .thinking-track b { transition: none; }
+}
 
 .results { min-width: 0; padding: 22px clamp(20px, 4vw, 56px) 70px; }
 .sequence { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
