@@ -909,11 +909,6 @@ export function ContinuationLab() {
         <div className="commit"><span>synced to PR #4</span> {COMMIT}</div>
       </header>
 
-      <section className="hero">
-        <div><p className="eyebrow">Multi-level strand continuation</p><h1>Your geometry.<br />Every <em>Lᵥ.</em></h1></div>
-        <p className="hero-copy">The browser now runs the same continuation calculation as the repository—actual endpoints, masks, extensions, relabel composition, and audit.</p>
-      </section>
-
       <section className="workspace" aria-label="Exact diagram generator">
         <aside className="controls">
           <div className="controls-inner">
@@ -929,45 +924,69 @@ export function ContinuationLab() {
             </div>
             <div id="k-range" className="range-note">Valid k range: <strong>{limits.min}…{limits.max}</strong> · zero preserves the continuation.</div>
 
-            <div className="field-row">
-              <div className="field">
-                <label htmlFor="ext-step">step <span>extension grid</span></label>
-                <div className="number-wrap">
-                  <select id="ext-step" value={extStep} onChange={e => setExtStep(e.target.value as ExtStep)}>
-                    {EXT_STEP_CHOICES.map(choice => (
-                      <option key={choice} value={choice}>
-                        {choice === "auto" ? `auto (${resolvedStep})` : choice}
-                      </option>
-                    ))}
-                  </select>
+            {/* Step, budget and the short-arms preference used to sit in the open
+                column and pushed Run below the fold on a laptop. Defaults cover
+                ordinary runs; open Advanced when the search needs a finer grid
+                or a higher combo ceiling. */}
+            <details className="advanced-settings">
+              <summary>
+                Advanced search
+                <em>
+                  step {extStep === "auto" ? `auto (${resolvedStep})` : extStep}
+                  {" · "}
+                  budget {comboBudget.toLocaleString()}
+                </em>
+              </summary>
+              <div className="field-row">
+                <div className="field">
+                  <label htmlFor="ext-step">step <span>extension grid</span></label>
+                  <div className="number-wrap">
+                    <select id="ext-step" value={extStep} onChange={e => setExtStep(e.target.value as ExtStep)}>
+                      {EXT_STEP_CHOICES.map(choice => (
+                        <option key={choice} value={choice}>
+                          {choice === "auto" ? `auto (${resolvedStep})` : choice}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="field">
+                  <label htmlFor="combo-budget">budget <span>combos / group</span></label>
+                  <div className="number-wrap">
+                    <input
+                      id="combo-budget" type="number" min="1000" step="1000"
+                      value={comboBudget}
+                      onChange={e => {
+                        const next = Number(e.target.value);
+                        if (Number.isFinite(next) && next >= 1000) setComboBudget(Math.floor(next));
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
-              <div className="field">
-                <label htmlFor="combo-budget">budget <span>combos / group</span></label>
-                <div className="number-wrap">
-                  <input
-                    id="combo-budget" type="number" min="1000" step="1000"
-                    value={comboBudget}
-                    onChange={e => {
-                      const next = Number(e.target.value);
-                      if (Number.isFinite(next) && next >= 1000) setComboBudget(Math.floor(next));
-                    }}
-                  />
-                </div>
+              <label className="toggle-line" htmlFor="short-arms">
+                <input
+                  id="short-arms" type="checkbox" checked={preferShortArms}
+                  onChange={e => setPreferShortArms(e.target.checked)}
+                />
+                <span>prefer shorter arms</span>
+              </label>
+              <label className="toggle-line" htmlFor="healthy-only">
+                <input id="healthy-only" type="checkbox" checked={healthyOnly}
+                  onChange={e => setHealthyOnly(e.target.checked)} />
+                <span>browse healthy solutions only</span>
+              </label>
+              <div className={`range-note ${overEngineLimit ? "is-warning" : ""}`}>
+                {estimatedCombos.toLocaleString()} combos in the largest group
+                {" "}({worstPairCount} {worstPairCount === 1 ? "pair" : "pairs"} at step {resolvedStep})
+                {overEngineLimit && <><br /><strong>Over the engine&rsquo;s {ENGINE_COMBO_LIMIT.toLocaleString()} combo limit — the search will refuse. Raise the step.</strong></>}
               </div>
-            </div>
-            <label className="toggle-line" htmlFor="short-arms">
-              <input
-                id="short-arms" type="checkbox" checked={preferShortArms}
-                onChange={e => setPreferShortArms(e.target.checked)}
-              />
-              <span>prefer shorter arms</span>
-            </label>
-            <div className={`range-note ${overEngineLimit ? "is-warning" : ""}`}>
-              {estimatedCombos.toLocaleString()} combos in the largest group
-              {" "}({worstPairCount} {worstPairCount === 1 ? "pair" : "pairs"} at step {resolvedStep})
-              {overEngineLimit && <><br /><strong>Over the engine&rsquo;s {ENGINE_COMBO_LIMIT.toLocaleString()} combo limit — the search will refuse. Raise the step.</strong></>}
-            </div>
+            </details>
+            {overEngineLimit && (
+              <div className="range-note is-warning">
+                Over the engine&rsquo;s {ENGINE_COMBO_LIMIT.toLocaleString()} combo limit — open Advanced and raise the step.
+              </div>
+            )}
 
             <div className="run-row">
               <button type="button" className="run-button" onClick={runNow} disabled={busy || !!inputError || !ks.length}>
@@ -978,11 +997,6 @@ export function ContinuationLab() {
               </button>
             </div>
             {staleParams && <div className="range-note">Parameters changed since this run — press Run to recalculate.</div>}
-            <label className="toggle-line" htmlFor="healthy-only">
-              <input id="healthy-only" type="checkbox" checked={healthyOnly}
-                onChange={e => setHealthyOnly(e.target.checked)} />
-              <span>browse healthy solutions only</span>
-            </label>
             <div className="run-row">
               <button type="button" className="stop-button" onClick={downloadDataset} disabled={!savedCount}>
                 Download {savedCount || ""} saved
@@ -1036,7 +1050,6 @@ export function ContinuationLab() {
         </aside>
 
         <div className="results">
-          <div className="results-head"><h2>Calculated diagrams</h2><p>LH · CW · crossing anchor<br />same viewport at every stage</p></div>
           <figure className="origin-guide">
             <div className="origin-guide-copy">
               <span className="origin-kicker">L0 → L1 measurement origin</span>
