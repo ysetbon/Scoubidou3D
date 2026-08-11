@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import {
   allBounds, drawExactStage,
@@ -276,6 +276,32 @@ function ThinkingDots() {
 }
 
 /**
+ * The live frame, held OUTSIDE React state on purpose. The engine now emits
+ * up to ~28 frames a second, and a setState per frame on the lab component
+ * would re-render every diagram card on the page at that rate. The store
+ * notifies only the components that subscribed — the busy figure — so a
+ * frame costs one small subtree render no matter how big the results grid is.
+ */
+type FrameStore = {
+  get: () => ProgressFrame | null;
+  set: (next: ProgressFrame | null) => void;
+  subscribe: (listener: () => void) => () => void;
+};
+
+function createFrameStore(): FrameStore {
+  let frame: ProgressFrame | null = null;
+  const listeners = new Set<() => void>();
+  return {
+    get: () => frame,
+    set: next => { frame = next; listeners.forEach(listener => listener()); },
+    subscribe: listener => {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+  };
+}
+
+/**
  * The last SHEET_TILES candidates, drawn small — the busy state's whole
  * content. These are real search output, so the rate the sheet fills at IS the
  * search rate: a slow band visibly slows it.
@@ -327,6 +353,40 @@ function CandidateSheet({ frame }: { frame: ProgressFrame | null }) {
   );
 }
 
+/**
+ * The busy state, and the whole of it: candidates as they are found, drawn
+ * small, in the results column — not the sidebar — so opening Advanced cannot
+ * bury it. It replaces a spinner that reported nothing beyond "not frozen";
+ * the sheet fills at whatever rate the search is managing. Its own component
+ * so the per-frame renders stop at this figure instead of the whole lab.
+ */
+function LiveCandidateFigure({ store }: { store: FrameStore }) {
+  const frame = useSyncExternalStore(store.subscribe, store.get);
+  return (
+    <figure className="candidate-sheet" aria-label="Live search candidates">
+      <figcaption>
+        <span>
+          live candidates
+          {frame ? ` · L${frame.level} · k=${frame.k}` : ""}
+        </span>
+        <b>{frame?.phase ?? "starting search"}</b>
+        <em>
+          {frame && frame.total > 0
+            ? `${frame.completed.toLocaleString()} / ${frame.total.toLocaleString()}`
+            : "preparing search"}
+          {frame && frame.valid > 0 ? ` · ${frame.valid} valid` : ""}
+        </em>
+      </figcaption>
+      <div className="sheet-stage">
+        <CandidateSheet frame={frame} />
+        {/* aria-hidden: the engine status line already carries this state
+            politely, and ticking dots are not worth announcing. */}
+        <div className="thinking-plaque" aria-hidden="true">thinking<ThinkingDots /></div>
+      </div>
+    </figure>
+  );
+}
+
 export function ContinuationLab() {
   const [m, setM] = useState(2);
   const [n, setN] = useState(2);
@@ -337,7 +397,9 @@ export function ContinuationLab() {
   // be an instruction rather than a progress report.
   const [status, setStatus] = useState("Set m, n and ks, then press Run");
   const [busy, setBusy] = useState(false);
-  const [progressFrame, setProgressFrame] = useState<ProgressFrame | null>(null);
+  // Deliberately not useState: see FrameStore. useState(createFrameStore)
+  // makes the factory the lazy initialiser, so one store per mount.
+  const [frameStore] = useState(createFrameStore);
   const [copiedLevel, setCopiedLevel] = useState<number | null>(null);
   const [fullSizeLevels, setFullSizeLevels] = useState<Set<number>>(() => new Set());
   const [preferShortArms, setPreferShortArms] = useState(true);
@@ -399,7 +461,7 @@ export function ContinuationLab() {
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
     const worker = new Worker(
-      `${LAB_BASE}exact-worker.js?v=trace-weave-v13${FAST_ENGINE ? "&engine=fast" : ""}`,
+      `${LAB_BASE}exact-worker.js?v=fast-frames-v14${FAST_ENGINE ? "&engine=fast" : ""}`,
       { type: "module" },
     );
     worker.onmessage = (event) => {
@@ -410,7 +472,7 @@ export function ContinuationLab() {
       }
       if (message.type === "candidate") {
         if (message.id === activeIdRef.current) {
-          setProgressFrame(message as ProgressFrame);
+          frameStore.set(message as ProgressFrame);
         }
         return;
       }
@@ -564,7 +626,7 @@ export function ContinuationLab() {
           setTraceBand({});
           setTraceWeaves({});
           setOpenWidgets(new Set());
-          setProgressFrame(null);
+          frameStore.set(null);
           setEngineError(null);
           setStatus(`Exact calculation complete · ${message.result.seconds}s`);
         }
@@ -578,7 +640,7 @@ export function ContinuationLab() {
       if (message.type === "error") {
         if (message.id === activeIdRef.current) {
           setEngineError(message.message || "The exact engine could not finish this case.");
-          setProgressFrame(null);
+          frameStore.set(null);
           setStatus("Calculation stopped");
         }
         busyRef.current = false;
@@ -602,7 +664,7 @@ export function ContinuationLab() {
       busyRef.current = true;
       setBusy(true);
       setEngineError(null);
-      setProgressFrame(null);
+      frameStore.set(null);
       setStatus("Loading the exact MXN engine…");
       setRanKey(params.key);
       const id = ++activeIdRef.current;
@@ -642,7 +704,7 @@ export function ContinuationLab() {
     busyRef.current = false;
     pendingRef.current = null;
     setBusy(false);
-    setProgressFrame(null);
+    frameStore.set(null);
     setStatus("Stopped · the engine reloads on the next run");
   };
 
@@ -980,34 +1042,10 @@ export function ContinuationLab() {
         </aside>
 
         <div className="results">
-          {/* The busy state, and the whole of it: candidates as they are found,
-              drawn small, in the results column — not the sidebar — so opening
-              Advanced cannot bury it. This is where finished diagrams land too.
-              It replaces a spinner that reported nothing beyond "not frozen";
-              the sheet fills at whatever rate the search is managing. */}
-          {busy && (
-            <figure className="candidate-sheet" aria-label="Live search candidates">
-              <figcaption>
-                <span>
-                  live candidates
-                  {progressFrame ? ` · L${progressFrame.level} · k=${progressFrame.k}` : ""}
-                </span>
-                <b>{progressFrame?.phase ?? "starting search"}</b>
-                <em>
-                  {progressFrame && progressFrame.total > 0
-                    ? `${progressFrame.completed.toLocaleString()} / ${progressFrame.total.toLocaleString()}`
-                    : "preparing search"}
-                  {progressFrame && progressFrame.valid > 0 ? ` · ${progressFrame.valid} valid` : ""}
-                </em>
-              </figcaption>
-              <div className="sheet-stage">
-                <CandidateSheet frame={progressFrame} />
-                {/* aria-hidden: the engine status line already carries this
-                    state politely, and ticking dots are not worth announcing. */}
-                <div className="thinking-plaque" aria-hidden="true">thinking<ThinkingDots /></div>
-              </div>
-            </figure>
-          )}
+          {/* The busy figure renders itself from the frame store — frames
+              arrive too fast to route through this component's state. This is
+              where finished diagrams land too. */}
+          {busy && <LiveCandidateFigure store={frameStore} />}
           {!result || !bounds ? (
             busy ? null : (
               <div className="calculation-panel"><div className="calculation-orbit" /><strong>{status}</strong><span>The images appear after the repository audit finishes.</span></div>

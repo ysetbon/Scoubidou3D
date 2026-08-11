@@ -30,6 +30,14 @@ if sys.platform == "emscripten":
     # Web Workers have no Python subprocesses. The engine's serial path uses
     # the same evaluator and ordering, so results remain deterministic.
     NX._lh._get_cpu_worker_count = lambda _total: 1
+    # The candidate relay fires at most once per chunk, so the chunk size IS
+    # the ceiling on how often the busy sheet can switch tiles. The native
+    # default of up to 256 combos per chunk amortises process-spawn overhead
+    # the browser does not have; a chunk's only fixed cost here is one clone
+    # of the strand list, so 32 keeps that overhead trivial while letting
+    # candidates surface often enough for FRAME_MIN_INTERVAL to be the only
+    # gate that matters.
+    NX._lh._get_cpu_chunk_size = lambda total, _workers: max(1, min(32, total))
 
 
 def _stage_strands(json_text):
@@ -165,16 +173,39 @@ def _send_stage_frame(strands, level, k, phase, completed=0, total=0,
     }, separators=(",", ":")))
 
 
+# The shortest gap between two frames of the busy sheet. A tile every 0.036s
+# is ~28 a second — five times the 0.18s cadence this started at — which reads
+# as the search flying through candidates rather than paging through them.
+# The final frame of a group (completed == total) always passes.
+FRAME_MIN_INTERVAL = 0.036
+# Frames must never crowd out the search itself: a frame costs a deepcopy, a
+# projection and a JSON dump, and on a slow machine 28 of those a second could
+# eat the worker alive. Cap frame-building at this share of the worker's time;
+# the gap between frames stretches beyond FRAME_MIN_INTERVAL when a frame
+# turns out to cost more than duty x gap to build.
+FRAME_MAX_DUTY = 0.2
+
+
 def _candidate_frame_emitter(base_strands, level, k):
     last_sent = [0.0]
+    min_gap = [FRAME_MIN_INTERVAL]
+
+    # Consulted by the engine BEFORE it builds a preview: a frame that would
+    # be dropped must not cost a deepcopy of the working ring first. Passing
+    # the gate claims the slot, so a caller that passes must then emit.
+    def ready(completed, total):
+        now = time.monotonic()
+        if completed < total and now - last_sent[0] < min_gap[0]:
+            return False
+        last_sent[0] = now
+        return True
 
     def relay(virtual_strands, back_map, meta):
-        now = time.monotonic()
-        completed = int(meta.get("completed", 0))
-        total = int(meta.get("total", 0))
-        if completed < total and now - last_sent[0] < 0.18:
+        # A caller that consulted the gate says so; throttle the ones that
+        # did not, or every chunk would land regardless of the interval.
+        if not meta.get("gated") and not ready(
+                int(meta.get("completed", 0)), int(meta.get("total", 0))):
             return
-        last_sent[0] = now
 
         preview = copy.deepcopy(base_strands)
         by_name = {strand.get("layer_name"): strand for strand in preview}
@@ -211,6 +242,15 @@ def _candidate_frame_emitter(base_strands, level, k):
             meta.get("extensions"),
         )
 
+        # ready() stamped last_sent when the gate was passed — before the
+        # engine's own deepcopy — so this measures the frame's whole cost.
+        # Stretch the gap so frames stay under FRAME_MAX_DUTY of the worker's
+        # time, and restart the idle clock now that the frame is out.
+        done = time.monotonic()
+        min_gap[0] = max(FRAME_MIN_INTERVAL, (done - last_sent[0]) / FRAME_MAX_DUTY)
+        last_sent[0] = done
+
+    relay.ready = ready
     return relay
 
 
