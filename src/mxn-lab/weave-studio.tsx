@@ -1380,7 +1380,8 @@ export function ContinuationLab() {
                         <em>{row.applied.length ? row.applied.join(" · ") : "k-based groups"}</em>
                       </div>}
                       </div>
-                      {/* The level widget: beside the diagram when it is open,
+                      {/* The level widget: a column of the card, to the right of
+                          the diagram. Closed it is a rail on that edge; open it
                           one per Lᵥ and opened or closed per card, so two
                           levels can be held open side by side rather than the
                           page having a single panel that only ever describes

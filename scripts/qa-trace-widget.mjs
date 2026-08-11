@@ -72,6 +72,23 @@ ok('a run renders one card per level', cards.length === 2, `${cards.length} card
 const heads = await page.$$('.level-widget-head');
 ok('every level card carries a widget', heads.length === cards.length, `${heads.length} widgets`);
 
+// ---- closed, the widget is already on the right, not underneath ----
+const shut = await page.evaluate(() => {
+  const card = [...document.querySelectorAll('.diagram-card')].find(c => /L1/.test(c.textContent));
+  const main = card.querySelector('.level-main').getBoundingClientRect();
+  const wid = card.querySelector('.level-widget').getBoundingClientRect();
+  return {
+    left: Math.round(wid.left), mainRight: Math.round(main.right),
+    top: Math.round(wid.top), mainTop: Math.round(main.top),
+    w: Math.round(wid.width), h: Math.round(wid.height),
+    mainH: Math.round(main.height),
+  };
+});
+ok('closed, the widget is right of the diagram', shut.left >= shut.mainRight - 2,
+   JSON.stringify(shut));
+ok('closed, it is a rail rather than a footer',
+   shut.w < 60 && shut.h > shut.mainH * 0.8, `${shut.w}x${shut.h} vs main ${shut.mainH} tall`);
+
 // ---- open L1 ----
 const l1 = page.locator('.diagram-card', { hasText: 'L1' }).first();
 await l1.locator('.level-widget-head').click();
@@ -223,7 +240,7 @@ ok('no horizontal overflow', !overflow);
 
 // ---- the widget opens to the right of the diagram, not under it ----
 const sides = await page.evaluate(() => {
-  const card = document.querySelector('.diagram-card:has(.trace-panel)');
+  const card = document.querySelector('.diagram-card:has(.level-widget.is-open)');
   const main = card.querySelector('.level-main').getBoundingClientRect();
   const wid = card.querySelector('.level-widget').getBoundingClientRect();
   return {
@@ -254,7 +271,7 @@ ok('the drawing is 30% under the old 1120px design',
    crisp.cssW <= 784 + 1, `${crisp.cssW}px`);
 
 // ---- the trace card is full width ----
-const traceCardW = await page.$eval('.diagram-card:has(.trace-panel)', e => Math.round(e.getBoundingClientRect().width));
+const traceCardW = await page.$eval('.diagram-card:has(.level-widget.is-open)', e => Math.round(e.getBoundingClientRect().width));
 ok('the tracing card takes the whole row', traceCardW > 1000, `${traceCardW}px`);
 
 await page.screenshot({ path: `${ROOT}node_modules/.cache/qa-trace.png`, fullPage: true });
