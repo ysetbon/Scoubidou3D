@@ -1510,6 +1510,12 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
             callback = _progress_frame_callback
             if callback is None:
                 return
+            # Ask the sink first: the deepcopy below is the whole cost of a
+            # frame, and a throttled sink drops most of them. Without this,
+            # every chunk paid for a preview the bridge then threw away.
+            gate = getattr(callback, "ready", None)
+            if gate is not None and not gate(completed, total):
+                return
             preview = copy.deepcopy(working)
             engine.apply_parallel_alignment(preview, candidate)
             callback(preview, back, {
@@ -1519,6 +1525,7 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
                 "valid": valid_count,
                 "angle": candidate.get("angle_degrees"),
                 "extensions": list(candidate.get("pair_extensions") or ()),
+                "gated": gate is not None,
             })
 
         def run_alignment(search):
