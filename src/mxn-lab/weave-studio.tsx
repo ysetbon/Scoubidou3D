@@ -8,6 +8,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 // against ysetbon.github.io itself. BASE_URL carries whatever vite was built
 // with — "/Scoubidou3D/" for Pages, "/" for a root build — so the page keeps
 // working under either.
+import { TracePanel, type TracePayload } from "./trace-panel";
+
 const LAB_BASE = `${import.meta.env.BASE_URL}mxn/`;
 
 // /mxn/ and /mxn/fast/ mount the same component against the same engine files;
@@ -487,6 +489,7 @@ export function ContinuationLab() {
   const [ranKey, setRanKey] = useState<string | null>(null);
   const [solutions, setSolutions] = useState<Record<number, SolutionMeta>>({});
   const [semi, setSemi] = useState<Record<number, SemiMeta>>({});
+  const [trace, setTrace] = useState<TracePayload | null>(null);
   const [semiMode, setSemiMode] = useState<Record<number, boolean>>({});
   const [browsingLevel, setBrowsingLevel] = useState<number | null>(null);
   const [savedCount, setSavedCount] = useState(0);
@@ -534,7 +537,7 @@ export function ContinuationLab() {
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
     const worker = new Worker(
-      `${LAB_BASE}exact-worker.js?v=semi-sort-v8${FAST_ENGINE ? "&engine=fast" : ""}`,
+      `${LAB_BASE}exact-worker.js?v=trace-v9${FAST_ENGINE ? "&engine=fast" : ""}`,
       { type: "module" },
     );
     worker.onmessage = (event) => {
@@ -569,6 +572,17 @@ export function ContinuationLab() {
             };
           });
         }
+        return;
+      }
+      if (message.type === "trace-ready") {
+        setBrowsingLevel(null);
+        if (message.unavailable) {
+          setStatus(`L${message.level}: ${message.reason}`);
+          setTrace(null);
+          return;
+        }
+        setTrace(message as TracePayload);
+        setStatus(`L${message.level} ${message.band} band traced — nothing skipped.`);
         return;
       }
       if (message.type === "semi-ready") {
@@ -802,6 +816,16 @@ export function ContinuationLab() {
     setStatus(`Sweeping both bands for L${level} near-misses — every candidate against up to three partners that work…`);
     ensureWorker().postMessage({
       type: "semi-scan", id: activeIdRef.current, level,
+    });
+  };
+
+  // Replays the level and sweeps it twice over, so it is only ever asked for
+  // by this button -- never as part of a generate.
+  const openTrace = (level: number, band: "h" | "v") => {
+    setBrowsingLevel(level);
+    setStatus(`Tracing the L${level} ${band === "h" ? "horizontal" : "vertical"} band — every combo against every angle…`);
+    ensureWorker().postMessage({
+      type: "trace", id: activeIdRef.current, level, band,
     });
   };
 
@@ -1163,6 +1187,11 @@ export function ContinuationLab() {
                                   title="Flag this near-miss for rating — goes to /mxn/semi/"
                                   aria-label={`Flag level ${stage.level} near-miss for the dataset`}>🚩</button>
                                 {semiButton}
+                                <button className="trace-toggle" type="button"
+                                  onClick={() => openTrace(stage.level, "v")}
+                                  disabled={busyHere}
+                                  title="Trace: every combo against every angle, including the ones the search never tries"
+                                  aria-label={`Trace the search for level ${stage.level}`}>◎</button>
                               </span>
                             );
                           }
@@ -1216,6 +1245,8 @@ export function ContinuationLab() {
               })}
             </div>
           )}
+
+          {trace && <TracePanel data={trace} onClose={() => setTrace(null)} />}
 
         </div>
       </section>

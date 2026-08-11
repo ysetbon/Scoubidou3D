@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mxn_trace import (BEST, DEGEN, NAMES, ORDER, OVERLAP, REACH, TOOFAR,  # noqa: E402
                        VALID, WINDOW, capture_bands, trace_band)
 
-W, H, FPS = 1280, 720, 12
+W, H, FPS = 1280, 720, 24
 FFMPEG = "/opt/pw-browsers/ffmpeg-1011/ffmpeg-linux"
 
 PAPER = (244, 240, 230)
@@ -292,7 +292,7 @@ def build(m, n, ks, out):
         icon(dr, 52, cy + 8, code)
         dr.text((78, cy), NAMES[code], COLOUR[code], F_HEAD)
         dr.text((190, cy + 2), BLURB[code], (70, 68, 60), F_BODY)
-    hold(img, 4.5)
+    hold(img, 2.0)
 
     for ti, tr in enumerate(traces):
         band = tr["band"]
@@ -357,7 +357,7 @@ def build(m, n, ks, out):
     dr.text((30, y + 16), f"{total:,} evaluations in total — "
                           f"the real engine performs only the non-WINDOW ones, "
                           f"and stops each at its first failure.", FAINT, F_BODY)
-    hold(img, 5)
+    hold(img, 3.0)
 
     proc.stdin.close()
     proc.wait()

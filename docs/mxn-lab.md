@@ -317,16 +317,43 @@ Measured serial — the path Pyodide takes — every row byte-identical:
 12 sequences over 5 sizes, 118.6 s → 18.4 s, and the `2×2 [1,2,2]` oracle above
 still gives `(40,10)`, `(50,60)`, `(60,50)` at 16/0/8/0/0 per level.
 
-### Seeing what the search does
+### The trace panel
 
-`scripts/mxn_trace.py` is an instrumented twin of the band search: same tests in
-the same order, but it records a verdict for every `(combo, angle)` instead of
-stopping at the first failure, and it sweeps ±40° so the angles production never
-reaches are marked `WINDOW` rather than left out. In-window verdicts use the
-engine's own per-combo angle grid, so its `BEST` count matches the engine's
-valid count exactly. `scripts/mxn_trace_video.py` renders that census to a webm
-(ffmpeg here is Playwright's build: JPEG in over `pipe:0`, VP8 out — no H.264,
-so no mp4).
+`◎` on a level card runs `bridge.trace_level`, which answers what the band search
+ruled out and on which test. The census lives in `public/mxn/py/mxn_trace.py`:
+the same tests in the same order, but it records a verdict for every
+`(combo, angle)` instead of stopping at the first failure, and sweeps ±40° so the
+angles production never reaches are marked `WINDOW` rather than left out.
+In-window verdicts use the engine's own per-combo grid, so the `BEST` count
+equals the number of valid configurations the real search reports.
+
+The panel draws three things — the combo grid, the angle sweep inside the
+selected combo, and the strands themselves — and each legend entry is a filter
+that dims everything which ended on a different test. `Record` captures the
+canvas with `MediaRecorder` and downloads a webm, so the animation is a page
+feature rather than something rendered offline.
+
+Three things worth knowing:
+
+- **Only the census crosses the worker boundary.** Geometry is affine in the
+  extensions, so the page recomputes the handful of points it needs to draw one
+  cell from `origins`, `directions` and `targets` instead of receiving every
+  configuration. 2×1 is 140 KB; 3×3 is 2.9 MB and about 8 s.
+- **It forces the vectorised scan on**, whichever page it runs from. The replay
+  is a full search and the census is roughly two more on top; without the
+  vectorised path a 3×3 trace is tens of seconds.
+- **`TRACE_BUDGET` caps it at 4M evaluations.** 3×3 sits near 2.2M. 4×4 would be
+  ~46M, and is refused with the real numbers rather than handed back silently
+  subsampled — a picture that quietly dropped angles would be worse than none.
+
+Like `enumerate_level`, the replay passes `mirror_sides=False`, so a square
+level 1 traces the search its V band *would* have run rather than the pinned one
+it actually used. The panel says so.
+
+`scripts/mxn_trace.py` is the offline half — it pulls band inputs out of a real
+generate and keeps the per-combo geometry — and `scripts/mxn_trace_video.py`
+renders the census to a webm (ffmpeg here is Playwright's build: JPEG in over
+`pipe:0`, VP8 out — no H.264, so no mp4).
 
 `2×1 k=1`, both bands, 110,880 evaluations:
 

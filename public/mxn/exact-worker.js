@@ -26,6 +26,7 @@ async function prepare() {
     const names = [
       "mxn_continuation_next.py",
       "mxn_lh_continuation.py",
+      "mxn_trace.py",
       "mxn_rh_continuation.py",
       "mxn_lh_strech.py",
       "mxn_rh_stretch.py",
@@ -37,7 +38,7 @@ async function prepare() {
       // Resolved against this worker's own URL rather than the site root: the
       // lab is published under a project-site sub-path, where "/py/..." would
       // miss. Keeps the cache key in step with the one in the Worker URL.
-      const url = new URL(`./py/${name}?v=semi-sort-v8`, import.meta.url);
+      const url = new URL(`./py/${name}?v=trace-v9`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
@@ -116,6 +117,17 @@ const HANDLERS = {
     runtime.globals.set("mxn_direction", data.direction);
     return ["semi-solution", await runtime.runPythonAsync(
       "bridge.step_semicomplete(mxn_level, mxn_band, mxn_direction)"
+    )];
+  },
+  // The full census of one band: every combo against every angle, including the
+  // ones outside the +/-20 window that the real search never reaches. It replays
+  // the level and then sweeps it twice over, so it is asked for explicitly and
+  // never runs as part of a generate.
+  trace: async (runtime, data) => {
+    runtime.globals.set("mxn_level", data.level);
+    runtime.globals.set("mxn_band", data.band);
+    return ["trace-ready", await runtime.runPythonAsync(
+      "bridge.trace_level(mxn_level, mxn_band)"
     )];
   },
   "semi-select": async (runtime, data) => {
