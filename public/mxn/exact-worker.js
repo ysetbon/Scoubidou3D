@@ -38,7 +38,7 @@ async function prepare() {
       // Resolved against this worker's own URL rather than the site root: the
       // lab is published under a project-site sub-path, where "/py/..." would
       // miss. Keeps the cache key in step with the one in the Worker URL.
-      const url = new URL(`./py/${name}?v=semi-band-v10`, import.meta.url);
+      const url = new URL(`./py/${name}?v=semi-band-v11`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
@@ -103,23 +103,14 @@ const HANDLERS = {
       "bridge.scan_semicomplete(mxn_level, mxn_band)"
     )];
   },
-  // Reordering and stepping both read the list the scan already built, so
-  // neither replays a ring: they are list arithmetic, not search.
+  // Reordering reads the list the scan already built, so it replays no ring:
+  // it is list arithmetic, not search. The key is one of bridge.SEMI_KEYS --
+  // nearest to closing, best H answers, best V answers, or best solution.
   "semi-sort": async (runtime, data) => {
     runtime.globals.set("mxn_level", data.level);
     runtime.globals.set("mxn_key", data.key);
     return ["semi-sorted", await runtime.runPythonAsync(
       "bridge.sort_semicomplete(mxn_level, mxn_key)"
-    )];
-  },
-  // Answers back as semi-solution: the page has to redraw exactly as it does
-  // after an arrow, and a second message shape would be the same thing twice.
-  "semi-step": async (runtime, data) => {
-    runtime.globals.set("mxn_level", data.level);
-    runtime.globals.set("mxn_band", data.band);
-    runtime.globals.set("mxn_direction", data.direction);
-    return ["semi-solution", await runtime.runPythonAsync(
-      "bridge.step_semicomplete(mxn_level, mxn_band, mxn_direction)"
     )];
   },
   // The full census of one band: every combo against every angle, including the
