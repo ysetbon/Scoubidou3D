@@ -41,7 +41,7 @@ const failedUrls = [];
 page.on('requestfailed', r => failedUrls.push(`${r.url()} (${r.failure()?.errorText})`));
 
 // Stand in for exact-worker.js, before any page script runs.
-await page.addInitScript(({ result, traces }) => {
+await page.addInitScript(({ result, traces, weaves }) => {
   const posted = [];
   window.__posted = posted;
   window.Worker = class FakeWorker {
@@ -53,6 +53,13 @@ await page.addInitScript(({ result, traces }) => {
       if (data.type === 'trace') {
         const t = traces[String(data.band).toLowerCase().startsWith('v') ? 'v' : 'h'];
         reply({ type: 'trace-ready', id: data.id, ...t });
+      }
+      if (data.type === 'trace-weave') {
+        // A real woven ring for the strands; ext and angle echo the request so
+        // the reply lands in the cache slot the panel is watching.
+        const w = weaves[String(data.band).toLowerCase().startsWith('v') ? 'v' : 'h'];
+        reply({ type: 'trace-weave-ready', id: data.id, ...w,
+                ext: data.ext, angle: data.angle });
       }
     }
     terminate() {}
@@ -113,6 +120,36 @@ const painted = await page.evaluate(() => {
 });
 ok('the census is drawn, not blank', painted.colours > 5, `${painted.colours} distinct colours`);
 
+// ---- the weave preview asks for the combo on screen, and draws it ----
+// The panel lands on the applied combo, debounces 250ms, and the fake worker
+// answers 30ms later with a real woven ring.
+await page.waitForTimeout(600);
+const weaveAsks = await page.evaluate(() => window.__posted.filter(m => m.type === 'trace-weave'));
+ok('opening asks to weave the combo on screen', weaveAsks.length === 1,
+   `${weaveAsks.length} requests`);
+ok('it asks for the combo the level adopted',
+   JSON.stringify(weaveAsks[0]?.ext) === JSON.stringify(fixtures.traces.v.applied),
+   JSON.stringify(weaveAsks[0]?.ext));
+const weavePaint = await page.evaluate(() => {
+  const cv = document.querySelector('.trace-panel canvas');
+  const dpr = cv.width / cv.getBoundingClientRect().width;
+  const { data } = cv.getContext('2d').getImageData(
+    Math.round(+cv.dataset.weaveX * dpr), Math.round(+cv.dataset.weaveY * dpr),
+    Math.round(+cv.dataset.weaveW * dpr), Math.round(+cv.dataset.weaveH * dpr));
+  // The engine's own set colours for this 2x1 stitch: white for the H sets,
+  // the two indigos for V. Both bands present inside the box is the weave
+  // being drawn rather than a placeholder.
+  let white = 0, indigo = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i] === 255 && data[i + 1] === 255 && data[i + 2] === 255) white += 1;
+    if ((data[i] === 61 && data[i + 1] === 58 && data[i + 2] === 140)
+      || (data[i] === 123 && data[i + 1] === 113 && data[i + 2] === 214)) indigo += 1;
+  }
+  return { white, indigo };
+});
+ok('the weave pattern is drawn in the widget', weavePaint.white > 200 && weavePaint.indigo > 200,
+   JSON.stringify(weavePaint));
+
 // ---- the cell under the cursor is the combo the level adopted ----
 const caption = async () => page.evaluate(() => {
   const cv = document.querySelector('.trace-panel canvas');
@@ -171,6 +208,14 @@ const cursorCell = async () => page.evaluate(({ cell, gridX, gridY }) => {
 const landed = await cursorCell();
 ok('clicking a cell moves the cursor to that cell',
    landed && landed.col === 19 && landed.row === 17, JSON.stringify(landed));
+
+// ---- and the weave preview follows the click ----
+await page.waitForTimeout(600);
+const weaveAsks2 = await page.evaluate(() =>
+  window.__posted.filter(m => m.type === 'trace-weave').map(m => m.ext));
+ok('clicking a cell asks to weave that combo',
+   JSON.stringify(weaveAsks2.at(-1)) === JSON.stringify([170, 190]),
+   JSON.stringify(weaveAsks2));
 
 // ---- the legend filter dims ----
 const dimCount = () => page.evaluate(() => {

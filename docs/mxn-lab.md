@@ -181,9 +181,20 @@ panel could not do — it would only ever describe the last card clicked. Open
 state lives in `openWidgets`, a `Set` of level numbers, beside `fullSizeLevels`
 which does the same job for the card's `+`/`−` size toggle.
 
-The drawer is deliberately empty at the moment. What it holds is still to be
-decided; the slot, its per-card state and its place below the audit strip are
-what is settled.
+The drawer holds the trace panel (see *The trace census* below): opening a
+level's widget requests `bridge.trace_level` for the band it was last shown at
+(V by default), and the H/V buttons in the panel's head swap the question.
+Traces are cached per level and band in `traces`, so reopening a widget never
+re-runs a census.
+
+Beside the census the panel shows a **weave pattern (this combo)** box: the
+cell being looked at, woven. It is engine geometry, not a sketch —
+`bridge.trace_weave` replays the level from its checkpoint with the traced
+band's arms placed at that combo and angle and the other band held at the
+engine's own pick, then audits the result, so the caption carries the same
+`ok/ok · WEAVE` verdict and crossing count the level card prints. Requests are
+debounced 250 ms, suppressed while the panel is playing or recording, and
+cached per cell (`TRACE_WEAVE_CACHE` entries per level and band, oldest out).
 
 ### The dataset API
 
@@ -327,7 +338,7 @@ fake-worker arrangement as `qa:trace`.
 
 ### Cache keys
 
-The `semi-band-v11` cache key appears in both the worker URL
+The `trace-weave-v12` cache key appears in both the worker URL
 (`weave-studio.tsx`) and the Python fetch URL (`exact-worker.js`). Bump both
 together when the engine files change, or returning readers run stale geometry.
 
@@ -376,15 +387,13 @@ marked `WINDOW` rather than left out. In-window verdicts use the engine's own
 per-combo grid, so the `BEST` count equals the number of valid configurations
 the real search reports.
 
-It has no button on the lab any more. The `◎` that expanded a per-level trace
-drawer is gone from the level cards, which now carry the two near-miss flags and
-nothing else, and the drawer went with it. The worker still exposes the `trace`
-message, `src/mxn-lab/trace-layout.ts` still holds the combo grid as arithmetic
-— the combo index is a base-E number with one digit per extension pair, so the
-grid is that number de-interleaved, even place-value exponents on x and odd on
-y, with `npm run check:trace` holding `place` and `unplace` to being inverses —
-and the offline scripts below still render the census. Two things worth knowing
-if a panel is wired back up:
+On the lab it lives in the level widget (see *The level widget* above); the
+worker carries it as the `trace` message. `src/mxn-lab/trace-layout.ts` holds
+the combo grid as arithmetic — the combo index is a base-E number with one
+digit per extension pair, so the grid is that number de-interleaved, even
+place-value exponents on x and odd on y, with `npm run check:trace` holding
+`place` and `unplace` to being inverses — and the offline scripts below render
+the same census. Two things worth knowing:
 
 - **It forces the vectorised scan on**, whichever page it runs from. The replay
   is a full search and the census is roughly two more on top; without the
@@ -396,6 +405,15 @@ if a panel is wired back up:
 Like `enumerate_level`, the replay passes `mirror_sides=False`, so a square
 level 1 traces the search its V band *would* have run rather than the pinned one
 it actually used.
+
+`trace_level` keeps the grabbed band inputs in the session, and
+`bridge.trace_weave(level, band, ext, angle)` reads them to materialise one
+cell: the traced band's arms placed at those extensions and that heading — the
+same affine placement `mxn_trace.place` sweeps — applied through
+`apply_solution` with the other band held at the engine's pick. It costs one
+checkpoint replay, returns the woven strands plus the standard audit row, and
+is applied whether or not the cell passed its tests: what a failing combo looks
+like woven is exactly what the panel's weave preview is for.
 
 `scripts/mxn_trace.py` is the offline half — it pulls band inputs out of a real
 generate and keeps the per-combo geometry — and `scripts/mxn_trace_video.py`

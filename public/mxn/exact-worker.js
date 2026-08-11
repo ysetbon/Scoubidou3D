@@ -38,7 +38,7 @@ async function prepare() {
       // Resolved against this worker's own URL rather than the site root: the
       // lab is published under a project-site sub-path, where "/py/..." would
       // miss. Keeps the cache key in step with the one in the Worker URL.
-      const url = new URL(`./py/${name}?v=semi-band-v11`, import.meta.url);
+      const url = new URL(`./py/${name}?v=trace-weave-v12`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
@@ -122,6 +122,18 @@ const HANDLERS = {
     runtime.globals.set("mxn_band", data.band);
     return ["trace-ready", await runtime.runPythonAsync(
       "bridge.trace_level(mxn_level, mxn_band)"
+    )];
+  },
+  // One traced cell, materialised: the traced band at that combo and angle,
+  // the other band held at the engine's pick, woven and audited. Reads the
+  // session trace_level primed, so it costs a checkpoint replay per call.
+  "trace-weave": async (runtime, data) => {
+    runtime.globals.set("mxn_level", data.level);
+    runtime.globals.set("mxn_band", data.band);
+    runtime.globals.set("mxn_ext", data.ext);
+    runtime.globals.set("mxn_angle", data.angle);
+    return ["trace-weave-ready", await runtime.runPythonAsync(
+      "bridge.trace_weave(mxn_level, mxn_band, mxn_ext.to_py(), mxn_angle)"
     )];
   },
   "semi-select": async (runtime, data) => {

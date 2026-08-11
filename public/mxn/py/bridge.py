@@ -531,6 +531,10 @@ def trace_level(level, band="v"):
             "reason": "this level solved its %s band without a search" % want,
         }, separators=(",", ":"))
 
+    # Kept for trace_weave: rebuilding one cell's ring needs the same inputs
+    # the census swept, and re-grabbing them would cost another full replay.
+    entry.setdefault("trace_bands", {})[want] = grabbed[0]
+
     payload = mxn_trace.pack(mxn_trace.census(grabbed[0]))
     if payload.get("over_budget"):
         return json.dumps({
@@ -548,6 +552,79 @@ def trace_level(level, band="v"):
         "applied": list(cands[picked]["ext"]) if picked < len(cands) else [],
     })
     return json.dumps(payload, separators=(",", ":"))
+
+
+def trace_weave(level, band, ext, angle_deg):
+    """Materialise the ring one traced (combo, angle) cell would produce.
+
+    The traced band's arms take the given extensions at the given heading --
+    the same affine placement mxn_trace sweeps -- and the other band is held at
+    the engine's own pick, the partner the trace's ring marker already refers
+    to. The ring is applied whether or not the cell passed its tests: what a
+    failing combo looks like woven is exactly what the preview is for.
+
+    Reads the band inputs trace_level left in the session, so it costs one
+    checkpoint replay per call rather than a fresh search.
+    """
+    import math
+
+    entry = _level_session(int(level))
+    want = "vertical" if str(band).lower().startswith("v") else "horizontal"
+    ext = [float(e) for e in ext]
+    angle_deg = float(angle_deg)
+    data = (entry.get("trace_bands") or {}).get(want)
+    if data is None:
+        return json.dumps({
+            "level": entry["level"], "band": want, "unavailable": True,
+            "ext": [int(e) for e in ext], "angle": angle_deg,
+            "reason": "trace this band first; the weave preview reads its inputs",
+        }, separators=(",", ":"))
+
+    import mxn_trace
+
+    # The same geometry sweep_combo vectorises, at one angle: each arm starts
+    # from its displaced original_start and runs its projection along the
+    # shared heading, flipped for the arms that head the other way.
+    placed = mxn_trace.place(data, ext)
+    starts = [(s["original_start"]["x"], s["original_start"]["y"]) for s in placed]
+    deltas = [(s["target_position"]["x"] - sx, s["target_position"]["y"] - sy)
+              for s, (sx, sy) in zip(placed, starts)]
+    ref = math.atan2(deltas[0][1], deltas[0][0])
+    a = math.radians(angle_deg)
+    moves = []
+    for s, (sx, sy), (dx, dy) in zip(placed, starts, deltas):
+        sa = a if dx * math.cos(ref) + dy * math.sin(ref) >= 0 else a + math.pi
+        proj = dx * math.cos(sa) + dy * math.sin(sa)
+        moves.append((s["strand_4_5"]["layer_name"],
+                      (s.get("strand_2_3") or {}).get("layer_name"),
+                      sx, sy,
+                      sx + proj * math.cos(sa), sy + proj * math.sin(sa)))
+
+    swept = {"ext": tuple(int(e) for e in ext), "angle": angle_deg,
+             "gap": None, "moves": moves}
+    pick_h, pick_v = entry["engine_pick_hv"]
+    h_cands, v_cands = entry["h_cands"], entry["v_cands"]
+    if want == "horizontal":
+        h_cand = swept
+        v_cand = v_cands[pick_v] if pick_v < len(v_cands) else None
+    else:
+        v_cand = swept
+        h_cand = h_cands[pick_h] if pick_h < len(h_cands) else None
+
+    m, n = _SESSION["m"], _SESSION["n"]
+    expected = 4 * m * n
+    strands, info = copy.deepcopy(entry["checkpoint"])
+    crossings = NX.apply_solution(strands, info, entry["level"], m, n,
+                                  _SESSION["hand"], h_cand, v_cand)
+    row = describe(_synth_result(entry, h_cand or {}, v_cand or {}),
+                   [dict(s) for s in strands], entry["level"], entry["k"],
+                   expected, (2 * m, 2 * n))
+    return json.dumps({
+        "level": entry["level"], "band": want, "unavailable": False,
+        "ext": [int(e) for e in ext], "angle": angle_deg,
+        "crossings": crossings, "row": row,
+        "strands": _stage_strands(NX._snapshot_json(strands)),
+    }, separators=(",", ":"))
 
 
 def select_solution(level, index, healthy_only=False, cursor=None):
