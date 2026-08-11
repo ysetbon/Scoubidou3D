@@ -568,7 +568,11 @@ export function ContinuationLab() {
   const [ranKey, setRanKey] = useState<string | null>(null);
   const [solutions, setSolutions] = useState<Record<number, SolutionMeta>>({});
   const [semi, setSemi] = useState<Record<number, SemiMeta>>({});
-  const [trace, setTrace] = useState<TracePayload | null>(null);
+  // One trace per level and band, kept so that collapsing a drawer and opening
+  // it again does not re-run a search that takes as long as the level did.
+  const [traces, setTraces] = useState<Record<string, TracePayload>>({});
+  const [traceFailed, setTraceFailed] = useState<Record<string, string>>({});
+  const [traceBand, setTraceBand] = useState<Record<number, "h" | "v">>({});
   const [semiMode, setSemiMode] = useState<Record<number, boolean>>({});
   const [browsingLevel, setBrowsingLevel] = useState<number | null>(null);
   const [savedCount, setSavedCount] = useState(0);
@@ -648,12 +652,15 @@ export function ContinuationLab() {
       }
       if (message.type === "trace-ready") {
         setBrowsingLevel(null);
+        const key = `${message.level}:${message.band}`;
         if (message.unavailable) {
           setStatus(`L${message.level}: ${message.reason}`);
-          setTrace(null);
+          setTraceFailed(current => ({
+            ...current, [key]: message.reason || "This band cannot be traced.",
+          }));
           return;
         }
-        setTrace(message as TracePayload);
+        setTraces(current => ({ ...current, [key]: message as TracePayload }));
         setStatus(`L${message.level} ${message.band} band traced — nothing skipped.`);
         return;
       }
@@ -739,9 +746,13 @@ export function ContinuationLab() {
           }
           setSolutions(meta);
           // A new run invalidates every near-miss list: they index into the
-          // candidate lists of the session that has just been replaced.
+          // candidate lists of the session that has just been replaced. The
+          // traces go with them -- same reason, same session.
           setSemi({});
           setSemiMode({});
+          setTraces({});
+          setTraceFailed({});
+          setTraceBand({});
           setProgressFrame(null);
           setEngineError(null);
           setStatus(`Exact calculation complete · ${message.result.seconds}s`);
@@ -893,12 +904,31 @@ export function ContinuationLab() {
 
   // Replays the level and sweeps it twice over, so it is only ever asked for
   // by this button -- never as part of a generate.
-  const openTrace = (level: number, band: "h" | "v") => {
+  const requestTrace = (level: number, band: "h" | "v") => {
+    const key = `${level}:${band}`;
+    if (traces[key] || traceFailed[key]) return;
     setBrowsingLevel(level);
     setStatus(`Tracing the L${level} ${band === "h" ? "horizontal" : "vertical"} band — every combo against every angle…`);
     ensureWorker().postMessage({
       type: "trace", id: activeIdRef.current, level, band,
     });
+  };
+
+  // The drawer is per level, and its open state is the band it is showing.
+  // Closing it keeps whatever was traced, so reopening costs nothing.
+  const toggleTrace = (level: number) => {
+    setTraceBand(current => {
+      const next = { ...current };
+      if (next[level]) { delete next[level]; return next; }
+      next[level] = "v";
+      return next;
+    });
+    if (!traceBand[level]) requestTrace(level, "v");
+  };
+
+  const showBand = (level: number, band: "h" | "v") => {
+    setTraceBand(current => ({ ...current, [level]: band }));
+    requestTrace(level, band);
   };
 
   const saveSolution = (stage: Stage) => {
@@ -1170,7 +1200,7 @@ export function ContinuationLab() {
                 const row = stage.level ? result.rows[stage.level - 1] : null;
                 const compact = !fullSizeLevels.has(stage.level);
                 return (
-                  <article className={`diagram-card ${compact ? "is-compact" : ""}`} key={`${result.m}-${result.n}-${result.ks.join("-")}-${stage.level}`}>
+                  <article className={`diagram-card ${compact ? "is-compact" : ""} ${traceBand[stage.level] ? "is-tracing" : ""}`} key={`${result.m}-${result.n}-${result.ks.join("-")}-${stage.level}`}>
                     <div className="card-head">
                       <div className="level-title"><strong>{stage.level === 0 ? "L₀" : `L${stage.level}`}</strong><span>{stage.label}</span></div>
                       <div className="card-actions">
@@ -1292,11 +1322,14 @@ export function ContinuationLab() {
                                 title="Save this closed ring for rating — goes to /mxn/rate/"
                                 aria-label={`Save level ${stage.level} solution to the dataset`}>⭐</button>
                               {semiButton}
-                              <button className="trace-toggle" type="button"
-                                onClick={() => openTrace(stage.level, "v")}
+                              <button className={`trace-toggle ${traceBand[stage.level] ? "is-on" : ""}`}
+                                type="button"
+                                onClick={() => toggleTrace(stage.level)}
                                 disabled={busyHere}
+                                aria-expanded={Boolean(traceBand[stage.level])}
+                                aria-controls={`trace-drawer-${stage.level}`}
                                 title="Trace: every combo against every angle, including the ones the search never tries"
-                                aria-label={`Trace the search for level ${stage.level}`}>◎</button>
+                                aria-label={`${traceBand[stage.level] ? "Hide" : "Show"} the trace for level ${stage.level}`}>◎</button>
                             </span>
                           );
                         })()}
@@ -1305,7 +1338,8 @@ export function ContinuationLab() {
                         </button>
                       </div>
                     </div>
-                    <div id={`level-panel-${stage.level}`}>
+                    <div id={`level-panel-${stage.level}`} className="level-body">
+                      <div className="level-main">
                       <div className="canvas-wrap exact-canvas"><ExactCanvas stage={stage} bounds={bounds} /><span className="canvas-corner">{row ? `${row.state} · ${row.healthy ? "WEAVE" : "NOT A WEAVE"}` : "starting stitch"}</span></div>
                       <div className="card-foot exact-metrics">
                         <div className="metric"><span>suffixes</span><strong>{suffixLabel(stage.level)}</strong></div>
@@ -1321,14 +1355,45 @@ export function ContinuationLab() {
                         <span><b>broken</b>{row.broken}</span>
                         <em>{row.applied.length ? row.applied.join(" · ") : "k-based groups"}</em>
                       </div>}
+                      </div>
+                      {/* The drawer sits in flow beside the diagram, and the
+                          card it belongs to spans the whole row while it is
+                          open. Nothing overlaps a neighbouring level: the grid
+                          reflows the later cards down instead. */}
+                      {(() => {
+                        const band = traceBand[stage.level];
+                        if (!band) return null;
+                        const key = `${stage.level}:${band}`;
+                        const payload = traces[key];
+                        const failed = traceFailed[key];
+                        return (
+                          <aside className="trace-drawer" id={`trace-drawer-${stage.level}`}>
+                            {payload ? (
+                              <TracePanel data={payload}
+                                onClose={() => toggleTrace(stage.level)}
+                                onBand={b => showBand(stage.level, b)} />
+                            ) : (
+                              <div className="trace-pending">
+                                <strong>Trace · L{stage.level} · {band} band</strong>
+                                <p>{failed ?? "Replaying this level and sweeping every combo against every angle…"}</p>
+                                <div className="trace-pending-actions">
+                                  {(["h", "v"] as const).map(b => (
+                                    <button key={b} type="button" aria-pressed={band === b}
+                                      onClick={() => showBand(stage.level, b)}>{b.toUpperCase()}</button>
+                                  ))}
+                                  <button type="button" onClick={() => toggleTrace(stage.level)}>Close</button>
+                                </div>
+                              </div>
+                            )}
+                          </aside>
+                        );
+                      })()}
                     </div>
                   </article>
                 );
               })}
             </div>
           )}
-
-          {trace && <TracePanel data={trace} onClose={() => setTrace(null)} />}
 
         </div>
       </section>

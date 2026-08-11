@@ -354,6 +354,10 @@ textarea {
   .controls { padding: 22px clamp(20px, 7vw, 70px); }
   .sequence { grid-template-columns: 1fr; }
   .diagram-card:first-child { grid-column: auto; }
+  /* One column already: the drawer stacks under its own diagram, still inside
+     its own card, so it cannot reach the level below. */
+  .diagram-card.is-tracing .level-body { grid-template-columns: 1fr; }
+  .trace-drawer { border-left: 0; border-top: 1px solid var(--line); }
   .sheet-stage { padding: 18px; }
   .method-grid { grid-template-columns: 1fr 1fr; }
   .method-step:nth-child(3) { border-left: 0; border-top: 1px solid #56544d; }
@@ -390,10 +394,31 @@ textarea {
   line-height: 1;
 }
 
+/* An open trace takes the whole grid row, so the levels after it move down
+   rather than sitting beside a panel that is three times their height. */
+.diagram-card.is-tracing { grid-column: 1 / -1; }
+.level-body { display: grid; grid-template-columns: minmax(0, 1fr); }
+.diagram-card.is-tracing .level-body {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+  align-items: start;
+}
+.level-main { min-width: 0; }
+.trace-drawer { min-width: 0; border-left: 1px solid var(--line); }
+.trace-pending { padding: 18px 16px; }
+.trace-pending strong { font: 700 12px/1 monospace; text-transform: uppercase; }
+.trace-pending p { margin: 10px 0 14px; color: var(--muted); font-size: 13px; max-width: 44ch; }
+.trace-pending-actions { display: flex; gap: 8px; }
+.trace-pending-actions button {
+  font: 700 11px/1 monospace; padding: 6px 10px;
+  border: 1px solid var(--rule, #c8c2b4); background: #fff; cursor: pointer;
+}
+.trace-pending-actions button[aria-pressed="true"] { background: var(--ink); color: var(--acid); }
+.trace-toggle.is-on { background: var(--ink); color: var(--acid); }
+
 .trace-panel {
-  margin: 18px 0 0;
+  margin: 0;
   padding: 14px 16px 16px;
-  border: 1px solid var(--rule, #c8c2b4);
+  border: 0;
   background: #fbf9f3;
 }
 
