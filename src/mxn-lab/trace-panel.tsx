@@ -216,7 +216,7 @@ export function TracePanel({ data, onClose, onBand }: {
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return undefined;
-    const measure = () => setWidth(Math.max(320, Math.min(PANEL_W, el.clientWidth)));
+    const measure = () => setWidth(Math.max(260, Math.min(PANEL_W, el.clientWidth)));
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
