@@ -1612,8 +1612,13 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
                     (align_v, orders[1], windows[1], force[1], "V")):
                 # On a square stitch V is H rotated by 90 degrees. Search H
                 # optimally, then solve V at that exact same extension tuple.
+                shared_pin = False
                 if label == "V" and share_square_extensions and results:
                     pin = tuple(results[0].get("pair_extensions") or ())
+                    # A shared pin is a preference; a pin passed in through
+                    # `force`, or a bounded seed pass, is a contract whose
+                    # callers rely on None to mean "move to the next seed".
+                    shared_pin = bool(pin) and bound is None
                     if not pin:
                         # k=0 preserves the continuation and aligns nothing, so
                         # H has no combo to share. That is not a failed search:
@@ -1624,8 +1629,24 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
                 if pin is not None:
                     res, sett = _pinned_search(align, window, pin, pairs, verbose, label)
                     if res is None:
-                        return None
-                elif bound is not None:
+                        if not shared_pin:
+                            return None
+                        # H's optimum is not a valid V configuration. The square
+                        # shortcut expects the two to coincide -- V is H rotated
+                        # a quarter turn -- but that is where the optimum is
+                        # LOOKED FOR, not a property every size delivers:
+                        # measured on 3x3 k=3 under Pyodide's numpy, where the
+                        # pinned V search comes back empty and this attempt used
+                        # to collapse to None (and the caller crashed on it).
+                        # Fall back to V's own full search; `_mirror_extensions`
+                        # below still re-mirrors the bands whenever a combo
+                        # valid on both exists and costs no crossings.
+                        if verbose:
+                            print(f"    {label}: H's {pin} is never a valid "
+                                  f"configuration here -- unpinning, V searches "
+                                  f"its own grid")
+                        pin = None
+                if pin is None and bound is not None:
                     b_ceiling, b_step = bound
                     res = align(b_ceiling, b_step, window,
                                 make_grab(label, b_ceiling, b_step))
@@ -1634,7 +1655,7 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
                     sett = {"ceiling": b_ceiling, "step": b_step, "pairs": pairs,
                             "combos": (b_ceiling // b_step + 1) ** pairs,
                             "attempts": 1, "pinned": False, "bounded": True}
-                else:
+                elif pin is None:
                     res, sett = _search_group(
                         lambda ceiling, step, _a=align, _w=window, _l=label:
                             _a(ceiling, step, _w, make_grab(_l, ceiling, step)),
@@ -1872,6 +1893,65 @@ def build_starting_stitch_json(m, n, hand, reference_strands=None):
     return _history_json(strands)
 
 
+def _build_level_one_max_k_special(m, n, k, hand, direction, verbose=True):
+    """Level 1 for k == m+n with m != n: the legacy generator's geometry, verbatim.
+
+    The hand engines lay this case out with a bespoke straight/side arrangement
+    computed in grid coordinates, and their alignment functions then preserve it
+    untouched (`_is_max_k_special_case` -> preserve_continuation). The generic
+    paired constructor cannot reproduce that layout, and with the alignment
+    short-circuited nothing would ever finish its raw stubs -- so this case
+    takes `generate_json`'s strands as-is, which is exactly what the desktop
+    app exports for it.
+    """
+    import contextlib
+    import io
+
+    engine = get_engine(hand)
+    if verbose:
+        data = json.loads(engine.generate_json(m, n, k=k, direction=direction))
+    else:
+        with contextlib.redirect_stdout(io.StringIO()):
+            data = json.loads(engine.generate_json(m, n, k=k, direction=direction))
+    strands = _get_active_strands(data)
+    # The stage-0 snapshot, recoloured so it shares this run's per-set palette.
+    starting_json = build_starting_stitch_json(m, n, hand,
+                                               reference_strands=strands)
+
+    real_to_virtual, virtual_to_real = _identity_relabel(hand, m, n)
+    eff_dir = engine._get_effective_direction_for_max_k_special(m, n, k, direction)
+
+    new_strands = [s for s in strands
+                   if s.get("type") == "AttachedStrand"
+                   and s.get("layer_name", "").endswith(("_4", "_5"))]
+    new_masks = [s for s in strands
+                 if s.get("type") == "MaskedStrand"
+                 and _is_level_mask(s.get("layer_name", ""), 4, 5)]
+
+    arms_by_name = {s["layer_name"]: s for s in new_strands}
+
+    def child_order(order_23):
+        names = [_bump_suffix(name, 2, 3, 4, 5) for name in order_23]
+        return [name for name in names if name in arms_by_name]
+
+    info = {
+        "level": 1,
+        "k": k,
+        "k_prev": None,
+        "effective_direction": eff_dir,
+        "real_to_virtual": real_to_virtual,
+        "virtual_to_real": virtual_to_real,
+        "new_strands": new_strands,
+        "new_masks": new_masks,
+        "note": (f"level 1 k={k} is the max-k special case: geometry comes from "
+                 f"the legacy generator's bespoke layout, which the alignment "
+                 f"preserves as-is"),
+        "vertical_order": child_order(engine.get_vertical_order_k(m, n, k, eff_dir)),
+        "horizontal_order": child_order(engine.get_horizontal_order_k(m, n, k, eff_dir)),
+    }
+    return starting_json, strands, info
+
+
 def build_level_one(m, n, k, hand="lh", direction="cw",
                     retract=RETRACT, tail_offset=TAIL_OFFSET, verbose=True):
     """Build L0, then grow L1 from L0's purple crossing anchors.
@@ -1881,10 +1961,18 @@ def build_level_one(m, n, k, hand="lh", direction="cw",
     has the same meaning at every depth: the source arm's own outermost
     crossing with the other band.
 
+    The max-k special case (k == m+n with m != n) is the exception: its layout
+    only exists in the legacy generators and the engines preserve it unaligned,
+    so it is taken from them verbatim -- see
+    :func:`_build_level_one_max_k_special`.
+
     Returns ``(starting_json, strands, info)``. ``starting_json`` is the
     untouched L0 snapshot; ``strands`` contains L0 retracted to its crossing
     anchors plus the new L1 arms and masks.
     """
+    if int(k) == m + n and m != n:
+        return _build_level_one_max_k_special(m, n, int(k), hand, direction,
+                                              verbose=verbose)
     # Avoid the legacy generator's full L1 search when only L0 is needed.
     # The stretch generator already supplies the complete starting geometry;
     # new continuation children inherit their parent colours.
