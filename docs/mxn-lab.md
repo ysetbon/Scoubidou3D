@@ -320,6 +320,37 @@ Two things keep the card honest about which ring it is drawing:
   `solution` or `semi-solution` reply clears the override on arrival: the
   browser has just put its own ring on the card, so the override is over.
 
+### Loading a run instead of computing it
+
+Everything above is computed in the reader's browser, and everything above is
+the same for every reader: one engine commit, `random.seed(0)`, one set of
+parameters, one answer. So it need only be computed once, anywhere.
+
+[`/mxn/gpu/`](mxn-farm.md) does that ahead of time over a whole range of sizes
+and stores each answer on the same Cloudflare Worker the ⭐ dataset uses. When a
+Worker URL is configured, `Run` asks the shelf before it starts the engine, and
+opening a level widget asks for that level's census before it asks for a replay.
+Measured on `2×2 [1,2,2]`: 27 seconds of engine time becomes about 1.2 seconds
+of fetch, with Pyodide never loaded — and the cards land with `1 / 10,189`
+rather than `1 / 2+`, because the farm finishes a count this page caps.
+
+A cache hit brings no *session* with it: the geometry is real but Pyodide has
+never seen this size, so the solution browser, the ⚑ sweeps and an uncached
+census all warm one first (`withSession`). The warm is an ordinary generate with
+the ordinary busy sheet; what changed is that the wait now sits between a reader
+and their second question rather than between them and the first picture. It
+adopts the solution meta and deliberately leaves the drawing alone — it is the
+same computation, so replacing identical geometry would only make every card
+flicker. Nothing warms the engine that a reader did not press: the widget's
+woven preview of a traced cell is asked for as the *cursor* moves, so it
+declines instead, and says so.
+
+With no cache configured, or one that is unreachable, or `?cache=` with nothing
+after it, the page computes exactly as it always has. That is the point of the
+fallback and it is worth keeping true: `npm run qa:cache` asserts both halves.
+
+`docs/mxn-farm.md` has the key layout, the queue, the transport and the checks.
+
 ### The dataset API
 
 ⭐ and 🚩 always write to `localStorage`. If a Worker URL and admin token are set in
@@ -328,13 +359,20 @@ the sidebar's *dataset API* panel, it **also** POSTs to
 optional. The local copy is never replaced by the remote one: a bad token or a
 dropped connection must not lose a solution the star just claimed to save.
 
+That same panel's URL is what the result cache reads from, and its **Publish
+run** button stores the run on screen plus every census already open. One
+Worker, one token, one field.
+
 The token lives in that browser's `localStorage` and nowhere else. It is a
 Worker secret on the other end (`wrangler secret put ADMIN_TOKEN`), never in
 this repository.
 
-`worker-api/README.md` has the five setup commands. **That Worker has never been
-run** — it was written where Cloudflare was unreachable, so it is reviewed code
-and its first deploy is also its first test.
+`worker-api/README.md` has the five setup commands. The dataset half of that Worker was written where Cloudflare was unreachable and
+shipped as reviewed rather than exercised code. It is exercised now:
+`cd worker-api && npm test` runs the real `fetch` handler against real SQLite
+behind a D1 shim, covering every route including the ones that predate the cache.
+What is still untested is Cloudflare itself — the first `wrangler deploy` remains
+the first time D1 and R2 answer rather than a shim.
 
 ### Rating what you saved, at /mxn/rate/
 
@@ -477,9 +515,23 @@ standing in. See `mocks/README.md`.
 
 ### Cache keys
 
-The `trace-plan-v15` cache key appears in both the worker URL
-(`weave-studio.tsx`) and the Python fetch URL (`exact-worker.js`). Bump both
-together when the engine files change, or returning readers run stale geometry.
+There are two of them, and they are bumped for the same reason and never
+together.
+
+**`trace-plan-v17`**, the engine-file key, appears in five places: the worker URL
+(`weave-studio.tsx`), the Python fetch URL and the counting-hand URL
+(`exact-worker.js`), the counting hand's own fetch (`count-worker.js`), the farm
+hand's fetch (`farm-worker.js`) and the URL the farm page spawns it with
+(`farm.tsx`). Bump them together when the engine files change, or returning
+readers run stale geometry — and a farm that quietly ran an older copy would fill
+the shelf with answers the lab then disagrees with.
+
+**`CACHE_VERSION`** in `src/mxn-lab/cache.ts` is the shelf the precomputed
+answers sit on. Bump it when the engine changes what it *answers*, which is not
+the same event: a fix to the counting walk changes both, a change to a docstring
+changes neither, and a page holding last month's geometry under this month's key
+is worse off than one that computed it. Nothing on the old shelf is deleted; it
+simply stops being looked at.
 
 ## The vectorised angle scan, at /mxn/fast/
 

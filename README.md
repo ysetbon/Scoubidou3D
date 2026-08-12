@@ -388,6 +388,8 @@ exactly like the original editor.
 | [docs/box-stitch-levels](docs/box-stitch-levels/) | the box stitch round by round, and the round stitch |
 | [docs/box-stitch-mxn](docs/box-stitch-mxn/) | every m×n box stitch, 1×1 to 8×8, drawn in both hands |
 | [docs/twist-stitch](docs/twist-stitch/) | the twist stitch, its screw group, and the turn's derivation |
+| [docs/mxn-lab.md](docs/mxn-lab.md) | the MXN Continuation Lab at `/mxn/`: what was copied, the trace census, the level widget |
+| [docs/mxn-farm.md](docs/mxn-farm.md) | the compute farm at `/mxn/gpu/`: precomputing the lab onto Cloudflare so it loads instead of computing |
 | [docs/panel-mocks](docs/panel-mocks/) | the three panel layouts, and which one shipped |
 
 ## Roadmap / ideas

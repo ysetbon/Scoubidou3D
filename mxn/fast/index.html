@@ -36,8 +36,13 @@
        data-engine="fast" is the only difference, and it switches the Python
        angle scan to the vectorised path. Kept as a second page rather than a
        toggle so the two can be opened side by side and timed against each
-       other on identical input. -->
-  <div id="lab" data-engine="fast"></div>
+       other on identical input.
+
+       The cache is keyed the same either way: the two paths are measured
+       row-for-row identical, so splitting one answer across two shelves would
+       be a cost with nothing bought. Set data-cache here to whatever
+       mxn/index.html has, or leave both empty. -->
+  <div id="lab" data-engine="fast" data-cache=""></div>
   <script type="module" src="../../src/mxn-lab/main.tsx"></script>
 </body>
 </html>

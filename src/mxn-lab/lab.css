@@ -211,6 +211,24 @@ textarea {
 }
 
 .advanced-settings,
+/* Where the run on screen came from. Small and factual: the interesting case
+   is the one where the cards arrived before the engine did, and the reader is
+   entitled to know that the page did not compute what it is showing them. */
+.cache-chip {
+  margin-top: 12px; padding: 8px 10px; border: 1px solid var(--line);
+  border-left-width: 3px; background: var(--card);
+  display: grid; gap: 3px;
+}
+.cache-chip b {
+  font: 800 9px/1.3 monospace; text-transform: uppercase; letter-spacing: .1em;
+}
+.cache-chip span { font: 600 10px/1.45 monospace; color: var(--muted); }
+.cache-chip.is-hit { border-left-color: var(--blue); }
+.cache-chip.is-hit b { color: var(--blue); }
+.cache-chip.is-looking { border-left-color: var(--muted); }
+.cache-chip.is-miss { border-left-color: var(--line); }
+.cache-chip.is-miss b { color: var(--muted); }
+
 .api-settings { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
 .advanced-settings summary,
 .api-settings summary {

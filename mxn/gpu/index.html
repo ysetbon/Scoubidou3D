@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MXN compute farm · Scoubidou3D</title>
+    <meta name="description" content="Precompute every MXN continuation run and level census over a range of sizes, and store them on Cloudflare." />
+    <!-- An operator's console over a token-gated Worker: nothing here should be
+         indexed, and there is nothing on it for a reader without the token. -->
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" href="../../favicon.ico" />
+    <style>html { background: #14161c; }</style>
+  </head>
+  <body>
+    <!-- data-cache is the site-wide default Worker URL, and it is empty here on
+         purpose: this repository must not carry a deployment's address, and the
+         operator's own browser reads theirs from localStorage anyway. Fill it in
+         (in this file and in mxn/index.html) to make the fast path work for a
+         reader who has configured nothing. -->
+    <div id="farm" data-cache=""></div>
+    <script type="module" src="../../src/mxn-farm/main.tsx"></script>
+  </body>
+</html>

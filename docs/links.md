@@ -13,6 +13,25 @@ change lands there. Paths are relative to the base above.
 | The studio | [`/app/`](https://ysetbon.github.io/Scoubidou3D/app/) | The editor itself — orbit, edit, weave, save |
 | Level gallery | [`/levels/`](https://ysetbon.github.io/Scoubidou3D/levels/) | Every level of every m×n face, rendered. Opens on 1×5 |
 
+## The MXN Continuation Lab and its tools
+
+One engine, five pages over it. The first is the one to hand out; the rest are
+tools, and the last two are the operator's own — both `noindex`, both useless
+without the Worker token.
+
+| Page | Link | What it is |
+| --- | --- | --- |
+| The lab | [`/mxn/`](https://ysetbon.github.io/Scoubidou3D/mxn/) | m, n and one k per level → every Lᵥ continuation ring, with its audit numbers and its level widget |
+| Fast engine | [`/mxn/fast/`](https://ysetbon.github.io/Scoubidou3D/mxn/fast/) | the same component and the same build with the vectorised angle scan on — an A/B that compares the scan and nothing else |
+| Categoriser | [`/mxn/rate/`](https://ysetbon.github.io/Scoubidou3D/mxn/rate/) | score a saved ring 0–100, beside the Lᵥ₋₁ ring it was built on |
+| Near-misses | [`/mxn/semi/`](https://ysetbon.github.io/Scoubidou3D/mxn/semi/) | the same queue over rings that fell short, where one band is being blamed |
+| Compute farm | [`/mxn/gpu/`](https://ysetbon.github.io/Scoubidou3D/mxn/gpu/) | precompute a whole range of sizes onto Cloudflare so the lab loads instead of computing — [docs/mxn-farm.md](mxn-farm.md) |
+
+The lab takes its parameters from the URL, so a size that has been precomputed is
+one link: [`/mxn/?m=2&n=2&ks=1%202%202`](https://ysetbon.github.io/Scoubidou3D/mxn/?m=2&n=2&ks=1%202%202).
+`?cache=` overrides which Worker it reads from, and `?cache=` with nothing after
+it turns the cache off so the page computes what it would otherwise have read.
+
 ### Sections of the project site
 
 - [`/#samples`](https://ysetbon.github.io/Scoubidou3D/#samples) — the thirteen built-in scenes, each card linking straight into the studio

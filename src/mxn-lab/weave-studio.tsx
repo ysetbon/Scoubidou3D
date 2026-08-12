@@ -3,10 +3,19 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import {
+  CACHE_TOKEN_KEY, CACHE_URL_KEY, CACHE_VERSION,
+  createCache, readSetting, writeSetting,
+  type RunDescriptor, type TraceArtifact,
+} from "./cache";
+import {
   allBounds, drawExactStage,
   type Bounds, type Stage, type Strand,
 } from "./exact-draw";
-import { traceKey } from "./trace-band";
+import {
+  DEFAULT_COMBO_BUDGET, ENGINE_COMBO_LIMIT,
+  autoStep, comboCount, worstCase, worstPairs,
+} from "./search-cost";
+import { bandKey, traceKey } from "./trace-band";
 import {
   TracePanel, TraceSweep, weaveKey,
   type TracePayload, type TracePlan, type TraceProgress, type TraceWeave,
@@ -16,6 +25,9 @@ import {
 // stay exported from here because /mxn/rate/ already imports them from here.
 export { allBounds, drawExactStage };
 export type { Bounds, Stage, Strand };
+// Likewise the search-cost arithmetic, which /mxn/gpu/ needs without the lab
+// attached to it: mocks/widgets.html already imports these four from here.
+export { autoStep, comboCount, worstCase, worstPairs };
 
 // Upstream the lab sits at the root of its own host, so its runtime assets were
 // plain "/exact-worker.js" and "/extension-origin-l0.svg". Here it is one page
@@ -31,21 +43,22 @@ const LAB_BASE = `${import.meta.env.BASE_URL}mxn/`;
 // compares the scan and nothing else.
 const FAST_ENGINE = document.getElementById("lab")?.dataset.engine === "fast";
 
+// Where precomputed answers live, if anywhere. See cache.ts.
+//
+// `data-cache` on #lab is the site-wide default and is what makes the fast path
+// work for a reader who has configured nothing — it is empty in this repository
+// because a deployment's address does not belong in it. `?cache=` overrides
+// everything so a URL can be tried without touching anyone's storage, and
+// `?cache=` with nothing after it turns the cache off, which is how you check
+// that the page still computes what it claims to be reading.
+const CACHE_ATTR = document.getElementById("lab")?.dataset.cache?.trim() ?? "";
+const CACHE_PARAM = new URLSearchParams(window.location.search).get("cache");
+
 const COMMIT = "984d9ed";
 const PRESETS = ["1", "1 1 -1", "1 1 -1 -1 -1 -1 -1", "1 1 1", "1 -1 1 -1", "-1 -1"];
 
-// Mirrors of the engine's own search constants, used only to show the cost of a
-// run before it starts. Keep in step with MAX_PAIR_EXTENSION, COMBO_BUDGET and
-// _get_alignment_combo_limit in the Python.
-const MAX_PAIR_EXTENSION = 200;
-const DEFAULT_COMBO_BUDGET = 400_000;
-const ENGINE_COMBO_LIMIT = 10_000_000;
 const EXT_STEP_CHOICES = ["auto", "20", "10", "5"] as const;
 type ExtStep = (typeof EXT_STEP_CHOICES)[number];
-// The ladder pick_extension_step() walks, finest first. 5 is offered as an
-// explicit choice above but is deliberately not in the auto ladder, exactly as
-// in the Python — adding it there changes what every existing stitch picks.
-const EXT_STEPS = [10, 20, 25, 40, 50, 100];
 
 // The busy indicator is a contact sheet of the candidates the engine actually
 // produced. Tiles are drawn at twice their 72px slot so they stay crisp on a
@@ -58,30 +71,11 @@ const TILE_PIXELS = 144;
 // kilobytes rather than unbounded.
 const TRACE_WEAVE_CACHE = 40;
 
-// Same formula as pick_extension_step(): the grid per pair is 0..ext_max in
-// `step` increments, and pairs are independent.
-export function comboCount(step: number, pairs: number, extMax = MAX_PAIR_EXTENSION) {
-  return Math.pow(Math.floor(extMax / step) + 1, Math.max(pairs, 1));
-}
-
-export function autoStep(pairs: number, budget: number) {
-  for (const step of EXT_STEPS) {
-    if (comboCount(step, pairs) <= budget) return step;
-  }
-  return EXT_STEPS[EXT_STEPS.length - 1];
-}
-
-// A level's two search groups hold 2m and 2n arms, paired outside-in, so the
-// worst group is the one with more pairs.
 // k=0 preserves the continuation and has exactly one solution by construction.
 // Anything else can be paged through, even if the level was solved from a seed
 // and has to enumerate on the first click.
 function browsable(meta: { enumerated: string; reason?: string | null }) {
   return meta.enumerated === "full" || !(meta.reason ?? "").startsWith("k=0");
-}
-
-export function worstPairs(m: number, n: number) {
-  return Math.max(Math.ceil((2 * m) / 2), Math.ceil((2 * n) / 2), 1);
 }
 
 // How a near-miss list can be ordered. Four named buttons rather than one
@@ -177,27 +171,12 @@ type SavedSolution = {
 };
 
 const SAVE_KEY = "mxn-lab-solutions";
-const API_KEY = "mxn-lab-api";
-const TOKEN_KEY = "mxn-lab-token";
-
 // The dataset API is optional. Without it the star still works, locally — the
-// lab is a static page and must keep working with no backend at all.
-function readSetting(key: string) {
-  try {
-    return window.localStorage.getItem(key) || "";
-  } catch {
-    return "";
-  }
-}
-
-function writeSetting(key: string, value: string) {
-  try {
-    if (value) window.localStorage.setItem(key, value);
-    else window.localStorage.removeItem(key);
-  } catch {
-    /* private mode: the field simply will not persist */
-  }
-}
+// lab is a static page and must keep working with no backend at all. The same
+// two fields now also say where the result cache is, which is why the keys and
+// the guarded accessors live in cache.ts: /mxn/gpu/ writes them too.
+const API_KEY = CACHE_URL_KEY;
+const TOKEN_KEY = CACHE_TOKEN_KEY;
 
 // Same guarded shape as src/model/customSamples.ts: private mode and a full
 // quota both throw, and neither is worth losing the page over.
@@ -358,21 +337,6 @@ function CandidateSheet({ frame }: { frame: ProgressFrame | null }) {
   );
 }
 
-/**
- * How much searching this run can possibly do.
- *
- * Every level searches both groups, and a group is the extension grid the
- * engine will walk: (ext_max / step + 1) choices per pair, pairs independent —
- * the same formula pick_extension_step() sizes a run with. It is a ceiling,
- * not a forecast: the search stops a group early when it has what it needs, so
- * the run finishes at or before this. That is the point of showing it. A bar
- * against a number that can be beaten is a promise the engine can keep.
- */
-export function worstCase(m: number, n: number, levels: number, step: number) {
-  const perLevel = comboCount(step, m) + comboCount(step, n);
-  return { perLevel, groups: levels * 2, total: perLevel * levels };
-}
-
 /** Which group of the run a frame belongs to, counting from one. */
 function groupIndex(frame: ProgressFrame) {
   const vertical = frame.phase.toLowerCase().startsWith("v");
@@ -529,10 +493,20 @@ export function ContinuationLab() {
     });
   };
   const [browsingLevel, setBrowsingLevel] = useState<number | null>(null);
-  const [savedCount, setSavedCount] = useState(0);
+  const [savedCount, setSavedCount] = useState(() => readSaved().length);
   const [healthyOnly, setHealthyOnly] = useState(false);
-  const [apiUrl, setApiUrl] = useState("");
-  const [apiToken, setApiToken] = useState("");
+  // Read at first render rather than in an effect: the deep-link handler below
+  // dispatches a run on mount, and a URL that only arrives on the second render
+  // would send that run past the cache and into the engine.
+  const [apiUrl, setApiUrl] = useState(() => readSetting(API_KEY));
+  const [apiToken, setApiToken] = useState(() => readSetting(TOKEN_KEY));
+  // What the last Run found on the shelf. "off" is the state of a page with no
+  // cache configured, which is every page until someone configures one.
+  const [cacheState, setCacheState] =
+    useState<"off" | "looking" | "hit" | "miss">("off");
+  const [cachedRun, setCachedRun] =
+    useState<{ computedAt: string; seconds: number } | null>(null);
+  const [publishing, setPublishing] = useState(false);
   // The viewport is derived from the LAST stage, so once a browsed level
   // changes geometry every card would rescale on each arrow click. Freeze it
   // for the lifetime of one generate.
@@ -541,6 +515,22 @@ export function ContinuationLab() {
   const busyRef = useRef(false);
   const pendingRef = useRef<Params | null>(null);
   const activeIdRef = useRef(0);
+  // Which parameter set the worker's Python session is holding, if any.
+  //
+  // A cached run paints the cards with nothing behind them: the geometry is
+  // real and the numbers are real, but Pyodide has never seen this size. Every
+  // control that reads the session — the solution browser, the ⚑ sweeps, an
+  // uncached census, a woven trace cell — therefore has to warm one first, and
+  // says so while it does. Warming is a full generate; it is just no longer the
+  // thing standing between a reader and the first picture.
+  const sessionRef = useRef<string | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
+  /** The generate that is only warming a session, not producing what is shown. */
+  const warmIdRef = useRef<number | null>(null);
+  /** What to do once it lands. One deep: a second click replaces the first. */
+  const afterWarmRef = useRef<(() => void) | null>(null);
+  const lastParamsRef = useRef<Params | null>(null);
+  const ranKeyRef = useRef<string | null>(null);
   // Levels whose exact solution count is still to be firmed up, drained one
   // request at a time so a click never queues behind the whole product.
   const countQueueRef = useRef<number[]>([]);
@@ -572,6 +562,43 @@ export function ContinuationLab() {
   const bounds = useMemo(
     () => result ? (boundsRef.current ?? allBounds(result.stages)) : null,
     [result]);
+
+  // One client per (url, token). Held on a ref as well, because the run and
+  // trace paths are async and must use the client the page has now rather than
+  // the one captured when the click happened.
+  const cache = useMemo(() => createCache({
+    base: CACHE_PARAM ?? (apiUrl || CACHE_ATTR),
+    token: apiToken,
+    hostId: "lab",
+  }), [apiUrl, apiToken]);
+  const cacheRef = useRef(cache);
+  cacheRef.current = cache;
+
+  /** The parameters a cache entry is addressed by, from a dispatched run. */
+  const descriptorFor = (params: Params): RunDescriptor => ({
+    m: params.m, n: params.n, ks: [...params.ks],
+    hand: "lh", direction: "cw",
+    shortArms: params.preferShortArms,
+    step: params.extStep ?? "auto",
+    budget: params.comboBudget,
+  });
+
+  /** Everything a new run invalidates, minus the result itself. */
+  const clearDerived = () => {
+    setSemi({});
+    setSemiMode({});
+    setTraces({});
+    setTracePlans({});
+    setTraceProgress({});
+    setTraceFailed({});
+    traceFrameStore.set(null);
+    setTraceBand({});
+    setTraceWeaves({});
+    setTracedShown({});
+    setTracedRing({});
+    setCounting({});
+    setOpenWidgets(new Set());
+  };
 
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
@@ -771,19 +798,63 @@ export function ContinuationLab() {
       }
       if (message.type === "result") {
         if (message.id === activeIdRef.current) {
-          setFullSizeLevels(new Set());
-          setResult(message.result as ExactResult);
-          boundsRef.current = allBounds((message.result as ExactResult).stages);
-          const meta: Record<number, SolutionMeta> = {};
-          for (const entry of ((message.result as ExactResult).solutions ?? [])) {
-            meta[entry.level] = entry;
+          const payload = message.result as ExactResult;
+          const warming = warmIdRef.current === message.id;
+          warmIdRef.current = null;
+          // The session is now this parameter set's, whichever kind of generate
+          // just landed. Browsing, sweeping and tracing all read it.
+          sessionRef.current = ranKeyRef.current;
+          setSessionReady(true);
+
+          if (warming) {
+            // A warm behind cards that came from the cache. It is the same
+            // computation over the same inputs — `random.seed(0)`, one engine —
+            // so the geometry it produced is the geometry already on screen,
+            // and replacing it would only make every card flicker and throw
+            // away any traced cell a reader had pushed onto one.
+            setSolutions(current => {
+              const merged: Record<number, SolutionMeta> = {};
+              for (const entry of payload.solutions ?? []) {
+                const held = current[entry.level];
+                merged[entry.level] = {
+                  ...entry,
+                  // A count the cache already walked to the end is not made
+                  // less exact by a warm whose in-run counting stopped at its
+                  // own ceiling.
+                  count: held?.countExact ? held.count : entry.count,
+                  countExact: held?.countExact || entry.countExact,
+                  healthy: held?.countExact ? held.healthy : entry.healthy,
+                  index: held?.index ?? entry.index,
+                };
+              }
+              return merged;
+            });
+            setCounting({});
+            frameStore.set(null);
+            setEngineError(null);
+            setStatus("Engine warm — browsing, near-misses and uncached censuses are live");
+          } else {
+            setFullSizeLevels(new Set());
+            setResult(payload);
+            boundsRef.current = allBounds(payload.stages);
+            const meta: Record<number, SolutionMeta> = {};
+            for (const entry of (payload.solutions ?? [])) {
+              meta[entry.level] = entry;
+            }
+            setSolutions(meta);
+            // A new run invalidates every near-miss list: they index into the
+            // candidate lists of the session that has just been replaced.
+            clearDerived();
+            frameStore.set(null);
+            setEngineError(null);
+            setStatus(`Exact calculation complete · ${message.result.seconds}s`);
           }
-          setSolutions(meta);
+
           // Firm every count up front. The engine counts lazily — a browser
           // reading "2+" is paging a list whose end nobody has looked for —
           // so each browsable level's count is walked to exact, level by
           // level, starting now rather than on the first arrow press.
-          const toCount = ((message.result as ExactResult).solutions ?? [])
+          const toCount = (payload.solutions ?? [])
             .filter(entry => entry.level > 0 && browsable(entry) && !entry.countExact)
             .map(entry => entry.level);
           countQueueRef.current = toCount.slice(1);
@@ -792,30 +863,21 @@ export function ContinuationLab() {
               type: "count", id: message.id, level: toCount[0], budget: COUNT_ROUND,
             });
           }
-          // A new run invalidates every near-miss list: they index into the
-          // candidate lists of the session that has just been replaced.
-          setSemi({});
-          setSemiMode({});
-          setTraces({});
-          setTracePlans({});
-          setTraceProgress({});
-          setTraceFailed({});
-          traceFrameStore.set(null);
-          setTraceBand({});
-          setTraceWeaves({});
-          setTracedShown({});
-          setTracedRing({});
-          setCounting({});
-          setOpenWidgets(new Set());
-          frameStore.set(null);
-          setEngineError(null);
-          setStatus(`Exact calculation complete · ${message.result.seconds}s`);
         }
         busyRef.current = false;
         setBusy(false);
         const pending = pendingRef.current;
         pendingRef.current = null;
-        if (pending) dispatchRef.current(pending);
+        if (pending) {
+          // A new run replaces whatever was waiting on the warm: the action was
+          // about a parameter set that is no longer on screen.
+          afterWarmRef.current = null;
+          dispatchRef.current(pending);
+          return;
+        }
+        const then = afterWarmRef.current;
+        afterWarmRef.current = null;
+        if (then) then();
         return;
       }
       if (message.type === "error") {
@@ -823,8 +885,12 @@ export function ContinuationLab() {
           setEngineError(message.message || "The exact engine could not finish this case.");
           frameStore.set(null);
           setCounting({});
+          setBrowsingLevel(null);
           setStatus("Calculation stopped");
         }
+        warmIdRef.current = null;
+        // Whatever was queued behind a warm cannot run: there is no session.
+        afterWarmRef.current = null;
         busyRef.current = false;
         setBusy(false);
         const pending = pendingRef.current;
@@ -853,24 +919,75 @@ export function ContinuationLab() {
       setRunScale(worstCase(
         params.m, params.n, params.ks.length,
         params.extStep ?? autoStep(worstPairs(params.m, params.n), params.comboBudget)));
-      setStatus("Loading the exact MXN engine…");
       setRanKey(params.key);
+      ranKeyRef.current = params.key;
+      lastParamsRef.current = params;
+      sessionRef.current = null;
+      setSessionReady(false);
+      setCachedRun(null);
+      afterWarmRef.current = null;
+      warmIdRef.current = null;
       const id = ++activeIdRef.current;
-      ensureWorker().postMessage({
-        type: "generate", id, m: params.m, n: params.n, ks: params.ks,
-        preferShortArms: params.preferShortArms,
-        extStep: params.extStep,
-        comboBudget: params.comboBudget,
+
+      const toEngine = () => {
+        setStatus("Loading the exact MXN engine…");
+        ensureWorker().postMessage({
+          type: "generate", id, m: params.m, n: params.n, ks: params.ks,
+          preferShortArms: params.preferShortArms,
+          extStep: params.extStep,
+          comboBudget: params.comboBudget,
+        });
+      };
+
+      // The shelf first. An entry is addressed by every parameter that decides
+      // the answer, so a hit is the same result this browser would have spent
+      // the next twenty seconds producing — with every level's solution count
+      // already walked to the end, which the browser's own run stops short of.
+      if (!cacheRef.current.readable) {
+        setCacheState("off");
+        toEngine();
+        return;
+      }
+      setCacheState("looking");
+      setStatus("Looking for a stored answer…");
+      cacheRef.current.getRun(descriptorFor(params)).then(artifact => {
+        if (id !== activeIdRef.current) return;   // a newer run owns the page
+        if (!artifact?.result) {
+          setCacheState("miss");
+          toEngine();
+          return;
+        }
+        const payload = artifact.result as ExactResult;
+        setCacheState("hit");
+        setCachedRun({ computedAt: artifact.computedAt, seconds: artifact.seconds });
+        setFullSizeLevels(new Set());
+        setResult(payload);
+        boundsRef.current = allBounds(payload.stages);
+        const meta: Record<number, SolutionMeta> = {};
+        for (const entry of (payload.solutions ?? [])) meta[entry.level] = entry;
+        setSolutions(meta);
+        clearDerived();
+        frameStore.set(null);
+        busyRef.current = false;
+        setBusy(false);
+        setStatus(`From the cache · computed ${artifact.computedAt.slice(0, 10)}`
+          + ` in ${artifact.seconds}s, served in one fetch`);
+        const queued = pendingRef.current;
+        pendingRef.current = null;
+        if (queued) dispatchRef.current(queued);
+      }).catch(error => {
+        if (id !== activeIdRef.current) return;
+        // A cache that is unreachable, misconfigured or serving nonsense must
+        // never be the reason the page stops working. It falls back to the only
+        // thing it ever had, which is doing the work here.
+        setCacheState("miss");
+        setStatus(`Cache unavailable (${error instanceof Error ? error.message : error}) — computing locally`);
+        toEngine();
       });
     };
   });
 
-  useEffect(() => {
-    setSavedCount(readSaved().length);
-    setApiUrl(readSetting(API_KEY));
-    setApiToken(readSetting(TOKEN_KEY));
-    return () => workerRef.current?.terminate();
-  }, []);
+  useEffect(() => () => workerRef.current?.terminate(), []);
 
   const runNow = () => {
     if (inputError || !ks.length) return;
@@ -891,9 +1008,157 @@ export function ContinuationLab() {
     activeIdRef.current += 1;
     busyRef.current = false;
     pendingRef.current = null;
+    // The session died with the runtime. Cards drawn from the cache stay on
+    // screen and stay true; what they lose is the ability to be browsed, which
+    // the next thing that needs it will warm again.
+    sessionRef.current = null;
+    warmIdRef.current = null;
+    afterWarmRef.current = null;
+    setSessionReady(false);
     setBusy(false);
+    setBrowsingLevel(null);
     frameStore.set(null);
     setStatus("Stopped · the engine reloads on the next run");
+  };
+
+  /**
+   * Put what this browser has just computed on the shelf.
+   *
+   * The farm at /mxn/gpu/ is the bulk producer, but a run done here is the same
+   * artifact, and a reader who has just waited twenty seconds for a size nobody
+   * had queued may as well be the last person who has to. Every census already
+   * open goes with it, since those are what the level widgets read.
+   *
+   * Deliberately a button rather than automatic: a write to the operator's own
+   * Cloudflare account is not something a page should do because someone pressed
+   * Run.
+   */
+  const publishRun = async () => {
+    const params = lastParamsRef.current;
+    if (!result || !params || !cacheRef.current.writable || publishing) return;
+    setPublishing(true);
+    const descriptor = descriptorFor(params);
+    const stamp = new Date().toISOString();
+    try {
+      let bytes = await cacheRef.current.putRun({
+        kind: "run", cacheVersion: CACHE_VERSION, descriptor,
+        computedAt: stamp, seconds: result.seconds, runner: "lab", result,
+      });
+      let stored = 1;
+      for (const [key, census] of Object.entries(traces)) {
+        const [levelText, bandText] = key.split(":");
+        bytes += await cacheRef.current.putTrace({
+          kind: "trace", cacheVersion: CACHE_VERSION, descriptor,
+          level: Number(levelText), band: bandKey(bandText),
+          computedAt: stamp, seconds: 0, runner: "lab",
+          plan: tracePlans[key] ?? null, census,
+        });
+        stored += 1;
+      }
+      setCacheState("hit");
+      setCachedRun({ computedAt: stamp, seconds: result.seconds });
+      setStatus(`Published ${stored} artifact${stored === 1 ? "" : "s"} · `
+        + `${(bytes / 1024).toFixed(0)} kB · this size now loads from the cache`);
+    } catch (error) {
+      setStatus(`Could not publish — ${error instanceof Error ? error.message : error}`);
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  /**
+   * A parameter set named in the URL, run on arrival.
+   *
+   * /mxn/gpu/ links every finished job here, and the point of the link is that
+   * the thing it opens is instant. Ignored unless m, n and ks are all present
+   * and all valid — a half-formed query should leave the page as it found it
+   * rather than run something nobody asked for.
+   */
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    const wantM = Number(query.get("m"));
+    const wantN = Number(query.get("n"));
+    const wantKs = query.get("ks") ?? "";
+    if (!Number.isInteger(wantM) || !Number.isInteger(wantN) || !wantKs.trim()) return;
+    const clamp = (value: number) => Math.max(1, Math.min(4, value));
+    const nextM = clamp(wantM);
+    const nextN = clamp(wantN);
+    const parsedQuery = parseKs(wantKs);
+    if (parsedQuery.error || !parsedQuery.values.length) return;
+    const range = kLimits(nextM, nextN);
+    if (parsedQuery.values.some(k => k < range.min || k > range.max)) return;
+
+    const rawStep = query.get("step") ?? "auto";
+    const nextStep: ExtStep = (EXT_STEP_CHOICES as readonly string[]).includes(rawStep)
+      ? rawStep as ExtStep : "auto";
+    const nextBudget = Number(query.get("budget")) || DEFAULT_COMBO_BUDGET;
+    const nextShort = query.get("short") !== "0";
+
+    setM(nextM);
+    setN(nextN);
+    setRawKs(parsedQuery.values.join(" "));
+    setExtStep(nextStep);
+    setComboBudget(nextBudget);
+    setPreferShortArms(nextShort);
+    dispatchRef.current({
+      m: nextM, n: nextN, ks: parsedQuery.values,
+      key: `${nextM}:${nextN}:${parsedQuery.values.join(",")}:${nextShort}:${nextStep}:${nextBudget}`,
+      preferShortArms: nextShort,
+      extStep: nextStep === "auto" ? null : Number(nextStep),
+      comboBudget: nextBudget,
+    });
+  }, []);
+
+  /**
+   * Run something that needs the engine's session, warming one if there is none.
+   *
+   * A cached run puts real cards on screen without Pyodide ever having seen the
+   * size, so every control that reads the session has to go through here. The
+   * warm is an ordinary generate — the busy sheet and its ceiling appear exactly
+   * as they would have — and the action follows the moment it lands. What has
+   * changed is only when the wait happens: before, it stood between a reader and
+   * the first picture; now it stands between them and the second question.
+   *
+   * The action is held one deep. A second click while a warm is in flight
+   * replaces the first, because it is the second one the reader is looking at.
+   *
+   * Every caller of this is something a reader deliberately pressed. That is
+   * the rule that keeps it honest — a warm is twenty seconds of engine and it
+   * covers the results column while it runs, so `requestTraceWeave`, which the
+   * panel calls as the cursor moves, checks `sessionCold()` itself instead.
+   */
+  const sessionCold = () =>
+    sessionRef.current === null || sessionRef.current !== ranKeyRef.current;
+
+  const withSession = (action: () => void) => {
+    if (!sessionCold()) {
+      action();
+      return;
+    }
+    const params = lastParamsRef.current;
+    if (!params) return;
+    afterWarmRef.current = action;
+    if (busyRef.current) {
+      setStatus("Engine busy — this follows when it lands");
+      return;
+    }
+    busyRef.current = true;
+    setBusy(true);
+    setEngineError(null);
+    frameStore.set(null);
+    setRunScale(worstCase(
+      params.m, params.n, params.ks.length,
+      params.extStep ?? autoStep(worstPairs(params.m, params.n), params.comboBudget)));
+    const id = ++activeIdRef.current;
+    warmIdRef.current = id;
+    setStatus(`These cards came from the cache — warming the engine over ${params.m}×${params.n} `
+      + "so this level can be searched…");
+    ensureWorker().postMessage({
+      type: "generate", id, m: params.m, n: params.n, ks: params.ks,
+      preferShortArms: params.preferShortArms,
+      extStep: params.extStep,
+      comboBudget: params.comboBudget,
+    });
   };
 
   // Browsing reuses the session the last generate built, so it deliberately
@@ -906,9 +1171,9 @@ export function ContinuationLab() {
     if (meta.enumerated === "none") {
       setStatus(`Enumerating solutions for L${level} — this runs one extra search…`);
     }
-    ensureWorker().postMessage({
+    withSession(() => ensureWorker().postMessage({
       type: "select", id: activeIdRef.current, level, index, healthyOnly,
-    });
+    }));
   };
 
   // Near-misses reuse the browse lane for the same reason: they read the
@@ -917,9 +1182,9 @@ export function ContinuationLab() {
     const near = semi[level];
     if (!near || index < 0 || index >= near.count) return;
     setBrowsingLevel(level);
-    ensureWorker().postMessage({
+    withSession(() => ensureWorker().postMessage({
       type: "semi-select", id: activeIdRef.current, level, index,
-    });
+    }));
   };
 
   // Reads the list the scan already built, so it is cheap and the ring on
@@ -928,9 +1193,9 @@ export function ContinuationLab() {
   const sortSemi = (level: number, key: SemiKey) => {
     if (!semi[level] || semi[level].key === key) return;
     setBrowsingLevel(level);
-    ensureWorker().postMessage({
+    withSession(() => ensureWorker().postMessage({
       type: "semi-sort", id: activeIdRef.current, level, key,
-    });
+    }));
   };
 
   // One ⚑ per band. Pressing the band already on turns near-misses off; pressing
@@ -954,13 +1219,47 @@ export function ContinuationLab() {
     const held = band === "h" ? "V" : "H";
     setBrowsingLevel(level);
     setStatus(`Sweeping the ${band.toUpperCase()} band for L${level} near-misses — every ${band.toUpperCase()} candidate against up to three ${held} partners that work…`);
-    ensureWorker().postMessage({
+    withSession(() => ensureWorker().postMessage({
       type: "semi-scan", id: activeIdRef.current, level, band,
-    });
+    }));
+  };
+
+  /** A stored census, put where a computed one would have gone. */
+  const adoptCachedTrace = (artifact: TraceArtifact, level: number, band: Band) => {
+    const key = traceKey(level, band);
+    const census = artifact.census as TracePayload | undefined;
+    const plan = artifact.plan as TracePlan | undefined;
+    // An unavailable band is a real answer and worth having cached: "this level
+    // solved its H band without a search" and "4×4 is over the trace ceiling"
+    // both cost a level replay to find out.
+    if (!census || census.unavailable) {
+      setTraceFailed(current => ({
+        ...current, [key]: census?.reason || "This band cannot be traced.",
+      }));
+      setStatus(`L${level} ${band.toUpperCase()}: ${census?.reason ?? "not traceable"} (from the cache)`);
+      return;
+    }
+    if (plan && !plan.unavailable) {
+      setTracePlans(current => ({ ...current, [key]: plan }));
+    }
+    setTraces(current => ({ ...current, [key]: census }));
+    // The census carries the engine's own pick already woven, so the panel's
+    // first weave preview is on screen at the same moment the grid is — with
+    // no session, no replay and no round trip.
+    const seeded = census.weave;
+    if (seeded?.ext) {
+      setTraceWeaves(current => ({ ...current, [key]: {
+        ...current[key], [weaveKey(seeded.ext, seeded.angle)]: seeded,
+      } }));
+    }
+    setBrowsingLevel(null);
+    setStatus(`L${level} ${band === "h" ? "horizontal" : "vertical"} band census · from the cache`);
   };
 
   // Replays the level and sweeps it twice over, so it is only ever asked for
-  // by opening a widget -- never as part of a generate.
+  // by opening a widget -- never as part of a generate. It is also the single
+  // slowest thing the lab asks anyone to wait through, which is why the shelf
+  // is asked first: a censused level opens instantly and never wakes Pyodide.
   const requestTrace = (level: number, band: Band) => {
     const key = traceKey(level, band);
     if (traces[key] || traceFailed[key]) return;
@@ -968,10 +1267,25 @@ export function ContinuationLab() {
     // The widget draws the replay's frames; last time's must not be the first
     // thing it shows this time.
     traceFrameStore.set(null);
-    setStatus(`Tracing the L${level} ${band === "h" ? "horizontal" : "vertical"} band — every combo against every angle…`);
-    ensureWorker().postMessage({
-      type: "trace", id: activeIdRef.current, level, band,
-    });
+
+    const toEngine = () => {
+      setStatus(`Tracing the L${level} ${band === "h" ? "horizontal" : "vertical"} band — every combo against every angle…`);
+      withSession(() => ensureWorker().postMessage({
+        type: "trace", id: activeIdRef.current, level, band,
+      }));
+    };
+
+    const params = lastParamsRef.current;
+    if (!cacheRef.current.readable || !params) {
+      toEngine();
+      return;
+    }
+    setStatus(`Looking for a stored L${level} ${band.toUpperCase()} census…`);
+    cacheRef.current.getTrace(descriptorFor(params), level, band).then(artifact => {
+      if (params !== lastParamsRef.current) return;   // a newer run owns the page
+      if (artifact) adoptCachedTrace(artifact, level, band);
+      else toEngine();
+    }).catch(() => toEngine());
   };
 
   const showBand = (level: number, band: Band) => {
@@ -981,13 +1295,23 @@ export function ContinuationLab() {
 
   // One traced cell, woven. Costs a checkpoint replay in the worker, so the
   // panel debounces its requests and cached cells are never asked for twice.
+  //
+  // The one session-reading action that will NOT warm a cold engine: the panel
+  // asks for this as the cursor moves, and starting a twenty-second generate
+  // because someone dragged across a census would be doing work nobody asked
+  // for. The engine's own pick is woven into the cached census and is on screen
+  // regardless; the rest of the grid says what it needs.
   const requestTraceWeave = (level: number, band: Band, ext: number[], angleDeg: number) => {
     const cached = traceWeaves[traceKey(level, band)];
     if (cached && cached[weaveKey(ext, angleDeg)]) return;
-    ensureWorker().postMessage({
+    if (sessionCold()) {
+      setStatus("Weaving another cell needs the engine — step a solution or press ⚑ to warm it");
+      return;
+    }
+    withSession(() => ensureWorker().postMessage({
       type: "trace-weave", id: activeIdRef.current, level, band,
       ext, angle: angleDeg,
-    });
+    }));
   };
 
   /**
@@ -1276,6 +1600,29 @@ export function ContinuationLab() {
                 Download {savedCount || ""} saved
               </button>
             </div>
+            {/* Where the run on screen came from. A page with no cache
+                configured never shows this, which is every page until someone
+                configures one. */}
+            {cacheState !== "off" && (
+              <div className={`cache-chip is-${cacheState}`}>
+                <b>
+                  {cacheState === "looking" ? "checking the cache"
+                    : cacheState === "hit" ? "served from the cache"
+                    : "computed here"}
+                </b>
+                {cacheState === "hit" && cachedRun && (
+                  <span>
+                    precomputed {cachedRun.computedAt.slice(0, 10)} in {cachedRun.seconds}s
+                    {sessionReady ? " · engine warm" : " · engine cold until you browse"}
+                  </span>
+                )}
+                {cacheState === "miss" && (
+                  <span>nothing stored for these parameters — {
+                    cache.writable ? "publish it below" : "queue it at /mxn/gpu/"}</span>
+                )}
+              </div>
+            )}
+
             <details className="api-settings">
               <summary>dataset API {apiUrl && apiToken ? "· connected" : "· local only"}</summary>
               <div className="field">
@@ -1289,6 +1636,24 @@ export function ContinuationLab() {
                   onChange={e => { setApiToken(e.target.value); writeSetting(TOKEN_KEY, e.target.value); }} />
               </div>
               <p className="compute-note">Kept in this browser only, never in the repository. ⭐ and 🚩 always save locally as well.</p>
+              {/* The same URL serves the result cache. Publishing is a button
+                  rather than something Run does on its own: a write to someone's
+                  Cloudflare account should be asked for. */}
+              <div className="run-row">
+                <button type="button" className="stop-button" onClick={publishRun}
+                  disabled={!cache.writable || !result || busy || publishing}
+                  title={cache.writable
+                    ? "Store this run, and every census already open, so /mxn/ loads it instantly"
+                    : "Needs a worker url and an admin token"}>
+                  {publishing ? "Publishing…" : `Publish run${
+                    Object.keys(traces).length ? ` + ${Object.keys(traces).length} censuses` : ""}`}
+                </button>
+              </div>
+              <p className="compute-note">
+                The same Worker holds precomputed runs and censuses. <a href="gpu/">The
+                compute farm</a> fills it over a whole range of sizes; this button
+                adds the one on screen.
+              </p>
             </details>
 
             {inputError && <div className="error-note" role="alert">{inputError}</div>}
@@ -1624,7 +1989,7 @@ export function ContinuationLab() {
         </div>
       </section>
 
-      <footer className="footer"><span>Calculation source · ysetbon/mxn · commit {COMMIT}</span><a href="..">← Scoubidou3D</a><a href="rate/">Categoriser →</a><a href="semi/">Near-misses →</a><a href="https://github.com/ysetbon/mxn" target="_blank" rel="noreferrer">View source ↗</a></footer>
+      <footer className="footer"><span>Calculation source · ysetbon/mxn · commit {COMMIT}</span><a href="..">← Scoubidou3D</a><a href="gpu/">Compute farm →</a><a href="rate/">Categoriser →</a><a href="semi/">Near-misses →</a><a href="https://github.com/ysetbon/mxn" target="_blank" rel="noreferrer">View source ↗</a></footer>
     </main>
   );
 }
