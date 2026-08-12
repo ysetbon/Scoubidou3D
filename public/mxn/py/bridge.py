@@ -162,7 +162,7 @@ def level1_extensions(m, n, k, hand, direction, search=None):
 
 
 def _send_stage_frame(strands, level, k, phase, completed=0, total=0,
-                      valid=0, angle=None, extensions=None):
+                      valid=0, angle=None, extensions=None, trace=None):
     emitFrame(json.dumps({
         "level": level,
         "k": k,
@@ -172,6 +172,10 @@ def _send_stage_frame(strands, level, k, phase, completed=0, total=0,
         "valid": int(valid),
         "angle": angle,
         "extensions": list(extensions or ()),
+        # Which band's trace replay this frame belongs to, when it is one. The
+        # run's own frames carry no tag, so the busy sheet and a level widget
+        # never draw each other's candidates.
+        "trace": trace,
         "strands": _stage_strands(json.dumps({"strands": strands})),
     }, separators=(",", ":")))
 
@@ -189,7 +193,7 @@ FRAME_MIN_INTERVAL = 0.036
 FRAME_MAX_DUTY = 0.2
 
 
-def _candidate_frame_emitter(base_strands, level, k):
+def _candidate_frame_emitter(base_strands, level, k, trace=None):
     last_sent = [0.0]
     min_gap = [FRAME_MIN_INTERVAL]
 
@@ -243,6 +247,7 @@ def _candidate_frame_emitter(base_strands, level, k):
             meta.get("valid", 0),
             meta.get("angle"),
             meta.get("extensions"),
+            trace,
         )
 
         # ready() stamped last_sent when the gate was passed — before the
@@ -520,8 +525,15 @@ def _trace_band_inputs(entry, want):
     Cached on the session entry: the plan, the census and every weave preview
     read the same inputs, and re-grabbing them would cost another full replay.
     Returns None when this level solved the band without a search at all.
+
+    Nothing about the replay is silent. Its own search relays candidates as it
+    finds them, tagged with the band being traced, and the plan is emitted from
+    inside the hook -- which fires BEFORE the band's search runs, not after the
+    replay finishes -- so the page has the real grid to draw at the earliest
+    moment it exists rather than at the end of the wait.
     """
     import mxn_lh_continuation as LH
+    import mxn_trace
 
     held = (entry.get("trace_bands") or {}).get(want)
     if held is not None:
@@ -531,6 +543,19 @@ def _trace_band_inputs(entry, want):
     grabbed = []
     real_search = LH._search_combo_space_cpu
     was_fast = LH.FAST_ANGLE_SCAN
+
+    def announce(band):
+        """Hand the page the plan for a band the moment its inputs exist."""
+        try:
+            ahead = mxn_trace.plan(band)
+        except Exception:
+            return
+        ahead.update({
+            "kind": "plan", "level": entry["level"], "band": want,
+            "unavailable": False, "k": entry["k"],
+            "applied": _applied_ext(entry, want),
+        })
+        emitTrace(json.dumps(ahead, separators=(",", ":")))
 
     def hook(strands_list, pairs, pair_directions, pair_originals, ext_range_values,
              angle_step_degrees, max_extension, strand_width,
@@ -553,6 +578,7 @@ def _trace_band_inputs(entry, want):
                 "num_strands": len(strands_list),
                 "pairs_n": len(pairs),
             })
+            announce(grabbed[0])
         return real_search(strands_list, pairs, pair_directions, pair_originals,
                            ext_range_values, angle_step_degrees, max_extension,
                            strand_width, custom_angle_min, custom_angle_max,
@@ -562,6 +588,11 @@ def _trace_band_inputs(entry, want):
     strands, info = copy.deepcopy(entry["checkpoint"])
     LH._search_combo_space_cpu = hook
     LH.FAST_ANGLE_SCAN = True
+    # The same relay a run installs, so the replay draws rings while it works.
+    # Throttled by the same gate (FRAME_MIN_INTERVAL, FRAME_MAX_DUTY), so the
+    # frames cost the replay a bounded share of its time.
+    NX._progress_frame_callback = _candidate_frame_emitter(
+        strands, entry["level"], entry["k"], trace=want)
     try:
         with contextlib.redirect_stdout(io.StringIO()):
             NX.align_continuation_level(
@@ -571,6 +602,7 @@ def _trace_band_inputs(entry, want):
     finally:
         LH._search_combo_space_cpu = real_search
         LH.FAST_ANGLE_SCAN = was_fast
+        NX._progress_frame_callback = None
 
     if not grabbed:
         return None
@@ -638,6 +670,7 @@ def _trace_reporter(level, want, total_angles):
     """
     def report(done, total):
         emitTrace(json.dumps({
+            "kind": "progress",
             "level": level, "band": want, "combosDone": int(done),
             "combos": int(total), "nAngles": int(total_angles),
         }, separators=(",", ":")))

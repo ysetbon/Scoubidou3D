@@ -38,12 +38,37 @@ const load = async <T,>(name: string): Promise<T> => {
 };
 
 /** A · the level widget while its band is being censused. */
-function SweepPanel({ plans }: { plans: Record<"h" | "v", TracePlan> }) {
+function SweepPanel({ plans, rings }: {
+  plans: Record<"h" | "v", TracePlan>;
+  rings: Ring[];
+}) {
   const [band, setBand] = useState<"h" | "v">("v");
   const [planned, setPlanned] = useState(true);
   const [running, setRunning] = useState(true);
   const [done, setDone] = useState(0);
+  const [replay] = useState(createFrameStore);
   const plan = plans[band];
+
+  // Stands in for the replay's own candidate relay, which is what the widget
+  // draws before any plan exists. Real rings, tagged with the band traced.
+  const at = useRef(0);
+  useEffect(() => {
+    if (planned) return undefined;
+    const id = window.setInterval(() => {
+      const i = at.current;
+      const ring = rings[i % rings.length];
+      replay.set({
+        id: 1, level: 1, k: 1,
+        phase: `${band === "h" ? "horizontal" : "vertical"} candidate`,
+        trace: band === "h" ? "horizontal" : "vertical",
+        completed: Math.min(plan.combos, (i + 1) * 17), total: plan.combos,
+        valid: Math.floor(i / 4), angle: ring.angle, extensions: ring.ext,
+        strands: ring.strands,
+      });
+      at.current = i + 1;
+    }, 140);
+    return () => window.clearInterval(id);
+  }, [planned, band, plan, rings, replay]);
 
   // Stands in for the worker's own emitTrace: the census walks its combos at a
   // steady rate and says so a couple of hundred times on the way.
@@ -91,7 +116,9 @@ function SweepPanel({ plans }: { plans: Record<"h" | "v", TracePlan> }) {
           <div className="level-widget-body">
             <div className="trace-pending">
               <TraceSweep band={band} level={1}
-                plan={planned ? plan : undefined} progress={progress} />
+                plan={planned ? plan : undefined} progress={progress}
+                replay={replay} stage={{ level: 1, k: 1, label: "L1",
+                  strands: rings[0].strands }} />
               <p>{planned
                 ? `Sweeping all ${plan.combos.toLocaleString()} extension combos of `
                   + `L1's ${band === "h" ? "horizontal" : "vertical"} band against `
@@ -219,7 +246,7 @@ function Mock() {
       {failed && <p className="mock-error">
         Could not read mocks/fixtures — run <code>python3 scripts/mock-fixtures.py</code>. ({failed})
       </p>}
-      {plans && <SweepPanel plans={plans} />}
+      {plans && rings && <SweepPanel plans={plans} rings={rings} />}
       {rings && <CandidatePanel rings={rings} />}
     </main>
   );

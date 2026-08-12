@@ -233,9 +233,22 @@ Two clocks, deliberately kept apart:
   size of the whole job — `combos × angles` — because a bar with no denominator
   is not an answer to "how long".
 
-Before the plan lands there is nothing yet to sweep, and the widget says so:
-the replay is named, and the bar is an indeterminate shuttle rather than a fill
-of an unknown fraction.
+Before the plan lands there is still no dead box. Two things fill that stretch,
+and both are real:
+
+- **the replay's own candidates.** The replay is a full search, so it installs
+  the same `NX._progress_frame_callback` relay a run does, tagged with the band
+  being traced. The widget draws those rings as they arrive and reports the
+  replay's own `completed / total`. The tag is what keeps them out of the run's
+  busy sheet, and the sheet's out of the widget.
+- **the level's ring as it stands**, drawn from the page's own strands until the
+  first frame lands, so there is no moment with nothing true to show.
+
+The plan itself comes earlier than "after the replay": it is emitted from inside
+the search hook, which fires *before* the band's search runs, not after the
+replay finishes. Only when nothing has reported a position yet — the seconds
+before the first frame — is the bar an indeterminate shuttle, and it says so
+rather than implying a fraction.
 
 Beside the census the panel shows a **weave pattern (this combo)** box: the
 cell being looked at, woven. It is engine geometry, not a sketch —
@@ -459,12 +472,13 @@ the real search reports.
 On the lab it lives in the level widget (see *The level widget* above); the
 worker carries it as the `trace` message, and answers in two parts:
 
-- **`trace-plan-ready`**, from `bridge.trace_plan`. Costs the level replay and
-  one probe placement, and carries the band search's own arguments — the
+- **`trace-plan-ready`**, carrying the band search's own arguments — the
   extension grid, the angle window and step, the gap bounds, and the geometry
   (`origins`, `directions`, `pairIndices`, `targets`) every configuration is
   affine in — plus `combos` and `evaluations`, the size of the job. The pending
-  widget is drawn from this.
+  widget is drawn from this. It is emitted twice over, harmlessly: once from
+  inside the search hook the moment the inputs exist, which is before the band's
+  own search runs, and again as `bridge.trace_plan`'s return value.
 - **`trace-ready`**, from `bridge.trace_census`, with `trace-progress` messages
   arriving from inside the sweep on the way (`mxn_trace.PROGRESS_STEPS` of
   them at most). This is the census itself.

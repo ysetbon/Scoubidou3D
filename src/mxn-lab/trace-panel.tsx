@@ -5,9 +5,11 @@
 // real search never reaches. Geometry is affine in the extensions, so only the
 // census travels; the handful of points needed to draw one cell are recomputed
 // here from the same inputs the engine used.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { allBounds, drawExactStage, type Stage, type Strand } from "./exact-draw";
+import {
+  allBounds, drawExactStage, type Bounds, type Stage, type Strand,
+} from "./exact-draw";
 import { bandKey } from "./trace-band";
 import {
   BEST, DEGEN, ORDER, OVERLAP, REACH, TOOFAR, VALID, VERDICT_BLURB,
@@ -75,6 +77,27 @@ export type TraceProgress = {
 };
 
 /**
+ * The replay's own candidates, as the studio's frame store hands them over.
+ *
+ * Structural rather than imported: the studio imports this file, so a type
+ * imported back from it would close a cycle for no gain. Any store whose
+ * frames carry these fields will do.
+ */
+export type ReplayFeed = {
+  get: () => ReplayFrame | null;
+  subscribe: (listener: () => void) => () => void;
+};
+export type ReplayFrame = {
+  level: number;
+  phase: string;
+  completed: number;
+  total: number;
+  /** Which band's trace replay produced it — "horizontal" or "vertical". */
+  trace?: string | null;
+  strands: Strand[];
+};
+
+/**
  * One traced cell, woven: the ring bridge.trace_weave materialised for a combo
  * and angle, with the audit the level card would print for it. An unavailable
  * entry is cached like a real one — the reason is its content, and a held
@@ -129,19 +152,30 @@ function modal(codes: number[]) {
  * worker's, reported from inside the sweep, and is the one that answers how
  * much is left.
  */
-export function TraceSweep({ band, level, plan, progress }: {
+export function TraceSweep({ band, level, plan, progress, replay, stage, bounds }: {
   band: "h" | "v";
   level?: number;
-  /** The band's own inputs. Absent until the level replay lands. */
+  /** The band's own inputs. Absent until the band search hands its grid over. */
   plan?: TracePlan;
   /** Where the worker's census has got to, if it has said yet. */
   progress?: TraceProgress;
+  /** The replay's candidates, for the stretch before the plan exists. */
+  replay?: ReplayFeed;
+  /** The level's own ring, drawn until the first replay frame arrives. */
+  stage?: Stage;
+  bounds?: Bounds;
 }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
-  // Redrawn from a ref rather than a prop so a progress message does not
-  // restart the preview it arrives during.
+  // Redrawn from refs rather than props so a message arriving mid-sweep does
+  // not restart the drawing it arrives during.
   const liveProgress = useRef(progress);
   liveProgress.current = progress;
+  const wantBand = band === "h" ? "horizontal" : "vertical";
+  const frame = useSyncExternalStore(
+    replay?.subscribe ?? (() => () => {}), replay?.get ?? (() => null));
+  const liveFrame = useRef<ReplayFrame | null>(null);
+  liveFrame.current = frame && frame.trace === wantBand
+    && frame.level === level ? frame : null;
 
   useEffect(() => {
     const cv = ref.current;
@@ -175,43 +209,83 @@ export function TraceSweep({ band, level, plan, progress }: {
       ctx.fillStyle = colour;
       ctx.fillText(text, W - 10 - ctx.measureText(text).width, y);
     };
-    const frame = () => {
+    const backdrop = (box: { x: number; y: number; w: number; h: number }) => {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.fillStyle = "#f4f0e6";
       ctx.fillRect(0, 0, W, H);
       ctx.strokeStyle = "#dcd6c8";
       ctx.lineWidth = 1;
-      ctx.strokeRect(VIEW.x + 0.5, VIEW.y + 0.5, VIEW.w - 1, VIEW.h - 1);
+      ctx.strokeRect(box.x + 0.5, box.y + 0.5, box.w - 1, box.h - 1);
     };
 
     let raf = 0;
     const t0 = performance.now();
 
-    // ---- no plan yet: the level is still being replayed ----
-    // Nothing is drawn that is not known. The bar is indeterminate because the
-    // replay reports no position, and says so rather than implying one.
+    // ---- no plan yet: the band search has not handed its grid over ----
+    // Not a dead box. The replay is a real search and relays its candidates,
+    // so this draws the rings it is trying, at whatever rate it manages them,
+    // and reports its own position. Until the first one lands it draws the
+    // level's ring as it stands, which the page already has: there is no
+    // moment where the widget has nothing true to show.
     if (!plan) {
+      // The ring takes the room the strips will want later: nothing else is
+      // known yet, and a box with a third of it blank reads as a widget that
+      // failed rather than one that is waiting.
+      const WAIT = { x: VIEW.x, y: VIEW.y, w: VIEW.w, h: 168 };
+      const WAIT_CAPTION = 194;
+      const off = document.createElement("canvas");
+      let painted: Strand[] | null = null;
+      const paint = (strands: Strand[]) => {
+        if (painted === strands) return;
+        painted = strands;
+        const one: Stage = { level: level ?? 0, k: null, label: "replay",
+                             strands };
+        drawExactStage(off, one, bounds ?? allBounds([one]), false,
+                       Math.round(WAIT.h * dpr), "#f4f0e6");
+      };
+
       const draw = (now: number) => {
         raf = requestAnimationFrame(draw);
         const t = (now - t0) / 1000;
-        frame();
-        ctx.font = "600 10px ui-monospace, monospace";
-        ctx.fillStyle = "#7d7a70";
-        const line = `replaying L${level ?? ""} to recover its ${bandWord} band search`;
-        ctx.fillText(line, VIEW.x + 10, VIEW.y + VIEW.h / 2);
-        label("the census can only be sized once the search hands over its grid",
-              VIEW.x + 10, VIEW.y + VIEW.h / 2 + 16);
+        const live = liveFrame.current;
+        backdrop(WAIT);
+
+        const strands = live?.strands ?? stage?.strands;
+        if (strands?.length) {
+          paint(strands);
+          const side = WAIT.h - 8;
+          ctx.drawImage(off, WAIT.x + (WAIT.w - side) / 2, WAIT.y + 4, side, side);
+        }
+        label(live
+          ? `replaying L${level ?? ""} · ${live.phase}`
+          : `replaying L${level ?? ""} · ${bandWord} band`,
+          10, WAIT_CAPTION, "#7d7a70", "700");
+        rightLabel(live && live.total > 0
+          ? `${live.completed.toLocaleString()} / ${live.total.toLocaleString()} combos`
+          : "the ring as it stands", WAIT_CAPTION);
+        if (!live) label("waiting for the search to start", 10, WAIT_CAPTION + 12);
+
         ctx.fillStyle = "#e6e1d4";
         ctx.fillRect(10, BAR_Y, W - 20, BAR_H);
-        // A shuttle, not a fill: it must not read as a fraction of anything.
-        const span = (W - 20) * 0.28;
-        const travel = (W - 20) - span;
-        const phase = (t / (slow ? 4 : 2.2)) % 2;
-        const at = 10 + travel * (phase < 1 ? phase : 2 - phase);
-        ctx.fillStyle = "#c8c2b4";
-        ctx.fillRect(at, BAR_Y, span, BAR_H);
-        label("replaying…", 10, BAR_Y - 5);
-        rightLabel("no census position yet", BAR_Y - 5);
+        if (live && live.total > 0) {
+          // The replay's own search, which is a real fraction of a real total.
+          ctx.fillStyle = "#c8c2b4";
+          ctx.fillRect(10, BAR_Y, (W - 20) * Math.min(1, live.completed / live.total),
+                       BAR_H);
+          label("replaying…", 10, BAR_Y - 5);
+          rightLabel("then the census over its grid", BAR_Y - 5);
+        } else {
+          // A shuttle, not a fill: with no position yet it must not read as a
+          // fraction of anything.
+          const span = (W - 20) * 0.28;
+          const travel = (W - 20) - span;
+          const phase = (t / (slow ? 4 : 2.2)) % 2;
+          ctx.fillStyle = "#c8c2b4";
+          ctx.fillRect(10 + travel * (phase < 1 ? phase : 2 - phase), BAR_Y,
+                       span, BAR_H);
+          label("replaying…", 10, BAR_Y - 5);
+          rightLabel("no position reported yet", BAR_Y - 5);
+        }
       };
       raf = requestAnimationFrame(draw);
       return () => cancelAnimationFrame(raf);
@@ -269,7 +343,7 @@ export function TraceSweep({ band, level, plan, progress }: {
         shownAt = now;
       }
 
-      frame();
+      backdrop(VIEW);
 
       // ---- the arms, where this combo puts them ----
       const pts = [...shown.swept.starts, ...shown.swept.ends];
@@ -374,7 +448,7 @@ export function TraceSweep({ band, level, plan, progress }: {
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [band, level, plan]);
+  }, [band, level, plan, stage, bounds]);
 
   // aria-hidden: the pending text beside it already says what is happening,
   // and it says it politely rather than on every frame.

@@ -114,6 +114,8 @@ export type ProgressFrame = {
   angle?: number | null;
   extensions: number[];
   strands: Strand[];
+  /** Set when the frame comes from a trace replay, naming the band traced. */
+  trace?: string | null;
 };
 export type AuditRow = {
   level: number; k: number; expected: number; state: string;
@@ -465,6 +467,11 @@ export function ContinuationLab() {
   // Deliberately not useState: see FrameStore. useState(createFrameStore)
   // makes the factory the lazy initialiser, so one store per mount.
   const [frameStore] = useState(createFrameStore);
+  // The trace replay's own candidates, kept out of the run's store so a widget
+  // and the busy sheet never draw each other's frames. One store rather than
+  // one per level: the worker takes messages in order, so only one replay is
+  // ever in flight, and each frame says which band it belongs to.
+  const [traceFrameStore] = useState(createFrameStore);
   // What the run in flight could cost at worst. Frozen at dispatch; see below.
   const [runScale, setRunScale] = useState(() => worstCase(2, 2, 1, 20));
   const [copiedLevel, setCopiedLevel] = useState<number | null>(null);
@@ -543,9 +550,11 @@ export function ContinuationLab() {
         return;
       }
       if (message.type === "candidate") {
-        if (message.id === activeIdRef.current) {
-          frameStore.set(message as ProgressFrame);
-        }
+        if (message.id !== activeIdRef.current) return;
+        // A trace replay is a real search and relays its candidates too. They
+        // are tagged with the band being traced so they land in the level
+        // widget that asked for them rather than in the run's busy sheet.
+        (message.trace ? traceFrameStore : frameStore).set(message as ProgressFrame);
         return;
       }
       if (message.type === "solution") {
@@ -714,6 +723,7 @@ export function ContinuationLab() {
           setTracePlans({});
           setTraceProgress({});
           setTraceFailed({});
+          traceFrameStore.set(null);
           setTraceBand({});
           setTraceWeaves({});
           setOpenWidgets(new Set());
@@ -874,6 +884,9 @@ export function ContinuationLab() {
     const key = traceKey(level, band);
     if (traces[key] || traceFailed[key]) return;
     setBrowsingLevel(level);
+    // The widget draws the replay's frames; last time's must not be the first
+    // thing it shows this time.
+    traceFrameStore.set(null);
     setStatus(`Tracing the L${level} ${band === "h" ? "horizontal" : "vertical"} band — every combo against every angle…`);
     ensureWorker().postMessage({
       type: "trace", id: activeIdRef.current, level, band,
@@ -1353,7 +1366,9 @@ export function ContinuationLab() {
                                   {!failed && <TraceSweep band={band}
                                     level={stage.level}
                                     plan={tracePlans[key]}
-                                    progress={traceProgress[key]} />}
+                                    progress={traceProgress[key]}
+                                    replay={traceFrameStore}
+                                    stage={stage} bounds={bounds} />}
                                   {/* Once the plan lands the wait can be
                                       described in the band's own numbers
                                       rather than in the shape of the job. */}

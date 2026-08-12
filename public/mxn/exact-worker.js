@@ -10,13 +10,17 @@ self.emitFrame = (payload) => self.postMessage({
   id: activeGenerationId,
   ...JSON.parse(payload),
 });
-// A census is one long synchronous call, so it reports where it has got to
-// from inside the sweep rather than only when it lands.
-self.emitTrace = (payload) => self.postMessage({
-  type: "trace-progress",
-  id: activeGenerationId,
-  ...JSON.parse(payload),
-});
+// A trace is two long synchronous calls, so it speaks from inside them: the
+// plan the moment the band search hands its grid over, then where the census
+// has got to. `kind` says which; the page routes on the message type.
+self.emitTrace = (payload) => {
+  const data = JSON.parse(payload);
+  self.postMessage({
+    type: data.kind === "plan" ? "trace-plan-ready" : "trace-progress",
+    id: activeGenerationId,
+    ...data,
+  });
+};
 
 async function prepare() {
   if (pyodide) return pyodide;
