@@ -503,7 +503,7 @@ function metricsFor(width: number) {
   };
 }
 
-export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
+export function TracePanel({ data, weaves, onWeave, onClose, onBand, onShow }: {
   data: TracePayload;
   /** Woven cells for this level and band, keyed by weaveKey. */
   weaves?: Record<string, TraceWeave>;
@@ -511,6 +511,8 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
   onWeave?: (ext: number[], angleDeg: number) => void;
   onClose: () => void;
   onBand?: (band: "h" | "v") => void;
+  /** Put the woven cell on the card's own diagram, at full size. */
+  onShow?: (weave: TraceWeave) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -1028,6 +1030,23 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
             title="One angle step on" aria-label="Next angle step">›</button>
         </span>
         <em>{data.names[verdictNow]}</em>
+        {/* The preview is 300px square beside a census; the card's diagram is
+            the drawing everything else is read against. This sends the cell
+            there. It waits on the weave rather than asking for one, because
+            the cell on screen is already being fetched and a second request
+            for the same ring would only queue behind it. */}
+        {onShow && (
+          <button type="button" className="show-on-card"
+            disabled={!weave?.strands?.length || !weave?.row}
+            onClick={() => weave && onShow(weave)}
+            title={weave?.strands?.length
+              ? "Draw this cell as the level's own diagram"
+              : weave?.unavailable
+                ? (weave.reason ?? "this cell has no weave to show")
+                : "waiting for this cell to be woven"}>
+            Show on main diagram
+          </button>
+        )}
       </div>
       <div className="trace-legend">
         {data.names.map((name, code) => (

@@ -501,6 +501,27 @@ export function ContinuationLab() {
   // Each one is a full strand list, so the per-trace map is trimmed rather
   // than allowed to hold every cell a long session scrubs through.
   const [traceWeaves, setTraceWeaves] = useState<Record<string, Record<string, TraceWeave>>>({});
+  // Which traced cell a level's diagram is showing instead of its own ring, and
+  // the ring it displaced. Both are per level, because two widgets can be open.
+  const [tracedShown, setTracedShown] = useState<Record<number, TraceWeave>>({});
+  const [tracedRing, setTracedRing] =
+    useState<Record<number, { strands: Strand[]; row: AuditRow }>>({});
+  /** Forget an override without putting anything back: for when something else
+   *  has already replaced the ring on the card. */
+  const clearTraced = (level: number) => {
+    setTracedShown(current => {
+      if (!current[level]) return current;
+      const next = { ...current };
+      delete next[level];
+      return next;
+    });
+    setTracedRing(current => {
+      if (!current[level]) return current;
+      const next = { ...current };
+      delete next[level];
+      return next;
+    });
+  };
   const [browsingLevel, setBrowsingLevel] = useState<number | null>(null);
   const [savedCount, setSavedCount] = useState(0);
   const [healthyOnly, setHealthyOnly] = useState(false);
@@ -559,6 +580,9 @@ export function ContinuationLab() {
       }
       if (message.type === "solution") {
         setBrowsingLevel(null);
+        // The browser is putting a ring on the card, so whatever the trace
+        // widget had put there is gone -- and the ring it displaced with it.
+        clearTraced(message.level);
         if (message.meta) {
           setSolutions(current => ({ ...current, [message.meta.level]: {
             ...current[message.meta.level], ...message.meta,
@@ -677,6 +701,7 @@ export function ContinuationLab() {
       }
       if (message.type === "semi-solution") {
         setBrowsingLevel(null);
+        clearTraced(message.level);
         if (message.item === undefined) {
           setStatus(message.reason || "No near-miss at that position.");
           return;
@@ -726,6 +751,8 @@ export function ContinuationLab() {
           traceFrameStore.set(null);
           setTraceBand({});
           setTraceWeaves({});
+          setTracedShown({});
+          setTracedRing({});
           setOpenWidgets(new Set());
           frameStore.set(null);
           setEngineError(null);
@@ -907,6 +934,74 @@ export function ContinuationLab() {
       type: "trace-weave", id: activeIdRef.current, level, band,
       ext, angle: angleDeg,
     });
+  };
+
+  /**
+   * Put the cell the widget is looking at on the card's own diagram.
+   *
+   * The weave preview is 300px square beside a census; the card's diagram is
+   * the drawing everything else on the page is read against, and until now the
+   * only rings that could reach it were the ones the worker sent — a solution
+   * or a near-miss. A traced cell has the same two things those messages carry,
+   * the strands and the audit row, so it takes the same path.
+   *
+   * The engine's own pick is the one cell that is also a numbered solution, and
+   * a diagram showing it while the browser reads some other index would be a
+   * lie about which ring is on screen. So that cell is shown by walking the
+   * browser to `enginePick` rather than by overriding anything: the number and
+   * the drawing then agree, and they agree on the engine's answer. Every other
+   * cell is not a solution at all, and says so on the card rather than borrowing
+   * a number that belongs to a different ring.
+   */
+  const showTraced = (level: number, w: TraceWeave) => {
+    if (!w.strands?.length || !w.row) return;
+    const seeded = traces[traceKey(level, w.band)]?.weave;
+    const isEnginePick = !!seeded?.ext
+      && weaveKey(seeded.ext, seeded.angle) === weaveKey(w.ext, w.angle);
+    const meta = solutions[level];
+
+    if (isEnginePick) {
+      restoreTraced(level);
+      if (meta && browsable(meta) && meta.index !== meta.enginePick) {
+        browse(level, meta.enginePick);
+      }
+      setStatus(`L${level} diagram: the engine's own pick`
+        + (meta ? ` — solution ${meta.enginePick + 1}` : ""));
+      return;
+    }
+
+    setResult(current => {
+      if (!current) return current;
+      // The level's own ring is kept once, on the first override, so going back
+      // returns to what the run produced rather than to the previous override.
+      setTracedRing(held => held[level] ? held : { ...held, [level]: {
+        strands: current.stages.find(s => s.level === level)?.strands ?? [],
+        row: current.rows[level - 1],
+      } });
+      return {
+        ...current,
+        stages: current.stages.map(stage => stage.level === level
+          ? { ...stage, strands: w.strands as Strand[] } : stage),
+        rows: current.rows.map(row => row.level === level ? w.row as AuditRow : row),
+      };
+    });
+    setTracedShown(current => ({ ...current, [level]: w }));
+    setStatus(`L${level} diagram: traced cell — ext (${w.ext.join(", ")}) `
+      + `at ${w.angle.toFixed(1)}°, ${w.row.healthy ? "a weave" : "not a weave"}`);
+  };
+
+  /** Back to the ring the run produced for this level. */
+  const restoreTraced = (level: number) => {
+    const held = tracedRing[level];
+    if (held) {
+      setResult(current => current ? {
+        ...current,
+        stages: current.stages.map(stage => stage.level === level
+          ? { ...stage, strands: held.strands } : stage),
+        rows: current.rows.map(row => row.level === level ? held.row : row),
+      } : current);
+    }
+    clearTraced(level);
   };
 
   const toggleWidget = (level: number) => {
@@ -1172,6 +1267,21 @@ export function ContinuationLab() {
                       <div className="level-title"><strong>{stage.level === 0 ? "L₀" : `L${stage.level}`}</strong><span>{stage.label}</span></div>
                       <div className="card-actions">
                         <span className={`k-chip ${stage.k === 0 ? "preserve" : ""}`}>{stage.k === null ? `${result.m} × ${result.n}` : `k = ${stage.k}`}</span>
+                        {/* A traced cell is not a numbered solution, so while
+                            one is on the diagram the card says which cell it is
+                            rather than leaving the solution browser next to it
+                            to be read as its label. */}
+                        {tracedShown[stage.level] && (
+                          <span className="traced-chip">
+                            <b>traced</b>
+                            <i>ext ({tracedShown[stage.level].ext.join(", ")}) ·{" "}
+                              {tracedShown[stage.level].angle.toFixed(1)}°</i>
+                            <button type="button" onClick={() => restoreTraced(stage.level)}
+                              title="Put this level's own ring back on the diagram">
+                              back
+                            </button>
+                          </span>
+                        )}
                         <button className={`copy-json ${copiedLevel === stage.level ? "is-copied" : ""}`} type="button" onClick={() => copyStageJson(stage)} aria-label={`Copy JSON for level ${stage.level}`}>
                           {copiedLevel === stage.level ? "Copied ✓" : "Copy JSON"}
                         </button>
@@ -1210,7 +1320,11 @@ export function ContinuationLab() {
                           if (onSemi) {
                             const item = near?.current;
                             return (
-                              <span className="solution-nav is-semi">
+                              <span className={`solution-nav is-semi${
+                                tracedShown[stage.level] ? " is-stale" : ""}`}
+                                title={tracedShown[stage.level]
+                                  ? "The diagram is showing a traced cell, not this near-miss"
+                                  : undefined}>
                                 <button type="button" onClick={() => browseSemi(stage.level, (near?.index ?? 0) - 1)}
                                   disabled={busyHere || !near || near.index === 0}
                                   aria-label={`Previous near-miss for level ${stage.level}`}>‹</button>
@@ -1281,12 +1395,17 @@ export function ContinuationLab() {
                             ? `${meta.index + 1}`
                             : `${meta.index + 1} / ${meta.count}${meta.countExact ? "" : "+"}`;
                           return (
-                            <span className="solution-nav">
+                            <span className={`solution-nav${
+                              tracedShown[stage.level] ? " is-stale" : ""}`}
+                              title={tracedShown[stage.level]
+                                ? "The diagram is showing a traced cell, not this solution"
+                                : undefined}>
                               <button type="button" onClick={() => browse(stage.level, meta.index - 1)}
                                 disabled={busyHere || meta.index === 0}
                                 aria-label={`Previous solution for level ${stage.level}`}>‹</button>
                               <b>{busyHere ? "…" : shown}</b>
-                              {meta.index === meta.enginePick && <em>engine pick</em>}
+                              {meta.index === meta.enginePick && !tracedShown[stage.level]
+                                && <em>engine pick</em>}
                               <button type="button" onClick={() => browse(stage.level, meta.index + 1)}
                                 disabled={busyHere}
                                 aria-label={`Next solution for level ${stage.level}`}>›</button>
@@ -1354,7 +1473,8 @@ export function ContinuationLab() {
                                   onWeave={(ext, angleDeg) =>
                                     requestTraceWeave(stage.level, band, ext, angleDeg)}
                                   onClose={() => toggleWidget(stage.level)}
-                                  onBand={b => showBand(stage.level, b)} />;
+                                  onBand={b => showBand(stage.level, b)}
+                                  onShow={w => showTraced(stage.level, w)} />;
                               }
                               return (
                                 <div className="trace-pending">

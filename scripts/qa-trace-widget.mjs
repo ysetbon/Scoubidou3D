@@ -465,6 +465,68 @@ ok('and the toggle puts the summary back',
    back.mode === 'sweep' && backInk === summaryInk,
    `${JSON.stringify(back)}: ${summaryInk} -> ${sliceInk} -> ${backInk}`);
 
+// ---- a traced cell can take the card's own diagram ----
+// The card's drawing, as a fingerprint, and the number beside it: both have to
+// move when a traced ring replaces the level's own, and both have to come back.
+// Scoped to L1's card: L0 is the starting stitch, has no audit row, and is the
+// one `.diagram-card` a bare selector would reach first.
+const cardInk = () => page.evaluate(() => {
+  const card = [...document.querySelectorAll('.diagram-card')].find(c => /L1/.test(c.textContent));
+  const cv = card.querySelector('.level-main .canvas-wrap canvas');
+  const { data } = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
+  let h = 0;
+  for (let i = 0; i < data.length; i += 40) h = (h * 31 + data[i] + data[i + 1] * 3) % 1e9;
+  return h;
+});
+const crossings = () => l1.locator('.exact-metrics .metric', { hasText: 'crossings' })
+  .first().locator('strong').innerText();
+const showBtn = page.locator('.trace-steps .show-on-card').first();
+
+// The engine's own pick is a numbered solution, so showing it must not label
+// the card as traced -- it belongs to the browser, not to an override.
+await clickCell(7, 10);
+await page.waitForTimeout(500);
+await showBtn.click();
+await page.waitForTimeout(200);
+ok('showing the engine pick does not mark the card as traced',
+   (await l1.locator('.traced-chip').count()) === 0);
+
+// Any other cell is not a solution, so it says so and keeps the ring it moved.
+const ownInk = await cardInk();
+const ownCross = await crossings();
+await clickCell(19, 17);
+await page.waitForTimeout(600);
+ok('the button waits for the cell to be woven', await showBtn.isEnabled());
+await showBtn.click();
+await page.waitForTimeout(300);
+const chip = await l1.locator('.traced-chip').first().innerText().catch(() => '');
+// What has to be true is that the cell on screen is the cell that reached the
+// card. A pixel comparison cannot say so here: the stand-in worker answers
+// every trace-weave with the one ring the fixture carries, so the drawing is
+// the same picture whichever cell is asked for. The identity is the check.
+const panelExt = await page.evaluate(() =>
+  document.querySelector('.trace-panel canvas').dataset.ext);
+ok('showing another cell puts that cell on the card and names it',
+   /traced/i.test(chip)
+   && chip.includes(`ext (${JSON.parse(panelExt).join(', ')})`),
+   `${chip.replace(/\n/g, ' ')} vs panel ${panelExt}`);
+ok('and the card reports the traced ring\'s own audit row',
+   (await crossings()) === '8/8', await crossings());
+ok('and the solution browser stops claiming the engine pick',
+   (await l1.locator('.solution-nav.is-stale').count()) === 1
+   && (await l1.locator('.solution-nav em').count()) === 0);
+
+await l1.locator('.traced-chip button').first().click();
+await page.waitForTimeout(300);
+ok('back puts the level\'s own ring on the card again',
+   (await l1.locator('.traced-chip').count()) === 0
+   && (await cardInk()) === ownInk && (await crossings()) === ownCross);
+// And the browser gets its claim back: while a traced cell held the diagram,
+// "engine pick" was not a true label for what was drawn.
+ok('and the solution browser stops being set back',
+   (await l1.locator('.solution-nav.is-stale').count()) === 0
+   && (await l1.locator('.solution-nav em').count()) > 0);
+
 // ---- H/V switch asks for the other band ----
 await page.locator('.trace-head button', { hasText: /^H$/ }).first().click();
 await page.waitForTimeout(200);
