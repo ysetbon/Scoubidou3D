@@ -521,6 +521,11 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
   const [angleIdx, setAngleIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [only, setOnly] = useState<number | null>(null);
+  // Which question the grid's colours answer: how each combo ended over its
+  // whole sweep, or how each one stands at the angle step the strip is on.
+  // Touching the strip switches to the slice, because a reader who has just
+  // picked an angle is asking about that angle rather than about the summary.
+  const [atAngle, setAtAngle] = useState(false);
   const [recording, setRecording] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
   // The weave preview's own backing store, blitted into the panel canvas so
@@ -550,6 +555,11 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
 
   // One verdict per combo: the angle it settled on if it found one, else the
   // test that ended the most of its in-window angles.
+  //
+  // Note what this cannot be: a combo with any valid angle is BEST here, since
+  // BEST *is* the valid angle its ranking picked, so no cell is ever VALID in
+  // the summary. That is why a VALID filter reads through to BEST below rather
+  // than dimming the whole grid.
   const cellCode = useMemo(() => {
     const out = new Uint8Array(nCombos);
     for (let i = 0; i < nCombos; i += 1) {
@@ -622,12 +632,15 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
     const id = window.setInterval(() => {
       setCombo((c) => {
         const next = (c + 1) % nCombos;
-        setAngleIdx(best[next] >= 0 ? best[next] : 0);
+        // Same rule the click has: on a slice the step is held, so the walk
+        // compares combos at one step rather than reshading the grid 24 times
+        // a second.
+        if (!atAngle) setAngleIdx(best[next] >= 0 ? best[next] : 0);
         return next;
       });
     }, 1000 / 24);
     return () => window.clearInterval(id);
-  }, [playing, nCombos, best]);
+  }, [playing, nCombos, best, atAngle]);
 
   useEffect(() => {
     const cv = canvasRef.current;
@@ -734,11 +747,20 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
     // ---- combo grid ----
     ctx.fillStyle = "#1a1a1a";
     ctx.font = `${M.body}px system-ui, sans-serif`;
-    ctx.fillText("every extension combo", M.gridX, M.gridY - Math.round(M.body * 0.6));
+    // Kept short: the heading has one line the width of the grid, and the note
+    // under the panel is where the qualification belongs.
+    ctx.fillText(`every extension combo — ${atAngle
+      ? `at angle step ${angleIdx + 1} / ${data.nAngles}`
+      : "over each whole sweep"}`,
+      M.gridX, M.gridY - Math.round(M.body * 0.6));
+    // In the summary a combo that found a valid angle is drawn BEST, so asking
+    // for VALID there means those cells; at an angle step the two are the
+    // distinct things the census recorded and neither is redirected.
+    const want = only != null && !atAngle && only === VALID ? BEST : only;
     for (let i = 0; i < nCombos; i += 1) {
-      const code = cellCode[i];
+      const code = atAngle ? verdicts[i * data.nAngles + angleIdx] : cellCode[i];
       const { x, y } = layout.place(i);
-      const dim = only != null && code !== only;
+      const dim = want != null && code !== want;
       ctx.fillStyle = dim ? "#e6e1d4" : COLOUR[code];
       ctx.fillRect(M.gridX + x * cell, M.gridY + y * cell,
                    Math.max(cell - (cell > 3 ? 1 : 0), 1),
@@ -807,7 +829,7 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
     ctx.fillText(`${data.names[verdict]} — ${BLURB[verdict]}`,
                  sx, sy + sh + M.lead * 2 + 12);
   }, [data, combo, angleIdx, angleDeg, verdicts, angle0, best, nCombos, only,
-      appliedIdx, layout, cellCode, cell, gridH, stripY, M, width,
+      atAngle, appliedIdx, layout, cellCode, cell, gridH, stripY, M, width,
       canvasH, weave, weaveTick, playing, recording]);
 
   const pick = (ev: React.MouseEvent<HTMLCanvasElement>) => {
@@ -822,10 +844,20 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
     if (y >= M.gridY && y < M.gridY + gridH) {
       const i = layout.unplace(Math.floor((x - M.gridX) / cell),
                               Math.floor((y - M.gridY) / cell));
-      if (i != null && i < nCombos) { setCombo(i); setAngleIdx(best[i] >= 0 ? best[i] : 0); }
+      if (i == null || i >= nCombos) return;
+      setCombo(i);
+      // The strip always follows the grid. Which angle it lands on is the one
+      // thing the two modes disagree about: on the summary the combo's own
+      // pick is what the cell was drawn from, and on a slice the step is the
+      // axis the whole grid shares, so moving it would recolour the picture
+      // the reader is pointing at.
+      if (!atAngle) setAngleIdx(best[i] >= 0 ? best[i] : 0);
     } else if (y >= stripY - 6 && y <= stripY + 32) {
       const j = Math.floor(((x - M.gridX) / (width - M.gridX - M.pad)) * data.nAngles);
       setAngleIdx(Math.max(0, Math.min(data.nAngles - 1, j)));
+      // And the grid follows the strip: picking an angle is asking about that
+      // angle, so the cells answer for it instead of for the whole sweep.
+      setAtAngle(true);
     }
   };
 
@@ -875,6 +907,12 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
             {b.toUpperCase()}
           </button>
         ))}
+        <button type="button" onClick={() => setAtAngle(a => !a)} aria-pressed={atAngle}
+          title={atAngle
+            ? "Colour the grid by how each combo ended over its whole sweep"
+            : "Colour the grid by where each combo stands at the strip's angle step"}>
+          {atAngle ? "Whole sweep" : "At this angle"}
+        </button>
         <button type="button" onClick={() => setPlaying((p) => !p)}>
           {playing ? "Pause" : "Play"}
         </button>
@@ -889,6 +927,9 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
         <canvas ref={canvasRef} onClick={pick}
           data-grid-x={M.gridX} data-grid-y={M.gridY} data-cell={cell}
           data-cols={layout.cols} data-rows={layout.rows}
+          data-strip-y={stripY} data-strip-h={M.strip}
+          data-combo={combo} data-angle={angleIdx}
+          data-mode={atAngle ? "angle" : "sweep"}
           data-weave-x={M.weave.x} data-weave-y={M.weave.y}
           data-weave-w={M.weave.w} data-weave-h={M.weave.h} />
       </div>
@@ -911,10 +952,14 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
         {data.P} extension pair{data.P === 1 ? "" : "s"} × {E} extensions
         = {nCombos.toLocaleString()} combos, drawn {layout.cols}×{layout.rows}
         {" — "}{axes}. Red box is the combo being looked at, the ring is the one
-        this level adopted. Click the grid to jump to a combo, or the strip to
-        scrub angles. A filter dims everything that did not end on that test.
-        The band is replayed unpinned, so a square level 1 shows the search its
-        V band would have run.
+        this level adopted. The grid and the strip move together: click a cell
+        and the strip shows that combo, click the strip and the grid recolours
+        to that angle step — every combo at the same point in its own sweep,
+        which is a different number of degrees for each. <em>Whole sweep</em>{" "}
+        puts the summary back. A filter dims everything that did not end on
+        that test; on the summary, where a combo that found a valid angle is
+        drawn BEST, VALID selects those cells. The band is replayed unpinned,
+        so a square level 1 shows the search its V band would have run.
       </p>
     </div>
   );

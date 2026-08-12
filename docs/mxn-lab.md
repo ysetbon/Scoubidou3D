@@ -492,6 +492,33 @@ report progress to.
 a time: the pending sweep runs it over the plan, and the finished panel draws a
 cell with it rather than having the census carry geometry it can recompute.
 
+### Reading the grid: two questions, one picture
+
+The census is a `(combo, angle)` matrix and the panel shows two cuts of it, kept
+in step with each other:
+
+- the **grid** is every combo, coloured either **over its whole sweep** — the
+  angle it settled on if it found one, else the test that ended most of its
+  in-window angles — or **at one angle step**, which is a column of the matrix.
+- the **strip** is every angle of the combo under the cursor.
+
+Clicking a cell moves the strip to that combo; clicking the strip puts the grid
+on that step, because a reader who has just picked an angle is asking about that
+angle. The head's *Whole sweep* / *At this angle* button says which is on and
+switches back. On a slice the step is the axis every cell shares, so clicking a
+cell holds it rather than jumping to that combo's own pick — and `Play` holds it
+too, so the walk compares combos at one step instead of reshading the grid 24
+times a second. Note what a step is not: each combo's window sits at its own
+`angle0`, so step *j* is the same *position* in each combo's sweep and a
+different number of degrees for each. The heading says the step, never a degree.
+
+One consequence of how the census records itself is worth stating, because it
+looked like a bug: **`BEST` is the valid angle a combo's ranking picked**, so any
+combo with a valid angle is drawn `BEST` on the summary and no summary cell is
+ever `VALID`. A literal `VALID` filter there would dim the whole grid, so on the
+summary it reads through to those cells. At an angle step the two are the
+distinct things the census recorded and neither is redirected.
+
 `src/mxn-lab/trace-layout.ts` holds
 the combo grid as arithmetic — the combo index is a base-E number with one
 digit per extension pair, so the grid is that number de-interleaved, even
