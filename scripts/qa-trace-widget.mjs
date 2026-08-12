@@ -245,11 +245,22 @@ const geom = await page.evaluate(() => {
   };
 });
 const CELL = geom.cell;
-const clickCell = async (col, row) => {
-  // The canvas draws in CSS pixels now, so its own coordinates are the page's.
-  await page.mouse.click(geom.left + geom.gridX + col * CELL + CELL / 2,
-                         geom.top + geom.gridY + row * CELL + CELL / 2);
+// The canvas draws in CSS pixels, so a point inside the drawing is a point
+// inside the element -- clicked through the locator, which scrolls the panel
+// into view first. Page coordinates would not survive a locator click
+// elsewhere in the panel scrolling the page under them.
+const canvasBox = () => page.evaluate(() => {
+  const cv = document.querySelector('.trace-panel canvas');
+  return { gridX: +cv.dataset.gridX, gridY: +cv.dataset.gridY,
+           cell: +cv.dataset.cell, stripY: +cv.dataset.stripY };
+});
+const clickAt = async (x, y) => {
+  await page.locator('.trace-panel canvas').first().click({ position: { x, y } });
   await page.waitForTimeout(60);
+};
+const clickCell = async (col, row) => {
+  const b = await canvasBox();
+  await clickAt(b.gridX + col * b.cell + b.cell / 2, b.gridY + row * b.cell + b.cell / 2);
 };
 // row 17, col 19 is combo index 376 -> extensions (170, 190)
 await clickCell(19, 17);
@@ -313,6 +324,84 @@ ok('a legend filter dims the cells that ended elsewhere', dimAfter > dimBefore +
 await page.locator('.trace-legend button', { hasText: 'ORDER' }).first().click();
 await page.waitForTimeout(120);
 ok('unfiltering restores them', Math.abs((await dimCount()) - dimBefore) < 50);
+
+// ---- VALID is a filter with cells behind it ----
+// On the summary every combo that found a valid angle is drawn BEST -- BEST is
+// the valid angle its ranking picked -- so a literal VALID filter used to dim
+// the whole grid. It reads through to those cells instead.
+const gridPixels = await page.evaluate(() => {
+  const cv = document.querySelector('.trace-panel canvas');
+  const dpr = cv.width / cv.getBoundingClientRect().width;
+  return Math.round(+cv.dataset.cols * +cv.dataset.cell * dpr)
+       * Math.round(+cv.dataset.rows * +cv.dataset.cell * dpr);
+});
+await page.locator('.trace-legend button', { hasText: 'VALID' }).first().click();
+await page.waitForTimeout(120);
+const dimValid = await dimCount();
+ok('a VALID filter still lights the combos that found a valid angle',
+   dimValid > dimBefore + 1000 && dimValid < gridPixels * 0.95,
+   `${dimValid} of ${gridPixels} grid pixels dimmed`);
+await page.locator('.trace-legend button', { hasText: 'VALID' }).first().click();
+await page.waitForTimeout(120);
+
+// ---- the grid and the strip move together ----
+// A fingerprint of the grid, so "it recoloured" is a fact about the whole
+// drawing rather than about one sampled cell.
+const gridInk = () => page.evaluate(() => {
+  const cv = document.querySelector('.trace-panel canvas');
+  const dpr = cv.width / cv.getBoundingClientRect().width;
+  const { data } = cv.getContext('2d').getImageData(
+    Math.round(+cv.dataset.gridX * dpr), Math.round(+cv.dataset.gridY * dpr),
+    Math.round(+cv.dataset.cols * +cv.dataset.cell * dpr),
+    Math.round(+cv.dataset.rows * +cv.dataset.cell * dpr));
+  let h = 0;
+  for (let i = 0; i < data.length; i += 4) h = (h * 31 + data[i] + data[i + 1] * 3) % 1e9;
+  return h;
+});
+// What the panel is looking at, published by the drawing itself: which combo,
+// which angle step, and which question the grid's colours answer.
+const at = () => page.evaluate(() => {
+  const cv = document.querySelector('.trace-panel canvas');
+  return { combo: +cv.dataset.combo, angle: +cv.dataset.angle, mode: cv.dataset.mode };
+});
+
+// The grid drives the strip: another combo brings its own chosen angle with it.
+// Cell (7, 10) is the combo this level adopted, which is one that found an
+// angle -- a combo with no valid angle has nothing to move the strip to.
+const before = await at();
+await clickCell(7, 10);
+const moved = await at();
+ok("clicking a cell moves the strip to that combo's own angle",
+   moved.combo !== before.combo && moved.angle !== before.angle,
+   `${JSON.stringify(before)} -> ${JSON.stringify(moved)}`);
+
+// And the strip drives the grid.
+const summaryInk = await gridInk();
+const strip = await canvasBox();
+await clickAt(strip.gridX + 150, strip.stripY + 8);
+await page.waitForTimeout(90);
+const sliced = await at();
+const sliceInk = await gridInk();
+ok('clicking the strip puts the grid on that angle step',
+   sliced.mode === 'angle' && sliced.angle !== moved.angle, JSON.stringify(sliced));
+ok('and the cells are recoloured for it', sliceInk !== summaryInk);
+
+// On a slice the step is the axis every cell shares, so picking another combo
+// must not drag it out from under the reader.
+await clickCell(5, 5);
+const held = await at();
+ok('clicking a cell on a slice holds the angle step',
+   held.angle === sliced.angle && held.combo !== sliced.combo,
+   `${JSON.stringify(sliced)} -> ${JSON.stringify(held)}`);
+
+await page.locator('.trace-head button', { hasText: 'Whole sweep' }).first().click();
+await page.waitForTimeout(90);
+await clickCell(7, 10);
+const backInk = await gridInk();
+const back = await at();
+ok('and the toggle puts the summary back',
+   back.mode === 'sweep' && backInk === summaryInk,
+   `${JSON.stringify(back)}: ${summaryInk} -> ${sliceInk} -> ${backInk}`);
 
 // ---- H/V switch asks for the other band ----
 await page.locator('.trace-head button', { hasText: /^H$/ }).first().click();
