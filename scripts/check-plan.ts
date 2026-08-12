@@ -20,7 +20,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { descriptorPath, runKey, traceKeyPath, type RunDescriptor } from "../src/mxn-lab/cache";
-import { kLimits, planSweep, sequencesFor, type SweepSpec } from "../src/mxn-farm/plan";
+import {
+  kLimits, kValuesFor, planSweep, sequencesFor, type SweepSpec,
+} from "../src/mxn-farm/plan";
 
 let failures = 0;
 
@@ -117,7 +119,7 @@ ok("the Worker refuses a run key with a trace tail",
 
 const base: SweepSpec = {
   mFrom: 1, mTo: 1, nFrom: 1, nTo: 1,
-  ksMode: "each", kFrom: 1, kTo: 1, depth: 1, ksText: "",
+  ksMode: "each", kFollowsSize: false, kFrom: 1, kTo: 1, depth: 1, ksText: "",
   hand: "lh", direction: "cw", shortArms: true, step: "auto",
   budget: 400_000, wantTraces: true, countCeiling: 0, fastEngine: true,
 };
@@ -126,14 +128,29 @@ check("k limits are square-aware", kLimits(2, 2), { min: -1, max: 2 });
 check("k limits widen off the diagonal", kLimits(1, 3), { min: -3, max: 4 });
 
 check("`each` makes one sequence per k, held at every level",
-  sequencesFor({ ...base, kFrom: -1, kTo: 1, depth: 3 }),
+  sequencesFor({ ...base, kFrom: -1, kTo: 1, depth: 3 }, 2, 2),
   [[-1, -1, -1], [0, 0, 0], [1, 1, 1]]);
 check("`words` makes every ordered sequence",
-  sequencesFor({ ...base, ksMode: "words", kFrom: 0, kTo: 1, depth: 2 }),
+  sequencesFor({ ...base, ksMode: "words", kFrom: 0, kTo: 1, depth: 2 }, 2, 2),
   [[0, 0], [0, 1], [1, 0], [1, 1]]);
 check("`list` reads one sequence per line, brackets and commas allowed",
-  sequencesFor({ ...base, ksMode: "list", ksText: "1 2\n[1, -1]\n\nnot a k\n-1" }),
+  sequencesFor({ ...base, ksMode: "list", ksText: "1 2\n[1, -1]\n\nnot a k\n-1" }, 2, 2),
   [[1, 2], [1, -1], [-1]]);
+
+// A typed range is one range for the whole sweep; following the size asks each
+// one its own band, which is a different set of ks at 2×1 than at 2×2.
+check("a typed range is the same ks at every size",
+  [kValuesFor({ ...base, kFrom: -1, kTo: 2 }, 2, 2),
+    kValuesFor({ ...base, kFrom: -1, kTo: 2 }, 2, 1)],
+  [[-1, 0, 1, 2], [-1, 0, 1, 2]]);
+check("following the size gives each one its own band",
+  [kValuesFor({ ...base, kFollowsSize: true }, 2, 2),
+    kValuesFor({ ...base, kFollowsSize: true }, 2, 1),
+    kValuesFor({ ...base, kFollowsSize: true }, 1, 1)],
+  [[-1, 0, 1, 2], [-2, -1, 0, 1, 2, 3], [0, 1]]);
+check("`words` follows the size too, so its depth-2 count is the band squared",
+  sequencesFor({ ...base, ksMode: "words", kFollowsSize: true, depth: 2 }, 2, 1).length,
+  36);
 
 // 2×2 admits -1…2 and 1×2 admits -2…3, so a sweep over -3…3 keeps different
 // ks at the two sizes and has to say how many it dropped rather than pretend
@@ -147,6 +164,34 @@ check("1×2 keeps -2…3 and 2×2 keeps -1…2",
     "2x2:-1", "2x2:0", "2x2:1", "2x2:2"]);
 check("and counts what the range could not reach",
   mixed.skipped, [{ reason: "k outside the size's valid range", count: 4 }]);
+
+// The same sweep with the band following the size: the same ks reached, and
+// nothing dropped, because no size was ever asked for a k it does not admit.
+const followed = planSweep({
+  ...base, kFollowsSize: true, mFrom: 1, mTo: 2, nFrom: 2, nTo: 2, depth: 1,
+});
+check("following the size reaches the same ks",
+  followed.jobs.map(job => `${job.m}x${job.n}:${job.ks[0]}`),
+  mixed.jobs.map(job => `${job.m}x${job.n}:${job.ks[0]}`));
+check("and drops nothing", followed.skipped, []);
+
+// The bug this replaced: a range that fits one size exactly misses four of the
+// ks of a size one step off the diagonal.
+const narrow = planSweep({
+  ...base, mFrom: 1, mTo: 2, nFrom: 1, nTo: 2, kFrom: -1, kTo: 2, depth: 1,
+});
+const whole = planSweep({
+  ...base, kFollowsSize: true, mFrom: 1, mTo: 2, nFrom: 1, nTo: 2, depth: 1,
+});
+check("a 2×2-shaped range misses 2×1's outer ks",
+  narrow.jobs.filter(job => job.m === 2 && job.n === 1).map(job => job.ks[0]),
+  [-1, 0, 1, 2]);
+check("and the size's own band does not",
+  whole.jobs.filter(job => job.m === 2 && job.n === 1).map(job => job.ks[0]),
+  [-2, -1, 0, 1, 2, 3]);
+check("1×1 asks for 0…1 and not one k more",
+  whole.jobs.filter(job => job.m === 1 && job.n === 1).map(job => job.ks[0]),
+  [0, 1]);
 
 // A list with a repeated line reaches the same parameters twice. The queue keys
 // on the id, so a duplicate would only be double-counted on screen.
