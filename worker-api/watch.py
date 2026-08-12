@@ -22,6 +22,7 @@ Read-only. Stdlib only. Ctrl-C to stop.
 
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -69,18 +70,54 @@ GREEN, YELLOW, RED, BLUE = (
 STATE_COLOUR = {"running": GREEN, "pending": DIM, "done": BLUE, "failed": RED}
 
 
+# urllib announces itself as Python-urllib/3.x, which Cloudflare's edge treats
+# as a known automation signature and refuses with 403 error code 1010 before
+# the request ever reaches the Worker. Naming ourselves honestly is enough --
+# the check is against known-bad signatures, not for known-good ones. Override
+# if an edge rule is ever stricter than that.
+AGENT = os.environ.get("USER_AGENT", "mxn-farm-watch/1 (+worker-api/watch.py)")
+
+
+def explain(code, body):
+    """What a failure actually means. These four are wholly different problems
+    and the browser shows the same red box for all of them."""
+    if code == 401:
+        return "the token was refused — check ADMIN_TOKEN against `wrangler secret list`"
+    if code == 403:
+        found = re.search(r"error code:\s*(\d+)", body)
+        cf = found.group(1) if found else None
+        if cf == "1010":
+            return ("Cloudflare banned the client by its signature, before the Worker saw "
+                    "it. Set USER_AGENT to something else and try again.")
+        return f"Cloudflare refused the request at the edge{f' (code {cf})' if cf else ''}"
+    if code == 404:
+        return "no such route — is WORKER_URL right, and does it have no trailing path?"
+    if code >= 500:
+        return ("this is the D1 reset worker-api/doctor.sh is about: expected at a low "
+                "rate, and the next tick will most likely answer")
+    return ""
+
+
 def get(path):
     """One GET. Network and HTTP errors are values, not exceptions: this thing
     runs for hours next to a farm that is itself surviving 500s, and dying on
     one is the opposite of what it is for."""
-    request = urllib.request.Request(
-        f"{BASE}{path}", headers={"Authorization": f"Bearer {TOKEN}"})
+    request = urllib.request.Request(f"{BASE}{path}", headers={
+        "Authorization": f"Bearer {TOKEN}",
+        "User-Agent": AGENT,
+        "Accept": "application/json",
+    })
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
             return json.load(response), None
     except urllib.error.HTTPError as error:
-        detail = error.read()[:200].decode("utf8", "replace")
-        return None, f"HTTP {error.code} — {detail}"
+        body = error.read().decode("utf8", "replace")
+        # Cloudflare's own refusals are a full HTML page; the only part worth
+        # showing is the code buried in it, which `explain` reads.
+        note = explain(error.code, body)
+        terse = re.sub(r"<[^>]+>", " ", body)
+        terse = re.sub(r"\s+", " ", terse).strip()[:120]
+        return None, f"HTTP {error.code} — {terse}" + (f"\n  {note}" if note else "")
     except Exception as error:  # noqa: BLE001 — timeouts, DNS, resets, all equal here
         return None, str(error)
 
@@ -121,9 +158,7 @@ def draw(batch):
     query = f"?batch={batch}" if batch else ""
     summary, error = get(f"/farm/summary{query}")
     if error:
-        return [f"{RED}the queue did not answer: {error}{RESET}",
-                f"{DIM}(a lone 500 here is the D1 error worker-api/doctor.sh is about — "
-                f"it will most likely answer next tick){RESET}"]
+        return [f"{RED}the queue did not answer: {error}{RESET}"]
     jobs, error = get(f"/farm/jobs{query}&limit=400" if query else "/farm/jobs?limit=400")
     if error:
         return [f"{RED}the queue did not answer: {error}{RESET}"]

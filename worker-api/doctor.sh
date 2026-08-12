@@ -36,7 +36,10 @@ else
   fails=0
   for i in $(seq 1 10); do
     start=$(date +%s%N)
+    # -A because Cloudflare's edge bans some client signatures outright, and a
+    # 403/1010 from the edge would otherwise read as the Worker refusing us.
     code=$(curl -s -o /tmp/d1-doctor-health.$$ -w '%{http_code}' \
+      -A "mxn-farm-doctor/1" \
       -H "Authorization: Bearer $ADMIN_TOKEN" "$WORKER_URL/health")
     ms=$(( ($(date +%s%N) - start) / 1000000 ))
     if [ "$code" = "200" ]; then
