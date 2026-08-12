@@ -19,6 +19,10 @@ stores each answer on the Cloudflare Worker. `/mxn/` then reads them back.
 
 <https://ysetbon.github.io/Scoubidou3D/mxn/gpu/>
 
+This file is the design. The **how-to for the machine that runs it** — fresh
+clone, Worker setup, what to keep awake, which checks to run after a change —
+is [docs/gpu-runbook.md](gpu-runbook.md).
+
 ## What it stores
 
 Two artifacts per parameter set, and they are exactly the two things a reader

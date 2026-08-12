@@ -390,6 +390,7 @@ exactly like the original editor.
 | [docs/twist-stitch](docs/twist-stitch/) | the twist stitch, its screw group, and the turn's derivation |
 | [docs/mxn-lab.md](docs/mxn-lab.md) | the MXN Continuation Lab at `/mxn/`: what was copied, the trace census, the level widget |
 | [docs/mxn-farm.md](docs/mxn-farm.md) | the compute farm at `/mxn/gpu/`: precomputing the lab onto Cloudflare so it loads instead of computing |
+| [docs/gpu-runbook.md](docs/gpu-runbook.md) | the runbook for the machine that runs it — start here on a fresh clone, human or AI assistant alike |
 | [docs/panel-mocks](docs/panel-mocks/) | the three panel layouts, and which one shipped |
 
 ## Roadmap / ideas
