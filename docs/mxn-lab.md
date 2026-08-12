@@ -263,6 +263,30 @@ already woven (`payload["weave"]`), the studio seeds the cache from it on
 `trace-ready`, and since the panel lands on that cell at that angle, the
 default preview is on screen the moment the census is.
 
+### Show on main diagram
+
+The weave preview is 300 px square beside a census; the card's diagram is the
+drawing everything else on the page is read against. **Show on main diagram**,
+at the end of the stepper row, sends the cell there. It costs nothing extra —
+`TraceWeave` already carries the strands and the audit row, which is exactly
+what the `solution` and `semi-solution` messages carry, so it takes the same
+path they do and the card's metrics, gaps and `WEAVE / NOT A WEAVE` corner all
+describe the traced ring.
+
+Two things keep the card honest about which ring it is drawing:
+
+- **The engine's own pick is not an override.** It is the one cell that is also
+  a numbered solution, so showing it walks the browser to `enginePick` instead
+  of replacing anything: the number and the drawing then agree, and they agree
+  on the engine's answer. Every other cell is not a solution at all.
+- **A traced cell says so.** The card head carries a `TRACED ext (…) · angle`
+  chip with its own *back*, which restores the ring the run produced — kept once,
+  on the first override, so *back* returns to the run's ring rather than to the
+  previous override. While the chip is up the solution browser is set back and
+  drops its *engine pick* tag, because neither describes what is on screen. A
+  `solution` or `semi-solution` reply clears the override on arrival: the
+  browser has just put its own ring on the card, so the override is over.
+
 ### The dataset API
 
 ⭐ and 🚩 always write to `localStorage`. If a Worker URL and admin token are set in

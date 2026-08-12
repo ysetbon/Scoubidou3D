@@ -458,6 +458,35 @@ textarea {
 .trace-steps button:disabled { opacity: .38; cursor: default; }
 .trace-steps em { font: 700 9px/1 monospace; font-style: normal; color: var(--muted);
   letter-spacing: .1em; }
+/* Sits at the far end of the stepper row: it acts on the cell those steppers
+   choose, and it is the one control here that changes something outside the
+   widget, so it does not sit among the glyph keys. */
+.trace-steps .show-on-card {
+  margin-left: auto; width: auto; height: 22px; padding: 0 10px;
+  font: 700 10px/1 monospace;
+}
+.trace-steps .show-on-card:disabled { opacity: .38; }
+
+/* The browser is still where the reader left it, but while a traced cell holds
+   the diagram its number is not a description of what is on screen — so it is
+   set back rather than sitting at full strength beside a drawing it does not
+   name. Its own "engine pick" tag goes entirely, being a claim about the ring.  */
+.solution-nav.is-stale { opacity: .45; }
+
+/* The card's own marker while its diagram is a traced cell rather than the
+   ring the run produced. */
+.traced-chip { display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--ink); padding: 3px 4px 3px 8px; background: var(--card); }
+.traced-chip b { font: 800 9px/1 monospace; letter-spacing: .12em; text-transform: uppercase; }
+.traced-chip i { font: 600 10px/1 monospace; font-style: normal; color: var(--muted);
+  font-variant-numeric: tabular-nums; }
+.traced-chip button {
+  font: 700 9px/1 monospace; letter-spacing: .08em; text-transform: uppercase;
+  padding: 4px 7px; cursor: pointer; border: 1px solid var(--line); background: var(--paper);
+}
+.traced-chip button:hover, .traced-chip button:focus-visible {
+  border-color: var(--ink); background: var(--acid); outline: none;
+}
 
 .trace-legend { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 /* Each entry is a filter: pressing one dims every cell that ended elsewhere. */
