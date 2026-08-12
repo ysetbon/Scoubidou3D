@@ -321,6 +321,26 @@ for (const store of ["r2", "d1"]) {
       method: "PATCH", body: JSON.stringify({ id: first.job.id, state: "elsewhere" }),
     })).status, 400);
 
+  // A Pyodide traceback opens with the same _pyodide/_base.py frames every time
+  // and names the exception on its last line, so a long one has to keep its
+  // tail: clipping to the front alone stores the half that is identical on
+  // every failure and drops the half that says what happened.
+  const traceback = 'Traceback (most recent call last):\n'
+    + '  File "/lib/python314.zip/_pyodide/_base.py", line 597, in eval_code_async\n'.repeat(40)
+    + 'MemoryError: the thing that actually went wrong';
+  await call(env, "/farm/jobs", {
+    method: "PATCH",
+    body: JSON.stringify({ id: second.job.id, state: "failed", error: traceback }),
+  });
+  const kept = (await (await call(env, "/farm/jobs?batch=sweep-1&state=failed")).json())
+    .jobs[0].error;
+  ok("a long traceback keeps the line naming the exception",
+    kept.includes("MemoryError: the thing that actually went wrong"), kept.slice(-80));
+  ok("and still opens where the traceback opens",
+    kept.startsWith("Traceback (most recent call last):"), kept.slice(0, 60));
+  ok("and is bounded rather than stored whole",
+    kept.length < traceback.length && kept.length <= 1300, String(kept.length));
+
   const summary = (await (await call(env, "/farm/summary?batch=sweep-1")).json()).summary;
   eq("the summary counts by state",
     Object.fromEntries(summary.map(row => [row.state, row.jobs])), { done: 1, failed: 1 });

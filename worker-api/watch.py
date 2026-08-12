@@ -32,6 +32,16 @@ from datetime import datetime, timezone
 BASE = os.environ.get("WORKER_URL", "").rstrip("/")
 TOKEN = os.environ.get("ADMIN_TOKEN", "")
 EVERY = float(os.environ.get("EVERY", "5"))
+# How many hands the page is running. Only used to say how many live leases are
+# orphans; without it the count of distinct runner names is assumed, which is
+# right unless a hand has orphaned every lease it holds.
+HANDS = int(os.environ.get("HANDS", "0"))
+
+# Where `done` stood when this started, so the dashboard can answer "is it
+# moving" -- which a single frame cannot. Jobs here legitimately run over an
+# hour, so a still `done` over five minutes says nothing and over ninety says
+# everything.
+SINCE = {"at": time.time(), "done": None}
 
 def _ansi_works():
     """Windows consoles ignore escape codes until VT processing is switched on,
@@ -191,6 +201,13 @@ def draw(batch):
         for field in totals:
             totals[field] += line.get(field) or 0
 
+    if SINCE["done"] is None:
+        SINCE["done"] = counts.get("done", 0)
+    gained = counts.get("done", 0) - SINCE["done"]
+    watched = time.time() - SINCE["at"]
+    moved = (f"{GREEN}+{gained} done{RESET}" if gained else
+             f"{DIM}+0 done{RESET}" if watched < 3600 else f"{YELLOW}+0 done{RESET}")
+
     out = [
         f"{BOLD}batch {batch or '(all)'}{RESET}   "
         + "   ".join(f"{STATE_COLOUR.get(state, '')}{counts.get(state, 0)} {state}{RESET}"
@@ -198,6 +215,9 @@ def draw(batch):
         + f"   {DIM}·{RESET} {totals['artifacts']:.0f} artifacts"
         f"   {DIM}·{RESET} {size(totals['bytes'])} on the shelf"
         f"   {DIM}·{RESET} {clock(totals['seconds'])} of engine time banked",
+        f"{DIM}watching {clock(watched)}:{RESET} {moved}"
+        + (f"   {DIM}· a job on this sweep has been taking tens of minutes, so a still "
+           f"count is not a stall yet{RESET}" if not gained and watched < 3600 else ""),
         "",
     ]
 
@@ -216,52 +236,57 @@ def draw(batch):
     live = [r for r in running if left_on(r) > 0]
     dead = [r for r in running if left_on(r) <= 0]
 
-    # A hand computes one job at a time. So of the live leases one runner holds,
-    # only its newest can be the job it is on -- every older one is a row it
-    # walked away from still holding, and which nothing will touch until the
-    # lease runs out. That gap is invisible on the page, which counts them all
-    # as running, and it is the whole reason to look here instead.
-    current, abandoned = [], []
-    for rows_held in held.values():
-        alive = sorted([r for r in rows_held if left_on(r) > 0], key=left_on, reverse=True)
-        if alive:
-            current.append(alive[0])
-            abandoned.extend(alive[1:])
+    # A hand computes one job at a time, so N runner names cannot legitimately
+    # hold more than N live leases. The excess are orphans: /farm/claim is an
+    # UPDATE that commits before its response is sent, so a reply lost on the way
+    # back -- a D1 reset, a dropped connection -- leaves the row claimed and
+    # leased with no hand aware of it. The hand claims again; the orphan sits out
+    # its full lease.
+    #
+    # WHICH of a runner's live rows is the real one is not derivable here: jobs
+    # legitimately run for over an hour, so age does not separate them. Only the
+    # page knows. So count the excess and name the rows, and do not pretend to
+    # know which is which.
+    hands = HANDS or len(held)
+    orphans = max(0, len(live) - hands)
 
     if not running:
         out.append(f"{DIM}no job is held — every hand is idle, or none is running{RESET}")
     else:
         out.append(
-            f"{BOLD}THE HANDS{RESET}  {GREEN}{len(current)} computing{RESET}"
-            + (f"  {YELLOW}· {len(abandoned)} walked away from, still leased{RESET}"
-               if abandoned else "")
-            + (f"  {DIM}· {len(dead)} lease expired{RESET}" if dead else ""))
+            f"{BOLD}THE HANDS{RESET}  {DIM}{len(held)} runner name(s) holding "
+            f"{len(live)} live lease(s){RESET}"
+            + (f"  {YELLOW}· ≥{orphans} orphaned{RESET}" if orphans else "")
+            + (f"  {DIM}· {len(dead)} expired{RESET}" if dead else ""))
         for runner in sorted(held):
-            for row in sorted(held[runner], key=left_on, reverse=True):
+            rows_held = sorted(held[runner], key=left_on, reverse=True)
+            extra = max(0, len([r for r in rows_held if left_on(r) > 0]) - 1)
+            for row in rows_held:
                 left = left_on(row)
                 seen = age(row.get("started_at"))
-                if row in current:
-                    mark, tint = "●", GREEN
-                    note = f"lease {clock(left)} left"
-                elif row in abandoned:
-                    mark, tint = "◐", YELLOW
-                    note = f"{YELLOW}no hand on it{RESET} — frees itself in {clock(left)}"
-                else:
+                if left <= 0:
                     mark, tint = "○", RED
                     note = f"{RED}lease expired{RESET} — claimable now"
+                else:
+                    mark, tint = "●", GREEN
+                    note = f"lease {clock(left)} left"
                 out.append(
                     f"  {tint}{mark}{RESET} {runner:<10} "
                     f"{row['m']}×{row['n']} ks {','.join(str(k) for k in json.loads(row['ks']))}"
                     f"   {DIM}first seen {clock(seen)} ago, tries {row.get('attempts')}{RESET}"
                     f"   {note}")
+            if extra:
+                out.append(f"    {YELLOW}↳ {runner} holds {extra + 1} live leases but can "
+                           f"compute one. {extra} of these is an orphaned claim — the page "
+                           f"says which one is real.{RESET}")
 
-    idle = len(abandoned) + len(dead)
-    if idle:
-        out += ["", f"{YELLOW}{idle} of {len(running)} 'running' rows have no hand on them.{RESET}",
-                f"{DIM}Nothing to do: an expired lease is claimable already, and the rest "
-                f"expire on their own. Do NOT press 'Requeue stuck' while hands are "
-                f"working — it resets every running row, including the {len(current)} "
-                f"being computed right now.{RESET}"]
+    if orphans or dead:
+        out += ["", f"{YELLOW}{orphans + len(dead)} of {len(running)} 'running' rows have "
+                    f"no hand on them.{RESET}",
+                f"{DIM}Nothing to do: an expired lease is already claimable, and an orphan "
+                f"frees itself when its lease runs out. Do NOT press 'Requeue stuck' while "
+                f"hands are working — it resets every running row, the real ones "
+                f"included.{RESET}"]
 
     failed = [r for r in rows if r.get("state") == "failed"]
     if failed:
