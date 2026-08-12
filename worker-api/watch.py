@@ -146,6 +146,27 @@ def clock(seconds):
     return f"{sign}{seconds // 3600}h {(seconds % 3600) // 60:02d}m"
 
 
+def blame(error):
+    """The line of a traceback that says what went wrong.
+
+    A Pyodide traceback opens with `File "/lib/python314.zip/_pyodide/_base.py"`
+    and the exception is at the bottom, so showing the front of one shows the
+    only part that is the same every time. Worse, the Worker keeps the first 500
+    characters of the string (reportJob), so on a deep stack the bottom may be
+    gone before it ever reaches here -- in which case the deepest frame named is
+    the most specific thing left, and better than the first."""
+    if not error:
+        return "no error recorded"
+    lines = [line.strip() for line in str(error).splitlines() if line.strip()]
+    if not lines:
+        return "no error recorded"
+    for line in reversed(lines):
+        if not line.startswith(("File \"", "Traceback", "at ")) and "line " not in line[:12]:
+            return line[:150]
+    frames = [l for l in lines if l.startswith('File "')]
+    return (frames[-1] if frames else lines[-1])[:150] + "  (truncated by the Worker)"
+
+
 def size(n):
     n = float(n or 0)
     for unit in ("B", "kB", "MB", "GB"):
@@ -188,41 +209,67 @@ def draw(batch):
     for row in running:
         held.setdefault(row.get("runner") or "(unnamed)", []).append(row)
 
-    # A live lease is the only evidence a hand exists. A row whose lease has run
-    # out says 'running' but nobody is computing it -- the machine slept, the tab
-    # closed, or a PATCH reporting it done hit a 500 and was swallowed.
-    live = [r for r in running if -(age(r.get("lease_until")) or 0) > 0]
-    stuck = [r for r in running if r not in live]
+    # A live lease is the only evidence a hand exists. A dead one says 'running'
+    # while nobody computes it: the machine slept, the tab closed, or the PATCH
+    # reporting it done failed and was swallowed.
+    left_on = lambda row: -(age(row.get("lease_until")) or 0)
+    live = [r for r in running if left_on(r) > 0]
+    dead = [r for r in running if left_on(r) <= 0]
+
+    # A hand computes one job at a time. So of the live leases one runner holds,
+    # only its newest can be the job it is on -- every older one is a row it
+    # walked away from still holding, and which nothing will touch until the
+    # lease runs out. That gap is invisible on the page, which counts them all
+    # as running, and it is the whole reason to look here instead.
+    current, abandoned = [], []
+    for rows_held in held.values():
+        alive = sorted([r for r in rows_held if left_on(r) > 0], key=left_on, reverse=True)
+        if alive:
+            current.append(alive[0])
+            abandoned.extend(alive[1:])
 
     if not running:
         out.append(f"{DIM}no job is held — every hand is idle, or none is running{RESET}")
     else:
         out.append(
-            f"{BOLD}THE HANDS{RESET}  "
-            f"{GREEN}{len({r.get('runner') for r in live})} working{RESET}"
-            + (f"  {YELLOW}· {len(stuck)} row(s) held by nobody{RESET}" if stuck else ""))
+            f"{BOLD}THE HANDS{RESET}  {GREEN}{len(current)} computing{RESET}"
+            + (f"  {YELLOW}· {len(abandoned)} walked away from, still leased{RESET}"
+               if abandoned else "")
+            + (f"  {DIM}· {len(dead)} lease expired{RESET}" if dead else ""))
         for runner in sorted(held):
-            for row in held[runner]:
-                since = age(row.get("started_at"))
-                left = -(age(row.get("lease_until")) or 0)
-                stale = left <= 0
-                mark = f"{RED}LEASE EXPIRED{RESET}" if stale else f"lease {clock(left)} left"
+            for row in sorted(held[runner], key=left_on, reverse=True):
+                left = left_on(row)
+                seen = age(row.get("started_at"))
+                if row in current:
+                    mark, tint = "●", GREEN
+                    note = f"lease {clock(left)} left"
+                elif row in abandoned:
+                    mark, tint = "◐", YELLOW
+                    note = f"{YELLOW}no hand on it{RESET} — frees itself in {clock(left)}"
+                else:
+                    mark, tint = "○", RED
+                    note = f"{RED}lease expired{RESET} — claimable now"
                 out.append(
-                    f"  {RED + '○' if stale else GREEN + '●'}{RESET} {runner:<10} "
+                    f"  {tint}{mark}{RESET} {runner:<10} "
                     f"{row['m']}×{row['n']} ks {','.join(str(k) for k in json.loads(row['ks']))}"
-                    f"   {DIM}held {clock(since)}{RESET}   tries {row.get('attempts')}   {mark}")
+                    f"   {DIM}first seen {clock(seen)} ago, tries {row.get('attempts')}{RESET}"
+                    f"   {note}")
 
-    if stuck:
-        out += ["", f"{YELLOW}{len(stuck)} stuck: 'running' with a dead lease. No hand is "
-                    f"on them — they are claimable again and the next claim takes one. "
-                    f"'Requeue stuck' on the page frees them all at once.{RESET}"]
+    idle = len(abandoned) + len(dead)
+    if idle:
+        out += ["", f"{YELLOW}{idle} of {len(running)} 'running' rows have no hand on them.{RESET}",
+                f"{DIM}Nothing to do: an expired lease is claimable already, and the rest "
+                f"expire on their own. Do NOT press 'Requeue stuck' while hands are "
+                f"working — it resets every running row, including the {len(current)} "
+                f"being computed right now.{RESET}"]
 
     failed = [r for r in rows if r.get("state") == "failed"]
     if failed:
         out += ["", f"{BOLD}FAILED{RESET}"]
         for row in failed[:8]:
-            out.append(f"  {RED}✗{RESET} {row['m']}×{row['n']}   "
-                       f"{DIM}{(row.get('error') or '')[:110]}{RESET}")
+            out.append(f"  {RED}✗{RESET} {row['m']}×{row['n']} "
+                       f"ks {','.join(str(k) for k in json.loads(row['ks']))}   "
+                       f"{DIM}{blame(row.get('error'))}{RESET}")
         if len(failed) > 8:
             out.append(f"  {DIM}… and {len(failed) - 8} more{RESET}")
 
