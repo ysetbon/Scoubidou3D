@@ -149,8 +149,26 @@ complete. Roughly 1 ms per ring, so an arrow click is instant.
 Order is lexicographic, H outer, V inner — the same shape `attempt()` uses.
 Nothing is re-ranked, and the engine's own answer sits at its natural position.
 
-Two kinds of level have no list to start from and enumerate on the first click,
-which runs one extra search:
+The count is exact, up front. The walk that firms it is budget-bounded in the
+engine (`RING_SCAN_BUDGET` cells per call, resumable through `scan_cursor`), and
+the page drives it as soon as a run lands: one `count` request in flight at a
+time, the same level again until `countExact`, then the next level — so a click
+of anything slots in between rounds rather than behind all of them, and the
+label never has to read `2+`. With a real end known, the `›` arrow stops at it.
+The reply carries both totals — every closed ring, and the weaves among them —
+so the nav shows the split beside the count, and the healthy-only filter swaps
+the denominator to the weave total rather than paging under the wrong one.
+The cache the walk builds is deliberately light — candidate indexes and the
+audit row, never strands, which read as harmless and measured half a gigabyte
+for a 2×2 counted to the end (10,189 rings). `select_solution` re-materialises
+the one ring it returns instead, one replay, the price a cache miss always
+cost. The cache holds every closed ring whatever the healthy-only filter says,
+and the filter is applied when picking, so a healthy-only browse cannot poison
+the list an unfiltered browse then indexes into.
+
+Two kinds of level have no list to start from and enumerate when the count
+chain reaches them — right after the run, no longer on the first click — which
+runs one extra search:
 
 - a **seeded or pinned** level only ever saw the combo it was told to use
   (`LEVEL_ONE_DEFAULT_SOLUTIONS` makes `2×2 k=1` one of these);

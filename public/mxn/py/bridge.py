@@ -430,20 +430,33 @@ def _solution_meta(entry):
 
 
 def _walk(entry, want_index, healthy_only, cursor):
-    """Walk the product in search order and materialise the want_index-th ring.
+    """Walk the product in search order and land on the want_index-th ring.
 
     Order is lexicographic with H outer and V inner -- the same shape attempt()
     itself uses -- and nothing is re-ranked.
+
+    Every closed ring is cached LIGHT -- candidate indexes and the audit row,
+    never strands. Strands per ring read as harmless and are half a gigabyte
+    for a 2x2 counted to the end; select_solution re-materialises the one ring
+    it returns instead, at the price of the single replay a cache miss always
+    cost. The cache holds every closed ring whatever the filter, and the filter
+    is applied when picking, so browsing healthy-only cannot poison the list
+    an unfiltered browse then indexes into.
     """
     h_cands, v_cands = entry["h_cands"], entry["v_cands"]
     level, m, n = entry["level"], _SESSION["m"], _SESSION["n"]
     expected = 4 * m * n
     found = entry["found"]
+
+    def matches(ring):
+        return not healthy_only or ring["row"]["healthy"]
+
+    hits = sum(1 for ring in found if matches(ring))
     scanned = 0
     start = cursor or entry.get("scan_cursor") or 0
     total_cells = len(h_cands) * len(v_cands)
 
-    while len(found) <= want_index and start < total_cells:
+    while hits <= want_index and start < total_cells:
         if scanned >= RING_SCAN_BUDGET:
             entry["scan_cursor"] = start
             return None, True, start
@@ -458,13 +471,18 @@ def _walk(entry, want_index, healthy_only, cursor):
         row = describe(_synth_result(entry, h_cands[i], v_cands[j]),
                        [dict(s) for s in strands], level,
                        entry["k"], expected, (2 * m, 2 * n))
-        if healthy_only and not row["healthy"]:
-            continue
-        found.append({"h": i, "v": j, "row": row,
-                      "strands": _stage_strands(NX._snapshot_json(strands))})
+        ring = {"h": i, "v": j, "row": row}
+        found.append(ring)
+        if matches(ring):
+            hits += 1
     entry["scan_cursor"] = start
-    if want_index < len(found):
-        return found[want_index], False, start
+    seen = -1
+    for ring in found:
+        if not matches(ring):
+            continue
+        seen += 1
+        if seen == want_index:
+            return ring, False, start
     return None, False, start
 
 
@@ -845,21 +863,45 @@ def select_solution(level, index, healthy_only=False, cursor=None):
                            "cursor": cur, "count": len(entry["found"]),
                            "meta": _solution_meta(entry)}, separators=(",", ":"))
     entry["index"] = index
+    # The cache is light -- indexes and row -- so the ring the reader asked for
+    # is replayed here, once, exactly as the walk first built it.
+    strands, info = copy.deepcopy(entry["checkpoint"])
+    NX.apply_solution(strands, info, entry["level"], _SESSION["m"], _SESSION["n"],
+                      _SESSION["hand"], entry["h_cands"][hit["h"]],
+                      entry["v_cands"][hit["v"]])
     return json.dumps({
         "level": entry["level"], "index": index, "partial": False,
         "count": len(entry["found"]),
         "countExact": entry["scan_cursor"] >= len(entry["h_cands"]) * len(entry["v_cands"]),
-        "row": hit["row"], "strands": hit["strands"],
+        "row": hit["row"], "strands": _stage_strands(NX._snapshot_json(strands)),
         "meta": _solution_meta(entry),
     }, separators=(",", ":"))
 
 
 def count_solutions(level):
-    """Firm up the exact solution count for a level, budget-bounded."""
+    """Firm up the exact solution count for a level, budget-bounded.
+
+    Resumable: each call advances the shared scan cursor by at most
+    RING_SCAN_BUDGET cells, so the caller chains calls until countExact rather
+    than blocking the worker on the whole product at once. Enumerates first if
+    the level was solved without a candidate list — the count must not depend
+    on the reader having browsed once.
+    """
     entry = _level_session(int(level))
+    if entry["enumerated"] == "none" and entry["k"] != 0:
+        enumerate_level(entry["level"])
+    if entry["enumerated"] == "none":
+        return json.dumps({"level": entry["level"],
+                           "count": len(entry.get("found") or []),
+                           "healthy": 0, "countExact": True},
+                          separators=(",", ":"))
     _walk(entry, 1 << 30, False, None)
     total = len(entry["h_cands"]) * len(entry["v_cands"])
+    # Both totals travel: every closed ring, and the weaves among them -- the
+    # two denominators the browser can be paging under.
     return json.dumps({"level": entry["level"], "count": len(entry["found"]),
+                       "healthy": sum(1 for ring in entry["found"]
+                                      if ring["row"]["healthy"]),
                        "countExact": entry["scan_cursor"] >= total},
                       separators=(",", ":"))
 
