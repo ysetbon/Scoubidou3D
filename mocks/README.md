@@ -23,6 +23,8 @@ Two cases:
   `src/mxn-lab/trace-census.ts`, which is `mxn_trace.sweep_combo` one combo at a
   time. The band switch, the *replaying → sweeping* switch and the census pause
   are the mock's, so both states and both clocks can be looked at on demand.
+  *Replaying* stands in for the replay's candidate relay — real rings on a
+  timer, as the worker sends them before any plan exists.
 - **B · run in progress** — `LiveCandidateFigure`, its tiles drawn from eight
   real woven rings, its plaque bar driven by frames shaped like the engine's.
   `m`, `n` and `levels` change the ceiling the plaque quotes.

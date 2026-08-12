@@ -51,23 +51,31 @@ await page.addInitScript(({ result, traces, plans, weaves }) => {
       const reply = (msg) => setTimeout(() => this.onmessage?.({ data: msg }), 30);
       if (data.type === 'generate') reply({ type: 'result', id: data.id, result });
       if (data.type === 'trace') {
-        // Three replies, as the real worker sends them: the plan the level
-        // replay recovers, the census's own progress from inside the sweep,
-        // and the census. Slower than the other replies, so the pending sweep
-        // is on screen long enough to be asserted about.
+        // Four kinds of reply, as the real worker sends them: the replay's own
+        // candidates while it runs, the plan its band search hands over, the
+        // census's progress from inside the sweep, and the census. Slower than
+        // the other replies, so the pending sweep is on screen long enough to
+        // be asserted about.
         const key = String(data.band).toLowerCase().startsWith('v') ? 'v' : 'h';
         const plan = plans[key];
+        const ring = result.stages.find(s => s.level === data.level)?.strands ?? [];
+        [0, 1, 2].forEach(i => setTimeout(() => this.onmessage?.({
+          data: { type: 'candidate', id: data.id, level: data.level, k: 1,
+                  phase: `${plan.band} candidate`, trace: plan.band,
+                  completed: (i + 1) * 120, total: 441, valid: i,
+                  extensions: [], strands: ring },
+        }), 30 + i * 90));
         setTimeout(() => this.onmessage?.({
           data: { type: 'trace-plan-ready', id: data.id, ...plan },
-        }), 60);
+        }), 520);
         [0.25, 0.5, 0.75].forEach((at, i) => setTimeout(() => this.onmessage?.({
           data: { type: 'trace-progress', id: data.id,
                   level: plan.level, band: plan.band, nAngles: plan.nAngles,
                   combos: plan.combos, combosDone: Math.round(plan.combos * at) },
-        }), 120 + i * 60));
+        }), 580 + i * 60));
         setTimeout(() => this.onmessage?.({
           data: { type: 'trace-ready', id: data.id, ...traces[key] },
-        }), 600);
+        }), 900);
       }
       if (data.type === 'trace-weave') {
         // A real woven ring for the strands; ext and angle echo the request so
@@ -130,6 +138,28 @@ const sweepInk = await page.evaluate(() => {
   return inked;
 });
 ok('tracing shows the sweep animation, not bare text', sweepInk > 500, `${sweepInk} inked px`);
+
+// ---- and it draws from the first moment, not after the replay ----
+// The replay relays its own candidates, so the widget is never a dead box: the
+// engine's set colours are on the canvas before any plan exists.
+const ringPixels = () => page.evaluate(() => {
+  const cv = document.querySelector('.trace-pending .trace-sweep');
+  if (!cv) return -1;
+  const { data } = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
+  let ring = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    // The V sets' indigos: a ring on the canvas rather than text and a bar.
+    if ((data[i] === 61 && data[i + 1] === 58 && data[i + 2] === 140)
+      || (data[i] === 123 && data[i + 1] === 113 && data[i + 2] === 214)) ring += 1;
+  }
+  return ring;
+});
+let replayInk = 0;
+for (let i = 0; i < 40 && replayInk <= 200; i += 1) {
+  replayInk = await ringPixels();
+  if (replayInk <= 200) await page.waitForTimeout(25);
+}
+ok('the replay draws real rings while it runs', replayInk > 200, `${replayInk} ring px`);
 
 // ---- and it is drawn from the band, not from a schematic ----
 // The plan lands before the census, and once it has the pending text can count
