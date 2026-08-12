@@ -930,6 +930,16 @@ export function ComputeFarm() {
                 <tbody>
                   {queue.map(row => {
                     const ks = (JSON.parse(row.ks) as number[]).join(" ");
+                    // The link must carry EVERY search knob the job ran with,
+                    // not just m, n and ks: the cache is addressed by all of
+                    // them, so a link that dropped the step would open a lab
+                    // looking under the default key — a guaranteed miss for any
+                    // sweep run at a non-default step or budget, silently
+                    // recomputing the very thing this row just stored.
+                    const raw = row as unknown as Record<string, unknown>;
+                    const labHref = `../?m=${row.m}&n=${row.n}&ks=${encodeURIComponent(ks)}`
+                      + `&step=${raw.ext_step}&budget=${raw.combo_budget}`
+                      + `&short=${Number(raw.short_arms) !== 0 ? 1 : 0}`;
                     return (
                       <tr key={row.id} className={`is-${row.state}`}>
                         <td>{row.m}×{row.n}</td>
@@ -941,7 +951,7 @@ export function ComputeFarm() {
                         <td>{bytesLabel(row.bytes ?? 0)}</td>
                         <td className="farm-note-cell">
                           {row.state === "done" ? (
-                            <a href={`../?m=${row.m}&n=${row.n}&ks=${encodeURIComponent(ks)}`}
+                            <a href={labHref}
                               title="Open this parameter set in the lab — it loads from the cache">
                               open in the lab →
                             </a>
