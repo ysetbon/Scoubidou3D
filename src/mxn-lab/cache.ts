@@ -27,11 +27,11 @@ import { bandKey, type Band } from "./trace-band";
 /**
  * Bumped when the engine changes what it answers.
  *
- * Same job as the `trace-plan-v17` key in the worker URL, for the same reason
+ * Same job as the `maxk-legacy-v18` key in the worker URL, for the same reason
  * and with the same discipline: a reader whose browser is holding last month's
  * geometry under this month's key is worse off than one who computed it.
  */
-export const CACHE_VERSION = "v2";
+export const CACHE_VERSION = "v3";
 
 /** The URL and token fields the lab sidebar already writes. One Worker. */
 export const CACHE_URL_KEY = "mxn-lab-api";

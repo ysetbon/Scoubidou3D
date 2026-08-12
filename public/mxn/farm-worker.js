@@ -69,7 +69,7 @@ async function prepare(fastEngine) {
       // exact-worker.js uses: the two load the identical engine and a farm that
       // silently ran an older copy would fill the shelf with answers the lab
       // then disagrees with.
-      const url = new URL(`./py/${name}?v=trace-plan-v17`, import.meta.url);
+      const url = new URL(`./py/${name}?v=maxk-legacy-v18`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
