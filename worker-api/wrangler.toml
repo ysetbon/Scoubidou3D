@@ -14,8 +14,38 @@ database_name = "mxn-solutions"
 # fresh clone deploy against the same database instead of a new empty one.
 database_id = "776e52b5-44ea-46cb-b5dc-9cc008d42ed1"
 
+# Optional artifact store for /cache/*: whole runs and per-level censuses,
+# written by /mxn/gpu/ and read by /mxn/. Commented out because R2 has to be
+# enabled on the account before a bucket can exist, and a binding to a bucket
+# that is not there fails the deploy.
+#
+# Leaving it off is a reasonable choice. Artifacts are gzipped before they are
+# sent and a verdict census is two thirds one repeated value, so they are far
+# smaller than their shape suggests -- measured, a 3x3 census is 3.1 MB of JSON
+# and 48 kB stored, and a whole 2x2 [1,2,2] parameter set is 55 kB across its
+# seven artifacts. D1 holds anything up to 1.4 MB, which is every size the lab
+# will run. R2 is the belt-and-braces, and worth having once the shelf is large
+# enough that 10 GB of database starts to look like a limit.
+#
+#   npx wrangler r2 bucket create mxn-cache
+#
+# then uncomment the three lines below and redeploy. Nothing already in D1 moves;
+# it is simply no longer read, and the next run that computes those parameters
+# writes them to the bucket.
+#
+# [[r2_buckets]]
+# binding = "CACHE"
+# bucket_name = "mxn-cache"
+
 [vars]
 # Origins allowed to call the API. The lab's own Pages origin plus the vite dev
 # server. ADMIN_TOKEN is NOT here -- it is a secret, set with:
 #   wrangler secret put ADMIN_TOKEN
 ALLOWED_ORIGINS = "https://ysetbon.github.io,http://localhost:5173"
+
+# Cache reads are open by default, and deliberately so: an entry is derived from
+# a published engine over published parameters, and the whole point of it is that
+# a reader who has configured nothing still gets the fast page. Writes always need
+# the token, whatever this says. Set to "0" to put reads behind it too -- the lab
+# then falls back to computing locally, exactly as it did before the cache existed.
+CACHE_PUBLIC_READS = "1"

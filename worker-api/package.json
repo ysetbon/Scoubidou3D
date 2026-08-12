@@ -2,12 +2,14 @@
   "name": "mxn-solutions-api",
   "version": "0.1.0",
   "private": true,
-  "description": "Cloudflare Worker + D1 dataset for starred MXN continuation solutions",
+  "description": "Cloudflare Worker + D1 dataset and result cache for the MXN Continuation Lab",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "schema": "wrangler d1 execute mxn-solutions --remote --file=./schema.sql",
-    "typecheck": "tsc --noEmit"
+    "migrate": "wrangler d1 execute mxn-solutions --remote --file=./migrations/0002_cache.sql",
+    "typecheck": "tsc --noEmit",
+    "test": "esbuild src/index.ts --bundle --format=esm --platform=node --outfile=.work/worker.mjs --log-level=warning && node --no-warnings test/api-check.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250109.0",

@@ -32,7 +32,14 @@
 </style>
 </head>
 <body>
-  <div id="lab"></div>
+  <!-- data-cache is the Worker /mxn/gpu/ precomputes onto (docs/mxn-farm.md).
+       Empty here on purpose: a deployment's address does not belong in this
+       repository, and the operator's own browser reads theirs out of the
+       sidebar's "worker url" field anyway. Fill it in and the fast path is on
+       for every visitor — a size that costs twenty seconds of blank page
+       becomes one fetch. Leave it empty and the lab behaves exactly as it did
+       before any of this existed, which is what makes it safe to ship blank. -->
+  <div id="lab" data-cache=""></div>
   <script type="module" src="../src/mxn-lab/main.tsx"></script>
 </body>
 </html>

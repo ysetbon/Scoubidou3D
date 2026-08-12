@@ -15,6 +15,9 @@ import { fileURLToPath } from 'node:url';
 //                      repo, which is why plugin-react is here; it carries its own
 //                      stylesheet rather than site.css, and its engine and Python
 //                      modules are static files under public/mxn/.
+//   mxn/gpu/index.html the compute farm (see docs/mxn-farm.md) — the same engine
+//                      driven headlessly over a range of sizes, storing every
+//                      answer on Cloudflare so /mxn/ can read them back.
 //
 // Base is set for GitHub Pages project-site hosting (ysetbon.github.io/Scoubidou3D/).
 // Override with `vite build --base=/` for root hosting.
@@ -22,7 +25,7 @@ const page = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
 export default defineConfig({
   base: process.env.BASE_PATH ?? '/Scoubidou3D/',
-  plugins: [react({ include: '**/mxn-lab/**' })],
+  plugins: [react({ include: ['**/mxn-lab/**', '**/mxn-farm/**'] })],
   server: { open: true },
   build: {
     rollupOptions: {
@@ -35,6 +38,7 @@ export default defineConfig({
         mxnFast: page('mxn/fast/index.html'),
         mxnRate: page('mxn/rate/index.html'),
         mxnSemi: page('mxn/semi/index.html'),
+        mxnGpu: page('mxn/gpu/index.html'),
       },
     },
   },
