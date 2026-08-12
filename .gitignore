@@ -12,3 +12,7 @@ worker-api/.work/
 
 # python bytecode from the trace scripts
 scripts/__pycache__/
+
+# npm writes one here on any `npm install` in worker-api/; the project has
+# never tracked it, and a diagnostic run should not be the thing that starts.
+worker-api/package-lock.json
