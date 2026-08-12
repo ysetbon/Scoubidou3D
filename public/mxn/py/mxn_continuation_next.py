@@ -1612,8 +1612,13 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
                     (align_v, orders[1], windows[1], force[1], "V")):
                 # On a square stitch V is H rotated by 90 degrees. Search H
                 # optimally, then solve V at that exact same extension tuple.
+                shared_pin = False
                 if label == "V" and share_square_extensions and results:
                     pin = tuple(results[0].get("pair_extensions") or ())
+                    # A shared pin is a preference; a pin passed in through
+                    # `force`, or a bounded seed pass, is a contract whose
+                    # callers rely on None to mean "move to the next seed".
+                    shared_pin = bool(pin) and bound is None
                     if not pin:
                         # k=0 preserves the continuation and aligns nothing, so
                         # H has no combo to share. That is not a failed search:
@@ -1624,8 +1629,24 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
                 if pin is not None:
                     res, sett = _pinned_search(align, window, pin, pairs, verbose, label)
                     if res is None:
-                        return None
-                elif bound is not None:
+                        if not shared_pin:
+                            return None
+                        # H's optimum is not a valid V configuration. The square
+                        # shortcut expects the two to coincide -- V is H rotated
+                        # a quarter turn -- but that is where the optimum is
+                        # LOOKED FOR, not a property every size delivers:
+                        # measured on 3x3 k=3 under Pyodide's numpy, where the
+                        # pinned V search comes back empty and this attempt used
+                        # to collapse to None (and the caller crashed on it).
+                        # Fall back to V's own full search; `_mirror_extensions`
+                        # below still re-mirrors the bands whenever a combo
+                        # valid on both exists and costs no crossings.
+                        if verbose:
+                            print(f"    {label}: H's {pin} is never a valid "
+                                  f"configuration here -- unpinning, V searches "
+                                  f"its own grid")
+                        pin = None
+                if pin is None and bound is not None:
                     b_ceiling, b_step = bound
                     res = align(b_ceiling, b_step, window,
                                 make_grab(label, b_ceiling, b_step))
@@ -1634,7 +1655,7 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
                     sett = {"ceiling": b_ceiling, "step": b_step, "pairs": pairs,
                             "combos": (b_ceiling // b_step + 1) ** pairs,
                             "attempts": 1, "pinned": False, "bounded": True}
-                else:
+                elif pin is None:
                     res, sett = _search_group(
                         lambda ceiling, step, _a=align, _w=window, _l=label:
                             _a(ceiling, step, _w, make_grab(_l, ceiling, step)),

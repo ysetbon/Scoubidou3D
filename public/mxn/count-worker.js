@@ -39,7 +39,7 @@ async function prepare() {
     runtime.FS.mkdirTree("/home/py");
     await Promise.all(names.map(async (name) => {
       // Same cache key as the main worker, so both fetch the same bridge.
-      const url = new URL(`./py/${name}?v=maxk-legacy-v18`, import.meta.url);
+      const url = new URL(`./py/${name}?v=trace-plan-v19`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());

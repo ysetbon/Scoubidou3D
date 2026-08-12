@@ -444,6 +444,24 @@ async function claimJob(request: Request, env: Env) {
  * slash-separated segments — and an id percent-encoded into a URL is at the
  * mercy of every hop that might normalise %2F back into a separator on the way.
  */
+/**
+ * Keep both ends of a failure's message.
+ *
+ * A Pyodide traceback opens with the same `_pyodide/_base.py` frames on every
+ * failure and names what actually went wrong on its last line, so keeping the
+ * first 500 characters kept the half that is identical every time and dropped
+ * the half that is the answer -- a 3x3 that died in 31 seconds arrived as the
+ * boilerplate and a frame cut off mid-identifier.
+ *
+ * Both ends, then, and a marker where the middle was: the deep frames in the
+ * engine are worth having, and so is the exception under them.
+ */
+function clipError(text: string): string {
+  const LIMIT = 1200, HEAD = 400;
+  if (text.length <= LIMIT) return text;
+  return `${text.slice(0, HEAD)}\n  […]\n${text.slice(-(LIMIT - HEAD))}`;
+}
+
 async function reportJob(request: Request, env: Env) {
   let body: Incoming;
   try {
@@ -468,7 +486,7 @@ async function reportJob(request: Request, env: Env) {
     Number.isFinite(Number(body.seconds)) ? Number(body.seconds) : null,
     Number.isFinite(Number(body.bytes)) ? Number(body.bytes) : null,
     Number.isFinite(Number(body.artifacts)) ? Number(body.artifacts) : null,
-    typeof body.error === "string" ? body.error.slice(0, 500) : null,
+    typeof body.error === "string" ? clipError(body.error) : null,
     id,
   ).run();
   if (!result.meta.changes) return json({ error: "not found" }, 404, request, env);
