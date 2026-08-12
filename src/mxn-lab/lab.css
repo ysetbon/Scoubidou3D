@@ -438,6 +438,27 @@ textarea {
 .trace-head button:hover, .trace-head button:focus-visible { border-color: var(--ink); background: var(--acid); outline: none; }
 .trace-head button[aria-pressed="true"] { background: var(--ink); color: var(--acid); border-color: var(--ink); }
 .trace-panel canvas { width: 100%; height: auto; display: block; cursor: crosshair; background: #f4f0e6; }
+/* The steppers: two small groups under the drawing, each a row of glyph keys,
+   with the cursor's own verdict named at the end so a step that changes it
+   says so without the reader hunting for the caption. */
+.trace-steps { display: flex; align-items: center; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
+.trace-steps span { display: flex; align-items: center; gap: 3px; }
+.trace-steps i {
+  font: 700 9px/1 monospace; font-style: normal; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--muted); margin-right: 4px;
+}
+.trace-steps button {
+  font: 700 11px/1 monospace; width: 24px; height: 22px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--card);
+}
+.trace-steps button:hover:not(:disabled),
+.trace-steps button:focus-visible:not(:disabled) {
+  border-color: var(--ink); background: var(--acid); outline: none;
+}
+.trace-steps button:disabled { opacity: .38; cursor: default; }
+.trace-steps em { font: 700 9px/1 monospace; font-style: normal; color: var(--muted);
+  letter-spacing: .1em; }
+
 .trace-legend { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 /* Each entry is a filter: pressing one dims every cell that ended elsewhere. */
 .trace-legend button {

@@ -512,12 +512,28 @@ times a second. Note what a step is not: each combo's window sits at its own
 `angle0`, so step *j* is the same *position* in each combo's sweep and a
 different number of degrees for each. The heading says the step, never a degree.
 
+Under the drawing, two steppers walk it by hand: **ext** ↑ ← → ↓ moves one cell
+of the grid, which for P ≤ 2 is one extension of one pair and above that the
+lowest digit the layout puts on that axis (a step walks over the gutters of a
+wrapped layout rather than stopping at one), and **angle** ‹ › moves one step
+along the strip. The cursor's own verdict is named at the end of the row, so a
+step that changes it says so without a hunt for the caption.
+
 One consequence of how the census records itself is worth stating, because it
 looked like a bug: **`BEST` is the valid angle a combo's ranking picked**, so any
 combo with a valid angle is drawn `BEST` on the summary and no summary cell is
 ever `VALID`. A literal `VALID` filter there would dim the whole grid, so on the
 summary it reads through to those cells. At an angle step the two are the
 distinct things the census recorded and neither is redirected.
+
+**A filter also travels.** Dimming alone is no help when the cells it keeps are
+at an angle step that is not on screen — the `VALID` entry counts its cells and
+the reader was left looking at a map with none of them. Pressing a legend entry
+goes to the angle step holding the most of that verdict and to the nearest cell
+that has it there, which is what drags the red box, the strand view and the
+weave preview along. `BEST` is the exception: it is the engine's own answer
+rather than a population, so it goes to the combo this level adopted at the
+angle it chose — the ringed cell.
 
 `src/mxn-lab/trace-layout.ts` holds
 the combo grid as arithmetic — the combo index is a base-E number with one
