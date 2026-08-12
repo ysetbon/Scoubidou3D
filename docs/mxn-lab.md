@@ -149,7 +149,22 @@ complete. Roughly 1 ms per ring, so an arrow click is instant.
 Order is lexicographic, H outer, V inner — the same shape `attempt()` uses.
 Nothing is re-ranked, and the engine's own answer sits at its natural position.
 
-The count is exact, up front. The walk that firms it is budget-bounded in the
+The count is exact, up front, and it happens inside the run: the worker counts
+every level before the result posts, so the cards land with `1 / total` already
+on them, and while it counts the busy area carries a **counting strip** — a bar
+per level with the walk's position in the pair product and the count growing.
+Where the browser allows it the counting is parallel: a small pool of sibling
+workers ("counting hands", `count-worker.js`) each walks one contiguous slice
+of the H × V product — the walk's order is lexicographic, so `[0, cells)`
+splits into ranges whose concatenation IS the serial walk's found-list
+(`export_count_job` / `count_slice` / `adopt_count` in the bridge). Each hand
+holds its own Pyodide, warmed while the engine itself loads; if the pool
+cannot spawn or a slice fails, the level falls back to the serial walk with
+nothing adopted. In-run counting is capped (60,000 pairs a run) so a huge
+product cannot hold the cards hostage — a level left inexact says so and is
+finished by the background chain below.
+
+The background chain is the fallback and the over-ceiling path. The walk that firms it is budget-bounded in the
 engine (`RING_SCAN_BUDGET` cells per call, resumable through `scan_cursor`), and
 the page drives it as soon as a run lands: one `count` request in flight at a
 time, the same level again until `countExact`, then the next level — so a click

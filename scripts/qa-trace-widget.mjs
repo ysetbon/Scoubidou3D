@@ -49,7 +49,18 @@ await page.addInitScript(({ result, traces, plans, weaves }) => {
     postMessage(data) {
       posted.push(data);
       const reply = (msg) => setTimeout(() => this.onmessage?.({ data: msg }), 30);
-      if (data.type === 'generate') reply({ type: 'result', id: data.id, result });
+      if (data.type === 'generate') {
+        // The worker counts inside the run and narrates: three count-progress
+        // messages, then the result. The strip has to be up in between and
+        // gone after.
+        [0.3, 0.7, 1].forEach((at, i) => setTimeout(() => this.onmessage?.({
+          data: { type: 'count-progress', id: data.id, level: 1,
+                  scanned: Math.round(10201 * at), cells: 10201,
+                  count: Math.round(3988 * at) },
+        }), 40 + i * 80));
+        setTimeout(() => this.onmessage?.({
+          data: { type: 'result', id: data.id, result } }), 360);
+      }
       if (data.type === 'trace') {
         // Four kinds of reply, as the real worker sends them: the replay's own
         // candidates while it runs, the plan its band search hands over, the
@@ -101,7 +112,14 @@ await page.waitForSelector('.run-button', { timeout: 20000 });
 
 // ---- run ----
 await page.click('.run-button');
+// While the worker counts inside the run, the wait has its own UI.
+await page.waitForSelector('.count-strip', { timeout: 5000 });
+const stripText = (await page.locator('.count-strip').innerText()).replace(/\n/g, ' ');
+ok('counting shows its own strip while thinking',
+   /counting L1/i.test(stripText) && /pairs/.test(stripText), stripText);
 await page.waitForSelector('.diagram-card', { timeout: 20000 });
+ok('and the strip leaves with the thinking',
+   (await page.locator('.count-strip').count()) === 0);
 const cards = await page.$$('.diagram-card');
 ok('a run renders one card per level', cards.length === 2, `${cards.length} cards`);
 
