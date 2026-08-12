@@ -8,6 +8,7 @@ import contextlib
 import copy
 import io
 import json
+import pickle
 import random
 import sys
 import time
@@ -429,6 +430,21 @@ def _solution_meta(entry):
     }
 
 
+def _clone_checkpoint(entry):
+    """A fresh (strands, info) from the level's checkpoint.
+
+    pickle round-trips the same structure about twice as fast as deepcopy, and
+    the walk pays one clone per cell of the product, so this is most of what
+    counting costs. The blob is cached on the entry; the checkpoint never
+    changes after the level is built.
+    """
+    blob = entry.get("checkpoint_blob")
+    if blob is None:
+        blob = pickle.dumps(entry["checkpoint"], pickle.HIGHEST_PROTOCOL)
+        entry["checkpoint_blob"] = blob
+    return pickle.loads(blob)
+
+
 def _walk(entry, want_index, healthy_only, cursor, budget=None):
     """Walk the product in search order and land on the want_index-th ring.
 
@@ -464,7 +480,7 @@ def _walk(entry, want_index, healthy_only, cursor, budget=None):
         i, j = divmod(start, len(v_cands))
         start += 1
         scanned += 1
-        strands, info = copy.deepcopy(entry["checkpoint"])
+        strands, info = _clone_checkpoint(entry)
         crossings = NX.apply_solution(strands, info, level, m, n,
                                       _SESSION["hand"], h_cands[i], v_cands[j])
         if crossings != expected:
@@ -866,7 +882,7 @@ def select_solution(level, index, healthy_only=False, cursor=None):
     entry["index"] = index
     # The cache is light -- indexes and row -- so the ring the reader asked for
     # is replayed here, once, exactly as the walk first built it.
-    strands, info = copy.deepcopy(entry["checkpoint"])
+    strands, info = _clone_checkpoint(entry)
     NX.apply_solution(strands, info, entry["level"], _SESSION["m"], _SESSION["n"],
                       _SESSION["hand"], entry["h_cands"][hit["h"]],
                       entry["v_cands"][hit["v"]])
@@ -902,10 +918,12 @@ def count_solutions(level, budget=None):
     _walk(entry, 1 << 30, False, None, budget=budget)
     total = len(entry["h_cands"]) * len(entry["v_cands"])
     # Both totals travel: every closed ring, and the weaves among them -- the
-    # two denominators the browser can be paging under.
+    # two denominators the browser can be paging under. cells/scanned are for
+    # narration: counting inside the run's thinking needs a fraction to say.
     return json.dumps({"level": entry["level"], "count": len(entry["found"]),
                        "healthy": sum(1 for ring in entry["found"]
                                       if ring["row"]["healthy"]),
+                       "cells": total, "scanned": entry["scan_cursor"],
                        "countExact": entry["scan_cursor"] >= total},
                       separators=(",", ":"))
 
