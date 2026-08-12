@@ -49,7 +49,7 @@ async function prepare() {
       // Resolved against this worker's own URL rather than the site root: the
       // lab is published under a project-site sub-path, where "/py/..." would
       // miss. Keeps the cache key in step with the one in the Worker URL.
-      const url = new URL(`./py/${name}?v=trace-plan-v16`, import.meta.url);
+      const url = new URL(`./py/${name}?v=trace-plan-v17`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
@@ -71,7 +71,7 @@ async function prepare() {
 }
 
 const HANDLERS = {
-  generate: async (runtime, data) => {
+  generate: async (runtime, data, post) => {
     const { m, n, ks, preferShortArms, extStep, comboBudget } = data;
     runtime.globals.set("mxn_m", m);
     runtime.globals.set("mxn_n", n);
@@ -81,10 +81,45 @@ const HANDLERS = {
     runtime.globals.set("mxn_short", preferShortArms !== false);
     runtime.globals.set("mxn_step", extStep ?? null);
     runtime.globals.set("mxn_budget", comboBudget ?? null);
-    return ["result", await runtime.runPythonAsync(
+    const parsed = JSON.parse(await runtime.runPythonAsync(
       "bridge.generate(mxn_m, mxn_n, mxn_ks.to_py(), 'lh', 'cw',"
       + " prefer_short_arms=mxn_short, ext_step=mxn_step, combo_budget=mxn_budget)"
-    )];
+    ));
+    // Count every level's solutions BEFORE the result posts, so the cards land
+    // with `1 / total` already exact — the counting is part of the thinking,
+    // not a number that climbs afterwards. Chunked so the busy line can
+    // narrate, and capped so a huge product cannot hold the run hostage; a
+    // level left inexact is finished by the page's background chain.
+    const COUNT_CHUNK = 500;
+    const COUNT_CEILING = 30000;
+    let spent = 0;
+    for (const meta of parsed.solutions ?? []) {
+      if (!meta || meta.level <= 0) continue;
+      if (meta.enumerated !== "full" && (meta.reason ?? "").startsWith("k=0")) continue;
+      let reply = null;
+      while (spent < COUNT_CEILING) {
+        runtime.globals.set("mxn_level", meta.level);
+        runtime.globals.set("mxn_count_budget", COUNT_CHUNK);
+        reply = JSON.parse(await runtime.runPythonAsync(
+          "bridge.count_solutions(mxn_level, mxn_count_budget)"));
+        spent += COUNT_CHUNK;
+        post("progress", { message: `Counting L${meta.level}'s solutions — `
+          + `${reply.count.toLocaleString()} closed in `
+          + `${(reply.scanned ?? 0).toLocaleString()} of `
+          + `${(reply.cells ?? 0).toLocaleString()} pairs…` });
+        if (reply.countExact) break;
+      }
+      if (reply) {
+        meta.count = reply.count;
+        meta.countExact = reply.countExact;
+        meta.healthy = reply.healthy;
+      }
+      if (!reply?.countExact) {
+        post("progress", { message: `L${meta.level}'s solution count continues`
+          + " in the background." });
+      }
+    }
+    return ["result", JSON.stringify(parsed)];
   },
   select: async (runtime, data) => {
     runtime.globals.set("mxn_level", data.level);
