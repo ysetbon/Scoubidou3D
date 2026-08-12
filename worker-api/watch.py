@@ -2,9 +2,14 @@
 """
 Watch the hands work, from a terminal, without the browser tab.
 
-    cd worker-api
+    # bash / zsh, from worker-api/
     WORKER_URL=https://mxn-solutions-api.<subdomain>.workers.dev \
     ADMIN_TOKEN=<token> ./watch.py [batch] [--once]
+
+    # PowerShell, from worker-api\
+    $env:WORKER_URL  = "https://mxn-solutions-api.<subdomain>.workers.dev"
+    $env:ADMIN_TOKEN = "<token>"
+    python watch.py [batch] [--once]
 
 The farm page runs in a browser and its hands are Web Workers inside it, so
 nothing about them is visible to a shell directly. What IS visible is the
@@ -27,8 +32,39 @@ BASE = os.environ.get("WORKER_URL", "").rstrip("/")
 TOKEN = os.environ.get("ADMIN_TOKEN", "")
 EVERY = float(os.environ.get("EVERY", "5"))
 
-DIM, BOLD, RESET = "\033[2m", "\033[1m", "\033[0m"
-GREEN, YELLOW, RED, BLUE = "\033[32m", "\033[33m", "\033[31m", "\033[34m"
+def _ansi_works():
+    """Windows consoles ignore escape codes until VT processing is switched on,
+    and the oldest cannot do it at all -- there, printing them would spray the
+    dashboard with literal noise, so go monochrome instead. Redirected output
+    gets no codes either, which is what makes `--once > file` readable."""
+    if not sys.stdout.isatty():
+        return False
+    if os.name != "nt":
+        return True
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(-11)          # STD_OUTPUT_HANDLE
+        mode = ctypes.c_ulong()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return False
+        return bool(kernel32.SetConsoleMode(handle, mode.value | 0x4))
+    except Exception:                                 # noqa: BLE001
+        return False                                  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+
+
+# The box-drawing and × in this dashboard are not in cp1252, which is still what
+# a default PowerShell console encodes to. Ask for utf-8 and take replacement
+# characters over a UnicodeEncodeError mid-sweep.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:                                     # noqa: BLE001
+    pass
+
+COLOUR = _ansi_works()
+DIM, BOLD, RESET = ("\033[2m", "\033[1m", "\033[0m") if COLOUR else ("", "", "")
+GREEN, YELLOW, RED, BLUE = (
+    ("\033[32m", "\033[33m", "\033[31m", "\033[34m") if COLOUR else ("", "", "", ""))
 
 STATE_COLOUR = {"running": GREEN, "pending": DIM, "done": BLUE, "failed": RED}
 
@@ -172,7 +208,7 @@ def main():
             return
         # Redraw in place rather than scrolling: this is a dashboard, and an
         # hours-long sweep would otherwise bury the terminal.
-        sys.stdout.write("\033[H\033[J")
+        sys.stdout.write("\033[H\033[J" if COLOUR else "\n" + "─" * 60 + "\n")
         print(f"{DIM}{datetime.now().strftime('%H:%M:%S')} · "
               f"every {EVERY:g}s · ctrl-c to stop{RESET}\n")
         print("\n".join(lines))
