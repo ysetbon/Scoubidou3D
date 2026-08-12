@@ -262,6 +262,17 @@ const clickCell = async (col, row) => {
   const b = await canvasBox();
   await clickAt(b.gridX + col * b.cell + b.cell / 2, b.gridY + row * b.cell + b.cell / 2);
 };
+
+// What the panel is looking at, published by the drawing itself: which combo,
+// which angle step, which question the grid's colours answer, and the verdict
+// of the cell under the cursor.
+const at = () => page.evaluate(() => {
+  const cv = document.querySelector('.trace-panel canvas');
+  return { combo: +cv.dataset.combo, angle: +cv.dataset.angle,
+           mode: cv.dataset.mode, verdict: +cv.dataset.verdict };
+});
+const stepper = (group, glyph) => page.locator(
+  `.trace-steps span[aria-label*="${group}"] button`, { hasText: glyph }).first();
 // row 17, col 19 is combo index 376 -> extensions (170, 190)
 await clickCell(19, 17);
 // Where did the red cursor box end up? Find its bounding box in canvas pixels
@@ -325,23 +336,80 @@ await page.locator('.trace-legend button', { hasText: 'ORDER' }).first().click()
 await page.waitForTimeout(120);
 ok('unfiltering restores them', Math.abs((await dimCount()) - dimBefore) < 50);
 
-// ---- VALID is a filter with cells behind it ----
+// ---- a filter travels to what it filters for ----
 // On the summary every combo that found a valid angle is drawn BEST -- BEST is
 // the valid angle its ranking picked -- so a literal VALID filter used to dim
-// the whole grid. It reads through to those cells instead.
+// the whole grid with nothing left to look at. Pressing one now goes to the
+// angle step holding the most of that verdict and lands the cursor on a cell
+// that has it, which is what drags the strand view and the weave with it.
 const gridPixels = await page.evaluate(() => {
   const cv = document.querySelector('.trace-panel canvas');
   const dpr = cv.width / cv.getBoundingClientRect().width;
   return Math.round(+cv.dataset.cols * +cv.dataset.cell * dpr)
        * Math.round(+cv.dataset.rows * +cv.dataset.cell * dpr);
 });
+const VALID = 6, BEST = 7;
+await page.locator('.trace-legend button', { hasText: 'VALID' }).first().click();
+await page.waitForTimeout(200);
+const onValid = await at();
+ok('pressing VALID goes to a cell that is VALID',
+   onValid.verdict === VALID && onValid.mode === 'angle', JSON.stringify(onValid));
+const dimValid = await dimCount();
+ok('and the step it picked still has VALID cells lit',
+   dimValid > dimBefore + 1000 && dimValid < gridPixels,
+   `${dimValid} of ${gridPixels} grid pixels dimmed`);
+// The weave request is debounced 250 ms, so give it room to be asked for.
+await page.waitForTimeout(450);
+const validWeave = await page.evaluate(() =>
+  window.__posted.filter(m => m.type === 'trace-weave').at(-1));
+ok('and the weave preview followed it there',
+   JSON.stringify(validWeave.ext) === JSON.stringify(await page.evaluate(() => {
+     const cv = document.querySelector('.trace-panel canvas');
+     return JSON.parse(cv.dataset.ext);
+   })), JSON.stringify(validWeave?.ext));
 await page.locator('.trace-legend button', { hasText: 'VALID' }).first().click();
 await page.waitForTimeout(120);
-const dimValid = await dimCount();
-ok('a VALID filter still lights the combos that found a valid angle',
-   dimValid > dimBefore + 1000 && dimValid < gridPixels * 0.95,
-   `${dimValid} of ${gridPixels} grid pixels dimmed`);
-await page.locator('.trace-legend button', { hasText: 'VALID' }).first().click();
+
+// BEST is the engine's own answer rather than a population, so it goes to the
+// combo this level adopted -- the ringed cell -- at the angle it chose.
+await page.locator('.trace-legend button', { hasText: 'BEST' }).first().click();
+await page.waitForTimeout(200);
+const onBest = await at();
+ok('pressing BEST goes to the combo this level adopted',
+   onBest.verdict === BEST && onBest.combo === 217, JSON.stringify(onBest));
+await page.locator('.trace-legend button', { hasText: 'BEST' }).first().click();
+await page.waitForTimeout(120);
+
+// ---- the steppers walk a cell and an angle at a time ----
+// The grid's axes are extension pairs: for P = 2 the x axis is pair 1, one
+// combo index apart, and the y axis is pair 0, one row of 21 apart.
+const beforeStep = await at();
+await stepper('extension', '\u2192').click();
+await page.waitForTimeout(80);
+const rightOne = await at();
+ok('the ext stepper moves one cell along x',
+   rightOne.combo === beforeStep.combo + 1, `${beforeStep.combo} -> ${rightOne.combo}`);
+await stepper('extension', '\u2193').click();
+await page.waitForTimeout(80);
+const downOne = await at();
+ok('and one row along y', downOne.combo === rightOne.combo + 21,
+   `${rightOne.combo} -> ${downOne.combo}`);
+await stepper('extension', '\u2191').click();
+await stepper('extension', '\u2190').click();
+await page.waitForTimeout(80);
+ok('and back again', (await at()).combo === beforeStep.combo);
+await stepper('angle', '\u203a').click();
+await page.waitForTimeout(80);
+const angleOn = await at();
+ok('the angle stepper moves one step and takes the grid with it',
+   angleOn.angle === beforeStep.angle + 1 && angleOn.mode === 'angle',
+   JSON.stringify(angleOn));
+await stepper('angle', '\u2039').click();
+await page.waitForTimeout(80);
+ok('and back', (await at()).angle === beforeStep.angle);
+
+// Back to the summary for what follows.
+await page.locator('.trace-head button', { hasText: 'Whole sweep' }).first().click();
 await page.waitForTimeout(120);
 
 // ---- the grid and the strip move together ----
@@ -358,16 +426,10 @@ const gridInk = () => page.evaluate(() => {
   for (let i = 0; i < data.length; i += 4) h = (h * 31 + data[i] + data[i + 1] * 3) % 1e9;
   return h;
 });
-// What the panel is looking at, published by the drawing itself: which combo,
-// which angle step, and which question the grid's colours answer.
-const at = () => page.evaluate(() => {
-  const cv = document.querySelector('.trace-panel canvas');
-  return { combo: +cv.dataset.combo, angle: +cv.dataset.angle, mode: cv.dataset.mode };
-});
-
 // The grid drives the strip: another combo brings its own chosen angle with it.
 // Cell (7, 10) is the combo this level adopted, which is one that found an
 // angle -- a combo with no valid angle has nothing to move the strip to.
+await clickCell(19, 17);            // somewhere else first: BEST left us on 217
 const before = await at();
 await clickCell(7, 10);
 const moved = await at();

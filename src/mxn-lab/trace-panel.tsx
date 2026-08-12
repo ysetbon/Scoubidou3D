@@ -618,6 +618,71 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
     return idx < nCombos ? idx : -1;
   }, [data, E, nCombos]);
 
+  // The verdict of the cell under the cursor, at the angle the strip is on.
+  const verdictNow = verdicts[combo * data.nAngles + angleIdx];
+
+  // One cell in a compass direction, which for P <= 2 is one extension of one
+  // pair and above that the lowest digit the grid puts on that axis. Gutters in
+  // a wrapped layout hold no combo, so a step walks over them rather than
+  // stopping dead at one.
+  const stepCell = (dx: number, dy: number) => {
+    const from = layout.place(combo);
+    for (let n = 1; n <= Math.max(layout.cols, layout.rows); n += 1) {
+      const x = from.x + dx * n, y = from.y + dy * n;
+      if (x < 0 || y < 0 || x >= layout.cols || y >= layout.rows) return;
+      const i = layout.unplace(x, y);
+      if (i != null && i < nCombos) { setCombo(i); return; }
+    }
+  };
+
+  const stepAngle = (d: number) => {
+    setAngleIdx(j => Math.max(0, Math.min(data.nAngles - 1, j + d)));
+    // Same rule the strip's own click has: asking for an angle is asking the
+    // grid about that angle.
+    setAtAngle(true);
+  };
+
+  /**
+   * Take the reader to where a verdict can actually be seen.
+   *
+   * A filter on its own only dims, which is no help when the cells it keeps are
+   * somewhere else on the grid or at an angle step that is not on screen: the
+   * VALID entry counts 276 cells and the reader was left looking at a map with
+   * none of them. So a filter also travels — to the angle step holding the most
+   * of that verdict, and to the nearest cell that has it there, which drags the
+   * red box, the strand view and the weave preview along with it.
+   */
+  const reveal = (code: number) => {
+    const n = data.nAngles;
+    // BEST is the engine's own answer rather than a population, so revealing it
+    // means the combo this level adopted at the angle it settled on.
+    if (code === BEST && appliedIdx >= 0 && best[appliedIdx] >= 0) {
+      setAtAngle(true);
+      setAngleIdx(best[appliedIdx]);
+      setCombo(appliedIdx);
+      return;
+    }
+    const tally = new Int32Array(n);
+    for (let i = 0; i < nCombos; i += 1) {
+      const base = i * n;
+      for (let j = 0; j < n; j += 1) if (verdicts[base + j] === code) tally[j] += 1;
+    }
+    let step = -1, top = 0;
+    for (let j = 0; j < n; j += 1) if (tally[j] > top) { top = tally[j]; step = j; }
+    if (step < 0) return;                          // not a verdict any angle holds
+    const from = layout.place(combo);
+    let pick = -1, near = Infinity;
+    for (let i = 0; i < nCombos; i += 1) {
+      if (verdicts[i * n + step] !== code) continue;
+      const p = layout.place(i);
+      const d = (p.x - from.x) ** 2 + (p.y - from.y) ** 2;
+      if (d < near) { near = d; pick = i; }
+    }
+    setAtAngle(true);
+    setAngleIdx(step);
+    if (pick >= 0) setCombo(pick);
+  };
+
   // Land on the combo the level adopted, and on its chosen angle.
   useEffect(() => {
     const idx = appliedIdx;
@@ -929,17 +994,52 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
           data-cols={layout.cols} data-rows={layout.rows}
           data-strip-y={stripY} data-strip-h={M.strip}
           data-combo={combo} data-angle={angleIdx}
-          data-mode={atAngle ? "angle" : "sweep"}
+          data-mode={atAngle ? "angle" : "sweep"} data-verdict={verdictNow}
+          data-ext={JSON.stringify(ext)}
           data-weave-x={M.weave.x} data-weave-y={M.weave.y}
           data-weave-w={M.weave.w} data-weave-h={M.weave.h} />
+      </div>
+      {/* Step by step, for a reader who is comparing neighbours rather than
+          hunting: one cell of the grid in a compass direction, one angle
+          along the strip. The grid's axes are extensions, so ← → and ↑ ↓ are
+          the extension pairs the layout puts on x and y. */}
+      <div className="trace-steps">
+        <span role="group" aria-label="Step the extension combo">
+          <i aria-hidden="true">ext</i>
+          <button type="button" onClick={() => stepCell(0, -1)}
+            title="One cell up — the pair the grid puts on y"
+            aria-label="Previous extension along the grid's y axis">↑</button>
+          <button type="button" onClick={() => stepCell(-1, 0)}
+            title="One cell left — the pair the grid puts on x"
+            aria-label="Previous extension along the grid's x axis">←</button>
+          <button type="button" onClick={() => stepCell(1, 0)}
+            title="One cell right — the pair the grid puts on x"
+            aria-label="Next extension along the grid's x axis">→</button>
+          <button type="button" onClick={() => stepCell(0, 1)}
+            title="One cell down — the pair the grid puts on y"
+            aria-label="Next extension along the grid's y axis">↓</button>
+        </span>
+        <span role="group" aria-label="Step the angle">
+          <i aria-hidden="true">angle</i>
+          <button type="button" onClick={() => stepAngle(-1)} disabled={angleIdx === 0}
+            title="One angle step back" aria-label="Previous angle step">‹</button>
+          <button type="button" onClick={() => stepAngle(1)}
+            disabled={angleIdx >= data.nAngles - 1}
+            title="One angle step on" aria-label="Next angle step">›</button>
+        </span>
+        <em>{data.names[verdictNow]}</em>
       </div>
       <div className="trace-legend">
         {data.names.map((name, code) => (
           data.counts[code] ? (
             <button key={name} type="button"
               className={only === code ? "is-only" : ""}
-              onClick={() => setOnly(only === code ? null : code)}
-              title={BLURB[code]}>
+              onClick={() => {
+                if (only === code) { setOnly(null); return; }
+                setOnly(code);
+                reveal(code);
+              }}
+              title={`${BLURB[code]} — press to go to it`}>
               <i style={{ background: COLOUR[code] }} />
               <b>{name}</b>
               <span>{data.counts[code].toLocaleString()}</span>
@@ -956,10 +1056,14 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
         and the strip shows that combo, click the strip and the grid recolours
         to that angle step — every combo at the same point in its own sweep,
         which is a different number of degrees for each. <em>Whole sweep</em>{" "}
-        puts the summary back. A filter dims everything that did not end on
-        that test; on the summary, where a combo that found a valid angle is
-        drawn BEST, VALID selects those cells. The band is replayed unpinned,
-        so a square level 1 shows the search its V band would have run.
+        puts the summary back, and the ext/angle steppers walk a cell or an
+        angle at a time. A filter dims everything that did not end on that test
+        and travels to it: to the angle step holding the most of that verdict
+        and the nearest cell that has it, except BEST, which goes to the combo
+        this level adopted at the angle it chose. On the summary, where a combo
+        that found a valid angle is drawn BEST, VALID selects those cells. The
+        band is replayed unpinned, so a square level 1 shows the search its V
+        band would have run.
       </p>
     </div>
   );
