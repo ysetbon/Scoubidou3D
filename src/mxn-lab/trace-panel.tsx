@@ -12,7 +12,7 @@ import {
 } from "./exact-draw";
 import { bandKey } from "./trace-band";
 import {
-  BEST, DEGEN, ORDER, OVERLAP, REACH, TOOFAR, VALID, VERDICT_BLURB,
+  BEST, OVERLAP, TOOFAR, VALID, VERDICT_BLURB,
   VERDICT_COLOUR, VERDICT_NAMES, WINDOW,
   comboCount, comboExt, placeStarts, sweepAngle, sweepCombo,
   type TraceInputs,
@@ -468,56 +468,6 @@ function geometry(t: TracePayload, comboIdx: number, angleDeg: number) {
   return { ext, ...sweepAngle(t, placeStarts(t, ext), angleDeg) };
 }
 
-/** The legend's glyph, drawn on a canvas. Colour is redundant with the fill. */
-function glyph(ctx: CanvasRenderingContext2D, x: number, y: number,
-               code: number, r: number, colour: string) {
-  ctx.save();
-  ctx.strokeStyle = colour;
-  ctx.fillStyle = colour;
-  ctx.lineWidth = Math.max(1, r / 2.4);
-  ctx.lineCap = "butt";
-  ctx.beginPath();
-  if (code === OVERLAP) {
-    ctx.moveTo(x - r * 0.34, y - r); ctx.lineTo(x - r * 0.34, y + r);
-    ctx.moveTo(x + r * 0.34, y - r); ctx.lineTo(x + r * 0.34, y + r);
-    ctx.stroke();
-  } else if (code === TOOFAR) {
-    ctx.moveTo(x - r, y - r); ctx.lineTo(x - r, y + r);
-    ctx.moveTo(x + r, y - r); ctx.lineTo(x + r, y + r);
-    ctx.stroke();
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(x - r, y); ctx.lineTo(x + r, y); ctx.stroke();
-  } else if (code === VALID) {
-    ctx.moveTo(x - r, y); ctx.lineTo(x - r * 0.3, y + r * 0.9);
-    ctx.lineTo(x + r, y - r); ctx.stroke();
-  } else if (code === BEST) {
-    for (let i = 0; i < 10; i += 1) {
-      const a = -Math.PI / 2 + (i * Math.PI) / 5;
-      const rad = i % 2 === 0 ? r : r * 0.45;
-      const px = x + rad * Math.cos(a), py = y + rad * Math.sin(a);
-      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-    }
-    ctx.closePath(); ctx.fill();
-  } else if (code === ORDER || code === DEGEN) {
-    ctx.moveTo(x - r, y - r); ctx.lineTo(x + r, y + r);
-    ctx.moveTo(x - r, y + r); ctx.lineTo(x + r, y - r);
-    ctx.stroke();
-    if (code === ORDER) {
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(x, y, r * 1.5, 0, Math.PI * 2); ctx.stroke();
-    }
-  } else if (code === REACH) {
-    ctx.moveTo(x - r, y); ctx.lineTo(x + r * 0.1, y); ctx.stroke();
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(x + r * 0.6, y, r * 0.42, 0, Math.PI * 2); ctx.stroke();
-  } else {
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x - r, y - r, r * 2, r * 2);
-    ctx.beginPath(); ctx.moveTo(x - r, y + r); ctx.lineTo(x + r, y - r); ctx.stroke();
-  }
-  ctx.restore();
-}
-
 // The panel was laid out on a fixed 1120px canvas and left to CSS to stretch,
 // which is what made it soft: a 1120px backing store blown up to 1300 CSS px
 // resamples every line. It now draws at its own measured width, at device
@@ -528,7 +478,6 @@ function glyph(ctx: CanvasRenderingContext2D, x: number, y: number,
 const DESIGN_W = 1120;
 const SCALE = 0.7;
 const PANEL_W = Math.round(DESIGN_W * SCALE);
-const GLYPH_MIN_CELL = 12;            // below this a per-cell glyph is mud
 
 /** Everything the drawing measures, in CSS pixels, for a panel this wide. */
 function metricsFor(width: number) {
@@ -618,58 +567,6 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
   const cell = useMemo(() => Math.max(1, Math.min(M.maxCell,
     Math.floor((width - M.gridX - M.pad) / layout.cols),
     Math.floor(M.gridMaxH / layout.rows))), [layout, M, width]);
-
-  // Below the per-cell glyph size, label whole regions instead: the biggest
-  // areas, at most two per verdict. Twenty-one identical ORDER glyphs, one per
-  // block of a P = 3 band, say nothing the first one did not.
-  const labels = useMemo(() => {
-    if (cell >= GLYPH_MIN_CELL) return [];
-    const { cols, rows } = layout;
-    const at = (x: number, y: number) => {
-      const i = layout.unplace(x, y);
-      return i == null ? -1 : cellCode[i];
-    };
-    const seen = new Uint8Array(cols * rows);
-    const found: { code: number; x: number; y: number; area: number }[] = [];
-    const min = Math.max(6, Math.floor((cols * rows) / 300));
-    for (let y0 = 0; y0 < rows; y0 += 1) {
-      for (let x0 = 0; x0 < cols; x0 += 1) {
-        if (seen[y0 * cols + x0]) continue;
-        const code = at(x0, y0);
-        seen[y0 * cols + x0] = 1;
-        if (code < 0) continue;
-        const queue = [[x0, y0]];
-        const cells: number[][] = [];
-        while (queue.length) {
-          const [x, y] = queue.pop() as number[];
-          cells.push([x, y]);
-          const near = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
-          for (const [nx, ny] of near) {
-            if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
-            if (seen[ny * cols + nx]) continue;
-            if (at(nx, ny) !== code) continue;
-            seen[ny * cols + nx] = 1;
-            queue.push([nx, ny]);
-          }
-        }
-        if (cells.length < min) continue;
-        const cx = cells.reduce((s, p) => s + p[0], 0) / cells.length;
-        const cy = cells.reduce((s, p) => s + p[1], 0) / cells.length;
-        const pick = cells.reduce((bestCell, p) =>
-          (p[0] - cx) ** 2 + (p[1] - cy) ** 2 < (bestCell[0] - cx) ** 2 + (bestCell[1] - cy) ** 2
-            ? p : bestCell, cells[0]);
-        found.push({ code, x: pick[0], y: pick[1], area: cells.length });
-      }
-    }
-    found.sort((a, b) => b.area - a.area);
-    const perCode = new Map<number, number>();
-    return found.filter(f => {
-      const n = perCode.get(f.code) ?? 0;
-      if (n >= 2) return false;
-      perCode.set(f.code, n + 1);
-      return true;
-    }).slice(0, 8);
-  }, [layout, cellCode, cell]);
 
   const gridH = layout.rows * cell;
   const stripY = M.gridY + gridH + M.body + Math.round(14 * M.k);
@@ -846,10 +743,6 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
       ctx.fillRect(M.gridX + x * cell, M.gridY + y * cell,
                    Math.max(cell - (cell > 3 ? 1 : 0), 1),
                    Math.max(cell - (cell > 3 ? 1 : 0), 1));
-      if (cell >= GLYPH_MIN_CELL && !dim) {
-        glyph(ctx, M.gridX + x * cell + cell / 2, M.gridY + y * cell + cell / 2,
-              code, cell * 0.28, "#1a1a1a");
-      }
     }
 
     // Seams at each digit boundary, so the nesting stays countable when the
@@ -871,24 +764,9 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
       }
     });
 
-    // A region names itself, once, when the cells are too small to each carry
-    // a glyph of their own.
-    labels.forEach(({ code, x, y }) => {
-      const cx = M.gridX + x * cell + cell / 2, cy = M.gridY + y * cell + cell / 2;
-      ctx.beginPath();
-      ctx.arc(cx, cy, Math.max(8, 11 * M.k), 0, Math.PI * 2);
-      ctx.fillStyle = "#f4f0e6";
-      ctx.fill();
-      ctx.strokeStyle = "#c8c2b4";
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      glyph(ctx, cx, cy, code, Math.max(4.5, 6 * M.k), "#1a1a1a");
-    });
-
     if (appliedIdx >= 0) {
       // The combo the level actually adopted. Drawn as a ring rather than a
-      // second box, so it never reads as the cursor sitting somewhere else --
-      // and never as a star, which now means BEST on the cells themselves.
+      // second box, so it never reads as the cursor sitting somewhere else.
       const a = layout.place(appliedIdx);
       const ax = M.gridX + a.x * cell + cell / 2 - 0.5;
       const ay = M.gridY + a.y * cell + cell / 2 - 0.5;
@@ -929,7 +807,7 @@ export function TracePanel({ data, weaves, onWeave, onClose, onBand }: {
     ctx.fillText(`${data.names[verdict]} — ${BLURB[verdict]}`,
                  sx, sy + sh + M.lead * 2 + 12);
   }, [data, combo, angleIdx, angleDeg, verdicts, angle0, best, nCombos, only,
-      appliedIdx, layout, cellCode, cell, labels, gridH, stripY, M, width,
+      appliedIdx, layout, cellCode, cell, gridH, stripY, M, width,
       canvasH, weave, weaveTick, playing, recording]);
 
   const pick = (ev: React.MouseEvent<HTMLCanvasElement>) => {
