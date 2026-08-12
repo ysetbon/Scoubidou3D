@@ -429,7 +429,7 @@ def _solution_meta(entry):
     }
 
 
-def _walk(entry, want_index, healthy_only, cursor):
+def _walk(entry, want_index, healthy_only, cursor, budget=None):
     """Walk the product in search order and land on the want_index-th ring.
 
     Order is lexicographic with H outer and V inner -- the same shape attempt()
@@ -455,9 +455,10 @@ def _walk(entry, want_index, healthy_only, cursor):
     scanned = 0
     start = cursor or entry.get("scan_cursor") or 0
     total_cells = len(h_cands) * len(v_cands)
+    budget = budget or RING_SCAN_BUDGET
 
     while hits <= want_index and start < total_cells:
-        if scanned >= RING_SCAN_BUDGET:
+        if scanned >= budget:
             entry["scan_cursor"] = start
             return None, True, start
         i, j = divmod(start, len(v_cands))
@@ -878,14 +879,17 @@ def select_solution(level, index, healthy_only=False, cursor=None):
     }, separators=(",", ":"))
 
 
-def count_solutions(level):
+def count_solutions(level, budget=None):
     """Firm up the exact solution count for a level, budget-bounded.
 
-    Resumable: each call advances the shared scan cursor by at most
-    RING_SCAN_BUDGET cells, so the caller chains calls until countExact rather
-    than blocking the worker on the whole product at once. Enumerates first if
-    the level was solved without a candidate list — the count must not depend
-    on the reader having browsed once.
+    Resumable: each call advances the shared scan cursor by at most `budget`
+    cells (RING_SCAN_BUDGET when unset), so the caller chains calls until
+    countExact rather than blocking the worker on the whole product at once.
+    The worker runs one message at a time, so the round size IS the longest a
+    click can wait behind the counting: the page passes a small budget and
+    chains more rounds, and paging stays a click, not a queue. Enumerates
+    first if the level was solved without a candidate list — the count must
+    not depend on the reader having browsed once.
     """
     entry = _level_session(int(level))
     if entry["enumerated"] == "none" and entry["k"] != 0:
@@ -895,7 +899,7 @@ def count_solutions(level):
                            "count": len(entry.get("found") or []),
                            "healthy": 0, "countExact": True},
                           separators=(",", ":"))
-    _walk(entry, 1 << 30, False, None)
+    _walk(entry, 1 << 30, False, None, budget=budget)
     total = len(entry["h_cands"]) * len(entry["v_cands"])
     # Both totals travel: every closed ring, and the weaves among them -- the
     # two denominators the browser can be paging under.
