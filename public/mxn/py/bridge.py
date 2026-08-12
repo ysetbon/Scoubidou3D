@@ -29,6 +29,14 @@ except ImportError:
     def emitTrace(_payload):
         pass
 
+# Its own import so a worker that predates it keeps loading: the farm defines
+# emitSearch to fill its progress bars; the lab's workers never need to.
+try:
+    from js import emitSearch
+except ImportError:
+    def emitSearch(_payload):
+        pass
+
 
 if sys.platform == "emscripten":
     # Web Workers have no Python subprocesses. The engine's serial path uses
@@ -193,16 +201,30 @@ FRAME_MIN_INTERVAL = 0.036
 # turns out to cost more than duty x gap to build.
 FRAME_MAX_DUTY = 0.2
 
+# How often the gate reports the search's combo count through emitSearch. A
+# report is a dozen bytes of JSON and no geometry, so it can afford to run on
+# a farm whose FRAME_MIN_INTERVAL has priced every actual frame out.
+SEARCH_PROGRESS_INTERVAL = 0.5
+
 
 def _candidate_frame_emitter(base_strands, level, k, trace=None):
     last_sent = [0.0]
     min_gap = [FRAME_MIN_INTERVAL]
+    last_count = [0.0]
 
     # Consulted by the engine BEFORE it builds a preview: a frame that would
     # be dropped must not cost a deepcopy of the working ring first. Passing
     # the gate claims the slot, so a caller that passes must then emit.
     def ready(completed, total):
         now = time.monotonic()
+        # The numbers pass through even when the frame does not: they are the
+        # only sign of life a long level search has.
+        if total and now - last_count[0] >= SEARCH_PROGRESS_INTERVAL:
+            last_count[0] = now
+            emitSearch(json.dumps({
+                "kind": "search", "level": level, "k": k,
+                "combosDone": int(completed), "combos": int(total),
+            }, separators=(",", ":")))
         if completed < total and now - last_sent[0] < min_gap[0]:
             return False
         last_sent[0] = now
