@@ -22,7 +22,7 @@ import {
 } from "../mxn-lab/cache";
 import { DEFAULT_COMBO_BUDGET } from "../mxn-lab/search-cost";
 import {
-  MAX_JOBS, MAX_LEVELS, MAX_SIDE, planSweep,
+  MAX_JOBS, MAX_LEVELS, MAX_SIDE, kLimits, planSweep,
   type KsMode, type PlanJob, type SweepSpec,
 } from "./plan";
 
@@ -43,6 +43,10 @@ const DEFAULT_SPEC: SweepSpec = {
   mFrom: 1, mTo: 2,
   nFrom: 1, nTo: 2,
   ksMode: "each",
+  // Every k every size admits, rather than one range that can only be right
+  // for one of them: the band is narrower on the diagonal than off it, so a
+  // sweep over sizes wants a band per size.
+  kFollowsSize: true,
   kFrom: -1, kTo: 2,
   depth: 1,
   ksText: "1\n1 1 -1\n-1 -1",
@@ -93,6 +97,9 @@ function readSpec(): SweepSpec {
     return DEFAULT_SPEC;
   }
 }
+
+/** A k with a typographic minus, so a band reads as prose beside one. */
+const signed = (value: number) => String(value).replace("-", "−");
 
 function bytesLabel(bytes: number) {
   if (!bytes) return "—";
@@ -203,6 +210,21 @@ export function ComputeFarm() {
   batchRef.current = batch;
 
   const plan = useMemo(() => planSweep(spec), [spec]);
+
+  // The band each size in the sweep admits, spelled out — the whole reason a
+  // sweep wants a band per size is that these differ, and a reader who cannot
+  // see them differing has to take the planner's word for it.
+  const bands = useMemo(() => {
+    const sizes: { m: number; n: number; min: number; max: number }[] = [];
+    const lo = (a: number, b: number) => Math.max(1, Math.min(MAX_SIDE, Math.min(a, b)));
+    const hi = (a: number, b: number) => Math.max(1, Math.min(MAX_SIDE, Math.max(a, b)));
+    for (let m = lo(spec.mFrom, spec.mTo); m <= hi(spec.mFrom, spec.mTo); m += 1) {
+      for (let n = lo(spec.nFrom, spec.nTo); n <= hi(spec.nFrom, spec.nTo); n += 1) {
+        sizes.push({ m, n, ...kLimits(m, n) });
+      }
+    }
+    return sizes;
+  }, [spec.mFrom, spec.mTo, spec.nFrom, spec.nTo]);
 
   const cache = useMemo(
     () => createCache({ base: apiUrl, token: apiToken, hostId: "farm" }),
@@ -607,8 +629,9 @@ export function ComputeFarm() {
       </header>
 
       <p className="farm-lede">
-        Give it a range of sizes and a range of k, and it works through every
-        parameter set in the range — the whole run, every level&rsquo;s solution
+        Give it a range of sizes — and every k those sizes admit, or a range of
+        k you type — and it works through every parameter set it makes: the
+        whole run, every level&rsquo;s solution
         count walked to exact, and both bands of every level censused — storing
         each answer on your Cloudflare Worker as it goes. <a href="../">The lab</a>{" "}
         then reads them back instead of computing them, so a size that costs
@@ -716,30 +739,61 @@ export function ComputeFarm() {
               </label>
             ) : (
               <>
-                <div className="farm-pair">
-                  <label className="farm-field">
-                    <span>k from</span>
-                    <input type="number" value={spec.kFrom}
-                      onChange={e => patchSpec({ kFrom: Number(e.target.value) })} />
-                  </label>
-                  <label className="farm-field">
-                    <span>k to</span>
-                    <input type="number" value={spec.kTo}
-                      onChange={e => patchSpec({ kTo: Number(e.target.value) })} />
-                  </label>
+                <div className="farm-modes" role="group" aria-label="Which k values each size draws from">
+                  {([
+                    [true, "the size’s own band", "every k that size admits, which is a different band at each size"],
+                    [false, "a range I type", "one range of k for the whole sweep, narrowed to each size's band"],
+                  ] as [boolean, string, string][]).map(([follows, label, hint]) => (
+                    <button key={String(follows)} type="button" title={hint}
+                      className={spec.kFollowsSize === follows ? "is-on" : ""}
+                      aria-pressed={spec.kFollowsSize === follows}
+                      onClick={() => patchSpec({ kFollowsSize: follows })}>{label}</button>
+                  ))}
                 </div>
+                {!spec.kFollowsSize && (
+                  <div className="farm-pair">
+                    <label className="farm-field">
+                      <span>k from</span>
+                      <input type="number" value={spec.kFrom}
+                        onChange={e => patchSpec({ kFrom: Number(e.target.value) })} />
+                    </label>
+                    <label className="farm-field">
+                      <span>k to</span>
+                      <input type="number" value={spec.kTo}
+                        onChange={e => patchSpec({ kTo: Number(e.target.value) })} />
+                    </label>
+                  </div>
+                )}
                 <label className="farm-field">
                   <span>levels deep · 1…{MAX_LEVELS}</span>
                   <input type="number" min={1} max={MAX_LEVELS} value={spec.depth}
                     onChange={e => patchSpec({ depth: Number(e.target.value) })} />
                 </label>
+                <p className="farm-bands">
+                  {bands.map(band => (
+                    <span key={`${band.m}x${band.n}`}>
+                      <b>{band.m}×{band.n}</b> {signed(band.min)}…{signed(band.max)}
+                    </span>
+                  ))}
+                </p>
               </>
             )}
             <p className="farm-note">
-              A k outside a size&rsquo;s own valid range is not queued — the band
-              narrows as a size gets squarer, so one range of k legitimately
-              covers different ks at different sizes. The plan below says how many
-              that dropped.
+              {spec.ksMode !== "list" && spec.kFollowsSize ? (
+                <>
+                  Each size sweeps the whole band it admits: −(m+n−1)…m+n, and
+                  the narrower −(m−1)…m when m = n. So <code>2×1</code> takes
+                  −2…3 while <code>2×2</code> takes −1…2, in one plan, and no k
+                  is dropped for being out of range.
+                </>
+              ) : (
+                <>
+                  A k outside a size&rsquo;s own valid range is not queued — the
+                  band narrows as a size gets squarer, so one range of k
+                  legitimately covers different ks at different sizes. The plan
+                  below says how many that dropped.
+                </>
+              )}
             </p>
           </div>
 

@@ -24,7 +24,14 @@ export type SweepSpec = {
   mFrom: number; mTo: number;
   nFrom: number; nTo: number;
   ksMode: KsMode;
-  /** "each" and "words": the k values to draw from, and how many levels deep. */
+  /**
+   * "each" and "words": where the k values come from. With `kFollowsSize` the
+   * band is the one that size actually admits — 1×2 sweeps −2…3 while 2×2
+   * sweeps −1…2, in the same plan — and `kFrom`/`kTo` are not read. Without it
+   * every size draws from the typed range and whatever falls outside its own
+   * band is counted and dropped.
+   */
+  kFollowsSize: boolean;
   kFrom: number; kTo: number;
   depth: number;
   /** "list": one k sequence per line, applied to every size. */
@@ -100,23 +107,38 @@ function range(from: number, to: number): number[] {
 }
 
 /**
+ * The k values one size draws from.
+ *
+ * A typed range is one range for the whole sweep, so it is right for at most
+ * one size in it: the band is −(m+n−1)…m+n off the diagonal and narrows to
+ * −(m−1)…m on it, so a range that covers 2×2 exactly misses four of 2×1's ks.
+ * Following the size asks each one its own band instead, which is what "every
+ * k there is" means when the sweep is over sizes.
+ */
+export function kValuesFor(spec: SweepSpec, m: number, n: number): number[] {
+  if (!spec.kFollowsSize) return range(spec.kFrom, spec.kTo);
+  const limits = kLimits(m, n);
+  return range(limits.min, limits.max);
+}
+
+/**
  * The k sequences one size gets, before the range check.
  *
  * - `each`  one sequence per k, that k held for every level. "k = 2, three
  *           levels deep" is the question a sweep over sizes usually means.
- * - `words` every sequence of that depth over the range. It is the honest
+ * - `words` every sequence of that depth over the size's ks. It is the honest
  *           answer to "all the ks" and it is exponential, which is why the
  *           count is shown before anything is queued.
  * - `list`  what was typed, applied to every size.
  */
-export function sequencesFor(spec: SweepSpec): number[][] {
+export function sequencesFor(spec: SweepSpec, m: number, n: number): number[][] {
   const depth = Math.max(1, Math.min(MAX_LEVELS, Math.trunc(spec.depth)));
   if (spec.ksMode === "list") {
     return spec.ksText.split("\n")
       .map(parseSequence)
       .filter((values): values is number[] => values !== null && values.length > 0);
   }
-  const ks = range(spec.kFrom, spec.kTo);
+  const ks = kValuesFor(spec, m, n);
   if (spec.ksMode === "each") return ks.map(k => new Array(depth).fill(k));
 
   let words: number[][] = [[]];
@@ -144,9 +166,22 @@ export function planSweep(spec: SweepSpec): PlanResult {
   const skipped = new Map<string, number>();
   const note = (reason: string) => skipped.set(reason, (skipped.get(reason) ?? 0) + 1);
 
-  const sequences = sequencesFor(spec);
   const seen = new Set<string>();
   let truncated = false;
+
+  // Sequences depend on a size only through the ks it draws from, so 1×2 and
+  // 2×1 share one expansion and a typed range shares one across the sweep.
+  // Worth holding: `words` is exponential and would otherwise be rebuilt for
+  // every size in the range.
+  const expansions = new Map<string, number[][]>();
+  const sequencesAt = (m: number, n: number): number[][] => {
+    const key = spec.ksMode === "list" ? "list" : kValuesFor(spec, m, n).join(" ");
+    const held = expansions.get(key);
+    if (held) return held;
+    const made = sequencesFor(spec, m, n);
+    expansions.set(key, made);
+    return made;
+  };
 
   for (const m of range(spec.mFrom, spec.mTo)) {
     for (const n of range(spec.nFrom, spec.nTo)) {
@@ -155,12 +190,14 @@ export function planSweep(spec: SweepSpec): PlanResult {
         continue;
       }
       const limits = kLimits(m, n);
-      for (const ks of sequences) {
+      for (const ks of sequencesAt(m, n)) {
         if (!ks.length) continue;
         if (ks.length > MAX_LEVELS) { note(`more than ${MAX_LEVELS} levels`); continue; }
         // Out-of-range k is not a job that fails later, it is not a job. The
         // valid band narrows as a size gets squarer, so a sweep over one range
-        // of ks legitimately covers different ks at different sizes.
+        // of ks legitimately covers different ks at different sizes. Nothing
+        // reaches this when the band follows the size; a typed range and a
+        // typed list both can.
         if (ks.some(k => k < limits.min || k > limits.max)) {
           note("k outside the size's valid range");
           continue;

@@ -145,6 +145,17 @@ button:disabled { opacity: .38; cursor: not-allowed; }
 
 .farm-note { margin: 0; color: var(--muted); font: 600 10px/1.55 monospace; }
 .farm-note code, .farm-mono { font-family: monospace; }
+/* The k band of every size in the sweep, one chip each: the point is that they
+   differ, so they are set side by side rather than described. */
+.farm-bands {
+  margin: 0; display: flex; flex-wrap: wrap; gap: 4px 6px;
+  font: 600 10px/1.4 monospace; color: var(--muted);
+}
+.farm-bands span {
+  padding: 3px 7px; border: 1px solid var(--line); border-radius: 100px;
+  white-space: nowrap;
+}
+.farm-bands b { color: var(--ink); }
 /* The lab's edge-note. */
 .farm-warn {
   margin: 0; padding: 9px 11px; font: 600 10px/1.5 monospace;

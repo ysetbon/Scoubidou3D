@@ -29,7 +29,10 @@ https://ysetbon.github.io/Scoubidou3D/mxn/gpu/
 2. Fill in **worker url** and **admin token** — the same two values the lab's
    sidebar uses. They are stored in that browser's `localStorage` only.
 3. Set the ranges (m, n, k mode, depth), check the plan's numbers, press
-   **Queue the plan**, then **Start**.
+   **Queue the plan**, then **Start**. The k band defaults to **the size's own
+   band**, so each size sweeps every k it admits — `2×1` takes −2…3 while `2×2`
+   takes −1…2 — and the chips under the field spell out what each size in the
+   range will get. **A range I type** is there for narrowing to one k.
 4. Leave the tab open and the machine awake. That is the whole job.
 
 So clone the repo when you want to **change** the farm or run it against local

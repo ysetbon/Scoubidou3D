@@ -167,12 +167,40 @@ solved its H band without a search" and "4×4 is over the trace ceiling" both
 cost a level replay to discover, and a reader who opens that widget should be
 told at once rather than made to find out.
 
+## Which k each size gets
+
+The band of k a size admits is not a constant of the sweep. It is −(m+n−1)…m+n
+off the diagonal and narrows to −(m−1)…m on it, so the sizes in one plan want
+genuinely different ks: `1×1` admits 0…1, `2×1` admits −2…3, `2×2` admits
+−1…2, `4×4` admits −3…4.
+
+So the k source is a choice, and the default is **the size's own band**: each
+size draws from `kLimits(m, n)` and sweeps every k it has. That is what "every
+k" means when the thing being swept is sizes — a single typed range can only
+ever be right for one of them, and a range that fits `2×2` exactly is missing
+four of `2×1`'s ks with nothing on screen to say so beyond a drop count.
+
+**A range I type** is the other choice, for narrowing a sweep to one k or to a
+few: every size draws from that range, and whatever falls outside its own band
+is dropped and counted as before. `list` mode is always literal — typed
+sequences are applied to every size and checked against each size's band.
+
+The sizes' bands are printed under the field, because the whole reason for the
+setting is that they differ.
+
+In `words` mode this compounds: the sequence count is the size's band raised to
+the depth, and the band is wider at the corners than on the diagonal, so `2×1`
+at depth 2 is 36 sequences where `2×2` is 16. The plan's counts are shown before
+anything is queued for exactly this reason.
+
 ## What the plan will not queue
 
-- **k outside a size's own range.** The valid band narrows as a size gets
-  squarer — `1×2` admits −2…3, `2×2` admits −1…2 — so one range of k
-  legitimately covers different ks at different sizes. Those are counted and
-  reported, never dropped in silence.
+- **k outside a size's own range.** With a typed range or a typed list, the
+  valid band narrows as a size gets squarer — `1×2` admits −2…3, `2×2` admits
+  −1…2 — so one range of k legitimately covers different ks at different sizes.
+  Those are counted and reported, never dropped in silence. With the band
+  following the size, nothing reaches this: no size is ever asked for a k it
+  does not admit.
 - **m or n outside 1…4, or more than 8 levels.** The lab clamps to both, and a
   cached answer nobody can reach from the lab is no answer.
 - **Duplicates.** The same parameters can be reached twice; the queue keys on
