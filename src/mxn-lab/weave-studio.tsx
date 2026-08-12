@@ -540,6 +540,12 @@ export function ContinuationLab() {
   // Levels whose exact solution count is still to be firmed up, drained one
   // request at a time so a click never queues behind the whole product.
   const countQueueRef = useRef<number[]>([]);
+  // Cells per counting round. The worker takes one message at a time, so this
+  // is the most replays a click can be stuck behind while the count thinks in
+  // the background. A replay is ~5 ms, not the 1 ms the folklore said, so the
+  // round is tiny on purpose — the chain supplies the persistence, and a few
+  // hundred extra messages cost milliseconds against the replays they space.
+  const COUNT_ROUND = 24;
   const dispatchRef = useRef<(params: Params) => void>(() => {});
 
   const parsed = useMemo(() => parseKs(rawKs), [rawKs]);
@@ -566,7 +572,7 @@ export function ContinuationLab() {
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
     const worker = new Worker(
-      `${LAB_BASE}exact-worker.js?v=trace-plan-v15${FAST_ENGINE ? "&engine=fast" : ""}`,
+      `${LAB_BASE}exact-worker.js?v=trace-plan-v16${FAST_ENGINE ? "&engine=fast" : ""}`,
       { type: "module" },
     );
     worker.onmessage = (event) => {
@@ -740,12 +746,14 @@ export function ContinuationLab() {
         // for slots in between rounds instead of behind all of them.
         if (!message.countExact) {
           workerRef.current?.postMessage({
-            type: "count", id: message.id, level: message.level,
+            type: "count", id: message.id, level: message.level, budget: COUNT_ROUND,
           });
         } else {
           const next = countQueueRef.current.shift();
           if (next !== undefined) {
-            workerRef.current?.postMessage({ type: "count", id: message.id, level: next });
+            workerRef.current?.postMessage({
+              type: "count", id: message.id, level: next, budget: COUNT_ROUND,
+            });
           }
         }
         return;
@@ -770,7 +778,7 @@ export function ContinuationLab() {
           countQueueRef.current = toCount.slice(1);
           if (toCount.length) {
             workerRef.current?.postMessage({
-              type: "count", id: message.id, level: toCount[0],
+              type: "count", id: message.id, level: toCount[0], budget: COUNT_ROUND,
             });
           }
           // A new run invalidates every near-miss list: they index into the

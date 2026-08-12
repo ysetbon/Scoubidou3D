@@ -49,7 +49,7 @@ async function prepare() {
       // Resolved against this worker's own URL rather than the site root: the
       // lab is published under a project-site sub-path, where "/py/..." would
       // miss. Keeps the cache key in step with the one in the Worker URL.
-      const url = new URL(`./py/${name}?v=trace-plan-v15`, import.meta.url);
+      const url = new URL(`./py/${name}?v=trace-plan-v16`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
@@ -97,8 +97,12 @@ const HANDLERS = {
   },
   count: async (runtime, data) => {
     runtime.globals.set("mxn_level", data.level);
+    // The worker runs one message at a time, so the round size is the longest
+    // a click can wait behind the counting. The page passes a small budget and
+    // chains rounds instead.
+    runtime.globals.set("mxn_count_budget", data.budget ?? null);
     return ["count-ready", await runtime.runPythonAsync(
-      "bridge.count_solutions(mxn_level)"
+      "bridge.count_solutions(mxn_level, mxn_count_budget)"
     )];
   },
   // Near-misses. The scan is a marginal sweep of one band against a partner

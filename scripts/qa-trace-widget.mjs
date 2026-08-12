@@ -481,6 +481,13 @@ const countAsks = await page.evaluate(() =>
   window.__posted.filter(m => m.type === 'count').map(m => m.level));
 ok('the page asks for the count without being browsed', countAsks.length === 2
    && countAsks.every(level => level === 1), countAsks.join(','));
+// Small rounds are the whole latency story: the worker takes one message at a
+// time, so the budget on each count IS the longest a click can wait behind it.
+const countBudgets = await page.evaluate(() =>
+  window.__posted.filter(m => m.type === 'count').map(m => m.budget));
+ok('and every counting round is small enough to click past',
+   countBudgets.length === 2 && countBudgets.every(b => b > 0 && b <= 100),
+   countBudgets.join(','));
 const navText = await l1.locator('.solution-nav b').first().innerText();
 ok('and the browser shows the exact count, no plus', navText.trim() === '1 / 1', navText);
 ok('and the next arrow stops at the end of the list',
