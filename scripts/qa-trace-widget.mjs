@@ -84,6 +84,13 @@ await page.addInitScript(({ result, traces, plans, weaves }) => {
         reply({ type: 'trace-weave-ready', id: data.id, ...w,
                 ext: data.ext, angle: data.angle });
       }
+      if (data.type === 'count') {
+        // Budget-bounded like the engine: the first round is inexact, so the
+        // page has to chain a second request to firm the count up.
+        const round = posted.filter(m => m.type === 'count').length;
+        reply({ type: 'count-ready', id: data.id, level: data.level,
+                count: 1, healthy: 1, countExact: round > 1 });
+      }
     }
     terminate() {}
   };
@@ -464,6 +471,22 @@ const back = await at();
 ok('and the toggle puts the summary back',
    back.mode === 'sweep' && backInk === summaryInk,
    `${JSON.stringify(back)}: ${summaryInk} -> ${sliceInk} -> ${backInk}`);
+
+// ---- the solution count is firmed up front, not on the first arrow ----
+// The engine counts lazily and the page used to never ask, so the browser read
+// "2+" forever. Now the count is driven to exact in budget rounds as soon as
+// the run lands, and the arrows get a real end to stop at.
+await page.waitForTimeout(300);
+const countAsks = await page.evaluate(() =>
+  window.__posted.filter(m => m.type === 'count').map(m => m.level));
+ok('the page asks for the count without being browsed', countAsks.length === 2
+   && countAsks.every(level => level === 1), countAsks.join(','));
+const navText = await l1.locator('.solution-nav b').first().innerText();
+ok('and the browser shows the exact count, no plus', navText.trim() === '1 / 1', navText);
+ok('and the next arrow stops at the end of the list',
+   await l1.locator('button[aria-label="Next solution for level 1"]').first().isDisabled());
+const split = await l1.locator('.nav-split').first().innerText().catch(() => 'MISSING');
+ok('and the weave total sits beside the count', /1 weave/.test(split), split);
 
 // ---- a traced cell can take the card's own diagram ----
 // The card's drawing, as a fingerprint, and the number beside it: both have to

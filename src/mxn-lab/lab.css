@@ -155,6 +155,12 @@ textarea {
   font: 600 9px/1 monospace; font-style: normal; letter-spacing: .04em;
   padding: 3px 5px; border-radius: 100px; background: rgba(39,107,114,.12); color: var(--blue);
 }
+/* The split behind the denominator: all of the count closed, this many audit
+   as weaves. Muted, because it is context for the number, not a second one. */
+.solution-nav .nav-split {
+  font: 600 9px/1 monospace; font-style: normal; color: var(--muted);
+  letter-spacing: .04em; white-space: nowrap;
+}
 .solution-nav .save-solution { border-color: transparent; font-size: 14px; width: 26px; }
 .solution-nav .save-solution:hover { border-color: var(--ink); }
 /* The flag is the near-miss twin of the star. It hovers red rather than ink so

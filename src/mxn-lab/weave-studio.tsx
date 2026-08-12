@@ -130,6 +130,8 @@ type SolutionMeta = {
   hCount: number; vCount: number; candidates: number;
   enginePick: number; index: number; truncated: boolean;
   count?: number; countExact?: boolean;
+  /** How many of `count` audit as weaves. Arrives with the exact count. */
+  healthy?: number;
 };
 type ExactResult = {
   m: number; n: number; ks: number[]; expected: number; seconds: number;
@@ -535,6 +537,9 @@ export function ContinuationLab() {
   const busyRef = useRef(false);
   const pendingRef = useRef<Params | null>(null);
   const activeIdRef = useRef(0);
+  // Levels whose exact solution count is still to be firmed up, drained one
+  // request at a time so a click never queues behind the whole product.
+  const countQueueRef = useRef<number[]>([]);
   const dispatchRef = useRef<(params: Params) => void>(() => {});
 
   const parsed = useMemo(() => parseKs(rawKs), [rawKs]);
@@ -724,10 +729,25 @@ export function ContinuationLab() {
         return;
       }
       if (message.type === "count-ready") {
+        if (message.id !== activeIdRef.current) return;   // a newer run owns the worker
         setSolutions(current => ({ ...current, [message.level]: {
           ...current[message.level], count: message.count,
-          countExact: message.countExact,
+          countExact: message.countExact, healthy: message.healthy,
         } }));
+        // The engine's count walk is budget-bounded and resumable, so drive it:
+        // the same level again until its count is exact, then the next level
+        // waiting. One request in flight at a time — anything the reader asks
+        // for slots in between rounds instead of behind all of them.
+        if (!message.countExact) {
+          workerRef.current?.postMessage({
+            type: "count", id: message.id, level: message.level,
+          });
+        } else {
+          const next = countQueueRef.current.shift();
+          if (next !== undefined) {
+            workerRef.current?.postMessage({ type: "count", id: message.id, level: next });
+          }
+        }
         return;
       }
       if (message.type === "result") {
@@ -740,6 +760,19 @@ export function ContinuationLab() {
             meta[entry.level] = entry;
           }
           setSolutions(meta);
+          // Firm every count up front. The engine counts lazily — a browser
+          // reading "2+" is paging a list whose end nobody has looked for —
+          // so each browsable level's count is walked to exact, level by
+          // level, starting now rather than on the first arrow press.
+          const toCount = ((message.result as ExactResult).solutions ?? [])
+            .filter(entry => entry.level > 0 && browsable(entry) && !entry.countExact)
+            .map(entry => entry.level);
+          countQueueRef.current = toCount.slice(1);
+          if (toCount.length) {
+            workerRef.current?.postMessage({
+              type: "count", id: message.id, level: toCount[0],
+            });
+          }
           // A new run invalidates every near-miss list: they index into the
           // candidate lists of the session that has just been replaced.
           setSemi({});
@@ -1391,9 +1424,15 @@ export function ContinuationLab() {
                           if (!canSemi) {
                             return <span className="solution-note" title={meta.reason ?? ""}>one solution</span>;
                           }
-                          const shown = meta.count === undefined
+                          // The denominator is the list being paged: all
+                          // closed rings, or the weaves among them when the
+                          // healthy-only filter is on and their total is known.
+                          const denom = healthyOnly && meta.healthy !== undefined
+                            ? meta.healthy : meta.count;
+                          const shown = denom === undefined
                             ? `${meta.index + 1}`
-                            : `${meta.index + 1} / ${meta.count}${meta.countExact ? "" : "+"}`;
+                            : `${meta.index + 1} / ${denom.toLocaleString()}${
+                              meta.countExact ? "" : "+"}`;
                           return (
                             <span className={`solution-nav${
                               tracedShown[stage.level] ? " is-stale" : ""}`}
@@ -1406,9 +1445,24 @@ export function ContinuationLab() {
                               <b>{busyHere ? "…" : shown}</b>
                               {meta.index === meta.enginePick && !tracedShown[stage.level]
                                 && <em>engine pick</em>}
+                              {/* With the count exact the list has a real end,
+                                  so the arrow stops there instead of walking
+                                  into a "no solution at that position". */}
                               <button type="button" onClick={() => browse(stage.level, meta.index + 1)}
-                                disabled={busyHere}
+                                disabled={busyHere || (meta.countExact === true
+                                  && denom !== undefined && meta.index + 1 >= denom)}
                                 aria-label={`Next solution for level ${stage.level}`}>›</button>
+                              {/* The split the single number hides: every ring
+                                  here closed (valid), and this many of them
+                                  audit as weaves. */}
+                              {meta.countExact && meta.healthy !== undefined
+                                && meta.count !== undefined && (
+                                <i className="nav-split" title={`All ${
+                                  meta.count.toLocaleString()} solutions close (valid); ${
+                                  meta.healthy.toLocaleString()} of them audit as weaves`}>
+                                  {meta.healthy.toLocaleString()} weave{meta.healthy === 1 ? "" : "s"}
+                                </i>
+                              )}
                               <button className="save-solution" type="button" onClick={() => saveSolution(stage)}
                                 title="Save this closed ring for rating — goes to /mxn/rate/"
                                 aria-label={`Save level ${stage.level} solution to the dataset`}>⭐</button>
