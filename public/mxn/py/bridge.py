@@ -895,6 +895,77 @@ def select_solution(level, index, healthy_only=False, cursor=None):
     }, separators=(",", ":"))
 
 
+# ---------------------------------------------------------------------------
+# Parallel counting. The walk's order is lexicographic over the H x V product,
+# so the range [0, cells) splits into contiguous slices that independent
+# workers can count with no session at all: a slice needs only the checkpoint,
+# the candidate lists and the audit inputs, which export_count_job carries.
+# Concatenating the slices in range order IS the serial walk's found-list.
+
+def export_count_job(level):
+    """Everything one level's count needs, session-free and JSON-safe."""
+    entry = _level_session(int(level))
+    if entry["enumerated"] == "none" and entry["k"] != 0:
+        enumerate_level(entry["level"])
+    m, n = _SESSION["m"], _SESSION["n"]
+    return json.dumps({
+        "level": entry["level"], "k": entry["k"],
+        "m": m, "n": n, "hand": _SESSION["hand"],
+        "expected": 4 * m * n, "search": entry["search"],
+        "checkpoint": entry["checkpoint"],
+        "hCands": entry["h_cands"], "vCands": entry["v_cands"],
+    }, separators=(",", ":"))
+
+
+# One job at a time per worker: the blob is compared by identity of content,
+# and the pickled checkpoint is what each cell actually clones.
+_SLICE_JOB = {"blob": None, "job": None, "checkpoint": None}
+
+
+def count_slice(job_json, start, end):
+    """Walk cells [start, end) of a job's product. Stateless between jobs."""
+    if _SLICE_JOB["blob"] != job_json:
+        job = json.loads(job_json)
+        _SLICE_JOB.update({"blob": job_json, "job": job,
+                           "checkpoint": pickle.dumps(
+                               job["checkpoint"], pickle.HIGHEST_PROTOCOL)})
+    job = _SLICE_JOB["job"]
+    h_cands, v_cands = job["hCands"], job["vCands"]
+    level, m, n, hand = job["level"], job["m"], job["n"], job["hand"]
+    expected = job["expected"]
+    entryish = {"search": job["search"]}
+    found = []
+    for cell in range(int(start), int(end)):
+        i, j = divmod(cell, len(v_cands))
+        strands, info = pickle.loads(_SLICE_JOB["checkpoint"])
+        crossings = NX.apply_solution(strands, info, level, m, n, hand,
+                                      h_cands[i], v_cands[j])
+        if crossings != expected:
+            continue
+        row = describe(_synth_result(entryish, h_cands[i], v_cands[j]),
+                       [dict(s) for s in strands], level,
+                       job["k"], expected, (2 * m, 2 * n))
+        found.append({"h": i, "v": j, "row": row})
+    return json.dumps({"found": found, "start": int(start), "end": int(end)},
+                      separators=(",", ":"))
+
+
+def adopt_count(level, slices_json):
+    """Install a full set of slice results as the level's own found-cache.
+
+    Only called when every slice of [0, cells) came back: partial adoption
+    would leave scan_cursor lying about what was walked.
+    """
+    entry = _level_session(int(level))
+    pieces = sorted(json.loads(slices_json), key=lambda piece: piece["start"])
+    found = []
+    for piece in pieces:
+        found.extend(piece["found"])
+    entry["found"] = found
+    entry["scan_cursor"] = len(entry["h_cands"]) * len(entry["v_cands"])
+    return count_solutions(entry["level"])
+
+
 def count_solutions(level, budget=None):
     """Firm up the exact solution count for a level, budget-bounded.
 

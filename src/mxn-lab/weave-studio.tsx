@@ -508,6 +508,10 @@ export function ContinuationLab() {
   const [tracedShown, setTracedShown] = useState<Record<number, TraceWeave>>({});
   const [tracedRing, setTracedRing] =
     useState<Record<number, { strands: Strand[]; row: AuditRow }>>({});
+  // The in-run counting, level by level, for the strip under the busy sheet:
+  // the walk's position and what it has found so far.
+  const [counting, setCounting] =
+    useState<Record<number, { scanned: number; cells: number; count: number }>>({});
   /** Forget an override without putting anything back: for when something else
    *  has already replaced the ring on the card. */
   const clearTraced = (level: number) => {
@@ -734,6 +738,13 @@ export function ContinuationLab() {
         });
         return;
       }
+      if (message.type === "count-progress") {
+        if (message.id !== activeIdRef.current) return;
+        setCounting(current => ({ ...current, [message.level]: {
+          scanned: message.scanned, cells: message.cells, count: message.count,
+        } }));
+        return;
+      }
       if (message.type === "count-ready") {
         if (message.id !== activeIdRef.current) return;   // a newer run owns the worker
         setSolutions(current => ({ ...current, [message.level]: {
@@ -794,6 +805,7 @@ export function ContinuationLab() {
           setTraceWeaves({});
           setTracedShown({});
           setTracedRing({});
+          setCounting({});
           setOpenWidgets(new Set());
           frameStore.set(null);
           setEngineError(null);
@@ -810,6 +822,7 @@ export function ContinuationLab() {
         if (message.id === activeIdRef.current) {
           setEngineError(message.message || "The exact engine could not finish this case.");
           frameStore.set(null);
+          setCounting({});
           setStatus("Calculation stopped");
         }
         busyRef.current = false;
@@ -1292,6 +1305,25 @@ export function ContinuationLab() {
               arrive too fast to route through this component's state. This is
               where finished diagrams land too. */}
           {busy && <LiveCandidateFigure store={frameStore} worst={runScale} />}
+          {/* Counting is the tail of the thinking: the search is done, the
+              cards are not out yet, and this is what the wait is buying — a
+              bar per level, its position in the pair product, and the count
+              growing as it closes rings. */}
+          {busy && Object.keys(counting).length > 0 && (
+            <div className="count-strip" role="status" aria-label="Counting solutions">
+              {Object.entries(counting).map(([lvl, c]) => (
+                <div className="count-row" key={lvl}>
+                  <b>counting L{lvl} solutions</b>
+                  <span className="count-track">
+                    <i style={{ width: `${Math.min(100,
+                      (100 * c.scanned) / Math.max(1, c.cells)).toFixed(1)}%` }} />
+                  </span>
+                  <em>{c.count.toLocaleString()} closed
+                    {" · "}{c.scanned.toLocaleString()} / {c.cells.toLocaleString()} pairs</em>
+                </div>
+              ))}
+            </div>
+          )}
           {!result || !bounds ? (
             busy ? null : (
               <div className="calculation-panel"><div className="calculation-orbit" /><strong>{status}</strong><span>The images appear after the repository audit finishes.</span></div>

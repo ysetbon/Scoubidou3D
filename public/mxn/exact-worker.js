@@ -65,9 +65,48 @@ async function prepare() {
       self.postMessage({ type: "progress", message: "Vectorised angle scan enabled." });
     }
     pyodide = runtime;
+    // The counting hands can load their own runtimes while the reader is
+    // still parameterising; by the first run they are already warm.
+    ensureCountPool();
     return runtime;
   })();
   return initializing;
+}
+
+// The counting hands: sibling workers that each walk one contiguous slice of
+// a level's pair product. Spawned once and kept; each holds its own Pyodide,
+// so the pool is small and warmed while the engine itself is still loading.
+let countPool = null;
+let tokenSeq = 0;
+function ensureCountPool() {
+  if (countPool !== null) return countPool;
+  const cores = Math.max(1, (self.navigator?.hardwareConcurrency || 4) - 1);
+  const size = Math.min(3, cores);
+  countPool = size < 2 ? [] : Array.from({ length: size }, () => {
+    const worker = new Worker(
+      new URL("./count-worker.js?v=trace-plan-v17", import.meta.url),
+      { type: "module" });
+    worker.postMessage({ type: "warm" });
+    return worker;
+  });
+  return countPool;
+}
+
+/** One slice on one hand; resolves to its found-list, rejects on slice-error. */
+function runSlice(worker, job, start, end, onProgress) {
+  const token = ++tokenSeq;
+  return new Promise((resolve, reject) => {
+    const listener = (event) => {
+      const msg = event.data || {};
+      if (msg.token !== token) return;
+      if (msg.type === "slice-progress") { onProgress(msg.scanned, msg.found); return; }
+      worker.removeEventListener("message", listener);
+      if (msg.type === "slice-done") resolve(msg);
+      else reject(new Error(msg.message || "slice failed"));
+    };
+    worker.addEventListener("message", listener);
+    worker.postMessage({ type: "slice", token, job, start, end });
+  });
 }
 
 const HANDLERS = {
@@ -87,27 +126,66 @@ const HANDLERS = {
     ));
     // Count every level's solutions BEFORE the result posts, so the cards land
     // with `1 / total` already exact — the counting is part of the thinking,
-    // not a number that climbs afterwards. Chunked so the busy line can
-    // narrate, and capped so a huge product cannot hold the run hostage; a
-    // level left inexact is finished by the page's background chain.
+    // not a number that climbs afterwards. Slices go to the counting hands in
+    // parallel where the pool exists; the serial walk is the fallback and the
+    // small-product path. count-progress is the UI's feed; the prose line
+    // rides along for the status bar. Capped so a huge product cannot hold
+    // the run hostage — a level left inexact says so and is finished by the
+    // page's background chain.
     const COUNT_CHUNK = 500;
-    const COUNT_CEILING = 30000;
+    const COUNT_CEILING = 60000;
     let spent = 0;
     for (const meta of parsed.solutions ?? []) {
       if (!meta || meta.level <= 0) continue;
       if (meta.enumerated !== "full" && (meta.reason ?? "").startsWith("k=0")) continue;
+      runtime.globals.set("mxn_level", meta.level);
+      const progress = (scanned, cells, count) => {
+        post("count-progress", { level: meta.level, scanned, cells, count });
+        post("progress", { message: `Counting L${meta.level}'s solutions — `
+          + `${count.toLocaleString()} closed in ${scanned.toLocaleString()}`
+          + ` of ${cells.toLocaleString()} pairs…` });
+      };
+
       let reply = null;
-      while (spent < COUNT_CEILING) {
-        runtime.globals.set("mxn_level", meta.level);
+      const pool = ensureCountPool();
+      if (pool.length >= 2) {
+        // Parallel: export once, split [0, cells) evenly across the hands,
+        // adopt the concatenation. Any slice failing drops this level to the
+        // serial path with nothing adopted.
+        try {
+          const job = await runtime.runPythonAsync("bridge.export_count_job(mxn_level)");
+          const parsedJob = JSON.parse(job);
+          const cells = parsedJob.hCands.length * parsedJob.vCands.length;
+          if (cells > 0 && cells <= COUNT_CEILING - spent) {
+            const per = Math.ceil(cells / pool.length);
+            const perSlice = pool.map(() => ({ scanned: 0, found: 0 }));
+            const pieces = await Promise.all(pool.map((worker, at) => {
+              const start = at * per;
+              const end = Math.min(cells, start + per);
+              if (start >= end) return Promise.resolve({ start, end, found: [] });
+              return runSlice(worker, job, start, end, (scanned, found) => {
+                perSlice[at] = { scanned, found };
+                progress(perSlice.reduce((sum, s) => sum + s.scanned, 0), cells,
+                         perSlice.reduce((sum, s) => sum + s.found, 0));
+              });
+            }));
+            spent += cells;
+            runtime.globals.set("mxn_slices", JSON.stringify(
+              pieces.map(({ start, end, found }) => ({ start, end, found }))));
+            reply = JSON.parse(await runtime.runPythonAsync(
+              "bridge.adopt_count(mxn_level, mxn_slices)"));
+          }
+        } catch {
+          reply = null;   // a hand failed: count this level serially instead
+        }
+      }
+
+      while (!reply?.countExact && spent < COUNT_CEILING) {
         runtime.globals.set("mxn_count_budget", COUNT_CHUNK);
         reply = JSON.parse(await runtime.runPythonAsync(
           "bridge.count_solutions(mxn_level, mxn_count_budget)"));
         spent += COUNT_CHUNK;
-        post("progress", { message: `Counting L${meta.level}'s solutions — `
-          + `${reply.count.toLocaleString()} closed in `
-          + `${(reply.scanned ?? 0).toLocaleString()} of `
-          + `${(reply.cells ?? 0).toLocaleString()} pairs…` });
-        if (reply.countExact) break;
+        progress(reply.scanned ?? 0, reply.cells ?? 0, reply.count);
       }
       if (reply) {
         meta.count = reply.count;

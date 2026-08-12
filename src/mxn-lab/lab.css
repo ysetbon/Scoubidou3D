@@ -507,6 +507,30 @@ textarea {
 .trace-legend em { color: var(--muted); font-style: normal; }
 .trace-note { margin: 10px 0 0; color: var(--muted); font: 600 10px/1.6 monospace; max-width: 90ch; }
 
+/* Counting, made visible: the tail of the thinking between the search's last
+   frame and the cards. One row per level; the track is position in the pair
+   product, the caption is what the walk has found. */
+.count-strip {
+  border: 1px solid var(--line); border-top: 0; background: var(--card);
+  padding: 10px 14px; display: flex; flex-direction: column; gap: 8px;
+}
+.count-row { display: flex; align-items: center; gap: 10px; }
+.count-row b {
+  font: 800 9px/1 monospace; letter-spacing: .12em; text-transform: uppercase;
+  white-space: nowrap;
+}
+.count-track {
+  flex: 1; height: 6px; background: var(--paper);
+  border: 1px solid var(--line); position: relative; min-width: 80px;
+}
+.count-track i {
+  position: absolute; inset: 0 auto 0 0; background: var(--blue); display: block;
+}
+.count-row em {
+  font: 600 9.5px/1 monospace; font-style: normal; color: var(--muted);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+
 .sequence-updating { opacity: .54; transition: opacity .2s ease; }
 .calculation-panel {
   min-height: 420px; display: flex; flex-direction: column; align-items: center; justify-content: center;
