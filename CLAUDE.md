@@ -1,5 +1,13 @@
 # Working in this repo
 
+## If this clone is the compute machine
+
+If this session is about running or tending the MXN compute farm — precomputing
+runs onto Cloudflare so `/mxn/` loads instead of computing — read
+[docs/gpu-runbook.md](docs/gpu-runbook.md) first. It has the run steps, the
+Worker setup, the file map of the farm/cache code, and the checks to run after
+touching it. The design behind it is [docs/mxn-farm.md](docs/mxn-farm.md).
+
 ## Pull requests
 
 When you open a PR, enable GitHub auto-merge on it immediately, while its checks
