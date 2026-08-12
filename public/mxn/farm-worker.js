@@ -41,6 +41,20 @@ self.emitTrace = (payload) => {
     fraction: data.combos ? data.combosDone / data.combos : null,
   });
 };
+// The level search's combo counter, from the same gate that prices frames out
+// (bridge.py's _candidate_frame_emitter): numbers only, no geometry, so the
+// bar can move during the phase that used to sit silent for minutes. The
+// phase carries the level so the page sees each level start as a new phase.
+self.emitSearch = (payload) => {
+  const data = JSON.parse(payload);
+  self.postMessage({
+    type: "job-progress",
+    phase: `search:L${data.level}`,
+    message: `L${data.level} k=${data.k} search — ${data.combosDone.toLocaleString()}`
+      + ` / ${data.combos.toLocaleString()} combos`,
+    fraction: data.combos ? data.combosDone / data.combos : null,
+  });
+};
 
 async function prepare(fastEngine) {
   if (pyodide) return pyodide;
@@ -69,7 +83,7 @@ async function prepare(fastEngine) {
       // exact-worker.js uses: the two load the identical engine and a farm that
       // silently ran an older copy would fill the shelf with answers the lab
       // then disagrees with.
-      const url = new URL(`./py/${name}?v=trace-plan-v19`, import.meta.url);
+      const url = new URL(`./py/${name}?v=trace-plan-v20`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
@@ -191,7 +205,7 @@ async function runJob(runtime, message, post) {
         "bridge.count_solutions(mxn_level, mxn_count_budget)"));
       spent += COUNT_CHUNK;
       post({
-        phase: "count",
+        phase: `count:L${meta.level}`,
         message: `L${meta.level} — ${reply.count.toLocaleString()} closed rings in `
           + `${(reply.scanned ?? 0).toLocaleString()} / ${(reply.cells ?? 0).toLocaleString()} pairs`,
         fraction: reply.cells ? (reply.scanned ?? 0) / reply.cells : null,
@@ -236,7 +250,7 @@ async function runJob(runtime, message, post) {
         traceWatch = `L${level} ${band.toUpperCase()} census`;
         runtime.globals.set("mxn_level", level);
         runtime.globals.set("mxn_band", band);
-        post({ phase: "trace", message: `${traceWatch} — replaying the level` });
+        post({ phase: `trace:L${level}:${band}`, message: `${traceWatch} — replaying the level` });
         let plan = null;
         let census = null;
         try {

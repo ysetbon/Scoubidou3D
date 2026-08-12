@@ -370,7 +370,7 @@ export function ComputeFarm() {
 
   const spawnHand = () => {
     const worker = new Worker(
-      new URL(`${FARM_BASE}farm-worker.js?v=trace-plan-v19`, window.location.href),
+      new URL(`${FARM_BASE}farm-worker.js?v=trace-plan-v20`, window.location.href),
       { type: "module" });
     workersRef.current.push(worker);
     return worker;
@@ -456,6 +456,11 @@ export function ComputeFarm() {
           continue;
         }
 
+        // One log line per phase the hand enters, so the log shows a hand is
+        // alive mid-job — a heavy level search is minutes of silence otherwise.
+        // "stored" is left out (the job-end line already sums the artifacts up)
+        // but still advances the marker, so each census band logs its start.
+        let loggedPhase: string | null = null;
         const summaryReply = await driveHand(worker, {
           type: "job", hand: id,
           job: { ...job, descriptor: job.descriptor },
@@ -465,11 +470,17 @@ export function ComputeFarm() {
             cacheVersion: CACHE_VERSION,
             runner: `hand-${id}`,
           },
-        }, payload => setHand(id, {
-          message: `${label} — ${payload.message ?? ""}`,
-          fraction: payload.fraction ?? null,
-          status: payload.phase === "stored" ? "storing" : "working",
-        }));
+        }, payload => {
+          if (payload.phase && payload.phase !== loggedPhase) {
+            if (payload.phase !== "stored") say(`hand ${id} · ${payload.message ?? payload.phase}`);
+            loggedPhase = payload.phase;
+          }
+          setHand(id, {
+            message: `${label} — ${payload.message ?? ""}`,
+            fraction: payload.fraction ?? null,
+            status: payload.phase === "stored" ? "storing" : "working",
+          });
+        });
 
         await request("/farm/jobs", {
           method: "PATCH",

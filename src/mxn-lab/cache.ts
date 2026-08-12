@@ -27,7 +27,7 @@ import { bandKey, type Band } from "./trace-band";
 /**
  * Bumped when the engine changes what it answers.
  *
- * Same job as the `trace-plan-v19` key in the worker URL, for the same reason
+ * Same job as the `trace-plan-v20` key in the worker URL, for the same reason
  * and with the same discipline: a reader whose browser is holding last month's
  * geometry under this month's key is worse off than one who computed it.
  */
