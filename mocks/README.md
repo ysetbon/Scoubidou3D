@@ -7,6 +7,7 @@ input, so nothing here is published.
 |---|---|
 | [`thinking-indicator-mock.html`](thinking-indicator-mock.html) | the original proposal for the busy state: three layouts for the candidate sheet, judged before any of it existed. Standalone — it copies the tokens out of `src/mxn-lab/lab.css` and fakes the drawing in vanilla JS. Open it with any static server, or straight off disk. |
 | [`widgets.html`](widgets.html) | the two busy states as they now are. Mounts the **real** components against **real** engine payloads; only the worker is a stand-in. |
+| [`ks-atlas.html`](ks-atlas.html) | the **real** `/mxn/ks/` page against a committed snapshot of the Cloudflare shelf, with the live one switched off before it can be reached. See [docs/mxn-ks.md](../docs/mxn-ks.md) § *The offline mock*. |
 
 ## widgets.html
 

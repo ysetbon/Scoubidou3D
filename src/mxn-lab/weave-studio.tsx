@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 
 import {
   CACHE_TOKEN_KEY, CACHE_URL_KEY, CACHE_VERSION,
-  createCache, readSetting, writeSetting,
+  createCache, parseRunKey, readSetting, writeSetting,
   type CatalogueEntry, type RunArtifact, type RunDescriptor, type TraceArtifact,
 } from "./cache";
 import {
@@ -604,15 +604,18 @@ export function ContinuationLab() {
       return null;   // no catalogue is the same as an empty one
     }
     const variants = entries.flatMap(entry => {
-      const match = /^s([01])-e(auto|\d+)-b(\d+)$/.exec(entry.key.slice(prefix.length));
-      if (!match) return [];
+      // parseRunKey rather than a regex of our own: cache.ts owns the grammar
+      // in both directions, and a second reading of it here would drift.
+      const parsed = parseRunKey(entry.key);
+      if (!parsed || parsed.cacheVersion !== CACHE_VERSION) return [];
+      const step = String(parsed.descriptor.step);
       // The step select only offers these values; adopting one it cannot show
       // would leave the fields unable to say what is on screen.
-      if (!(EXT_STEP_CHOICES as readonly string[]).includes(match[2])) return [];
+      if (!(EXT_STEP_CHOICES as readonly string[]).includes(step)) return [];
       return [{
-        shortArms: match[1] === "1",
-        step: match[2] as ExtStep,
-        budget: Number(match[3]),
+        shortArms: parsed.descriptor.shortArms,
+        step: step as ExtStep,
+        budget: parsed.descriptor.budget,
         computedAt: entry.computedAt,
       }];
     });

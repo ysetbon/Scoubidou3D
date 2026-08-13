@@ -18,6 +18,9 @@ import { fileURLToPath } from 'node:url';
 //   mxn/gpu/index.html the compute farm (see docs/mxn-farm.md) — the same engine
 //                      driven headlessly over a range of sizes, storing every
 //                      answer on Cloudflare so /mxn/ can read them back.
+//   mxn/ks/index.html  the k atlas (see docs/mxn-ks.md) — that same shelf read
+//                      whole and folded by k, to predict the angle range and the
+//                      extension ceiling for sizes nobody has swept yet.
 //
 // Base is set for GitHub Pages project-site hosting (ysetbon.github.io/Scoubidou3D/).
 // Override with `vite build --base=/` for root hosting.
@@ -25,7 +28,7 @@ const page = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
 export default defineConfig({
   base: process.env.BASE_PATH ?? '/Scoubidou3D/',
-  plugins: [react({ include: ['**/mxn-lab/**', '**/mxn-farm/**'] })],
+  plugins: [react({ include: ['**/mxn-lab/**', '**/mxn-farm/**', '**/mxn-ks/**'] })],
   server: { open: true },
   build: {
     rollupOptions: {
@@ -39,6 +42,7 @@ export default defineConfig({
         mxnRate: page('mxn/rate/index.html'),
         mxnSemi: page('mxn/semi/index.html'),
         mxnGpu: page('mxn/gpu/index.html'),
+        mxnKs: page('mxn/ks/index.html'),
       },
     },
   },
