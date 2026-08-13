@@ -245,3 +245,39 @@ a { color: var(--blue); }
 .atlas-flag.is-calm { border-color: var(--line); color: var(--muted); }
 
 .atlas-empty { color: var(--muted); font: 600 11px/1.6 monospace; }
+
+/* --- the drawings ------------------------------------------------------- */
+
+.atlas-ring { margin: 0; display: grid; gap: 4px; justify-items: center; }
+.atlas-ring canvas {
+  display: block; border: 1px solid var(--line); border-radius: 2px; background: var(--card);
+}
+.atlas-ring figcaption {
+  font: 700 9px/1.2 monospace; letter-spacing: .04em; color: var(--muted); text-align: center;
+}
+
+/* One k across every size. Wraps rather than scrolls: the row is the subject,
+   and a reader should be able to see all of it at once on a laptop. */
+.atlas-sheet { display: flex; flex-wrap: wrap; gap: 10px; }
+.atlas-sheet-cell {
+  display: grid; gap: 3px; justify-items: center; padding: 7px 6px 6px;
+  border: 1px solid var(--line); border-radius: 2px; background: var(--card);
+  cursor: pointer; color: inherit; font: inherit;
+}
+.atlas-sheet-cell:hover, .atlas-sheet-cell:focus-visible {
+  border-color: var(--ink); outline: none; box-shadow: 0 0 0 2px var(--acid);
+}
+.atlas-sheet-cell.is-on { border-color: var(--ink); box-shadow: inset 0 0 0 2px var(--ink); }
+.atlas-sheet-cell b { font: 800 12px/1 monospace; }
+.atlas-sheet-cell i { font: 600 10px/1 monospace; font-style: normal; color: var(--muted); }
+.atlas-sheet-blank {
+  display: grid; place-items: center; width: 116px; height: 116px;
+  border: 1px dashed var(--line); border-radius: 2px;
+  font: 600 9px/1.3 monospace; color: var(--line); text-align: center;
+}
+
+/* The levels of one sequence, in order. Scrolls, because eight levels of a 4x4
+   is wider than any panel and the order is what matters. */
+.atlas-strip {
+  display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; align-items: flex-start;
+}

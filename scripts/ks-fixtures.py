@@ -136,6 +136,25 @@ def certain_refusal(m, n, band, level):
     }
 
 
+def round_stages(stages):
+    """Strand coordinates to two decimals.
+
+    The engine emits them as full doubles -- 526.0879226959953 is sixteen
+    characters to place a point on a canvas a few hundred pixels across, where
+    two decimals is already finer than a pixel. Nothing else is dropped: every
+    remaining field is one drawExactStage actually reads.
+    """
+    def fix(value):
+        if isinstance(value, float):
+            return round(value, 2)
+        if isinstance(value, dict):
+            return {k: fix(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [fix(v) for v in value]
+        return value
+    return fix(stages)
+
+
 def write(name, payload):
     path = os.path.join(OUT, name)
     with open(path, "w") as handle:
@@ -202,6 +221,7 @@ def main():
         write_check_fixture()
         return
     jobs = sweep_plan()
+    geometry = "--geometry" in sys.argv
     wanted = only_filter()
     if wanted:
         jobs = [job for job in jobs
@@ -217,7 +237,13 @@ def main():
         # Resume: a job whose run is already written is done. Same bargain the
         # farm's queue makes -- pushing the same plan twice adds nothing -- and
         # it is what makes the interruptibility above worth anything.
-        if os.path.exists(os.path.join(OUT, file_name)):
+        #
+        # Under --geometry a job also owes its geom file, so a sweep run without
+        # it once can be topped up with drawings later without recomputing the
+        # jobs that already have both.
+        geom_name = "geom__%s.json" % path.replace("/", "__")
+        owed_geometry = geometry and not os.path.exists(os.path.join(OUT, geom_name))
+        if os.path.exists(os.path.join(OUT, file_name)) and not owed_geometry:
             print("  %-22s already stored" % label)
             index.append({"runKey": "run/%s/%s" % (CACHE_VERSION, path), "file": file_name})
             continue
@@ -231,8 +257,18 @@ def main():
         seconds = round(time.time() - clock, 1)
 
         # The stages are the strand geometry and are the whole bulk of a run --
-        # 238 kB of a 240 kB artifact. Nothing the atlas reads is in them.
-        result.pop("stages", None)
+        # 28 kB for a 1x1 and 231 kB for a three-level 2x2, against a 1 kB run
+        # once they are gone. The grid, the charts and the fit read none of it.
+        #
+        # With --geometry they are kept, in a file of their own rather than in
+        # the run: the atlas wants them for the contact sheet and the filmstrip,
+        # and only for a handful of cells, and only when a reader opens one.
+        # Keeping them out of the run is what lets the dump stay small enough to
+        # load instantly while the drawings arrive on demand.
+        stages = result.pop("stages", None)
+        if geometry and stages:
+            write("geom__%s.json" % path.replace("/", "__"),
+                  {"runKey": "run/%s/%s" % (CACHE_VERSION, path), "stages": round_stages(stages)})
         run = {
             "kind": "run", "cacheVersion": CACHE_VERSION,
             "descriptor": {"m": m, "n": n, "ks": ks, "hand": HAND, "direction": DIRECTION,

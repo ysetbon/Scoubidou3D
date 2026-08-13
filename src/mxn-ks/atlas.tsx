@@ -38,6 +38,7 @@ import {
   DEFAULT_COMBO_BUDGET, MAX_PAIR_EXTENSION, worstPairs,
 } from "../mxn-lab/search-cost";
 import { VERDICT_COLOUR, VERDICT_NAMES } from "../mxn-lab/trace-census";
+import { allBounds, drawExactStage, type Bounds, type Stage } from "../mxn-lab/exact-draw";
 import type { Band } from "../mxn-lab/trace-band";
 import {
   bandPairs, ceilingSaving, describeFit, fitPoints, isMeasured, kRowsFor, sweptGridStep,
@@ -216,6 +217,53 @@ function Scatter({
 }
 
 // ---------------------------------------------------------------------------
+// The drawings.
+//
+// drawExactStage is the lab's own renderer, lifted out of weave-studio.tsx so
+// more than one panel could draw a ring — this is the third. Nothing about the
+// geometry is recomputed here: these are the rings the engine settled on,
+// stored with the run, read back and painted.
+// ---------------------------------------------------------------------------
+
+/** One ring, at a fixed pixel size, framed to itself. */
+function Ring({ stage, bounds, size, label }: {
+  stage: Stage;
+  bounds: Bounds;
+  size: number;
+  label?: string;
+}) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    // fixedSize rather than a ResizeObserver: a contact sheet is a lot of
+    // canvases and they do not need to reflow, they need to be small and
+    // identical. `--card` so the tiles sit on the panel rather than on a plate.
+    if (canvas) drawExactStage(canvas, stage, bounds, false, size, "#fbf8ef");
+  }, [stage, bounds, size]);
+  return (
+    <figure className="atlas-ring">
+      <canvas ref={ref} width={size} height={size} />
+      {label && <figcaption>{label}</figcaption>}
+    </figure>
+  );
+}
+
+/** The states a drawing can be in, said in words rather than by a spinner. */
+function RingNote({ state, what }: { state: "idle" | "loading" | "missing"; what: string }) {
+  if (state === "loading") return <p className="atlas-empty">reading {what}…</p>;
+  if (state === "missing") {
+    return (
+      <p className="atlas-empty">
+        No geometry for {what} on this shelf. The bundled snapshot carries drawings for a
+        sample only — the strands of a whole shelf are tens of megabytes. Against the live
+        Worker every cell has them.
+      </p>
+    );
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 
 export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}) {
   const [base, setBase] = useState(() => readCacheBase("atlas"));
@@ -248,6 +296,8 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
   const [metric, setMetric] = useState<Metric>("extPeak");
   const [selected, setSelected] = useState<string | null>(null);
   const [predict, setPredict] = useState({ m: 5, n: 5, k: 1 });
+  const [geometry, setGeometry] = useState<Record<string, Stage[] | null>>({});
+  const [drawing, setDrawing] = useState<Set<string>>(new Set());
 
   // The dump is fetched rather than imported: it is data, it changes without
   // the bundle changing, and it lives in public/ so that one copy serves both
@@ -272,7 +322,11 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
   }, [useFixture, dump]);
 
   const shelf: Shelf = useMemo(() => {
-    if (useFixture) return dump ? fixtureShelf(dump) : emptyShelf("loading the bundled dump…");
+    if (useFixture) {
+      return dump
+        ? fixtureShelf(dump, `${import.meta.env.BASE_URL}mxn/ks-atlas-geometry.json`)
+        : emptyShelf("loading the bundled dump…");
+    }
     if (!base) {
       return emptyShelf("no worker url — set one below, or switch to the bundled dump");
     }
@@ -436,16 +490,51 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
     setBusy(false);
   }, [angles, shelf]);
 
+  // --- the drawings -------------------------------------------------------
+
+  /**
+   * Rings, per run, fetched only when a drawing is on screen.
+   *
+   * `null` in the map means "asked, and this shelf has none" — a real answer
+   * and a different one from "not asked yet", which is the map having no entry.
+   */
+  const loadGeometry = useCallback(async (targets: AtlasRecord[]) => {
+    const wanted = targets.filter(r => !(r.runKey in geometry));
+    if (!wanted.length) return;
+    setDrawing(current => new Set([...current, ...wanted.map(r => r.runKey)]));
+    const collected: Record<string, Stage[] | null> = {};
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(3, wanted.length) }, async () => {
+      for (;;) {
+        const at = next;
+        next += 1;
+        if (at >= wanted.length) return;
+        collected[wanted[at].runKey] = await shelf.geometry(wanted[at]).catch(() => null);
+      }
+    }));
+    setGeometry(current => ({ ...current, ...collected }));
+    setDrawing(current => {
+      const rest = new Set(current);
+      wanted.forEach(r => rest.delete(r.runKey));
+      return rest;
+    });
+  }, [geometry, shelf]);
+
   // Selecting a cell pulls its own censuses, and only its own: the bulk load is
   // minutes of fetching and is something a reader asks for on purpose.
   useEffect(() => {
     if (!selected) return;
     const list = cells.get(selected);
-    if (list?.[0]) void loadAngles([list[0]]);
+    if (list?.[0]) {
+      void loadAngles([list[0]]);
+      // Its rings too: the filmstrip is one fetch for the whole sequence, and
+      // it is the drawing of the thing the reader just clicked on.
+      void loadGeometry([list[0]]);
+    }
     // loadAngles closes over `angles`, which it also sets, so this effect does
     // re-run as each band arrives. That terminates because loadAngles drops
     // anything already loaded and returns before touching state at all.
-  }, [selected, cells, loadAngles]);
+  }, [selected, cells, loadAngles, loadGeometry]);
 
   // --- the fits -----------------------------------------------------------
 
@@ -787,8 +876,21 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
             </div>
           </section>
 
+          <ContactSheet
+            k={selectedK}
+            rows={SIZES.map(size => cells.get(cellId(size.m, size.n, selectedK))?.[0])
+              .filter((row): row is AtlasRecord => !!row && !row.degenerate)}
+            geometry={geometry}
+            drawing={drawing}
+            onDraw={loadGeometry}
+            metric={metricInfo}
+            valueOf={valueOf}
+            selected={selected}
+            onPick={setSelected}
+          />
+
           <section className="atlas-panel">
-            <h2>B · How this k moves with size</h2>
+            <h2>C · How this k moves with size</h2>
             {record ? (
               <p className="atlas-note">
                 Solid points are <b>k = {record.k}</b>; the faint ones are every other k on the
@@ -826,10 +928,12 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
             others={selectedRecords.slice(1)}
             h={record ? statFor(record, "h") : undefined}
             v={record ? statFor(record, "v") : undefined}
+            stages={record ? geometry[record.runKey] : undefined}
+            drawing={!!record && drawing.has(record.runKey)}
           />
 
           <section className="atlas-panel">
-            <h2>D · The model, and what it predicts</h2>
+            <h2>E · The model, and what it predicts</h2>
             <p className="atlas-note">
               Ordinary least squares on <code>[1, pairs, m+n, |k|, kRel]</code>, where{" "}
               <code>kRel</code> is k placed in its own size's band — 2×1 admits −2…3 and 2×2
@@ -924,6 +1028,99 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
 
 // ---------------------------------------------------------------------------
 
+/**
+ * One k, drawn at every size that has it.
+ *
+ * The panel the grid's numbers are an abstraction of. A row of the grid says
+ * that k = 1 needs 10px at 1x1 and 200px at 4x4; this says what those two rings
+ * actually look like, side by side, and the shape changing along the row is the
+ * thing "how a k behaves as m and n grow" was always about.
+ *
+ * Each tile is framed to its own ring rather than to a shared scale. A 4x4 is
+ * four times the span of a 1x1 and normalising them together would leave the
+ * small ones as dots; what changes along the row is the shape, and the numbers
+ * under each tile carry the size.
+ */
+function ContactSheet({
+  k, rows, geometry, drawing, onDraw, metric, valueOf, selected, onPick,
+}: {
+  k: number;
+  rows: AtlasRecord[];
+  geometry: Record<string, Stage[] | null>;
+  drawing: Set<string>;
+  onDraw: (records: AtlasRecord[]) => void;
+  metric: { key: Metric; label: string; unit: string };
+  valueOf: (record: AtlasRecord, which: Metric) => number;
+  selected: string | null;
+  onPick: (id: string) => void;
+}) {
+  const asked = rows.filter(row => row.runKey in geometry);
+  const busy = rows.some(row => drawing.has(row.runKey));
+
+  return (
+    <section className="atlas-panel">
+      <h2>B · k = {k > 0 ? `+${k}` : k}, drawn at every size</h2>
+      {!rows.length ? (
+        <p className="atlas-empty">
+          Nothing on the shelf at k = {k}. Pick a cell in the grid whose k has some sizes.
+        </p>
+      ) : (
+        <>
+          <p className="atlas-note">
+            The rings the engine settled on, at this one k, across every size that has been
+            swept. Each is framed to itself — a 4×4 spans four times a 1×1 and a shared scale
+            would leave the small ones as dots — so what to read along the row is the{" "}
+            <em>shape</em>, with the size and the {metric.label} underneath.
+          </p>
+          {asked.length < rows.length && (
+            <button
+              type="button" className="atlas-go" disabled={busy}
+              onClick={() => onDraw(rows)}
+            >
+              {busy ? "reading the rings…" : `draw all ${rows.length} sizes`}
+            </button>
+          )}
+          <div className="atlas-sheet">
+            {rows.map(row => {
+              const stages = geometry[row.runKey];
+              const id = cellId(row.m, row.n, row.k);
+              const value = valueOf(row, metric.key);
+              // The final stage is the ring at this record's level — the one the
+              // grid's number describes.
+              const stage = stages?.find(s => s.level === row.level) ?? stages?.at(-1);
+              return (
+                <button
+                  key={id} type="button"
+                  className={`atlas-sheet-cell ${selected === id ? "is-on" : ""}`}
+                  onClick={() => onPick(id)}
+                  title={`${row.m}×${row.n} k=${row.k} · L${row.level}`}
+                >
+                  {stage
+                    ? <Ring stage={stage} bounds={allBounds([stage])} size={116} />
+                    : (
+                      <span className="atlas-sheet-blank">
+                        {drawing.has(row.runKey) ? "…"
+                          : row.runKey in geometry ? "no geometry" : "not drawn"}
+                      </span>
+                    )}
+                  <b>{row.m}×{row.n}</b>
+                  <i>
+                    {Number.isFinite(value)
+                      ? `${fmt(value, metric.key === "validSpan" ? 1 : 0)}${metric.unit}`
+                      : "—"}
+                  </i>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
 function Prediction({
   metric, prediction, m, n, k, sweptStep, budget,
 }: {
@@ -997,17 +1194,20 @@ function Prediction({
 // ---------------------------------------------------------------------------
 
 function CellPanel({
-  record, others, h, v,
+  record, others, h, v, stages, drawing,
 }: {
   record: AtlasRecord | null;
   others: AtlasRecord[];
   h: BandStat | undefined;
   v: BandStat | undefined;
+  /** undefined = not asked yet, null = asked and this shelf has none. */
+  stages: Stage[] | null | undefined;
+  drawing: boolean;
 }) {
   if (!record) {
     return (
       <section className="atlas-panel">
-        <h2>C · The cell</h2>
+        <h2>D · The cell</h2>
         <p className="atlas-empty">Pick a cell in the grid.</p>
       </section>
     );
@@ -1037,6 +1237,42 @@ function CellPanel({
           out of the fits rather than counted as a zero.
         </p>
       )}
+      <h3 style={{ margin: 0, font: "800 10px/1 monospace", letterSpacing: ".08em", textTransform: "uppercase", color: "var(--muted)" }}>
+        every level of this sequence
+      </h3>
+      {stages?.length ? (
+        <>
+          <div className="atlas-strip">
+            {stages.map(stage => (
+              <Ring
+                key={stage.level}
+                stage={stage}
+                // Framed to the LAST stage throughout, so the rings grow across
+                // the strip instead of each being blown up to fill its own tile.
+                // Here that is the point: the sequence is the subject.
+                bounds={allBounds(stages)}
+                size={132}
+                label={`L${stage.level}${stage.k === null ? "" : ` · k = ${stage.k}`}`}
+              />
+            ))}
+          </div>
+          <p className="atlas-note">
+            {record.ks.length > 1
+              ? <>The whole <code>ks = {ks}</code> sequence, L0 upwards, on one frame so the
+                growth is to scale. This is what the sidebar means by a k at level 2 or above
+                being conditioned on the prefix that reached it — L{record.level} here is what
+                it is <em>because</em> of the levels to its left.</>
+              : <>One k, so two frames: the starting stitch and what k = {record.k} made of it.
+                Sweep a sequence at <a href="../gpu/">/mxn/gpu/</a> to see ks compound.</>}
+          </p>
+        </>
+      ) : (
+        <RingNote
+          state={drawing ? "loading" : stages === null ? "missing" : "idle"}
+          what={`${record.m}×${record.n} k = ${record.k}`}
+        />
+      )}
+
       <h3 style={{ margin: 0, font: "800 10px/1 monospace", letterSpacing: ".08em", textTransform: "uppercase", color: "var(--muted)" }}>
         the extensions it chose
       </h3>

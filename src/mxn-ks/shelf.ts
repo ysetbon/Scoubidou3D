@@ -13,6 +13,7 @@ import {
   type CacheClient, type CatalogueEntry, type RunArtifact, type TraceArtifact,
 } from "../mxn-lab/cache";
 import type { Band } from "../mxn-lab/trace-band";
+import type { Stage } from "../mxn-lab/exact-draw";
 import {
   bandStatFrom, recordsFromRun, type AtlasRecord, type BandStat,
 } from "./model";
@@ -40,6 +41,15 @@ export type Shelf = {
   records(onProgress?: (done: number, total: number) => void): Promise<AtlasRecord[]>;
   /** One record's two bands, read and derived. */
   angles(record: AtlasRecord): Promise<Partial<Record<Band, BandStat>>>;
+  /**
+   * One run's rings, L0 upwards, or null when this shelf has none for it.
+   *
+   * Separate from records() and lazy on purpose. The geometry is the bulk of a
+   * run — 28 kB for a 1x1 and 231 kB for a three-level 2x2, against a 1 kB run
+   * with it removed — and most readers never open a drawing. Everything the
+   * grid, the charts and the fit need arrives without it.
+   */
+  geometry(record: AtlasRecord): Promise<Stage[] | null>;
 };
 
 // ---------------------------------------------------------------------------
@@ -152,6 +162,23 @@ export function liveShelf(cache: CacheClient): Shelf {
       }));
       return out;
     },
+
+    /**
+     * The run again, this time for the half of it records() threw away.
+     *
+     * A second fetch rather than holding every run's geometry in memory from
+     * the first: a full shelf is tens of megabytes of strands and a reader
+     * opens a drawing for a handful of cells. The Worker answers with
+     * `max-age=3600`, so the browser serves the repeat out of its own cache and
+     * the round trip is usually not one.
+     */
+    async geometry(record) {
+      const parsed = parseRunKey(record.runKey);
+      if (!parsed) return null;
+      const artifact = await cache.getRun(parsed.descriptor).catch(() => null) as RunArtifact | null;
+      const stages = (artifact?.result as { stages?: Stage[] } | undefined)?.stages;
+      return Array.isArray(stages) ? stages : null;
+    },
   };
 }
 
@@ -182,7 +209,37 @@ export type AtlasDump = {
 export const bandSlot = (record: AtlasRecord, band: Band) =>
   `${record.runKey}|L${record.level}-${band}`;
 
-export function fixtureShelf(dump: AtlasDump): Shelf {
+/**
+ * The drawings, in a file of their own.
+ *
+ * Deliberately not part of AtlasDump. The atlas dump is tens of kB and every
+ * reader pays for it; the geometry is megabytes and most readers never open a
+ * drawing. Splitting them is what lets the grid arrive instantly and the rings
+ * arrive only when asked for.
+ */
+export type GeometryDump = {
+  generatedAt: string;
+  source: string;
+  /** run key → the run's stages, L0 upwards. */
+  stages: Record<string, Stage[]>;
+};
+
+export function fixtureShelf(dump: AtlasDump, geometryUrl?: string): Shelf {
+  // Fetched once, on the first drawing anyone opens, and shared from then on.
+  let pending: Promise<GeometryDump | null> | null = null;
+  const geometryDump = () => (pending ??= (geometryUrl
+    ? fetch(geometryUrl)
+      .then(response => (response.ok ? response.json() : null))
+      .catch(() => null)
+    : Promise.resolve(null)));
+
+  return fixtureShelfWith(dump, geometryDump);
+}
+
+function fixtureShelfWith(
+  dump: AtlasDump,
+  geometryDump: () => Promise<GeometryDump | null>,
+): Shelf {
   return {
     async summary() {
       return {
@@ -205,6 +262,14 @@ export function fixtureShelf(dump: AtlasDump): Shelf {
       });
       return out;
     },
+    async geometry(record) {
+      // A snapshot carries drawings for a sample, not for everything: the whole
+      // shelf's strands are tens of megabytes and do not belong in a
+      // repository. A cell outside the sample answers null, and the page says
+      // so rather than spinning.
+      const geometry = await geometryDump();
+      return geometry?.stages?.[record.runKey] ?? null;
+    },
   };
 }
 
@@ -216,5 +281,6 @@ export function emptyShelf(reason: string): Shelf {
     },
     async records() { return []; },
     async angles() { return {}; },
+    async geometry() { return null; },
   };
 }

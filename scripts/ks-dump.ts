@@ -42,7 +42,8 @@ import type { Band } from "../src/mxn-lab/trace-band";
 import {
   bandStatFrom, recordsFromRun, type AtlasRecord, type BandStat,
 } from "../src/mxn-ks/model";
-import { bandSlot, type AtlasDump } from "../src/mxn-ks/shelf";
+import { bandSlot, type AtlasDump, type GeometryDump } from "../src/mxn-ks/shelf";
+import type { Stage } from "../src/mxn-lab/exact-draw";
 
 const SIDES = [1, 2, 3, 4];
 const HAND_DIRECTIONS = ["lh-cw", "lh-ccw", "rh-cw", "rh-ccw"];
@@ -64,6 +65,17 @@ const token = arg("token");
 // public/ rather than mocks/fixtures/: one copy serves both the mock page and
 // the live page's ?data=mock, and vite copies public/ into the build untouched.
 const out = arg("out", "public/mxn/ks-atlas.json");
+/**
+ * The drawings, beside the dump rather than inside it.
+ *
+ * A run's stages are the bulk of it — 28 kB for a 1x1, 231 kB for a three-level
+ * 2x2, against 1 kB once they are gone — and most readers never open a drawing.
+ * Two files means the grid arrives instantly and the rings arrive on demand.
+ * Only cells matching --geometry-only get one; the whole shelf's strands are
+ * tens of megabytes and do not belong in a repository.
+ */
+const geometryOut = arg("geometry-out", "public/mxn/ks-atlas-geometry.json");
+const geometryOnly = arg("geometry-only", "ks=1");
 
 if (!url && !from) {
   console.error("usage: npm run dump:ks -- --url <worker> | --from <dir> [--out <file>]");
@@ -159,6 +171,7 @@ async function fromWorker() {
   console.log(`  ${entries.length} run keys across ${HAND_DIRECTIONS.length * 16} prefixes`);
   const records: AtlasRecord[] = [];
   const bands: Record<string, BandStat> = {};
+  const stages: Record<string, Stage[]> = {};
 
   for (const entry of entries) {
     const parsed = parseRunKey(entry.key);
@@ -170,6 +183,10 @@ async function fromWorker() {
       run.result as Parameters<typeof recordsFromRun>[3],
     );
     records.push(...rows);
+    if (wantsGeometry(parsed.descriptor.ks)) {
+      const drawn = (run.result as { stages?: Stage[] }).stages;
+      if (Array.isArray(drawn)) stages[entry.key] = roundStages(drawn);
+    }
 
     for (const record of rows) {
       for (const band of ["h", "v"] as Band[]) {
@@ -185,7 +202,32 @@ async function fromWorker() {
     }
     console.log(`  ${entry.key} · ${rows.length} level${rows.length === 1 ? "" : "s"}`);
   }
-  return { records, bands, truncated, runs: entries.length, source: url };
+  return { records, bands, stages, truncated, runs: entries.length, source: url };
+}
+
+/**
+ * Which cells get a drawing, matched the way ks-fixtures.py's --only matches.
+ *
+ * The default is `ks=1`, which is every size at k = 1 plus any sequence that
+ * starts there — one row across the whole grid for the contact sheet, and the
+ * multi-level sequences for the filmstrip, which is exactly what the two
+ * drawings need and nothing else.
+ */
+function wantsGeometry(ks: number[]) {
+  return `ks=${ks.join(" ")}`.startsWith(geometryOnly);
+}
+
+/** Strand coordinates to two decimals; see ks-fixtures.py's round_stages. */
+function roundStages(stages: Stage[]): Stage[] {
+  const fix = (value: unknown): unknown => {
+    if (typeof value === "number") return Math.round(value * 100) / 100;
+    if (Array.isArray(value)) return value.map(fix);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, fix(v)]));
+    }
+    return value;
+  };
+  return fix(stages) as Stage[];
 }
 
 // ---------------------------------------------------------------------------
@@ -232,14 +274,24 @@ function fromDirectory() {
       trace.census as Parameters<typeof bandStatFrom>[4],
     );
   }
-  return { records, bands, truncated: [] as string[], runs, source: `local engine sweep (${from})` };
+  // The geometry ks-fixtures.py --geometry wrote alongside, for the cells it
+  // was asked to keep drawings for.
+  const stages: Record<string, Stage[]> = {};
+  for (const file of files.filter(name => name.startsWith("geom__")).sort()) {
+    const geom = read(file) as { runKey: string; stages: Stage[] };
+    if (geom?.runKey && Array.isArray(geom.stages)) stages[geom.runKey] = geom.stages;
+  }
+  return {
+    records, bands, stages, truncated: [] as string[], runs,
+    source: `local engine sweep (${from})`,
+  };
 }
 
 // ---------------------------------------------------------------------------
 
 async function main() {
   console.log(url ? `Reading ${url}` : `Reading ${from}`);
-  const { records, bands, truncated, runs, source } = url
+  const { records, bands, stages, truncated, runs, source } = url
     ? await fromWorker()
     : fromDirectory();
 
@@ -297,6 +349,20 @@ async function main() {
   }
   writeFileSync(out, `${text}\n`);
   console.log(`\nWrote ${out}`);
+
+  const geometry: GeometryDump = { generatedAt: dump.generatedAt, source, stages };
+  const drawings = Object.keys(stages).length;
+  if (drawings) {
+    const geometryText = JSON.stringify(geometry);
+    writeFileSync(geometryOut, `${geometryText}\n`);
+    console.log(`Wrote ${geometryOut} — ${drawings} run(s), `
+      + `${(geometryText.length / 1024 / 1024).toFixed(2)} MB, matched by ${geometryOnly}`);
+  } else {
+    // Said out loud rather than left as an empty file: a snapshot with no
+    // drawings looks identical to a page whose drawings are broken.
+    console.log(`No geometry matched ${geometryOnly} — ${geometryOut} left as it was. `
+      + (url ? "" : "Regenerate the raw sweep with --geometry."));
+  }
 }
 
 main().catch(error => {

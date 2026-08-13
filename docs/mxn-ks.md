@@ -119,6 +119,56 @@ number on the page would be quietly computed over a slice. Both the page and the
 dump script walk **narrow prefixes** instead — one per hand-direction per size,
 32 bounded requests — and report any prefix that comes back exactly full.
 
+## The drawings
+
+Two panels show the rings themselves, because a grid of numbers is an
+abstraction of something that has a shape, and the shape is what "how a k
+behaves as m and n grow" was always about.
+
+**B · one k, drawn at every size.** The ring the engine settled on, at the
+selected k, across every size that has been swept — 1×1 beside 2×2 beside 4×4.
+Each tile is framed to *itself*: a 4×4 spans four times a 1×1 and a shared scale
+would leave the small ones as dots, so what to read along the row is the shape,
+with the size and the metric underneath. Clicking a tile selects that cell.
+
+**D · every level of this sequence.** Inside the cell panel: L0 upwards, each
+labelled with its own k, all on **one** frame so the growth is to scale. This is
+the thing the sidebar can only assert in prose — that a k at level 2 or above is
+conditioned on the whole prefix that reached it. On a `ks = [1, 2, 2]` you can
+see L3 being what it is *because* of the two levels to its left.
+
+Neither recomputes anything. `drawExactStage()` is the lab's own renderer, lifted
+out of `weave-studio.tsx` so more than one panel could draw a ring — this is the
+third — and the geometry is `result.stages`, the rings the engine settled on,
+stored with the run and read back.
+
+### Where the geometry comes from
+
+A run's stages are the bulk of it: **28 kB** for a 1×1, **231 kB** for a
+three-level 2×2, against **1 kB** for the same run once they are gone. Most
+readers never open a drawing. So they are fetched separately and late:
+
+- **Live**, `geometry()` re-fetches the run the record came from. The Worker
+  answers with `max-age=3600`, so the browser usually serves the repeat out of
+  its own cache and the round trip is not one.
+- **Offline**, they are in `public/mxn/ks-atlas-geometry.json` — a *second* file,
+  fetched once on the first drawing anyone opens. The 72 kB atlas stays instant.
+
+The snapshot carries drawings for a **sample**, not for everything: the whole
+shelf's strands are tens of megabytes and do not belong in a repository. The
+sample is chosen by `--geometry-only`, default `ks=1` — every size at k = 1, which
+is exactly one full row for panel B, plus any sequence starting there for panel
+D. A cell outside the sample says *no geometry on this shelf* rather than
+spinning. Against the live Worker every cell has them.
+
+```sh
+python3 scripts/ks-fixtures.py --geometry --only "ks=1"   # engine → geom__*.json
+npm run dump:ks -- --from node_modules/.cache/ks-raw      # → both files
+```
+
+`--geometry` is resumable on its own terms: a sweep run without it can be topped
+up with drawings later, and only the jobs that owe a `geom__` file are recomputed.
+
 ## The model
 
 Ordinary least squares on `[1, pairs, m+n, |k|, kRel]`, solved by Gaussian
@@ -244,7 +294,7 @@ So a shelf of hundreds of runs lands in a file measured in tens of kB.
 | `src/mxn-ks/atlas.tsx` | the page |
 | `src/mxn-ks/atlas.css` | the lab's tokens, copied as `farm.css` copies them |
 | `src/mxn-ks/mock-atlas.tsx` | the same page, forced onto the fixture |
-| `scripts/ks-dump.ts` | Worker or directory → `public/mxn/ks-atlas.json` |
+| `scripts/ks-dump.ts` | Worker or directory → `public/mxn/ks-atlas.json` and `…-geometry.json` |
 | `scripts/ks-fixtures.py` | the engine → raw artifacts, for a machine with no Worker |
 | `scripts/check-atlas.ts` | `npm run check:atlas` |
 | `scripts/ks-census-expect.py` | the census numbers again, with numpy, sharing no code with `model.ts` |
