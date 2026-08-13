@@ -101,14 +101,14 @@ dozens of points, not thousands.
 - `pairs` is `worstPairs(m, n) = max(m, n)` — what the extension grid is raised
   to, so it is the axis the cost actually moves along.
 - `m+n` is there because the shelf said so rather than because it sounded right.
-  Measured over the cells on hand, adding it moves R² from **0.66 to 0.85** on
-  the chosen extension, **0.68 to 0.74** on the needed ceiling and **0.52 to
-  0.68** on the angle span. It separates 3×3 from 1×3, which `max` alone cannot
-  — and 1×3 and 3×1 do measure identically, so the pair `max` conflates really
-  is one point. (`min(m, n)` fits identically to the last decimal, since
-  `max + min = m + n` spans the same space. `m·n` is a shade better on
-  extensions and worse on angles, which is not enough to prefer a product nobody
-  can read.)
+  Over the 27 cells of the bundled snapshot, adding it moves R² from 0.46 to
+  **0.51** on the chosen extension, 0.22 to **0.29** on the needed ceiling and
+  0.60 to **0.72** on the angle span. It separates 3×3 from 1×3, which `max`
+  alone cannot — and 1×3 and 3×1 do measure identically, so the pair `max`
+  conflates really is one point. (`min(m, n)` fits identically to the last
+  decimal, since `max + min = m + n` spans the same space. `m·n` edges it on the
+  ceiling and loses on the other two, which is not enough to prefer a product
+  nobody can read.)
 - `kRel` is k placed in its own size's band. The only way k values compare across
   sizes at all: `2×1` admits −2…3 and `2×2` admits −1…2, so a raw `k = 2` is the
   top of one band and two thirds up the other, and regressing on the raw value

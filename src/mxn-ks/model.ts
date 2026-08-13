@@ -404,15 +404,20 @@ export type FitPoint = { m: number; n: number; k: number; pairs: number; y: numb
  *
  * `pairs` is `max(m, n)` — what the extension grid is raised to, so it is the
  * axis the cost actually moves along. `m+n` is the total, and it is here
- * because the shelf says so rather than because it sounded right: over the
- * measured cells, adding it lifts R² from 0.66 to 0.85 on the chosen extension,
- * 0.68 to 0.74 on the needed ceiling and 0.52 to 0.68 on the angle span. It
- * separates 3×3 from 1×3, which `max` alone cannot — and 1×3 and 3×1 do measure
- * identically, so the pair that `max` conflates really is one point.
+ * because the shelf says so rather than because it sounded right: over the 27
+ * cells of the bundled snapshot, adding it lifts R² from 0.46 to 0.51 on the
+ * chosen extension, 0.22 to 0.29 on the needed ceiling and 0.60 to 0.72 on the
+ * angle span. It separates 3×3 from 1×3, which `max` alone cannot — and 1×3 and
+ * 3×1 do measure identically, so the pair that `max` conflates really is one
+ * point.
  *
  * (`min(m, n)` fits identically to the last decimal, since max + min = m + n
- * spans the same space. `m·n` is a shade better on extensions and worse on
- * angles, which is not enough to prefer a product nobody can read.)
+ * spans the same space. `m·n` edges it on the ceiling and loses on the other
+ * two, which is not enough to prefer a product nobody can read.)
+ *
+ * Those R² values are not good, and the page does not pretend otherwise: the
+ * residual table is on screen beside the line for exactly this reason. What the
+ * model is for is a bounded guess with an honest interval, not a law.
  *
  * Both k terms earn their place: dropping either loses R² on every target.
  *
