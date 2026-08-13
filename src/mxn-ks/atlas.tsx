@@ -1216,7 +1216,7 @@ function CellPanel({
   return (
     <section className="atlas-panel">
       <h2>
-        C · {record.m}×{record.n} · k = {record.k} · L{record.level}
+        D · {record.m}×{record.n} · k = {record.k} · L{record.level}
       </h2>
       <p className="atlas-note">
         From <code>{record.runKey}</code>, computed {record.computedAt.slice(0, 10)} in{" "}

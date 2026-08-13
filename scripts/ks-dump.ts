@@ -50,6 +50,8 @@ const HAND_DIRECTIONS = ["lh-cw", "lh-ccw", "rh-cw", "rh-ccw"];
 const PAGE = 1000;
 /** Refuse to write more than this without --force. A fixture is committed. */
 const SIZE_WARNING = 2_000_000;
+/** The drawings get more room — one ring is 28 kB — but not unlimited room. */
+const GEOMETRY_WARNING = 4_000_000;
 
 function arg(name: string, fallback = "") {
   const at = process.argv.indexOf(`--${name}`);
@@ -354,6 +356,13 @@ async function main() {
   const drawings = Object.keys(stages).length;
   if (drawings) {
     const geometryText = JSON.stringify(geometry);
+    // The same guard the atlas file gets, and it needs it more: widening
+    // --geometry-only by one k multiplies this file, and it is committed.
+    if (geometryText.length > GEOMETRY_WARNING && !flag("force")) {
+      console.error(`\nRefusing to write ${(geometryText.length / 1e6).toFixed(1)} MB to `
+        + `${geometryOut} — this file is committed. Narrow --geometry-only, or pass --force.`);
+      process.exit(1);
+    }
     writeFileSync(geometryOut, `${geometryText}\n`);
     console.log(`Wrote ${geometryOut} — ${drawings} run(s), `
       + `${(geometryText.length / 1024 / 1024).toFixed(2)} MB, matched by ${geometryOnly}`);
