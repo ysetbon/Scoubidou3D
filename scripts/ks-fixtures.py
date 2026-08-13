@@ -184,11 +184,29 @@ def write_check_fixture():
     print("  %s  %.1f kB" % (target, os.path.getsize(target) / 1024))
 
 
+def only_filter():
+    """`--only <text>` narrows the sweep to labels containing <text>.
+
+    For topping a fixture up without re-walking it: the expensive sizes are
+    minutes each and the resume below already skips finished ones, but a plan
+    ordered cheapest-first still has to be read through to reach the end of it.
+    """
+    if "--only" not in sys.argv:
+        return None
+    at = sys.argv.index("--only")
+    return sys.argv[at + 1] if at + 1 < len(sys.argv) else None
+
+
 def main():
     if "--check-fixture-only" in sys.argv:
         write_check_fixture()
         return
     jobs = sweep_plan()
+    wanted = only_filter()
+    if wanted:
+        jobs = [job for job in jobs
+                if wanted in "%dx%d ks=%s" % (job[0], job[1], " ".join(str(k) for k in job[2]))]
+        print("  --only %r matched %d job(s)" % (wanted, len(jobs)))
     index = []
     started = time.time()
     stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
