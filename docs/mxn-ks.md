@@ -71,6 +71,34 @@ k. They are not equivalent observations either: a k at level 3 is conditioned on
 the whole prefix that reached it, which is why the page defaults to L1 only and
 says why in the sidebar.
 
+## The grid's rows, and the step, come from the shelf
+
+Both of these were constants once, and a real shelf caught both.
+
+**The k rows are derived, not fixed.** They were hard-coded `−4…+5`, justified
+from `4×4` (admits −3…4) and `1×4` (admits −4…5) — both true, and the conclusion
+wrong: `kLimits` is `−(m+n−1)…m+n` off the diagonal and `m+n` peaks at **7** for
+`3×4`, so the union over sizes 1…4 is `−6…+7`. Twelve legitimate cells had no row
+to be drawn on, `4x2 k=−5` among them, and that one was on the shelf at the time.
+For a page whose whole argument is *an empty cell means nobody swept it*, a cell
+it cannot draw at all is the worst failure available.
+
+Now `kRowsFor()` unions every k present on the shelf with every k admitted by a
+size that has any record, always including 0. Rows nobody could fill do not
+appear, and the grid grows on its own as `/mxn/gpu/` sweeps wider.
+
+**The step is read as swept.** The prediction panel called
+`autoStep(pairs, budget)` unconditionally. But `eauto` and `e5` are different
+shelves precisely because a resolved step is not the same search as an
+unresolved one, and a real sweep at `s1-e5-b100000000` walks **41** values a
+pair where `autoStep(4, 1e8)` answers 10 — **21** values. Every combo figure
+derived from it was out by `41⁴/21⁴ ≈ 14.5×`. `sweptGridStep()` now takes an
+explicit step verbatim and only resolves `auto`, and says on screen which it did.
+
+**The flags filter starts on the shelf's majority**, not on `any`. The sidebar
+warns that mixing variants "compares two questions"; defaulting to `any` did
+exactly that. `any` is still there, and now says plainly what it is mixing.
+
 ## Two things that are easy to get backwards
 
 **The bands are crossed relative to the lab's labels.** The lab's sidebar reads

@@ -33,9 +33,10 @@ import {
   parseRunKey, parseTraceKey, runKey, traceKeyPath, type RunDescriptor,
 } from "../src/mxn-lab/cache";
 import { MAX_PAIR_EXTENSION, worstPairs } from "../src/mxn-lab/search-cost";
+import { kLimits } from "../src/mxn-farm/plan";
 import {
   bandPairs, bandStatFrom, ceilingSaving, fitPoints, isMeasured, kRelative,
-  recordsFromRun, type FitPoint,
+  kRowsFor, recordsFromRun, sweptGridStep, type FitPoint,
 } from "../src/mxn-ks/model";
 
 /**
@@ -133,6 +134,57 @@ near("2x1 k=-2 is the bottom of its band", kRelative(2, 1, -2), 0);
 near("2x1 k=3 is the top of its band", kRelative(2, 1, 3), 1);
 near("2x2 k=2 is the top of its band", kRelative(2, 2, 2), 1);
 near("2x1 k=2 is not", kRelative(2, 1, 2), 4 / 5);
+
+// ---------------------------------------------------------------------------
+console.log("\nthe grid has a row for every k any size admits");
+// ---------------------------------------------------------------------------
+
+// The check the hard-coded [5..-4] would have failed. It was justified from 4x4
+// (-3..4) and 1x4 (-4..5), both true, and it missed that kLimits peaks at 3x4:
+// twelve cells had no row to be drawn on, and 4x2 k=-5 was on the real shelf.
+const SIDES = [1, 2, 3, 4];
+const everyCell: { m: number; n: number; k: number }[] = [];
+SIDES.forEach(m => SIDES.forEach(n => {
+  const { min, max } = kLimits(m, n);
+  for (let k = min; k <= max; k += 1) everyCell.push({ m, n, k });
+}));
+
+const allRows = kRowsFor(everyCell);
+const unreachable = everyCell.filter(cell => !allRows.includes(cell.k));
+check("no cell of any size is missing its row", unreachable.map(c => `${c.m}x${c.n} k=${c.k}`), []);
+check("the union over sizes 1…4 is -6…7", [Math.min(...allRows), Math.max(...allRows)], [-6, 7]);
+
+// One size on the shelf brings its own whole band with it, so the gaps you
+// could still fill are visible rather than hidden.
+check("one 3x4 record opens 3x4's whole band",
+  kRowsFor([{ m: 3, n: 4, k: 1 }]),
+  [7, 6, 5, 4, 3, 2, 1, 0, -1, -2, -3, -4, -5, -6]);
+ok("a k on the shelf always gets a row, band or no band",
+  kRowsFor([{ m: 1, n: 1, k: 9 }]).includes(9));
+check("zero is always drawn", kRowsFor([]).includes(0), true);
+ok("an empty shelf still gets a grid", kRowsFor([]).length > 1);
+ok("rows run high to low", allRows.every((k, i) => i === 0 || allRows[i - 1] > k));
+
+// ---------------------------------------------------------------------------
+console.log("\nthe step the shelf was actually swept at");
+// ---------------------------------------------------------------------------
+
+// The other thing the real shelf caught. Its runs are keyed e5-b100000000 --
+// an explicit step 5 -- and the panel was calling autoStep(4, 1e8), which
+// answers 10. `eauto` and `e5` are different shelves precisely because a
+// resolved step is not the same search as an unresolved one.
+const swept = sweptGridStep(5, 4, 100_000_000);
+check("an explicit step is taken verbatim", swept.step, 5);
+ok("…and is not reported as resolved", !swept.resolved);
+check("auto still resolves against the budget", sweptGridStep("auto", 4, 100_000_000).step, 10);
+ok("…and says that is what it did", sweptGridStep("auto", 4, 100_000_000).resolved);
+check("auto at the default budget", sweptGridStep("auto", 3, 400_000).step, 10);
+
+// What the difference was worth: 41 values a pair against 21, to the fourth.
+check("step 5 over 4 pairs is 41^4 combos", ceilingSaving(4, 5, 200).now, 41 ** 4);
+check("step 10 over 4 pairs is 21^4", ceilingSaving(4, 10, 200).now, 21 ** 4);
+ok("which is the 14x the panel was out by",
+  Math.abs((41 ** 4) / (21 ** 4) - 14.5) < 0.1);
 
 // ---------------------------------------------------------------------------
 console.log("\nrecords — one per level, not one per run");

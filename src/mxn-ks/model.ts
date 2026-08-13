@@ -25,7 +25,7 @@
 //                     or uses a fraction of one (3x3 k=1, 9.1 of 40 degrees).
 
 import { kLimits } from "../mxn-farm/plan";
-import { MAX_PAIR_EXTENSION, worstPairs } from "../mxn-lab/search-cost";
+import { MAX_PAIR_EXTENSION, autoStep, worstPairs } from "../mxn-lab/search-cost";
 import {
   BEST, VALID, WINDOW, comboExt, type TraceInputs,
 } from "../mxn-lab/trace-census";
@@ -149,6 +149,74 @@ export type BandStat =
 export const isMeasured = (
   stat: BandStat | undefined,
 ): stat is Extract<BandStat, { state: "measured" }> => stat?.state === "measured";
+
+// ---------------------------------------------------------------------------
+// Which k values the grid draws, and at what step the shelf was searched.
+//
+// Both live here rather than in the page for the same reason everything else
+// does: they are the two things that were wrong about a real shelf, and a check
+// cannot reach them inside a React component.
+// ---------------------------------------------------------------------------
+
+/**
+ * The k rows, decided by the shelf rather than by a constant.
+ *
+ * This was a hard-coded -4..5, justified from 4x4 (which admits -3..4) and 1x4
+ * (which admits -4..5). Both true, and the conclusion still wrong: kLimits is
+ * -(m+n-1)..m+n off the diagonal, so the union over sizes 1..4 is -6..7,
+ * peaking at 3x4. Twelve legitimate cells had no row to be drawn on -- 4x2
+ * k=-5 among them, which was on the real shelf at the time. For a page whose
+ * whole argument is that an empty cell means nobody swept it, a cell it cannot
+ * draw at all is the worst failure available.
+ *
+ * Two sources, unioned:
+ *
+ *  - every k actually present, which the caller should take from the UNFILTERED
+ *    records so that changing hand or flags does not make rows appear and
+ *    disappear underneath the reader;
+ *  - every k admitted by a size that has any record at all, so a size you have
+ *    started sweeping shows the gaps you could still fill rather than hiding
+ *    them.
+ *
+ * Zero is always drawn: it is the degenerate row, and its being empty is a
+ * statement rather than an absence.
+ */
+export function kRowsFor(records: Pick<AtlasRecord, "m" | "n" | "k">[]): number[] {
+  const rows = new Set<number>([0]);
+  const sizes = new Set<string>();
+  records.forEach(record => {
+    rows.add(record.k);
+    sizes.add(`${record.m}x${record.n}`);
+  });
+  sizes.forEach(size => {
+    const [m, n] = size.split("x").map(Number);
+    const { min, max } = kLimits(m, n);
+    for (let k = min; k <= max; k += 1) rows.add(k);
+  });
+  // An empty shelf still gets a grid to be empty in, rather than a bare header.
+  if (rows.size === 1) [1, -1].forEach(k => rows.add(k));
+  return [...rows].sort((a, b) => b - a);
+}
+
+/**
+ * The extension-grid step the answers on the shelf were actually searched at.
+ *
+ * The page used to call autoStep() unconditionally, which is wrong for any
+ * shelf swept at an explicit step -- and `eauto` and `e5` are different shelves
+ * precisely because a resolved step is not the same search as an unresolved one
+ * (cache.ts says so in as many words). A shelf swept at `e5-b100000000` walks
+ * 41 values a pair; autoStep at that budget answers 10, which is 21 values, and
+ * every combo count derived from it was out by more than fourteen times.
+ *
+ * `resolved` says which happened, because "step 5 because that is what was
+ * asked for" and "step 10 because auto worked it out" are different claims and
+ * the page should not make one while meaning the other.
+ */
+export function sweptGridStep(step: number | "auto", pairs: number, budget: number) {
+  return step === "auto"
+    ? { step: autoStep(pairs, budget), resolved: true }
+    : { step, resolved: false };
+}
 
 // ---------------------------------------------------------------------------
 // Folding a run artifact into records.

@@ -34,11 +34,13 @@ import {
   CACHE_URL_KEY, createCache, readCacheBase, writeSetting,
 } from "../mxn-lab/cache";
 import { kLimits } from "../mxn-farm/plan";
-import { MAX_PAIR_EXTENSION, autoStep, worstPairs } from "../mxn-lab/search-cost";
+import {
+  DEFAULT_COMBO_BUDGET, MAX_PAIR_EXTENSION, worstPairs,
+} from "../mxn-lab/search-cost";
 import { VERDICT_COLOUR, VERDICT_NAMES } from "../mxn-lab/trace-census";
 import type { Band } from "../mxn-lab/trace-band";
 import {
-  bandPairs, ceilingSaving, describeFit, fitPoints, isMeasured,
+  bandPairs, ceilingSaving, describeFit, fitPoints, isMeasured, kRowsFor, sweptGridStep,
   type AtlasRecord, type BandStat, type Fit, type FitPoint,
 } from "./model";
 import {
@@ -47,8 +49,6 @@ import {
 } from "./shelf";
 
 const SIDES = [1, 2, 3, 4];
-/** The union of every size's band: 4x4 admits -3..4, 1x4 admits -4..5. */
-const K_ROWS = [5, 4, 3, 2, 1, 0, -1, -2, -3, -4];
 
 const SIZES = SIDES.flatMap(m => SIDES.map(n => ({ m, n })));
 
@@ -237,7 +237,8 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   const [handDirection, setHandDirection] = useState("lh-cw");
-  const [flags, setFlags] = useState("any");
+  // "" until the shelf says which variant is commonest; "any" only if asked for.
+  const [flags, setFlags] = useState("");
   const [levelFilter, setLevelFilter] = useState("1");
   // On by default: a ring that did not close is a real result and worth seeing,
   // but its extensions are not an observation of what a working search needs,
@@ -305,18 +306,56 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
 
   // --- filtering ----------------------------------------------------------
 
+  // Off the unfiltered records on purpose — see kRowsFor. The grid keeps its
+  // shape as the sidebar is worked; only what is IN the cells changes.
+  const kRows = useMemo(() => kRowsFor(records), [records]);
+
+  /**
+   * The flag variants actually on the shelf, commonest first.
+   *
+   * Carried as objects rather than as the key string alone, because the step
+   * and the budget are read back out of them for the prediction panel and
+   * re-parsing a string this module just built would be a second opinion on a
+   * grammar cache.ts already owns.
+   */
   const flagChoices = useMemo(() => {
-    const seen = new Map<string, number>();
+    const seen = new Map<string, { key: string; count: number; shortArms: boolean; step: number | "auto"; budget: number }>();
     records.forEach(r => {
       const key = `s${r.shortArms ? 1 : 0}-e${r.step}-b${r.budget}`;
-      seen.set(key, (seen.get(key) ?? 0) + 1);
+      const held = seen.get(key);
+      if (held) held.count += 1;
+      else seen.set(key, { key, count: 1, shortArms: r.shortArms, step: r.step, budget: r.budget });
     });
-    return [...seen.entries()].sort((a, b) => b[1] - a[1]);
+    return [...seen.values()].sort((a, b) => b.count - a.count);
   }, [records]);
+
+  /**
+   * Which search the panel is describing.
+   *
+   * The selected variant when one is selected, the shelf's commonest otherwise.
+   * Never a default constant: a page that quoted step "auto" at budget 400,000
+   * over a shelf swept at `e5-b100000000` would be describing a search nobody
+   * ran.
+   */
+  const variant = useMemo(
+    () => flagChoices.find(choice => choice.key === flags) ?? flagChoices[0] ?? null,
+    [flagChoices, flags],
+  );
+
+  // Land on the shelf's commonest variant once the records arrive. "any" mixes
+  // two questions into one fit, which the sidebar warns about two inches away;
+  // it stays available, it is just no longer what happens by default.
+  //
+  // The unset state is "" rather than "any", so that a reader who deliberately
+  // chooses "any" is not immediately overruled by this.
+  useEffect(() => {
+    if (flags === "" && flagChoices.length) setFlags(flagChoices[0].key);
+  }, [flagChoices, flags]);
 
   const shown = useMemo(() => records.filter(r => {
     if (`${r.hand}-${r.direction}` !== handDirection) return false;
-    if (flags !== "any" && `s${r.shortArms ? 1 : 0}-e${r.step}-b${r.budget}` !== flags) return false;
+    if (flags && flags !== "any"
+      && `s${r.shortArms ? 1 : 0}-e${r.step}-b${r.budget}` !== flags) return false;
     if (levelFilter !== "all" && r.level !== Number(levelFilter)) return false;
     if (healthyOnly && !r.healthy) return false;
     return true;
@@ -558,17 +597,27 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
             <label className="atlas-field">
               <span>search flags</span>
               <select value={flags} onChange={event => setFlags(event.target.value)}>
-                <option value="any">any on the shelf</option>
-                {flagChoices.map(([key, count]) => (
-                  <option key={key} value={key}>{key} · {count}</option>
+                {!flagChoices.length && <option value="">nothing on the shelf</option>}
+                {flagChoices.map(choice => (
+                  <option key={choice.key} value={choice.key}>
+                    {choice.key} · {choice.count}
+                  </option>
                 ))}
+                <option value="any">any on the shelf</option>
               </select>
             </label>
             <p className="atlas-note">
               A step and a budget are part of what an answer <em>is</em> — <code>eauto</code> and
               <code> e20</code> are different searches even when auto resolves to 20. Mixing them in
-              one fit compares two questions.
+              one fit compares two questions, so this starts on whichever the shelf holds most of.
             </p>
+            {flags === "any" && flagChoices.length > 1 && (
+              <p className="atlas-note">
+                <b>{flagChoices.length} variants are being mixed.</b> The fit below is over answers
+                from {flagChoices.map(choice => choice.key).join(" and ")} together, which were not
+                the same search. Pick one to compare like with like.
+              </p>
+            )}
             <label className="atlas-field">
               <span>level</span>
               <select value={levelFilter} onChange={event => setLevelFilter(event.target.value)}>
@@ -653,7 +702,7 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
                   </tr>
                 </thead>
                 <tbody>
-                  {K_ROWS.map(k => (
+                  {kRows.map(k => (
                     <tr key={k}>
                       <th className="atlas-krow">k = {k > 0 ? `+${k}` : k}</th>
                       {SIZES.map(size => {
@@ -824,7 +873,8 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
                   metric={metricInfo}
                   prediction={prediction}
                   m={predict.m} n={predict.n} k={predict.k}
-                  budget={record?.budget ?? 400_000}
+                  sweptStep={record?.step ?? variant?.step ?? "auto"}
+                  budget={record?.budget ?? variant?.budget ?? DEFAULT_COMBO_BUDGET}
                 />
                 <h3 style={{ margin: "6px 0 0", font: "800 10px/1 monospace", letterSpacing: ".08em", textTransform: "uppercase", color: "var(--muted)" }}>
                   where it is most wrong
@@ -875,17 +925,20 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
 // ---------------------------------------------------------------------------
 
 function Prediction({
-  metric, prediction, m, n, k, budget,
+  metric, prediction, m, n, k, sweptStep, budget,
 }: {
   metric: { key: Metric; label: string; unit: string };
   prediction: { value: number; lo: number; hi: number; extrapolated: boolean; beyond: number } | null;
-  m: number; n: number; k: number; budget: number;
+  m: number; n: number; k: number;
+  /** The step the shelf's own runs were swept at, as their key spells it. */
+  sweptStep: number | "auto";
+  budget: number;
 }) {
   if (!prediction) return null;
   const admits = kLimits(m, n);
   const outOfBand = k < admits.min || k > admits.max;
   const pairs = worstPairs(m, n);
-  const step = autoStep(pairs, budget);
+  const { step, resolved } = sweptGridStep(sweptStep, pairs, budget);
   const saving = metric.key === "validSpan"
     ? null
     : ceilingSaving(pairs, step, Math.ceil(prediction.hi / step) * step);
@@ -901,7 +954,12 @@ function Prediction({
         <div className="atlas-stat">
           <span>pairs · step</span>
           <strong>{pairs} · {step}</strong>
-          <em>max(m,n), and the grid step auto picks at budget {budget.toLocaleString()}</em>
+          <em>
+            max(m,n), and{" "}
+            {resolved
+              ? `the step auto resolves to at budget ${budget.toLocaleString()}`
+              : "the step these answers were swept at"}
+          </em>
         </div>
         {saving && (
           <div className="atlas-stat">
