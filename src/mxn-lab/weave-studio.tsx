@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import {
   CACHE_TOKEN_KEY, CACHE_URL_KEY, CACHE_VERSION,
   createCache, readSetting, writeSetting,
-  type RunDescriptor, type TraceArtifact,
+  type CatalogueEntry, type RunArtifact, type RunDescriptor, type TraceArtifact,
 } from "./cache";
 import {
   allBounds, drawExactStage,
@@ -583,6 +583,46 @@ export function ContinuationLab() {
     budget: params.comboBudget,
   });
 
+  /**
+   * Any stored variant of these m/n/ks, when the exact step and budget missed.
+   *
+   * The step and budget are part of a run's identity — a sweep at step 5 is a
+   * different search from one at auto, and the shelf keeps them apart on
+   * purpose (see cache.ts). But a reader who types m, n and ks is asking about
+   * the size, not about a step: if a sweep stored these ks under any flags,
+   * loading that beats twenty seconds of local compute. The page then ADOPTS
+   * the stored flags into its own fields, so what is on screen is never an
+   * answer to a question the fields did not ask.
+   */
+  const findShelfVariant = async (params: Params) => {
+    const ksPath = params.ks.map(k => String(Math.trunc(k))).join("_");
+    const prefix = `run/${CACHE_VERSION}/lh-cw/${params.m}x${params.n}/${ksPath}/`;
+    let entries: CatalogueEntry[];
+    try {
+      entries = await cacheRef.current.catalogue(prefix, 50);
+    } catch {
+      return null;   // no catalogue is the same as an empty one
+    }
+    const variants = entries.flatMap(entry => {
+      const match = /^s([01])-e(auto|\d+)-b(\d+)$/.exec(entry.key.slice(prefix.length));
+      if (!match) return [];
+      // The step select only offers these values; adopting one it cannot show
+      // would leave the fields unable to say what is on screen.
+      if (!(EXT_STEP_CHOICES as readonly string[]).includes(match[2])) return [];
+      return [{
+        shortArms: match[1] === "1",
+        step: match[2] as ExtStep,
+        budget: Number(match[3]),
+        computedAt: entry.computedAt,
+      }];
+    });
+    variants.sort((a, b) =>
+      Number(b.shortArms === params.preferShortArms)
+        - Number(a.shortArms === params.preferShortArms)
+      || b.computedAt.localeCompare(a.computedAt));
+    return variants[0] ?? null;
+  };
+
   /** Everything a new run invalidates, minus the result itself. */
   const clearDerived = () => {
     setSemi({});
@@ -950,13 +990,7 @@ export function ContinuationLab() {
       }
       setCacheState("looking");
       setStatus("Looking for a stored answer…");
-      cacheRef.current.getRun(descriptorFor(params)).then(artifact => {
-        if (id !== activeIdRef.current) return;   // a newer run owns the page
-        if (!artifact?.result) {
-          setCacheState("miss");
-          toEngine();
-          return;
-        }
+      const adoptRun = (artifact: RunArtifact, note: string | null) => {
         const payload = artifact.result as ExactResult;
         setCacheState("hit");
         setCachedRun({ computedAt: artifact.computedAt, seconds: artifact.seconds });
@@ -971,10 +1005,52 @@ export function ContinuationLab() {
         busyRef.current = false;
         setBusy(false);
         setStatus(`From the cache · computed ${artifact.computedAt.slice(0, 10)}`
-          + ` in ${artifact.seconds}s, served in one fetch`);
+          + ` in ${artifact.seconds}s` + (note ? ` · ${note}` : ", served in one fetch"));
         const queued = pendingRef.current;
         pendingRef.current = null;
         if (queued) dispatchRef.current(queued);
+      };
+
+      cacheRef.current.getRun(descriptorFor(params)).then(async artifact => {
+        if (id !== activeIdRef.current) return;   // a newer run owns the page
+        if (artifact?.result) {
+          adoptRun(artifact, null);
+          return;
+        }
+        // The exact step and budget missed; a sweep may still have stored
+        // these m/n/ks under different ones.
+        const variant = await findShelfVariant(params);
+        if (id !== activeIdRef.current) return;
+        if (!variant) {
+          setCacheState("miss");
+          toEngine();
+          return;
+        }
+        const adopted: Params = {
+          m: params.m, n: params.n, ks: [...params.ks],
+          key: `${params.m}:${params.n}:${params.ks.join(",")}`
+            + `:${variant.shortArms}:${variant.step}:${variant.budget}`,
+          preferShortArms: variant.shortArms,
+          extStep: variant.step === "auto" ? null : Number(variant.step),
+          comboBudget: variant.budget,
+        };
+        const stored = await cacheRef.current.getRun(descriptorFor(adopted));
+        if (id !== activeIdRef.current) return;
+        if (!stored?.result) {
+          setCacheState("miss");
+          toEngine();
+          return;
+        }
+        // Make the fields say what is on screen: the level traces, the session
+        // warm and the next Run all follow the adopted values from here on.
+        setPreferShortArms(variant.shortArms);
+        setExtStep(variant.step);
+        setComboBudget(variant.budget);
+        setRanKey(adopted.key);
+        ranKeyRef.current = adopted.key;
+        lastParamsRef.current = adopted;
+        adoptRun(stored, `stored at step ${variant.step}, `
+          + `budget ${variant.budget.toLocaleString()} — fields updated to match`);
       }).catch(error => {
         if (id !== activeIdRef.current) return;
         // A cache that is unreachable, misconfigured or serving nonsense must
