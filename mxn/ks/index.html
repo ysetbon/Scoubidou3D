@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MXN k atlas · Scoubidou3D</title>
+    <meta name="description" content="Every precomputed MXN run read back at once and folded by k, to predict the angle range and extension ceiling for larger m and n." />
+    <link rel="icon" href="../../favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../../icon-32.png" />
+    <link rel="apple-touch-icon" href="../../icon-180.png" />
+    <!-- Counted like every other page, and indexed unlike /mxn/gpu/: this one
+         reads public data and has something to say to a reader without a token. -->
+    <script type="module" src="../../site/count.js"></script>
+    <!-- Same pre-paint as the rest of the suite: the page paints its own
+         background, this only stops a white flash before its stylesheet lands. -->
+    <style>html { background: #f4f0e6; }</style>
+  </head>
+  <body>
+    <!-- data-cache is the site-wide default Worker URL — the same value
+         mxn/index.html and mxn/gpu/index.html carry, committed deliberately
+         (docs/gpu-runbook.md). Reads are public; this page never writes.
+         ?cache= overrides it, and ?data=mock reads the committed dump instead. -->
+    <div id="atlas" data-cache="https://mxn-solutions-api.ysetbon.workers.dev"></div>
+    <script type="module" src="../../src/mxn-ks/main.tsx"></script>
+  </body>
+</html>

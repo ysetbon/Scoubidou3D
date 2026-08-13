@@ -5,6 +5,7 @@ import {
   drawExactStage,
   type AuditRow, type Bounds, type Stage, type Strand,
 } from "../mxn-lab/weave-studio";
+import { saveFile } from "../mxn-lab/save-file";
 
 // The lab's own settings, read back rather than asked for again. Rating is the
 // same operator on the same machine; making them paste the token twice would
@@ -118,17 +119,6 @@ function toCsv(rows: Row[], kind: Kind) {
     lines.push(columns.map(([, read]) => csvCell(read(row, audit))).join(","));
   }
   return lines.join("\r\n");
-}
-
-function saveFile(name: string, text: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  link.click();
-  // Revoking immediately can beat the download on some browsers; a tick is
-  // enough, and the object lives only until then either way.
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function readSetting(key: string) {
@@ -370,7 +360,7 @@ export function Categoriser({ kind = "complete" }: { kind?: Kind }) {
   const download = () => {
     if (!rows.length) { setStatus("Nothing loaded to download."); return; }
     const day = new Date().toISOString().slice(0, 10);
-    saveFile(`${queue.file}-${day}.csv`, toCsv(rows, kind));
+    saveFile(`${queue.file}-${day}.csv`, toCsv(rows, kind), "text/csv;charset=utf-8");
     setStatus(`Saved ${rows.length} row${rows.length === 1 ? "" : "s"}.`);
   };
 

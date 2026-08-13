@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MXN k atlas (mock)</title>
+<!--
+  Dev-only. Not a vite build input, so nothing here is published.
+
+      npm run dev
+      open http://localhost:5173/Scoubidou3D/mocks/ks-atlas.html
+
+  The real /mxn/ks/ component against the committed dump in
+  public/mxn/ks-atlas.json, with the live shelf switched off before it can be
+  reached. So this is not a drawing of the page — it is the page, reading a
+  snapshot instead of Cloudflare, which is why it can be trusted about how the
+  live one behaves.
+
+  Refresh the snapshot from a real Worker:
+
+      npm run dump:ks -- --url https://mxn-solutions-api.ysetbon.workers.dev
+
+  or, on a machine with no Worker, from the engine itself:
+
+      python3 scripts/ks-fixtures.py
+      npm run dump:ks -- --from node_modules/.cache/ks-raw
+-->
+<style>
+  html { background: #f4f0e6; }
+  body { margin: 0; }
+  .mock-masthead {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 12px clamp(14px, 3vw, 40px); background: #171713; color: #f4f0e6;
+    font: 700 10px/1.3 ui-monospace, monospace; letter-spacing: .07em;
+    text-transform: uppercase;
+  }
+  .mock-masthead b { color: #dbea65; letter-spacing: .12em; }
+  .mock-masthead span { color: #918e85; text-transform: none; letter-spacing: 0; font-weight: 500; }
+  .mock-masthead a { margin-left: auto; color: #dbea65; }
+</style>
+</head>
+<body>
+  <div class="mock-masthead">
+    <b>Mock</b>
+    <span>the real /mxn/ks/ against public/mxn/ks-atlas.json — no network, no engine</span>
+    <a href="../mxn/ks/">open the live page →</a>
+  </div>
+  <div id="mock"></div>
+  <script type="module" src="../src/mxn-ks/mock-atlas.tsx"></script>
+</body>
+</html>

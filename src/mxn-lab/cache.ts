@@ -133,6 +133,82 @@ export function traceKeyPath(d: RunDescriptor, level: number, band: string): str
   return `${CACHE_VERSION}/${tracePath(d, level, band)}`;
 }
 
+// --------------------------------------------------------------------------
+// Reading a key back.
+//
+// The other direction of descriptorPath, and here rather than anywhere else for
+// the reason the grammar itself is here: a key you can read is only useful if
+// exactly one thing decides how to read it. /mxn/ks/ walks the whole catalogue
+// and has nothing but the keys to say what each entry is about, and the lab's
+// own findShelfVariant was already re-deriving half of this from a private
+// regex. Two spellings of one grammar drift the first time either moves.
+//
+// Deliberately stricter than the Worker's validators in one place: the Worker
+// accepts any `v\d{1,3}`, because storing something under a version it does not
+// itself understand is fine. A reader cannot be so relaxed -- an artifact from
+// an older engine answers a different question -- so the version comes back as
+// a field for the caller to check rather than being silently accepted.
+// --------------------------------------------------------------------------
+
+/** A run key, taken apart. `cacheVersion` is whatever the key said. */
+export type ParsedRunKey = { cacheVersion: string; descriptor: RunDescriptor };
+
+/** A trace key: the same, plus which level and band it censused. */
+export type ParsedTraceKey = ParsedRunKey & { level: number; band: Band };
+
+const KEY_VERSION = /^v(\d{1,3})$/;
+const KEY_HAND_DIRECTION = /^(lh|rh)-(cw|ccw)$/;
+const KEY_SIZE = /^([1-9][0-9]?)x([1-9][0-9]?)$/;
+const KEY_KS = /^-?\d{1,3}(_-?\d{1,3}){0,15}$/;
+const KEY_FLAGS = /^s([01])-e(auto|\d{1,4})-b(\d{1,10})$/;
+const KEY_LEVEL_BAND = /^L(\d{1,3})-([hv])$/;
+
+function parseSegments(segments: string[]): ParsedRunKey | null {
+  const [version, handDirection, size, ks, flags] = segments;
+  const hd = KEY_HAND_DIRECTION.exec(handDirection ?? "");
+  const wh = KEY_SIZE.exec(size ?? "");
+  const fl = KEY_FLAGS.exec(flags ?? "");
+  if (!KEY_VERSION.test(version ?? "") || !hd || !wh || !fl) return null;
+  if (!KEY_KS.test(ks ?? "")) return null;
+  return {
+    cacheVersion: version,
+    descriptor: {
+      m: Number(wh[1]),
+      n: Number(wh[2]),
+      ks: ks.split(KS_SEPARATOR).map(Number),
+      hand: hd[1],
+      direction: hd[2],
+      shortArms: fl[1] === "1",
+      step: fl[2] === "auto" ? "auto" : Number(fl[2]),
+      budget: Number(fl[3]),
+    },
+  };
+}
+
+/**
+ * `run/v3/lh-cw/2x2/1_2_2/s1-eauto-b400000` → what produced it.
+ *
+ * The `run/` prefix is optional so this reads both a catalogue key, which
+ * carries it, and the path runKey() builds, which does not.
+ */
+export function parseRunKey(key: string): ParsedRunKey | null {
+  const segments = key.replace(/^\/+/, "").split("/");
+  if (segments[0] === "run") segments.shift();
+  if (segments.length !== 5) return null;
+  return parseSegments(segments);
+}
+
+/** The same for `trace/…/L3-v`. */
+export function parseTraceKey(key: string): ParsedTraceKey | null {
+  const segments = key.replace(/^\/+/, "").split("/");
+  if (segments[0] === "trace") segments.shift();
+  if (segments.length !== 6) return null;
+  const lb = KEY_LEVEL_BAND.exec(segments[5]);
+  if (!lb) return null;
+  const parsed = parseSegments(segments.slice(0, 5));
+  return parsed && { ...parsed, level: Number(lb[1]), band: lb[2] as Band };
+}
+
 /** How a descriptor reads in a sentence. */
 export function describeRun(d: RunDescriptor): string {
   return `${d.m}×${d.n} · ks ${d.ks.join(" ")}`;

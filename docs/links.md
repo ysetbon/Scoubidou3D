@@ -26,6 +26,7 @@ without the Worker token.
 | Categoriser | [`/mxn/rate/`](https://ysetbon.github.io/Scoubidou3D/mxn/rate/) | score a saved ring 0–100, beside the Lᵥ₋₁ ring it was built on |
 | Near-misses | [`/mxn/semi/`](https://ysetbon.github.io/Scoubidou3D/mxn/semi/) | the same queue over rings that fell short, where one band is being blamed |
 | Compute farm | [`/mxn/gpu/`](https://ysetbon.github.io/Scoubidou3D/mxn/gpu/) | precompute a whole range of sizes onto Cloudflare so the lab loads instead of computing — [docs/mxn-farm.md](mxn-farm.md) |
+| k atlas | [`/mxn/ks/`](https://ysetbon.github.io/Scoubidou3D/mxn/ks/) | that same shelf read whole and folded by k: how the angle range and the extension ceiling move with m and n, and what they should be at sizes nobody has swept — [docs/mxn-ks.md](mxn-ks.md) |
 
 The lab takes its parameters from the URL, so a size that has been precomputed is
 one link: [`/mxn/?m=2&n=2&ks=1%202%202`](https://ysetbon.github.io/Scoubidou3D/mxn/?m=2&n=2&ks=1%202%202).

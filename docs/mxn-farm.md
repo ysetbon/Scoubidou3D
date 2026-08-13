@@ -64,8 +64,8 @@ lab in **about 1.2 seconds**, without Pyodide being fetched at all.
 Everything that decides the answer, spelled out:
 
 ```
-run/v2/lh-cw/2x2/1_2_2/s1-eauto-b400000
-trace/v2/lh-cw/2x2/1_2_2/s1-eauto-b400000/L3-v
+run/v3/lh-cw/2x2/1_2_2/s1-eauto-b400000
+trace/v3/lh-cw/2x2/1_2_2/s1-eauto-b400000/L3-v
      ↑   ↑     ↑   ↑     ↑                 ↑
      │   │     │   │     │                 level and band
      │   │     │   │     prefer_short_arms, ext step, combo budget
@@ -89,10 +89,15 @@ about its contents are deliberate:
   whichever page asked for it. Keying on it would split one answer across two
   shelves.
 
-`src/mxn-lab/cache.ts` builds keys; `worker-api/src/index.ts` validates them
+`src/mxn-lab/cache.ts` builds keys — and, since [`/mxn/ks/`](mxn-ks.md) has
+nothing but the keys to say what a catalogue entry is about, reads them back too:
+`parseRunKey` and `parseTraceKey` are the inverses and live beside the builders,
+so one module spells the grammar in both directions.
+`worker-api/src/index.ts` validates them
 with its own regexes and stores nothing that fails them. Nothing connects the
 two but `npm run check:plan`, which reads the Worker's regexes out of its source
-and runs the client's keys through them.
+and runs the client's keys through them; `npm run check:atlas` holds the parsers
+to being inverses of the builders.
 
 ## The queue
 
@@ -208,7 +213,12 @@ anything is queued for exactly this reason.
 
 `npm run check:plan` holds all of that to worked examples.
 
-## Reading it back, at /mxn/
+## Reading it back, at /mxn/ and /mxn/ks/
+
+The lab spends the shelf one parameter set at a time. [`/mxn/ks/`](mxn-ks.md)
+reads it whole and folds it by k, which is what turns a pile of stored answers
+into a statement about the two constants the search is sized by — the `0…200`
+extension grid and the `±20°` window. It writes nothing; queueing stays here.
 
 `Run` asks the shelf first. On a hit the cards are painted from the artifact and
 the engine is never started; on a miss, or with no cache configured, or with a
