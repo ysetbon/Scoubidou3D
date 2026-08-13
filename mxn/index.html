@@ -33,13 +33,13 @@
 </head>
 <body>
   <!-- data-cache is the Worker /mxn/gpu/ precomputes onto (docs/mxn-farm.md).
-       Empty here on purpose: a deployment's address does not belong in this
-       repository, and the operator's own browser reads theirs out of the
-       sidebar's "worker url" field anyway. Fill it in and the fast path is on
-       for every visitor — a size that costs twenty seconds of blank page
-       becomes one fetch. Leave it empty and the lab behaves exactly as it did
-       before any of this existed, which is what makes it safe to ship blank. -->
-  <div id="lab" data-cache=""></div>
+       Filled in deliberately — the one address the operator commits on purpose
+       (docs/gpu-runbook.md): with it, the fast path is on for every visitor,
+       and a size that costs twenty seconds of blank page becomes one fetch.
+       The URL only names the deployment; reads are public, writes need the
+       token, which is never committed. If the Worker is ever gone, the lab
+       falls back to computing locally exactly as it did before. -->
+  <div id="lab" data-cache="https://mxn-solutions-api.ysetbon.workers.dev"></div>
   <script type="module" src="../src/mxn-lab/main.tsx"></script>
 </body>
 </html>

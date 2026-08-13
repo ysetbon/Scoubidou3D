@@ -14,12 +14,10 @@
     <style>html { background: #f4f0e6; }</style>
   </head>
   <body>
-    <!-- data-cache is the site-wide default Worker URL, and it is empty here on
-         purpose: this repository must not carry a deployment's address, and the
-         operator's own browser reads theirs from localStorage anyway. Fill it in
-         (in this file and in mxn/index.html) to make the fast path work for a
-         reader who has configured nothing. -->
-    <div id="farm" data-cache=""></div>
+    <!-- data-cache is the site-wide default Worker URL — the same value
+         mxn/index.html carries, committed deliberately (docs/gpu-runbook.md).
+         The operator's own localStorage still takes precedence. -->
+    <div id="farm" data-cache="https://mxn-solutions-api.ysetbon.workers.dev"></div>
     <script type="module" src="../../src/mxn-farm/main.tsx"></script>
   </body>
 </html>
