@@ -114,6 +114,7 @@ a { color: var(--blue); }
 .atlas-go { background: var(--acid); }
 .atlas-go:hover:not(:disabled), .atlas-ghost:hover:not(:disabled) { box-shadow: 0 0 0 3px var(--acid); }
 .atlas-go:disabled, .atlas-ghost:disabled { opacity: .45; cursor: default; }
+.atlas-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 
 /* The shelf chip: where the numbers came from, always on screen. */
 .atlas-chip {

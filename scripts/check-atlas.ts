@@ -36,7 +36,8 @@ import { MAX_PAIR_EXTENSION, worstPairs } from "../src/mxn-lab/search-cost";
 import { kLimits } from "../src/mxn-farm/plan";
 import {
   bandPairs, bandStatFrom, ceilingSaving, fitPoints, isMeasured, kRelative,
-  kRowsFor, recordsFromRun, sweptGridStep, type FitPoint,
+  kRowsFor, recordsFromRun, searchEnvelope, sweptGridStep,
+  type AtlasRecord, type FitPoint,
 } from "../src/mxn-ks/model";
 
 /**
@@ -349,6 +350,96 @@ if (!existsSync(FIXTURE)) {
   ok("…but is not marked as a ceiling",
     !(noSearch as { overCeiling?: boolean }).overCeiling);
 }
+
+// ---------------------------------------------------------------------------
+console.log("\nthe search envelope refuses to quote a lower bound");
+// ---------------------------------------------------------------------------
+
+// The trap the whole shape exists to prevent. 4x2's V band has four pairs and
+// is over the trace ceiling; its H band needs 20px. Reading that as the cell's
+// requirement computes to a 2401x saving and capping there would be
+// catastrophic, because the band nobody censused could need far more.
+const measuredBand = (extCeilingNeeded: number, validSpan: number) => ({
+  state: "measured" as const, pairs: 2, combos: 441, combosValid: 101,
+  windowLo: 0, windowHi: 40, validLo: 0, validHi: validSpan, validSpan,
+  bestLo: 0, bestHi: 1, extCeilingNeeded, extPeakValid: 200,
+  perPair: [], counts: [], inWindowShare: 0.34,
+});
+const overCeiling = {
+  state: "unavailable" as const, reason: "194481 combos … over the trace ceiling",
+  combos: 194481, overCeiling: true,
+};
+const noSearch = {
+  state: "unavailable" as const, reason: "this level solved its H band without a search",
+};
+
+const cellRecord = (m: number, n: number, k: number): AtlasRecord => ({
+  runKey: `run/v3/lh-cw/${m}x${n}/${k}/s1-eauto-b400000`,
+  m, n, k, level: 1, levels: 1, ks: [k],
+  hand: "lh", direction: "cw", shortArms: true, step: "auto", budget: 400000,
+  computedAt: "2026-08-13T00:00:00Z", seconds: 1,
+  hExt: [40, 10], vExt: [40, 10], extPeak: 40, extTotal: 100,
+  gapH: 56, gapV: 56, across: 16, expected: 16, masks: 8,
+  healthy: true, degenerate: false,
+});
+
+const envelopeCells = [cellRecord(3, 3, 1), cellRecord(4, 2, 1), cellRecord(1, 1, 1)];
+const envelope = searchEnvelope({
+  generatedAt: "2026-08-13T00:00:00Z", source: "check", cacheVersion: "v3",
+  filter: {},
+  cells: envelopeCells,
+  bandsFor: record => (
+    record.m === 4 ? { h: measuredBand(20, 7.2), v: overCeiling }
+      : record.m === 1 ? { h: measuredBand(10, 58.9), v: noSearch }
+      : { h: measuredBand(60, 9.1), v: measuredBand(50, 8.0) }),
+  fits: {},
+});
+
+const cellAt = (m: number) => envelope.cells.find(c => c.m === m)!;
+check("a fully measured cell is measured", cellAt(3).status, "measured");
+check("a cell with a refused band is a lower bound", cellAt(4).status, "lowerBound");
+check("…and quotes no combined number at all", cellAt(4).needs.combined, null);
+// But what WAS measured is still true. The refused band cannot be reported;
+// its partner's own requirement can, and is the more useful half.
+ok("…while its measured band keeps its own numbers", !!cellAt(4).needs.h);
+check("…and the refused one has none", cellAt(4).needs.v, null);
+
+// A band that solved WITHOUT a search genuinely asks for nothing, so the other
+// band's answer stands. Only "too big to census" makes the cell unknowable.
+check("a band with nothing to census does not spoil the cell", cellAt(1).status, "measured");
+check("the larger band wins", cellAt(3).needs.combined?.extCeiling, 60);
+check("and the wider span", cellAt(3).needs.combined?.angleSpan, 9.1);
+
+// Each band over its OWN pair count. H searches n and V searches m, so 4x2's
+// two bands differ by 21^2 against 21^4 — the whole reason they are reported
+// apart. Getting this from worstPairs would say 194,481 for both.
+check("H searches n pairs", cellAt(4).needs.h?.pairs, 2);
+check("…so its grid is 21^2", cellAt(4).needs.h?.combosNow, 21 ** 2);
+check("3x3's H band is 3 pairs", cellAt(3).needs.h?.pairs, 3);
+check("its V band is 3 too", cellAt(3).needs.v?.pairs, 3);
+// The bands disagree, which is the point of splitting them: 60px against 50px.
+check("each band keeps its own ceiling",
+  [cellAt(3).needs.h?.extCeiling, cellAt(3).needs.v?.extCeiling], [60, 50]);
+check("and its own angle range",
+  [cellAt(3).needs.h?.angleSpan, cellAt(3).needs.v?.angleSpan], [9.1, 8]);
+ok("with the ends of that range, not just its width",
+  cellAt(3).needs.h?.angleTo === 9.1 && cellAt(3).needs.h?.angleFrom === 0);
+
+// The saving is ceilingSaving's own arithmetic over the step actually swept:
+// 3 pairs at step 10 is 21^3 against a 60px ceiling's 7^3.
+check("3x3's combos now", cellAt(3).needs.combined?.combosNow, 21 ** 3);
+check("…and at its own ceiling", cellAt(3).needs.combined?.combosAtCeiling, 7 ** 3);
+check("totals count only the measured", envelope.totals.cellsMeasured, 2);
+check("…and sum their combos", envelope.totals.combosNow, 21 ** 3 + 21);
+ok("every measured cell carries a combined need",
+  envelope.cells.filter(c => c.status === "measured").every(c => c.needs.combined));
+ok("no lower bound carries one",
+  envelope.cells.filter(c => c.status === "lowerBound").every(c => c.needs.combined === null));
+ok("the file argues its own limits", envelope.caveats.length >= 4);
+ok("…including that the ceiling is not settable",
+  envelope.caveats.some(c => c.includes("NOT settable per run")));
+check("and states what it measured against",
+  envelope.engine.maxPairExtension, MAX_PAIR_EXTENSION);
 
 // ---------------------------------------------------------------------------
 console.log("\nthe committed snapshot, against the oracle");

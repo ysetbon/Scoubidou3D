@@ -169,6 +169,69 @@ npm run dump:ks -- --from node_modules/.cache/ks-raw      # → both files
 `--geometry` is resumable on its own terms: a sweep run without it can be topped
 up with drawings later, and only the jobs that owe a `geom__` file are recomputed.
 
+## The search envelope, as a file
+
+The page shows, per cell, the smallest ceiling a band still works at and the
+angular width worth searching. Read across the shelf that is the size of the box
+the engine currently searches against the box it needs — and it is what would let
+a larger sweep be configured rather than guessed at. Two ways out:
+
+```sh
+npm run dump:ks -- --url https://…workers.dev   # → public/mxn/ks-envelope.json
+```
+
+and an **export the search envelope** button in panel E, which writes what is on
+screen honouring the current filters. It loads the censuses first: they are lazy,
+and an export taken straight after a page load would be almost entirely
+`unmeasured`, which is a file that looks like an answer and is not one.
+
+Both go through `searchEnvelope()` in `model.ts`, so the file and the screen
+cannot disagree — the page's button and the CLI produce identical totals over
+the same shelf.
+
+Measured over the bundled snapshot: **24 of 29 cells fully measured, 168,924 →
+13,315 combos, a 12.7× reduction**, with per-cell savings from 7× to 49×.
+
+### H and V are separate searches
+
+`needs.h` and `needs.v` are reported apart, each over **its own pair count** —
+the H band holds `n` pairs and the V band holds `m`. At a rectangle that is not
+a detail:
+
+| 2×3 k=1 | pairs | needs | grid | saving |
+| --- | --- | --- | --- | --- |
+| H | 3 | 70px, 15.6° | 9,261 | 18.1× |
+| V | 2 | 30px, 10.9° | 441 | 27.6× |
+
+A single combined figure would report 70px and 9,261 and hide that one of the two
+bands is twenty-one times cheaper and needs less than half the ceiling.
+`needs.combined` still takes the larger of the two, because both bands share one
+`MAX_PAIR_EXTENSION` and one window — but it is the per-band rows that say where
+the cost actually is.
+
+### What the file may not claim
+
+Four bounds, carried in the file's own `caveats` array so the argument travels
+with the numbers:
+
+- **The ceiling is not a per-run parameter.** `bridge.generate()` takes
+  `ext_step` and `combo_budget` and nothing else; `MAX_PAIR_EXTENSION` is a
+  module constant (`mxn_continuation_next.py:117`). Acting on these numbers needs
+  an engine change — and the ceiling would have to enter the cache key the way
+  the step already does, or capped and uncapped answers collide under one key.
+- **The angle window is not even a kwarg.** It is `initial ± 20.0` as literals in
+  `_compute_pair_angle_range`, so `angleSpan` is information and nothing else.
+  (The cheapest real angle saving would be coarsening `ANGLE_STEP_DEGREES`, which
+  halves the angle axis and is a one-line pass-through.)
+- **These are level-1 ceilings and understate a deep run.** For level ≥ 2 the
+  engine escalates: `_search_group` grows the ceiling ×1.5 up to
+  `EXTENSION_CEILING_CAP = 1200` while the winner is pinned.
+- **A `lowerBound` cell has an unknown requirement, not a small one.** One band
+  was over the trace ceiling. `4x2 k=1`'s measurable H band needs 20px and
+  computes to a 49× saving; its V band has four pairs and was never censused.
+  `needs.combined` is `null` there — the per-band rows survive, because what was
+  measured is still true, but the combination cannot be had.
+
 ## The model
 
 Ordinary least squares on `[1, pairs, m+n, |k|, kRel]`, solved by Gaussian

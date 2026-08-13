@@ -39,8 +39,10 @@ import {
   type CatalogueEntry, type RunArtifact, type TraceArtifact,
 } from "../src/mxn-lab/cache";
 import type { Band } from "../src/mxn-lab/trace-band";
+import { worstPairs } from "../src/mxn-lab/search-cost";
 import {
-  bandStatFrom, recordsFromRun, type AtlasRecord, type BandStat,
+  bandStatFrom, fitPoints, recordsFromRun, searchEnvelope,
+  type AtlasRecord, type BandStat, type FitPoint,
 } from "../src/mxn-ks/model";
 import { bandSlot, type AtlasDump, type GeometryDump } from "../src/mxn-ks/shelf";
 import type { Stage } from "../src/mxn-lab/exact-draw";
@@ -78,6 +80,15 @@ const out = arg("out", "public/mxn/ks-atlas.json");
  */
 const geometryOut = arg("geometry-out", "public/mxn/ks-atlas-geometry.json");
 const geometryOnly = arg("geometry-only", "ks=1");
+/**
+ * The search envelope — what a sweep would have to be given, per cell.
+ *
+ * A third output rather than a separate script, because this walk already
+ * fetches every trace and so has the census coverage the envelope needs. The
+ * page's own export button covers the same ground for what is on screen; this
+ * one sees the whole shelf and needs no browser.
+ */
+const envelopeOut = arg("envelope-out", "public/mxn/ks-envelope.json");
 
 if (!url && !from) {
   console.error("usage: npm run dump:ks -- --url <worker> | --from <dir> [--out <file>]");
@@ -219,6 +230,95 @@ function wantsGeometry(ks: number[]) {
   return `ks=${ks.join(" ")}`.startsWith(geometryOnly);
 }
 
+/**
+ * The envelope, over the same folding the page does.
+ *
+ * L1 and closed only, and one record per (m, n, k) — the same three choices the
+ * page makes by default, and for the same reasons: a k at level 2 or above is
+ * conditioned on the prefix that reached it, and a ring that did not close has
+ * extensions that answer nothing.
+ */
+function writeEnvelope(
+  generatedAt: string,
+  source: string,
+  records: AtlasRecord[],
+  bands: Record<string, BandStat>,
+) {
+  const bandsFor = (record: AtlasRecord) => ({
+    h: bands[bandSlot(record, "h")],
+    v: bands[bandSlot(record, "v")],
+  });
+
+  const byCell = new Map<string, AtlasRecord>();
+  records
+    .filter(r => r.level === 1 && r.healthy && !r.degenerate)
+    .forEach(r => {
+      const id = `${r.m}x${r.n}|${r.k}`;
+      const held = byCell.get(id);
+      if (!held || r.computedAt > held.computedAt) byCell.set(id, r);
+    });
+  const cells = [...byCell.values()]
+    .sort((a, b) => worstPairs(a.m, a.n) - worstPairs(b.m, b.n)
+      || a.m - b.m || a.n - b.n || a.k - b.k);
+
+  const fitOver = (pick: (r: AtlasRecord) => number) => {
+    const points: FitPoint[] = [];
+    cells.forEach(record => {
+      const y = pick(record);
+      if (!Number.isFinite(y)) return;
+      points.push({
+        m: record.m, n: record.n, k: record.k,
+        pairs: worstPairs(record.m, record.n), y,
+        label: `${record.m}x${record.n} · k=${record.k}`,
+      });
+    });
+    return fitPoints(points);
+  };
+  // The larger of the two bands, and NaN when either was refused — the same
+  // refusal the page makes, so a lower bound never reaches a fit.
+  const overBands = (record: AtlasRecord, of: (stat: Extract<BandStat, { state: "measured" }>) => number) => {
+    const both = [bandsFor(record).h, bandsFor(record).v];
+    if (both.some(stat => stat?.state === "unavailable" && stat.overCeiling)) return NaN;
+    const values = both.filter(stat => stat?.state === "measured")
+      .map(stat => of(stat as Extract<BandStat, { state: "measured" }>));
+    return values.length ? Math.max(...values) : NaN;
+  };
+
+  const envelope = searchEnvelope({
+    generatedAt, source, cacheVersion: CACHE_VERSION,
+    filter: { hand: "lh", direction: "cw", level: 1, healthyOnly: true, flags: "any" },
+    cells,
+    bandsFor,
+    fits: {
+      extPeak: fitOver(r => r.extPeak),
+      extCeilingNeeded: fitOver(r => overBands(r, s => s.extCeilingNeeded)),
+      validSpan: fitOver(r => overBands(r, s => s.validSpan)),
+    },
+    // One size past the largest measured, at the ks the shelf actually holds,
+    // so the predictions are about sizes somebody might sweep next.
+    predictFor: [5, 6].flatMap(side =>
+      [...new Set(cells.map(c => c.k))].sort((a, b) => a - b)
+        .map(k => ({ m: side, n: side, k }))),
+  });
+
+  const text = JSON.stringify(envelope, null, 1);
+  if (text.length > SIZE_WARNING && !flag("force")) {
+    console.error(`\nRefusing to write ${(text.length / 1e6).toFixed(1)} MB to ${envelopeOut}.`);
+    process.exit(1);
+  }
+  writeFileSync(envelopeOut, `${text}\n`);
+  const t = envelope.totals;
+  console.log(`Wrote ${envelopeOut} — ${t.cellsMeasured} of ${t.cells} cells measured, `
+    + `${t.combosNow.toLocaleString()} → ${t.combosAtCeiling.toLocaleString()} combos (${t.saving}×)`);
+  const bounded = envelope.cells.filter(c => c.status === "lowerBound");
+  if (bounded.length) {
+    // Named, not buried: their measurable band looks like an enormous saving
+    // and acting on it would be the worst thing a reader could do with this.
+    console.log(`  ${bounded.length} cell(s) are lower bounds only — a band was over the `
+      + `trace ceiling: ${bounded.map(c => `${c.m}x${c.n} k=${c.k}`).join(", ")}`);
+  }
+}
+
 /** Strand coordinates to two decimals; see ks-fixtures.py's round_stages. */
 function roundStages(stages: Stage[]): Stage[] {
   const fix = (value: unknown): unknown => {
@@ -351,6 +451,8 @@ async function main() {
   }
   writeFileSync(out, `${text}\n`);
   console.log(`\nWrote ${out}`);
+
+  writeEnvelope(dump.generatedAt, source, records, bands);
 
   const geometry: GeometryDump = { generatedAt: dump.generatedAt, source, stages };
   const drawings = Object.keys(stages).length;

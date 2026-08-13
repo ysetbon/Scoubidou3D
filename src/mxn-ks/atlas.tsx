@@ -31,7 +31,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import {
-  CACHE_URL_KEY, createCache, readCacheBase, writeSetting,
+  CACHE_URL_KEY, CACHE_VERSION, createCache, readCacheBase, writeSetting,
 } from "../mxn-lab/cache";
 import { kLimits } from "../mxn-farm/plan";
 import {
@@ -41,9 +41,11 @@ import { VERDICT_COLOUR, VERDICT_NAMES } from "../mxn-lab/trace-census";
 import { allBounds, drawExactStage, type Bounds, type Stage } from "../mxn-lab/exact-draw";
 import type { Band } from "../mxn-lab/trace-band";
 import {
-  bandPairs, ceilingSaving, describeFit, fitPoints, isMeasured, kRowsFor, sweptGridStep,
+  bandPairs, ceilingSaving, describeFit, fitPoints, isMeasured, kRowsFor,
+  searchEnvelope, sweptGridStep,
   type AtlasRecord, type BandStat, type Fit, type FitPoint,
 } from "./model";
+import { saveJson, today } from "../mxn-lab/save-file";
 import {
   emptyShelf, fixtureShelf, liveShelf,
   type AtlasDump, type Shelf, type ShelfSummary,
@@ -563,6 +565,47 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
     validSpan: fitFor("validSpan"),
   }), [fitFor]);
 
+  // --- the export ---------------------------------------------------------
+
+  /**
+   * The search envelope, as a file.
+   *
+   * Loads the censuses first rather than exporting what happens to be on hand.
+   * They are lazy — only the selected cell fetches its own — so an export taken
+   * straight after a page load would be almost entirely `unmeasured`, which is
+   * a file that looks like an answer and is not one.
+   */
+  const exportEnvelope = useCallback(async () => {
+    const rows = [...cells.values()].map(list => list[0]);
+    await loadAngles(rows);
+    // loadAngles has just set state we cannot read yet, so re-read the map it
+    // resolved with rather than the stale closure.
+    const fresh = await Promise.all(rows.map(async record => ({
+      record,
+      bands: angles[angleSlot(record)] ?? await shelf.angles(record).catch(() => ({})),
+    })));
+    const held = new Map(fresh.map(({ record, bands }) => [angleSlot(record), bands]));
+
+    const envelope = searchEnvelope({
+      generatedAt: new Date().toISOString(),
+      source: useFixture ? `bundled dump · ${summary?.label ?? "snapshot"}` : base,
+      cacheVersion: CACHE_VERSION,
+      filter: {
+        handDirection, flags: flags || "any", level: levelFilter, healthyOnly,
+      },
+      cells: rows.filter(r => !r.degenerate),
+      bandsFor: record => held.get(angleSlot(record)) ?? {},
+      fits,
+      predictFor: [5, 6].flatMap(side =>
+        [...new Set(rows.map(r => r.k))].sort((a, b) => a - b)
+          .map(k => ({ m: side, n: side, k }))),
+    });
+    saveJson(`ks-envelope-${today()}.json`, envelope);
+    setStatus(`exported ${envelope.totals.cellsMeasured} measured cells of `
+      + `${envelope.totals.cells} · ${envelope.totals.saving}× fewer combos`);
+  }, [cells, loadAngles, angles, shelf, useFixture, summary, base,
+      handDirection, flags, levelFilter, healthyOnly, fits]);
+
   const selectedRecords = selected ? cells.get(selected) ?? [] : [];
   const record = selectedRecords[0] ?? null;
   const selectedK = record?.k ?? 1;
@@ -942,6 +985,26 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
               cannot. The residuals are below because a fit over {fits[metric]?.n ?? 0} points
               is a sketch and should look like one.
             </p>
+
+            <div className="atlas-row">
+              <button
+                type="button" className="atlas-go" disabled={busy || !cells.size}
+                onClick={() => void exportEnvelope()}
+              >
+                export the search envelope
+              </button>
+            </div>
+            <p className="atlas-note">
+              A JSON of what a sweep would actually have to be given: per cell the smallest
+              ceiling a band still works at, the angular width worth searching, and the combos
+              that buys — plus the fit's predictions for sizes nobody has swept. It loads the
+              censuses first, so it takes a moment. Two things it says about itself, and both
+              matter: the ceiling is <b>not a per-run parameter</b> today
+              (<code>generate()</code> takes only the step and the budget), and a cell whose
+              other band was over the trace ceiling exports as a <em>lower bound</em> with no
+              number at all — its requirement is unknown, not small.
+            </p>
+
             {fits[metric] ? (
               <>
                 <div className="atlas-formula">

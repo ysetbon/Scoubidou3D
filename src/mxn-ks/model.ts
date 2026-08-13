@@ -615,6 +615,317 @@ export function describeFit(fit: Fit, unit = "") {
 }
 
 // ---------------------------------------------------------------------------
+// The search envelope, as a file.
+//
+// The atlas shows, per cell, the smallest ceiling a band still works at and the
+// angular width worth searching. Read across the shelf that is the size of the
+// box the engine currently searches against the box it needs, and it is what
+// would let a larger sweep be configured rather than guessed at — but it lives
+// only as pixels, one cell at a time.
+//
+// Measured over the 26 cells of the first snapshot that had BOTH bands
+// censused: every one needs 100px or less of the 0..200 grid, savings run 7x to
+// 27x a cell, and the lot together is 169,806 combos against 13,389 — 12.7x.
+//
+// What this file may NOT claim, all of it carried in `caveats` so the argument
+// travels with the numbers:
+//
+//   - The ceiling is not a per-run parameter. bridge.generate() takes ext_step
+//     and combo_budget and nothing else; MAX_PAIR_EXTENSION is a module
+//     constant. Acting on extCeiling means an engine edit, and it would have to
+//     enter the cache key the way e5 does or capped and uncapped answers
+//     collide under one key.
+//   - The angle window is not even a kwarg. It is `initial +/- 20.0` as a
+//     literal, so angleSpan here is information and nothing else.
+//   - A level-1 ceiling understates a deep run: for level >= 2 the engine
+//     escalates the ceiling x1.5 up to EXTENSION_CEILING_CAP while the winner
+//     is pinned.
+//
+// And the trap the shape exists to prevent. A cell whose other band was over
+// the trace ceiling has an UNKNOWN requirement, not a small one: 4x2 k=1
+// computes to a 2401x saving off its measurable band's 20px while the four-pair
+// band was never censused at all. Those carry status "lowerBound" and a null
+// `needs` — never a number a reader could act on.
+// ---------------------------------------------------------------------------
+
+/**
+ * What one band's search actually needed.
+ *
+ * Per band and not just per cell, because the two are not the same search and
+ * their costs are not even the same order. H searches `n` pairs and V searches
+ * `m` (see bandPairs), so at 4x2 the H band walks 21² = 441 combos and the V
+ * band walks 21⁴ = 194,481 — a single combined figure would hide which of the
+ * two is actually expensive, which is the thing a reader sizing a sweep needs
+ * most.
+ */
+export type BandNeed = {
+  pairs: number;
+  /** Smallest ceiling this band still finds a valid ring at. */
+  extCeiling: number;
+  /** Largest extension appearing in any valid combo of this band. */
+  extPeakValid: number;
+  /** The union of angles that pass every test, for this band alone. */
+  angleFrom: number;
+  angleTo: number;
+  angleSpan: number;
+  /** The probe combo's own ±20° window, for comparison. */
+  windowFrom: number;
+  windowTo: number;
+  combosNow: number;
+  combosAtCeiling: number;
+  saving: number;
+};
+
+/** One (m, n, k) on the shelf, and what its search actually needed. */
+export type EnvelopeCell = {
+  m: number;
+  n: number;
+  k: number;
+  level: number;
+  runKey: string;
+  computedAt: string;
+  flags: string;
+  /**
+   * `measured` — both bands censused, `needs` is real.
+   * `lowerBound` — a band was over the trace ceiling; the true requirement is
+   *   unknown and could be far higher, so `needs` is null.
+   * `unmeasured` — no census loaded for either band.
+   */
+  status: "measured" | "lowerBound" | "unmeasured";
+  pairs: number;
+  step: number;
+  /** True when the step was `auto` and this is what it resolved to. */
+  stepResolved: boolean;
+  chosen: { h: number[]; v: number[]; peak: number };
+  bands: Partial<Record<Band, BandStat>>;
+  needs: {
+    /** Each band's own requirement, over its own pair count. Null if unmeasured. */
+    h: BandNeed | null;
+    v: BandNeed | null;
+    /**
+     * The cell as a whole — the larger of the two, because both bands share one
+     * MAX_PAIR_EXTENSION and one window, so whichever asks for more is what a
+     * search over this cell would have to be given.
+     *
+     * Null when a band was over the trace ceiling. Its requirement is unknown,
+     * not small, and the measured band alone is a floor: at 4x2 that floor
+     * computes to a 2401x saving off a 20px band while the four-pair band was
+     * never censused at all. The per-band figures above stay, because what WAS
+     * measured is still true — it is only the combination that cannot be had.
+     */
+    combined: {
+      extCeiling: number;
+      angleSpan: number;
+      combosNow: number;
+      combosAtCeiling: number;
+      saving: number;
+    } | null;
+  };
+};
+
+export type SearchEnvelope = {
+  generatedAt: string;
+  source: string;
+  cacheVersion: string;
+  filter: Record<string, string | number | boolean>;
+  /** The constants the recommendations are measured against. */
+  engine: {
+    maxPairExtension: number;
+    extensionCeilingCap: number;
+    angleWindowHalfWidth: number;
+    angleStepDegrees: number;
+  };
+  cells: EnvelopeCell[];
+  fits: Record<string, {
+    terms: readonly string[]; coefficients: number[];
+    r2: number; sd: number; n: number; maxPairs: number;
+  } | null>;
+  predicted: {
+    m: number; n: number; k: number;
+    extCeiling: Prediction | null;
+    angleSpan: Prediction | null;
+  }[];
+  totals: {
+    cells: number;
+    cellsMeasured: number;
+    combosNow: number;
+    combosAtCeiling: number;
+    saving: number;
+  };
+  caveats: string[];
+};
+
+/** Mirrors of the engine's own, so the file states what it was measured against. */
+const EXTENSION_CEILING_CAP = 1200;
+const ANGLE_WINDOW_HALF_WIDTH = 20;
+const ANGLE_STEP_DEGREES = 0.5;
+
+export const ENVELOPE_CAVEATS = [
+  "extCeiling is NOT settable per run today. bridge.generate() accepts ext_step "
+  + "and combo_budget only; MAX_PAIR_EXTENSION is a module constant in "
+  + "mxn_continuation_next.py. Acting on these numbers needs an engine change, "
+  + "and the ceiling would have to enter the cache key the way the ext step "
+  + "already does — otherwise capped and uncapped answers collide under one key.",
+
+  "angleSpan is informational only. The window is `initial +/- 20.0` as literals "
+  + "in _compute_pair_angle_range; there is no parameter at any level. The "
+  + "cheapest real angle saving would be coarsening ANGLE_STEP_DEGREES, which "
+  + "halves the angle axis and is a one-line pass-through.",
+
+  "These ceilings come from level-1 censuses and understate a deep run. For "
+  + "level >= 2 the engine escalates: _search_group grows the ceiling x1.5 up to "
+  + `EXTENSION_CEILING_CAP (${EXTENSION_CEILING_CAP}) while the winner is pinned.`,
+
+  "A cell with status 'lowerBound' had one band over the trace ceiling. Its "
+  + "requirement is UNKNOWN, not small — the refused band has more pairs and was "
+  + "never censused. Do not read its measurable band as the cell's answer.",
+
+  "Predicted rows marked extrapolated are past the largest size measured. The "
+  + "interval widens with distance from the data on purpose.",
+
+  "needs.h and needs.v are separate searches, not two views of one. The H band "
+  + "holds n pairs and the V band holds m, so their grids differ by orders of "
+  + "magnitude at a rectangle: at 2x3 k=1 the H band walks 9,261 combos and "
+  + "needs 70px while the V band walks 441 and needs 30px. needs.combined takes "
+  + "the larger of the two, because both bands share one MAX_PAIR_EXTENSION and "
+  + "one window — but it is the per-band figures that say where the cost is.",
+];
+
+/**
+ * Fold the shelf into the envelope.
+ *
+ * `valueOf`-equivalent logic on the bands is deliberately repeated rather than
+ * imported from the page: both take the LARGER of the two bands, because a
+ * ceiling that suits H and starves V is not a ceiling the search could be run
+ * at, and a window narrow enough for H would cut off answers V still has.
+ */
+export function searchEnvelope(input: {
+  generatedAt: string;
+  source: string;
+  cacheVersion: string;
+  filter: Record<string, string | number | boolean>;
+  /** One record per cell — the caller has already picked which. */
+  cells: AtlasRecord[];
+  bandsFor: (record: AtlasRecord) => Partial<Record<Band, BandStat>>;
+  fits: Record<string, Fit | null>;
+  /** Sizes to predict, beyond anything swept. */
+  predictFor?: { m: number; n: number; k: number }[];
+}): SearchEnvelope {
+  const cells: EnvelopeCell[] = input.cells.map(record => {
+    const bands = input.bandsFor(record);
+    const pairs = worstPairs(record.m, record.n);
+    const { step, resolved } = sweptGridStep(record.step, pairs, record.budget);
+    const both = [bands.h, bands.v];
+    const measured = both.filter(isMeasured);
+    // Refused for being too big is not the same as absent, and only the first
+    // makes the cell's requirement unknowable — a band that solved without a
+    // search genuinely asks for nothing.
+    const refused = both.some(stat => stat?.state === "unavailable" && stat.overCeiling);
+
+    const status: EnvelopeCell["status"] = refused ? "lowerBound"
+      : measured.length ? "measured"
+      : "unmeasured";
+
+    // Rounded up to the grid the search actually walks: a ceiling between two
+    // steps buys nothing, because the grid lands on multiples of the step.
+    const onGrid = (ceiling: number) =>
+      Math.min(MAX_PAIR_EXTENSION, Math.ceil(ceiling / step) * step);
+
+    const needFor = (band: Band): BandNeed | null => {
+      const stat = bands[band];
+      if (!isMeasured(stat)) return null;
+      // This band's OWN pair count, not the cell's worst: H searches n and V
+      // searches m, so the two bands of a 4x2 differ by a factor of 440.
+      const ownPairs = bandPairs(band, record.m, record.n);
+      const saving = ceilingSaving(ownPairs, step, onGrid(stat.extCeilingNeeded));
+      return {
+        pairs: ownPairs,
+        extCeiling: stat.extCeilingNeeded,
+        extPeakValid: stat.extPeakValid,
+        angleFrom: stat.validLo,
+        angleTo: stat.validHi,
+        angleSpan: stat.validSpan,
+        windowFrom: stat.windowLo,
+        windowTo: stat.windowHi,
+        combosNow: saving.now,
+        combosAtCeiling: saving.proposed,
+        saving: Math.round(saving.factor * 10) / 10,
+      };
+    };
+
+    const needs: EnvelopeCell["needs"] = {
+      h: needFor("h"),
+      v: needFor("v"),
+      combined: null,
+    };
+    if (status === "measured") {
+      const extCeiling = Math.max(...measured.map(stat => stat.extCeilingNeeded));
+      const angleSpan = Math.max(...measured.map(stat => stat.validSpan));
+      const saving = ceilingSaving(pairs, step, onGrid(extCeiling));
+      needs.combined = {
+        extCeiling,
+        angleSpan,
+        combosNow: saving.now,
+        combosAtCeiling: saving.proposed,
+        saving: Math.round(saving.factor * 10) / 10,
+      };
+    }
+
+    return {
+      m: record.m, n: record.n, k: record.k, level: record.level,
+      runKey: record.runKey, computedAt: record.computedAt,
+      flags: `s${record.shortArms ? 1 : 0}-e${record.step}-b${record.budget}`,
+      status, pairs, step, stepResolved: resolved,
+      chosen: { h: record.hExt, v: record.vExt, peak: record.extPeak },
+      bands, needs,
+    };
+  });
+
+  const worthCounting = cells.filter(cell => cell.needs.combined);
+  const combosNow = worthCounting.reduce((sum, cell) => sum + cell.needs.combined!.combosNow, 0);
+  const combosAtCeiling = worthCounting
+    .reduce((sum, cell) => sum + cell.needs.combined!.combosAtCeiling, 0);
+
+  const fits: SearchEnvelope["fits"] = {};
+  Object.entries(input.fits).forEach(([name, fit]) => {
+    fits[name] = fit && {
+      terms: fit.terms, coefficients: fit.coefficients,
+      r2: fit.r2, sd: fit.sd, n: fit.n, maxPairs: fit.maxPairs,
+    };
+  });
+
+  const predicted = (input.predictFor ?? []).map(at => ({
+    ...at,
+    extCeiling: input.fits.extCeilingNeeded?.predict(at.m, at.n, at.k) ?? null,
+    angleSpan: input.fits.validSpan?.predict(at.m, at.n, at.k) ?? null,
+  }));
+
+  return {
+    generatedAt: input.generatedAt,
+    source: input.source,
+    cacheVersion: input.cacheVersion,
+    filter: input.filter,
+    engine: {
+      maxPairExtension: MAX_PAIR_EXTENSION,
+      extensionCeilingCap: EXTENSION_CEILING_CAP,
+      angleWindowHalfWidth: ANGLE_WINDOW_HALF_WIDTH,
+      angleStepDegrees: ANGLE_STEP_DEGREES,
+    },
+    cells,
+    fits,
+    predicted,
+    totals: {
+      cells: cells.length,
+      cellsMeasured: worthCounting.length,
+      combosNow,
+      combosAtCeiling,
+      saving: combosAtCeiling ? Math.round((combosNow / combosAtCeiling) * 10) / 10 : 1,
+    },
+    caveats: ENVELOPE_CAVEATS,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // What a predicted ceiling would buy.
 // ---------------------------------------------------------------------------
 
