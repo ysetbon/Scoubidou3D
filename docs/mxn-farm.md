@@ -215,6 +215,15 @@ the engine is never started; on a miss, or with no cache configured, or with a
 cache that is unreachable or serving nonsense, the page computes locally exactly
 as it always has. **The cache is never the reason the page stops working.**
 
+When the exact step and budget miss, the page asks the catalogue whether these
+m/n/ks are stored under *any* flags — a sweep run at step 5 should not be
+invisible to a reader whose fields hold the defaults. A variant found this way
+is only shown by **adopting** its step, budget and short-arms preference into
+the fields, so the page never presents an answer to a question the fields did
+not ask; the level traces, the session warm and the next Run all follow the
+adopted values. Steps the select cannot show are skipped rather than adopted,
+and with no variant on the shelf the miss proceeds to the engine as before.
+
 What a hit does not bring with it is a *session*: the geometry is real and the
 numbers are real, but Pyodide has never seen this size. So everything that reads
 the session — the solution browser, the ⚑ near-miss sweeps, an uncached census —

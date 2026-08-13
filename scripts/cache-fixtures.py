@@ -50,7 +50,7 @@ DESCRIPTOR = {
 }
 # Mirrors descriptorPath() in src/mxn-lab/cache.ts. The QA seeds the Worker by
 # key, so the two have to agree; check-plan.ts is what holds them to it.
-KEY = "v2/lh-cw/%dx%d/%s/s1-eauto-b400000" % (M, N, "_".join(map(str, KS)))
+KEY = "v3/lh-cw/%dx%d/%s/s1-eauto-b400000" % (M, N, "_".join(map(str, KS)))
 
 
 def store(name, payload):

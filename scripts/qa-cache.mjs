@@ -136,7 +136,9 @@ const ok = (name, condition, detail = '') => {
   else { fail += 1; console.log(`  FAIL  ${name}${detail ? ` — ${detail}` : ''}`); }
 };
 
-const browser = await chromium.launch();
+// Proxy-blind on purpose: in a sandboxed container an outbound proxy refuses
+// CONNECT for localhost too, and every asset the QA needs is served from here.
+const browser = await chromium.launch({ args: ['--no-proxy-server'] });
 const base = `http://localhost:${PORT}/Scoubidou3D`;
 const cacheArg = `cache=http://localhost:${PORT}/api`;
 
@@ -204,6 +206,28 @@ const offSite = url =>
   await page.close();
 }
 
+// ---- A2 · same ks under other flags: the shelf variant is found and adopted -
+{
+  const page = await browser.newPage({ viewport: { width: 1500, height: 1200 } });
+  const external = [];
+  page.on('request', request => { if (offSite(request.url())) external.push(request.url()); });
+  // The shelf holds these ks at eauto-b400000 only. A reader asking at step 5,
+  // budget 100000 misses that exact key — and must still get the stored answer,
+  // with the step and budget fields updated to say what was actually loaded,
+  // never a silent answer to a question the fields did not ask.
+  await page.goto(`${base}/mxn/?${cacheArg}&m=2&n=2&ks=1%202%202&step=5&budget=100000`,
+    { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.diagram-card', { timeout: 30000 });
+  const chip = await page.$eval('.cache-chip', el => el.textContent);
+  ok('a run stored under other flags is served', /served from the cache/.test(chip), chip);
+  ok('still without the engine', external.length === 0, external.slice(0, 3).join(', '));
+  const step = await page.$eval('#ext-step', el => el.value);
+  const budget = await page.$eval('#combo-budget', el => el.value);
+  ok('and the fields adopt what was loaded',
+    step === 'auto' && budget === '400000', `step ${step} · budget ${budget}`);
+  await page.close();
+}
+
 // ---- C · the farm plans, queues and agrees with the Worker -----------------
 {
   const page = await browser.newPage({ viewport: { width: 1500, height: 1200 } });
@@ -216,9 +240,15 @@ const offSite = url =>
   const planned = await page.$$eval('.farm-stats b', nodes => nodes.map(node => node.textContent));
   ok('the plan is counted before anything is queued',
     Number(planned[0].replace(/,/g, '')) > 0, planned.slice(0, 4).join(' | '));
+  // Skips only exist when one typed range is asked to cover every size: the
+  // default band-per-size mode never asks a size for a k it does not admit,
+  // so an empty skip list there is correctness, not silence.
+  await page.click('text=a range I type');
+  await page.waitForSelector('.farm-skips li', { timeout: 10000 });
   const skips = await page.$$eval('.farm-skips li', nodes => nodes.map(node => node.textContent));
   ok('and ks outside a size\'s range are reported, not dropped in silence',
     skips.some(line => /valid range/.test(line)), JSON.stringify(skips));
+  await page.click('text=the size’s own band');
 
   await page.fill('input[type="url"]', `http://localhost:${PORT}/api`);
   await page.fill('input[type="password"]', TOKEN);
