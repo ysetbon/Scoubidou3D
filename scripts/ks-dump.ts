@@ -90,6 +90,34 @@ async function getArtifact(path: string): Promise<unknown | null> {
 }
 
 /**
+ * The same, with the tolerance a long walk over a domestic connection needs.
+ *
+ * This makes hundreds of requests, and docs/mxn-farm.md is explicit that over
+ * hours on a home line a dropped one is the expected case rather than the
+ * exception. Losing an entire dump to a single blip -- and, worse, losing it at
+ * request 300 of 400 -- would be the same failure the farm's upload retry
+ * exists to prevent. Three tries with backoff, then the caller decides.
+ */
+async function tryGet(path: string, label: string): Promise<unknown | null> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await getArtifact(path);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (attempt >= 2) {
+        console.log(`  ! ${label} — ${message}`);
+        failures.push(label);
+        return null;
+      }
+      await new Promise(resolve => setTimeout(resolve, 500 * 2 ** attempt));
+    }
+  }
+}
+
+/** Everything that could not be read, reported at the end rather than thrown. */
+const failures: string[] = [];
+
+/**
  * Walk narrow prefixes, never one broad one.
  *
  * /catalogue clamps limit at 1000 and its D1 branch answers `truncated: false`
@@ -100,12 +128,22 @@ async function getArtifact(path: string): Promise<unknown | null> {
 async function listLive() {
   const entries: CatalogueEntry[] = [];
   const truncated: string[] = [];
+  // One probe before the walk. Without it a wrong URL or a Worker that is down
+  // spends 64 prefixes x 3 retries getting the same answer before saying so,
+  // and buries the one line that would have explained it. Same request the
+  // runbook tells an operator to curl.
+  const health = await getArtifact("/health").catch(error => {
+    throw new Error(`${url}/health is not answering — ${error.message}\n`
+      + "Check the URL, and that the Worker is deployed (worker-api/README.md).");
+  }) as Record<string, unknown> | null;
+  console.log(`  /health: ${JSON.stringify(health ?? {})}`);
+
   for (const hd of HAND_DIRECTIONS) {
     for (const m of SIDES) {
       for (const n of SIDES) {
         const prefix = `run/${CACHE_VERSION}/${hd}/${m}x${n}/`;
         const query = new URLSearchParams({ prefix, limit: String(PAGE) });
-        const body = await getArtifact(`/catalogue?${query}`) as
+        const body = await tryGet(`/catalogue?${query}`, `catalogue ${prefix}`) as
           { entries?: CatalogueEntry[] } | null;
         const page = body?.entries ?? [];
         if (page.length >= PAGE) truncated.push(prefix);
@@ -125,7 +163,7 @@ async function fromWorker() {
   for (const entry of entries) {
     const parsed = parseRunKey(entry.key);
     if (!parsed || parsed.cacheVersion !== CACHE_VERSION) continue;
-    const run = await getArtifact(`/cache/${entry.key}`) as RunArtifact | null;
+    const run = await tryGet(`/cache/${entry.key}`, entry.key) as RunArtifact | null;
     if (!run?.result) continue;
     const rows = recordsFromRun(
       entry.key, parsed.descriptor, run.computedAt ?? entry.computedAt,
@@ -136,7 +174,7 @@ async function fromWorker() {
     for (const record of rows) {
       for (const band of ["h", "v"] as Band[]) {
         const key = `trace/${entry.key.replace(/^run\//, "")}/L${record.level}-${band}`;
-        const trace = await getArtifact(`/cache/${key}`).catch(() => null) as TraceArtifact | null;
+        const trace = await tryGet(`/cache/${key}`, key) as TraceArtifact | null;
         if (!trace) continue;
         bands[bandSlot(record, band)] = bandStatFrom(
           band, record.m, record.n,
@@ -237,6 +275,19 @@ async function main() {
   if (truncated.length) {
     console.log(`  ⚠ ${truncated.length} prefix(es) came back full — this dump may be short:`);
     truncated.forEach(prefix => console.log(`      ${prefix}`));
+  }
+  if (failures.length) {
+    // Reported, never swallowed. A dump that is quietly missing a size looks
+    // exactly like a shelf that never had it, and the whole page is an argument
+    // from absence as much as from what is there.
+    console.log(`  ⚠ ${failures.length} read(s) failed after three tries and are missing:`);
+    failures.slice(0, 10).forEach(key => console.log(`      ${key}`));
+    if (failures.length > 10) console.log(`      …and ${failures.length - 10} more`);
+  }
+
+  if (!records.length) {
+    console.error("\nNothing was read. Refusing to write an empty dump over a good one.");
+    process.exit(1);
   }
 
   if (text.length > SIZE_WARNING && !flag("force")) {
