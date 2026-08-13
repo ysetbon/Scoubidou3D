@@ -310,9 +310,9 @@ Refresh it from a real Worker:
 npm run dump:ks -- --url https://mxn-solutions-api.ysetbon.workers.dev
 ```
 
-Cache reads are public, so no token is needed. It probes `/health` first — a
-wrong URL or an undeployed Worker says so in one line rather than after 64
-prefixes of the same answer — then walks the shelf with three tries per read,
+Cache reads are public, so **no token is needed**. It probes `/catalogue` first —
+a wrong URL says so in one line rather than after 64 prefixes of the same answer
+— then walks the shelf with three tries per read,
 because over a domestic connection a dropped request is the expected case, not
 the exception. Anything still missing at the end is listed rather than swallowed:
 a dump quietly short of a size looks exactly like a shelf that never had it, and

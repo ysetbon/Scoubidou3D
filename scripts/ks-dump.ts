@@ -92,7 +92,7 @@ const envelopeOut = arg("envelope-out", "public/mxn/ks-envelope.json");
 
 if (!url && !from) {
   console.error("usage: npm run dump:ks -- --url <worker> | --from <dir> [--out <file>]");
-  process.exit(2);
+  process.exit(2);   // before any socket exists, so there is nothing to unwind
 }
 
 // ---------------------------------------------------------------------------
@@ -153,15 +153,35 @@ const failures: string[] = [];
 async function listLive() {
   const entries: CatalogueEntry[] = [];
   const truncated: string[] = [];
-  // One probe before the walk. Without it a wrong URL or a Worker that is down
-  // spends 64 prefixes x 3 retries getting the same answer before saying so,
-  // and buries the one line that would have explained it. Same request the
-  // runbook tells an operator to curl.
-  const health = await getArtifact("/health").catch(error => {
-    throw new Error(`${url}/health is not answering — ${error.message}\n`
-      + "Check the URL, and that the Worker is deployed (worker-api/README.md).");
-  }) as Record<string, unknown> | null;
-  console.log(`  /health: ${JSON.stringify(health ?? {})}`);
+  // One probe before the walk, so a wrong URL says so in a line rather than
+  // after 64 prefixes x 3 retries of the same answer.
+  //
+  // It asks /catalogue, NOT /health, because /catalogue is the thing the walk
+  // is about to do sixty-four times and it is open to public reads
+  // (worker-api/src/index.ts: `cacheRoute` is /cache/* and /catalogue, nothing
+  // else). /health is behind the admin token unconditionally, so gating on it
+  // broke the tokenless path this whole tool is built around — and a 401 from
+  // it is proof the Worker is alive and routing, which is precisely what a
+  // probe wants to hear.
+  const probe = new URLSearchParams({ prefix: `run/${CACHE_VERSION}/`, limit: "1" });
+  await getArtifact(`/catalogue?${probe}`).catch(error => {
+    const message = String(error?.message ?? error);
+    throw new Error(message.includes("401")
+      ? `${url} refuses anonymous reads — pass --token <ADMIN_TOKEN>.\n`
+        + "This deployment has CACHE_PUBLIC_READS set to \"0\"; the default is \"1\"."
+      : `${url} is not answering — ${message}\n`
+        + "Check the URL, and that the Worker is deployed (worker-api/README.md).");
+  });
+
+  // /health is a diagnostic, not a gate. Its body carries artifactStore,
+  // publicCacheReads and the farm's queue counts, and a 500 from it is the
+  // runbook's headline "the schema was never applied --remote". Worth printing
+  // when it answers; never worth refusing to run over.
+  const health = await getArtifact("/health").catch(error => String(error?.message ?? error));
+  console.log(typeof health === "string"
+    ? `  /health: ${health.includes("401")
+      ? "needs the admin token — pass --token to see it" : health}`
+    : `  /health: ${JSON.stringify(health ?? {})}`);
 
   for (const hd of HAND_DIRECTIONS) {
     for (const m of SIDES) {
@@ -304,7 +324,8 @@ function writeEnvelope(
   const text = JSON.stringify(envelope, null, 1);
   if (text.length > SIZE_WARNING && !flag("force")) {
     console.error(`\nRefusing to write ${(text.length / 1e6).toFixed(1)} MB to ${envelopeOut}.`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   writeFileSync(envelopeOut, `${text}\n`);
   const t = envelope.totals;
@@ -441,13 +462,15 @@ async function main() {
 
   if (!records.length) {
     console.error("\nNothing was read. Refusing to write an empty dump over a good one.");
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   if (text.length > SIZE_WARNING && !flag("force")) {
     console.error(`\nRefusing to write ${(text.length / 1e6).toFixed(1)} MB to ${out} `
       + "— this file is committed. Pass --force if you mean it.");
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   writeFileSync(out, `${text}\n`);
   console.log(`\nWrote ${out}`);
@@ -463,7 +486,8 @@ async function main() {
     if (geometryText.length > GEOMETRY_WARNING && !flag("force")) {
       console.error(`\nRefusing to write ${(geometryText.length / 1e6).toFixed(1)} MB to `
         + `${geometryOut} — this file is committed. Narrow --geometry-only, or pass --force.`);
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
     writeFileSync(geometryOut, `${geometryText}\n`);
     console.log(`Wrote ${geometryOut} — ${drawings} run(s), `
@@ -478,5 +502,10 @@ async function main() {
 
 main().catch(error => {
   console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
+  // exitCode rather than exit(): process.exit() tears libuv down while the
+  // failed fetch's keep-alive socket is still closing, which on Windows aborts
+  // with `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` printed under
+  // the message that was supposed to be the whole output. Setting the code lets
+  // the loop drain and ends with the same status.
+  process.exitCode = 1;
 });

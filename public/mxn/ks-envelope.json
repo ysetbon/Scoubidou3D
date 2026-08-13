@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-08-13T16:54:01.150Z",
+ "generatedAt": "2026-08-13T22:29:47.159Z",
  "source": "local engine sweep (node_modules/.cache/ks-raw)",
  "cacheVersion": "v3",
  "filter": {
@@ -4036,6 +4036,7 @@
   "angleSpan is informational only. The window is `initial +/- 20.0` as literals in _compute_pair_angle_range; there is no parameter at any level. The cheapest real angle saving would be coarsening ANGLE_STEP_DEGREES, which halves the angle axis and is a one-line pass-through.",
   "These ceilings come from level-1 censuses and understate a deep run. For level >= 2 the engine escalates: _search_group grows the ceiling x1.5 up to EXTENSION_CEILING_CAP (1200) while the winner is pinned.",
   "A cell with status 'lowerBound' had one band over the trace ceiling. Its requirement is UNKNOWN, not small — the refused band has more pairs and was never censused. Do not read its measurable band as the cell's answer.",
-  "Predicted rows marked extrapolated are past the largest size measured. The interval widens with distance from the data on purpose."
+  "Predicted rows marked extrapolated are past the largest size measured. The interval widens with distance from the data on purpose.",
+  "needs.h and needs.v are separate searches, not two views of one. The H band holds n pairs and the V band holds m, so their grids differ by orders of magnitude at a rectangle: at 2x3 k=1 the H band walks 9,261 combos and needs 70px while the V band walks 441 and needs 30px. needs.combined takes the larger of the two, because both bands share one MAX_PAIR_EXTENSION and one window — but it is the per-band figures that say where the cost is."
  ]
 }
