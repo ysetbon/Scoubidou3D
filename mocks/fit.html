@@ -1,0 +1,760 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MXN Fitter — proposal for /mxn/fit/</title>
+<!--
+  A working drawing of a page that does not exist yet: /mxn/fit/, the fitter.
+  See docs/mxn-fit.md for what it is and why each control is here.
+
+  Standalone on purpose — no build, no server, no network. Open it off disk.
+  The tokens are copied out of src/mxn-lab/lab.css and the verdict palette out
+  of src/mxn-lab/trace-census.ts, so the mock is judged against the pages that
+  ship rather than against a fresh palette.
+
+  What is NOT faked: every number on screen. BAND below is the committed
+  engine payload mocks/fixtures/trace-plan-l1.json (2x1, L1, both bands) and
+  the arithmetic under it is mxn_trace.sweep_combo, one combo at a time — the
+  same port src/mxn-lab/trace-census.ts already makes. The engine's pick, the
+  63 valid cells on its own grid, the exact-equal solutions, the validity
+  field, the gaps and the length bars are all computed here, in the browser,
+  from that payload. What IS faked: the chrome around a run — the batch queue,
+  the export log, the level tabs and the k list. Nothing in this file talks to
+  the engine, so anything that would need a second level is a drawing.
+-->
+<style>
+:root {
+  --ink: #171713; --muted: #69675f; --paper: #f4f0e6; --card: #fbf8ef;
+  --line: #d7d0c0; --red: #e4513f; --blue: #276b72; --acid: #dbea65;
+  --shadow: 0 18px 50px rgba(45, 41, 30, .09);
+  /* trace-census.ts VERDICT_COLOUR */
+  --v-window: #b0aca0; --v-reach: #c63c28; --v-order: #e28a1c;
+  --v-overlap: #924ab0; --v-toofar: #3474c4; --v-valid: #3a9c58; --v-best: #d4a81e;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; color: var(--ink); font-family: Arial, Helvetica, sans-serif;
+  background:
+    linear-gradient(rgba(23,23,19,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(23,23,19,.035) 1px, transparent 1px),
+    var(--paper);
+  background-size: 28px 28px;
+}
+button, input, select { font: inherit; color: inherit; }
+
+.masthead {
+  height: 68px; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 28px; border-bottom: 1px solid var(--ink);
+  background: rgba(244,240,230,.9); position: sticky; top: 0; z-index: 10;
+}
+.brand { display: flex; align-items: center; gap: 12px; font-weight: 900; letter-spacing: -.04em; }
+.brand-mark {
+  display: grid; place-items: center; width: 34px; height: 34px;
+  color: var(--paper); background: var(--ink); border-radius: 50%; font-size: 12px;
+}
+.brand small { font: 700 10px/1 monospace; letter-spacing: .14em; color: var(--muted); display: block; margin-top: 3px; }
+.mast-right { display: flex; align-items: center; gap: 18px; }
+.commit { font: 700 11px/1 monospace; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.commit::before { content: ""; width: 7px; height: 7px; background: #5c9f5d; border-radius: 50%; box-shadow: 0 0 0 4px rgba(92,159,93,.14); }
+.mast-links { font: 700 11px/1 monospace; color: var(--muted); letter-spacing: .06em; }
+.mast-links a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--line); }
+
+.workspace { display: grid; grid-template-columns: 344px minmax(0,1fr); }
+.controls { padding: 22px 22px 30px; border-right: 1px solid var(--ink); background: rgba(251,248,239,.72); }
+.results { padding: 22px 26px 40px; min-width: 0; }
+
+h2.kicker { font: 800 12px/1 monospace; letter-spacing: .12em; text-transform: uppercase; margin: 0 0 12px; }
+.controls section { margin-bottom: 24px; }
+.controls section + section { border-top: 1px dashed var(--line); padding-top: 20px; }
+label.f { display: block; font: 700 10px/1 monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+input[type=text], input[type=number], select {
+  width: 100%; padding: 7px 9px; background: var(--card);
+  border: 1px solid var(--ink); border-radius: 0; font-size: 13px;
+}
+.seg { display: flex; border: 1px solid var(--ink); background: var(--card); }
+.seg button { flex: 1; padding: 7px 0; background: none; border: 0; cursor: pointer; font: 700 12px/1 monospace; }
+.seg button[aria-pressed=true] { background: var(--ink); color: var(--paper); }
+.field { margin-bottom: 12px; }
+.hint { font: 400 11px/1.45 Arial, sans-serif; color: var(--muted); margin: 6px 0 0; }
+.check { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; margin-top: 8px; }
+.go {
+  width: 100%; padding: 12px; margin-top: 4px; cursor: pointer;
+  background: var(--ink); color: var(--paper); border: 1px solid var(--ink);
+  font: 800 13px/1 monospace; letter-spacing: .08em; text-transform: uppercase;
+}
+.go.ghost { background: none; color: var(--ink); margin-top: 8px; }
+.tally { font: 700 11px/1.5 monospace; color: var(--blue); margin: 10px 0 0; }
+
+.runbar { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+.runbar h1 { font-size: 20px; margin: 0; letter-spacing: -.02em; }
+.chip { font: 700 10px/1 monospace; letter-spacing: .1em; text-transform: uppercase;
+  border: 1px solid var(--ink); padding: 4px 7px; }
+.chip.ok { background: var(--acid); }
+.chip.soft { border-color: var(--line); color: var(--muted); }
+.tabs { display: flex; gap: 6px; margin-left: auto; }
+.tabs button { padding: 5px 11px; background: var(--card); border: 1px solid var(--line); cursor: pointer; font: 700 11px/1 monospace; }
+.tabs button[aria-pressed=true] { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.stat { background: var(--card); border: 1px solid var(--ink); padding: 12px 14px; box-shadow: var(--shadow); }
+.stat b { display: block; font: 800 10px/1 monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.stat .big { font: 800 24px/1 Arial, sans-serif; letter-spacing: -.03em; }
+.stat .was { font: 700 12px/1 monospace; color: var(--muted); }
+.stat .big em { font-style: normal; color: var(--red); }
+.stat .big .good { color: #2f7a45; }
+
+.panel { background: var(--card); border: 1px solid var(--ink); box-shadow: var(--shadow); margin-bottom: 18px; }
+.panel > header {
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+  border-bottom: 1px solid var(--ink); flex-wrap: wrap;
+}
+.panel > header strong { font: 800 12px/1 monospace; letter-spacing: .1em; text-transform: uppercase; }
+.panel > header span { font: 400 11px/1.3 Arial, sans-serif; color: var(--muted); }
+.panel > header .spacer { margin-left: auto; }
+.panel .body { padding: 14px; }
+.two { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 16px; }
+.note { font: 400 11.5px/1.6 Arial, sans-serif; color: var(--muted); margin: 10px 14px 14px; }
+.note em { color: var(--ink); font-style: normal; font-weight: 700; }
+
+.pins { display: flex; gap: 6px; }
+.pins button { padding: 5px 10px; background: none; border: 1px solid var(--line); cursor: pointer; font: 700 11px/1 monospace; }
+.pins button[aria-pressed=true] { border-color: var(--ink); background: var(--acid); }
+.rail { margin-bottom: 12px; }
+.rail .top { display: flex; justify-content: space-between; align-items: baseline; }
+.rail .top b { font: 700 10px/1 monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.rail .top var { font: 800 13px/1 monospace; font-style: normal; }
+.rail .top var.driven { color: var(--blue); }
+.rail .track { position: relative; height: 22px; margin-top: 6px; border-bottom: 1px solid var(--ink); }
+.rail .fill { position: absolute; top: 9px; height: 4px; background: var(--v-valid); opacity: .35; }
+.rail .knob { position: absolute; top: 2px; width: 3px; height: 18px; background: var(--ink); }
+.rail .knob.driven { background: var(--blue); }
+.rail .knob.ghost { background: none; border-left: 2px dotted var(--muted); }
+.rail .ends { display: flex; justify-content: space-between; font: 700 9.5px/1 monospace; color: var(--muted); margin-top: 4px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th, td { padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child, th.l, td.l { text-align: left; }
+th { font: 800 10px/1 monospace; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--ink); cursor: pointer; }
+th.sorted { color: var(--ink); }
+th.sorted::after { content: " ▾"; }
+tbody tr.fitted { background: rgba(219,234,101,.28); }
+tbody tr.engine td { color: var(--muted); }
+td.num { font-family: monospace; }
+.tag { font: 700 9.5px/1 monospace; border: 1px solid var(--ink); padding: 2px 5px; }
+.tag.fit { background: var(--acid); }
+.tag.eng { border-color: var(--line); color: var(--muted); }
+
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font: 700 10px/1 monospace; letter-spacing: .04em; }
+.legend span { display: flex; align-items: center; gap: 5px; color: var(--muted); }
+.legend i { width: 10px; height: 10px; display: block; border: 1px solid rgba(0,0,0,.25); }
+
+.log { font: 400 11.5px/1.9 monospace; margin: 0; }
+.log b { font-weight: 700; }
+.log .dim { color: var(--muted); }
+.foot { padding: 0 26px 40px; font: 400 11.5px/1.7 Arial, sans-serif; color: var(--muted); max-width: 900px; }
+.foot code { font: 700 11px/1 monospace; }
+</style>
+</head>
+<body>
+
+<div class="masthead">
+  <div class="brand">
+    <span class="brand-mark">S3</span>
+    <span>MXN Fitter<small>/MXN/FIT/ · PROPOSAL</small></span>
+  </div>
+  <div class="mast-right">
+    <span class="mast-links"><a href="#">← lab</a> &nbsp; <a href="#">ks</a> &nbsp; <a href="#">gpu</a></span>
+    <span class="commit">engine 984d9ed</span>
+  </div>
+</div>
+
+<div class="workspace">
+  <!-- ------------------------------------------------------------------ -->
+  <div class="controls">
+    <section>
+      <h2 class="kicker">Parameters</h2>
+      <div class="field row2">
+        <div><label class="f">m</label><input type="number" value="2"></div>
+        <div><label class="f">n</label><input type="number" value="1"></div>
+      </div>
+      <div class="field"><label class="f">k sequence</label><input type="text" value="1"></div>
+      <div class="field row2">
+        <div><label class="f">hand</label>
+          <div class="seg"><button aria-pressed="true">LH</button><button aria-pressed="false">RH</button></div>
+        </div>
+        <div><label class="f">direction</label>
+          <div class="seg"><button aria-pressed="true">CW</button><button aria-pressed="false">CCW</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="kicker">Batch</h2>
+      <div class="field row2">
+        <div><label class="f">m from–to</label><input type="text" value="1–4"></div>
+        <div><label class="f">n from–to</label><input type="text" value="1–4"></div>
+      </div>
+      <div class="field"><label class="f">k values</label><input type="text" value="-2,-1,1,2"></div>
+      <label class="check"><input type="checkbox" checked> <span>both hands (LH and RH)</span></label>
+      <label class="check"><input type="checkbox" checked> <span>read the farm cache first, compute only the misses</span></label>
+      <label class="check"><input type="checkbox"> <span>skip sizes with no cached run (never compute here)</span></label>
+      <p class="tally">128 parameter sets · 256 bands · 43 cached, 85 to compute<br>≈ 24 min at this size mix <span style="color:var(--red)">— drawn, not measured</span></p>
+    </section>
+
+    <section>
+      <h2 class="kicker">Fit policy</h2>
+      <div class="field">
+        <label class="f">target</label>
+        <select><option>equal arm length (flush band)</option><option>engine ranking — untouched</option><option>shortest arms</option></select>
+      </div>
+      <div class="field">
+        <label class="f">pair extension</label>
+        <select><option>continuous — off the search grid</option><option>snap to the 10px search grid</option><option>snap to 1px</option></select>
+      </div>
+      <div class="field">
+        <label class="f">angle</label>
+        <select><option>inside the engine's ±20° window</option><option>anywhere the tests pass</option></select>
+      </div>
+      <div class="field">
+        <label class="f">tie-break along the exact-fit curve</label>
+        <select><option>widest gap margin</option><option>least total extension</option><option>nearest the engine's own pick</option><option>longest common arm</option></select>
+      </div>
+      <p class="hint">The fit is exact or it is refused. A band that cannot be made flush inside these bounds is exported unfitted and says so.</p>
+    </section>
+
+    <section>
+      <h2 class="kicker">Sort</h2>
+      <div class="field">
+        <label class="f">rank solutions by</label>
+        <select id="sortkey">
+          <option value="dneigh">neighbour length Δ</option>
+          <option value="spread">length spread (max − min)</option>
+          <option value="margin">gap margin</option>
+          <option value="ext">total pair extension</option>
+          <option value="engine">the engine's own order</option>
+        </select>
+      </div>
+      <label class="check"><input type="checkbox" checked> <span>re-measure after the fit, not before</span></label>
+      <label class="check"><input type="checkbox" checked> <span>drop rings that fail the audit</span></label>
+      <button class="go">Export best</button>
+      <button class="go ghost">Fit only — do not write files</button>
+      <p class="hint">One <code>.json</code> per level in OpenStrand form, one <code>fit-report.json</code> per parameter set, one <code>manifest.csv</code> for the batch.</p>
+    </section>
+  </div>
+
+  <!-- ------------------------------------------------------------------ -->
+  <div class="results">
+    <div class="runbar">
+      <h1>2×1 · k=1 · LH · CW</h1>
+      <span class="chip ok">fitted exactly</span>
+      <span class="chip soft">cache hit · 984d9ed</span>
+      <span class="chip soft">L1 of 1</span>
+      <div class="tabs">
+        <button aria-pressed="true">V band · 4 arms</button>
+        <button aria-pressed="false">H band · 2 arms</button>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <b>Neighbour Δ</b>
+        <div class="big"><span class="good" id="s-dn-after">0.00</span> px</div>
+        <div class="was">was <span id="s-dn-before">—</span> px</div>
+      </div>
+      <div class="stat">
+        <b>Arm length</b>
+        <div class="big" id="s-len">—</div>
+        <div class="was">all four arms, exactly</div>
+      </div>
+      <div class="stat">
+        <b>Gap margin</b>
+        <div class="big" id="s-margin">—</div>
+        <div class="was">bounds 56.0 – 69.0 px</div>
+      </div>
+      <div class="stat">
+        <b>Ring audit <span style="color:var(--red)">· drawn</span></b>
+        <div class="big">8 / 8 <span class="was">crossings</span></div>
+        <div class="was">0 stray · 0 broken · complete</div>
+      </div>
+    </div>
+
+    <!-- A ------------------------------------------------------------- -->
+    <div class="panel">
+      <header>
+        <strong>The band, before and after</strong>
+        <span>every arm of the V band, drawn from the payload the engine searched</span>
+        <span class="spacer"></span>
+        <div class="pins"><button aria-pressed="true">Both</button><button aria-pressed="false">After only</button></div>
+      </header>
+      <div class="body two">
+        <canvas id="band" width="740" height="300"></canvas>
+        <div>
+          <canvas id="bars" width="300" height="270"></canvas>
+        </div>
+      </div>
+      <p class="note">
+        The engine's arms end on a stagger of <em id="n-before">—</em> px — invisible on a <em id="n-len">—</em> px arm,
+        which is why the bars beside the band are drawn on their own scale rather than from zero. It is there because the
+        extension grid is 10 px wide and the flush combo is not on it: the fit is <em id="n-ext">—</em>,
+        <em id="n-delta">—</em> px off the nearest grid point. The angle moves too — <em id="n-ang">—</em> — because
+        under this tie-break the fitter is buying gap margin as well as flushness: <em id="n-marg">—</em>.
+      </p>
+    </div>
+
+    <!-- B ------------------------------------------------------------- -->
+    <div class="panel">
+      <header>
+        <strong>Pin one, the other two follow</strong>
+        <span>angle, extensions and common length are one solution, not three settings</span>
+        <span class="spacer"></span>
+        <div class="pins">
+          <button aria-pressed="false">Pin angle</button>
+          <button aria-pressed="true">Pin length</button>
+          <button aria-pressed="false">Pin ext</button>
+        </div>
+      </header>
+      <div class="body two">
+        <div>
+          <canvas id="field" width="760" height="286"></canvas>
+          <div class="legend" style="margin-top:10px">
+            <span><i style="background:var(--v-valid)"></i> exact fit, every test passed</span>
+            <span><i style="background:var(--v-overlap)"></i> gap under 56</span>
+            <span><i style="background:var(--v-toofar)"></i> gap over 69</span>
+            <span><i style="background:var(--v-reach)"></i> an arm cannot reach</span>
+            <span><i style="background:var(--v-window)"></i> extension off the 0–200 range</span>
+          </div>
+        </div>
+        <div>
+          <div class="rail">
+            <div class="top"><b>angle</b><var id="r-angle">—</var></div>
+            <div class="track"><div class="fill" id="f-angle"></div><div class="knob ghost" id="g-angle"></div><div class="knob" id="k-angle"></div></div>
+            <div class="ends"><span>126.3°</span><span>window ±20°</span><span>166.3°</span></div>
+          </div>
+          <div class="rail">
+            <div class="top"><b>common length L*</b><var id="r-len">—</var></div>
+            <div class="track"><div class="fill" id="f-len"></div><div class="knob" id="k-len"></div></div>
+            <div class="ends"><span id="e-len-lo">—</span><span>pinned</span><span id="e-len-hi">—</span></div>
+          </div>
+          <div class="rail">
+            <div class="top"><b>ext · pair 0 (arms 1,4)</b><var class="driven" id="r-e0">—</var></div>
+            <div class="track"><div class="fill" style="left:0;width:100%"></div><div class="knob driven" id="k-e0"></div></div>
+            <div class="ends"><span>0</span><span>driven</span><span>200</span></div>
+          </div>
+          <div class="rail">
+            <div class="top"><b>ext · pair 1 (arms 2,3)</b><var class="driven" id="r-e1">—</var></div>
+            <div class="track"><div class="fill" style="left:0;width:100%"></div><div class="knob driven" id="k-e1"></div></div>
+            <div class="ends"><span>0</span><span>driven</span><span>200</span></div>
+          </div>
+          <p class="hint" style="margin-top:14px">
+            Leverage <code>∂L/∂e</code>: pair 0 <b id="r-b0">—</b>, pair 1 <b id="r-b1">—</b>.
+            Near zero a pair stops answering and the angle has to move first.
+          </p>
+        </div>
+      </div>
+      <p class="note">
+        Green is where a flush band exists <em>and</em> survives every test the engine applies. Its shape is the whole
+        argument for this page: the exact fits are a curve through the (angle, length) plane, not a point, so the fitter
+        has room to choose — and the engine's own grid steps straight over all of it.
+      </p>
+    </div>
+
+    <!-- C ------------------------------------------------------------- -->
+    <div class="panel">
+      <header>
+        <strong>Solutions, sorted by neighbour length Δ</strong>
+        <span>the fitted ring against every valid cell of the engine's own grid</span>
+        <span class="spacer"></span>
+        <span class="chip soft">63 valid cells</span>
+      </header>
+      <div class="body" style="padding:0 14px">
+        <table id="tbl">
+          <thead><tr>
+            <th class="l">#</th><th class="l">source</th><th>ext</th><th>angle</th>
+            <th>arm lengths</th><th class="sorted">Δ neigh</th><th>spread</th>
+            <th>gap min</th><th>gap max</th><th>margin</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="note">
+        The sort reads the geometry that is <em>current</em>, so it works the same before a fit and after one — the
+        fitted row is not pinned to the top, it earns the top. Change the key in the sidebar and the same rows reorder;
+        change the fit policy and the fitted row moves with it. And it is worth something on its own: the engine's own
+        ranking scores gap variance and never looks at length, so the cell it adopts is <em id="t-eng">—</em> px out of
+        flush while a cell on the same grid, which its search had already evaluated and discarded, is
+        <em id="t-best">—</em>. Sorting costs nothing and recovers most of the stagger before any fitting happens.
+      </p>
+    </div>
+
+    <!-- D ------------------------------------------------------------- -->
+    <div class="panel">
+      <header><strong>Export</strong><span>what the batch has written so far</span><span class="spacer"></span><span class="chip soft">7 of 128</span><span class="chip" style="border-color:var(--red);color:var(--red)">drawn, not measured</span></header>
+      <div class="body">
+        <p class="log">
+          <b>1×1</b> k=1 LH cw &nbsp;<span class="dim">already flush — 2 arms a band</span> &nbsp;→&nbsp; mxn-1x1-k1-lh-cw-L1.json<br>
+          <b>2×1</b> k=1 LH cw &nbsp;<span class="dim">V 2.37 → 0.00 px · H flush</span> &nbsp;→&nbsp; mxn-2x1-k1-lh-cw-L1.json<br>
+          <b>2×1</b> k=1 RH cw &nbsp;<span class="dim">V 2.37 → 0.00 px · H flush</span> &nbsp;→&nbsp; mxn-2x1-k1-rh-cw-L1.json<br>
+          <b>2×2</b> k=1 LH cw &nbsp;<span class="dim">V 4.10 → 0.00 px · H 4.10 → 0.00 px</span> &nbsp;→&nbsp; mxn-2x2-k1-lh-cw-L1.json<br>
+          <b>2×2</b> k=2 LH cw &nbsp;<span class="dim">V 1.62 → 0.00 px · H 1.62 → 0.00 px</span> &nbsp;→&nbsp; mxn-2x2-k2-lh-cw-L1.json<br>
+          <b>3×2</b> k=1 LH cw &nbsp;<span class="dim">V 6.88 → 0.00 px · H 3.19 → 0.00 px</span> &nbsp;→&nbsp; mxn-3x2-k1-lh-cw-L1.json<br>
+          <b>3×3</b> k=−2 LH cw &nbsp;<span class="dim" style="color:var(--red)">refused — flush needs ext 214 px, over the 200 ceiling</span> &nbsp;→&nbsp; exported unfitted<br>
+          <span class="dim">…</span>
+        </p>
+      </div>
+      <p class="note">
+        Every line is a claim that can be checked: the report beside each file carries the extensions, the angle, the
+        four lengths, the gaps and the audit, so a reader can recompute the fit without this page.
+      </p>
+    </div>
+  </div>
+</div>
+
+<p class="foot">
+  <b>Mock, not a page.</b> The sidebar, the batch tally, the ring-audit card and the export log are drawings — weaving
+  a ring needs the engine, and nothing here talks to it. The V band, its 63 valid
+  cells, the exact-fit field, the length bars and the table are computed here from
+  <code>mocks/fixtures/trace-plan-l1.json</code> — the payload <code>bridge.trace_plan</code> returned for L1 of a 2×1 —
+  with the arithmetic of <code>mxn_trace.sweep_combo</code>. See <code>docs/mxn-fit.md</code>.
+</p>
+
+<script>
+/* --------------------------------------------------------------------------
+   The band payload, verbatim out of mocks/fixtures/trace-plan-l1.json.
+   -------------------------------------------------------------------------- */
+const BAND = {"h":{"P":1,"nStrands":2,"minGap":56,"maxGap":69.0,"step":0.5,"windowLo":-173.434948822922,"windowHi":-133.434948822922,"origins":[[[1316.0,420.0],[1148.0,364.0]]],"directions":[[1.0,0.0,-1.0,0.0]],"pairIndices":[[0,1]],"targets":[[1097.9120773040047,310.95603865200235],[1366.0879226959953,473.04396134799765]],"vals":[0,10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190,200]},"v":{"P":2,"nStrands":4,"minGap":56,"maxGap":69.0,"step":0.5,"windowLo":126.30993247402023,"windowHi":166.30993247402023,"origins":[[[1204.0,364.0],[1260.0,420.0]],[[1148.0,420.0],[1316.0,364.0]]],"directions":[[0.0,-1.0,0.0,1.0],[0.0,1.0,0.0,-1.0]],"pairIndices":[[0,3],[1,2]],"targets":[[1073.4051835170808,451.0632109886128],[1304.8,302.4],[1159.2,481.6],[1390.5948164829192,332.9367890113872]],"vals":[0,10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190,200]}};
+
+const B = BAND.v;
+const WINDOW = 0, REACH = 1, DEGEN = 2, ORDER = 3, OVERLAP = 4, TOOFAR = 5, VALID = 6;
+const COLOUR = ["#b0aca0","#c63c28","#781414","#e28a1c","#924ab0","#3474c4","#3a9c58","#d4a81e"];
+
+/* mxn_trace.place */
+function place(b, ext) {
+  const starts = b.targets.map(() => [0, 0]);
+  b.pairIndices.forEach(([li, ri], p) => {
+    const [lnx, lny, rnx, rny] = b.directions[p];
+    const [lo, ro] = b.origins[p];
+    if (lo) starts[li] = [lo[0] + ext[p] * lnx, lo[1] + ext[p] * lny];
+    if (ri != null && ro) starts[ri] = [ro[0] + ext[p] * rnx, ro[1] + ext[p] * rny];
+  });
+  return starts;
+}
+
+/* mxn_trace.sweep_combo at one angle — trace-census.ts sweepAngle */
+function sweep(b, starts, angleDeg) {
+  const n = starts.length;
+  const d = starts.map((s, i) => [b.targets[i][0] - s[0], b.targets[i][1] - s[1]]);
+  const ref = Math.atan2(d[0][1], d[0][0]);
+  const a = angleDeg * Math.PI / 180;
+  const proj = [], ld = [], inv = [], ends = [];
+  let degen = false, unreach = false;
+  d.forEach((di, i) => {
+    const pos = di[0] * Math.cos(ref) + di[1] * Math.sin(ref) >= 0;
+    const sa = pos ? a : a + Math.PI;
+    const pr = di[0] * Math.cos(sa) + di[1] * Math.sin(sa);
+    const dx = pr * Math.cos(sa), dy = pr * Math.sin(sa);
+    proj.push(pr); ld.push([dx, dy]);
+    const ll = Math.abs(pr);
+    inv.push(ll > 1e-3 ? 1 / ll : 0);
+    if (ll < 1e-3) degen = true;
+    if (!(pr > 10)) unreach = true;
+    ends.push([starts[i][0] + dx, starts[i][1] + dy]);
+  });
+  const signed = [];
+  for (let i = 0; i < n - 1; i++) {
+    const vx = starts[i + 1][0] - starts[i][0], vy = starts[i + 1][1] - starts[i][1];
+    signed.push((ld[i][1] * vx - ld[i][0] * vy) * inv[i] * (i % 2 ? -1 : 1));
+  }
+  const gaps = signed.map(Math.abs);
+  const lastSg = (ld[0][1] * (starts[n-1][0] - starts[0][0])
+                - ld[0][0] * (starts[n-1][1] - starts[0][1])) * inv[0];
+  const bad = !(lastSg >= 0 ? signed.every(s => s > 0) : signed.every(s => s < 0));
+  let verdict = VALID;
+  if (degen) verdict = DEGEN;
+  if (verdict === VALID && bad) verdict = ORDER;
+  if (verdict === VALID && gaps.some(g => g > b.maxGap)) verdict = TOOFAR;
+  if (verdict === VALID && gaps.some(g => g < b.minGap)) verdict = OVERLAP;
+  if (unreach) verdict = REACH;
+  return { proj, gaps, ends, starts, verdict, firstLast: Math.abs(lastSg) };
+}
+
+const spread = p => Math.max(...p) - Math.min(...p);
+const dNeigh = p => Math.max(...p.slice(1).map((x, i) => Math.abs(x - p[i])));
+const margin = (b, g) => Math.min(Math.min(...g) - b.minGap, b.maxGap - Math.max(...g));
+
+/* Length is affine in the pair's own extension: L_p(e) = A_p − B_p·e.
+   Two placements at one angle measure both coefficients exactly. */
+function coeffs(b, angleDeg) {
+  const P = b.P;
+  const L0 = sweep(b, place(b, new Array(P).fill(0)), angleDeg).proj;
+  const A = [], Bc = [];
+  for (let p = 0; p < P; p++) {
+    const e = new Array(P).fill(0); e[p] = 1;
+    const L1 = sweep(b, place(b, e), angleDeg).proj;
+    const li = b.pairIndices[p][0];
+    A.push(L0[li]); Bc.push(L0[li] - L1[li]);
+  }
+  return { A, B: Bc };
+}
+
+/* The fit itself: at this angle, what extension makes every pair length L*? */
+function solve(b, angleDeg, star) {
+  const { A, B } = coeffs(b, angleDeg);
+  const ext = [];
+  for (let p = 0; p < b.P; p++) {
+    if (Math.abs(B[p]) < 1e-9) return null;
+    const e = (A[p] - star) / B[p];
+    if (e < 0 || e > 200) return { ext: null, off: true };
+    ext.push(e);
+  }
+  const r = sweep(b, place(b, ext), angleDeg);
+  return { ext, off: false, r, spread: spread(r.proj) };
+}
+
+/* ---- the engine's own grid: every valid cell inside its window ---------- */
+const ANGLES = [];
+for (let a = B.windowLo; a <= B.windowHi + 1e-9; a += B.step) ANGLES.push(a);
+const cells = [];
+for (const e0 of B.vals) for (const e1 of B.vals) {
+  const starts = place(B, [e0, e1]);
+  for (const a of ANGLES) {
+    const r = sweep(B, starts, a);
+    if (r.verdict !== VALID) continue;
+    const gmean = r.gaps.reduce((x, y) => x + y, 0) / r.gaps.length;
+    cells.push({ ext: [e0, e1], angle: a, proj: r.proj, gaps: r.gaps,
+      dneigh: dNeigh(r.proj), spread: spread(r.proj), margin: margin(B, r.gaps),
+      engine: [r.firstLast, r.gaps.reduce((s, g) => s + (g - gmean) ** 2, 0) / r.gaps.length] });
+  }
+}
+cells.sort((x, y) => x.engine[0] - y.engine[0] || x.engine[1] - y.engine[1]);
+const enginePick = cells[0];
+cells.forEach((c, i) => { c.rank = i; });
+
+/* ---- the fit the page would export ------------------------------------- */
+let fit = null;
+const exactPts = [];
+for (const a of ANGLES) {
+  for (let star = 120; star <= 320; star += 0.5) {
+    const s = solve(B, a, star);
+    if (!s || s.off || s.r.verdict !== VALID || s.spread > 1e-6) continue;
+    exactPts.push([a, star]);
+    const cand = { ext: s.ext, angle: a, star, proj: s.r.proj, gaps: s.r.gaps,
+                   margin: margin(B, s.r.gaps) };
+    if (!fit || cand.margin > fit.margin + 1e-9
+             || (Math.abs(cand.margin - fit.margin) < 1e-9
+                 && cand.ext.reduce((x, y) => x + y, 0) < fit.ext.reduce((x, y) => x + y, 0))) {
+      fit = cand;
+    }
+  }
+}
+
+/* The window the field and the length rail are drawn over: the exact-fit
+   solutions themselves, with room around them, rather than a round number. */
+const FIELD_LO = Math.floor(Math.min(...exactPts.map(p => p[1])) - 22);
+const FIELD_HI = Math.ceil(Math.max(...exactPts.map(p => p[1])) + 22);
+
+/* ---- stat cards --------------------------------------------------------- */
+const px = (v, d = 2) => v.toFixed(d);
+document.getElementById("s-dn-before").textContent = px(enginePick.dneigh);
+document.getElementById("s-len").innerHTML = px(fit.star, 1) + " <span class='was'>px</span>";
+document.getElementById("s-margin").innerHTML = px(fit.margin, 1) + " <span class='was'>px</span>";
+document.getElementById("n-before").textContent = px(enginePick.dneigh);
+document.getElementById("n-len").textContent = px(fit.star, 0);
+document.getElementById("n-ext").textContent = "ext (" + fit.ext.map(e => px(e)).join(", ") + ")";
+document.getElementById("n-delta").textContent =
+  px(Math.max(...fit.ext.map(e => Math.abs(e - Math.round(e / 10) * 10))));
+document.getElementById("n-ang").textContent =
+  px(enginePick.angle, 1) + "° → " + px(fit.angle, 1) + "°";
+document.getElementById("n-marg").textContent =
+  px(enginePick.margin, 2) + " px from a bound becomes " + px(fit.margin, 2) + " px";
+
+/* ---- A · the band ------------------------------------------------------- */
+(function drawBand() {
+  const cv = document.getElementById("band"), ctx = cv.getContext("2d");
+  const before = sweep(B, place(B, enginePick.ext), enginePick.angle);
+  const after = sweep(B, place(B, fit.ext), fit.angle);
+  const pts = [].concat(before.starts, before.ends, after.starts, after.ends, B.targets);
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const pad = 26;
+  const sc = Math.min((cv.width - 2 * pad) / (Math.max(...xs) - Math.min(...xs)),
+                      (cv.height - 2 * pad) / (Math.max(...ys) - Math.min(...ys)));
+  const ox = pad - Math.min(...xs) * sc, oy = pad - Math.min(...ys) * sc;
+  const X = p => p[0] * sc + ox, Y = p => p[1] * sc + oy;
+
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  const line = (a, b, w, colour, dash) => {
+    ctx.save(); ctx.setLineDash(dash || []); ctx.strokeStyle = colour; ctx.lineWidth = w;
+    ctx.beginPath(); ctx.moveTo(X(a), Y(a)); ctx.lineTo(X(b), Y(b)); ctx.stroke(); ctx.restore();
+  };
+  before.starts.forEach((s, i) => line(s, before.ends[i], 9, "rgba(105,103,95,.40)"));
+  after.starts.forEach((s, i) => line(s, after.ends[i], 9, "#171713"));
+  // Where the arms finish. After the fit the four ends are collinear and
+  // square to the arms; before it they are not, which is the whole complaint.
+  line(after.ends[0], after.ends[3], 1.5, "#e4513f");
+  line(before.ends[0], before.ends[3], 1.5, "#69675f", [4, 4]);
+  ctx.font = "700 11px monospace"; ctx.fillStyle = "#171713";
+  after.ends.forEach((e, i) => ctx.fillText("arm " + (i + 1), X(e) + 9, Y(e) + 4));
+  ctx.fillStyle = "#69675f"; ctx.fillText("engine pick", 8, 18);
+  ctx.fillStyle = "#171713"; ctx.fillText("fitted", 8, 34);
+  ctx.fillStyle = "#e4513f"; ctx.fillText("the flush edge", 8, 50);
+  ctx.fillStyle = "#69675f";
+  ctx.fillText("targets stay put — only the starts and the heading move",
+               8, cv.height - 10);
+})();
+
+/* ---- A2 · length bars ---------------------------------------------------
+   Drawn on a broken axis. A 2.38px stagger on a 200px arm is a rounding error
+   to the eye and the whole subject of the page, so the panel starts at the
+   shortest arm minus a margin and says so in its own caption. */
+(function drawBars() {
+  const cv = document.getElementById("bars"), ctx = cv.getContext("2d");
+  const before = enginePick.proj, after = fit.proj;
+  const all = before.concat(after);
+  const lo = Math.floor(Math.min(...all) - 3), hi = Math.ceil(Math.max(...all) + 3);
+  const x0 = 46, w = cv.width - x0 - 58;
+  const at = v => x0 + w * (v - lo) / (hi - lo);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.font = "700 10px monospace";
+  ctx.fillStyle = "#69675f";
+  ctx.fillText("arm length, " + lo + "–" + hi + " px", x0 - 40, 12);
+  before.forEach((v, i) => {
+    const y = 26 + i * 50;
+    ctx.fillStyle = "#69675f"; ctx.fillText("arm " + (i + 1), 0, y + 14);
+    ctx.fillStyle = "rgba(105,103,95,.42)"; ctx.fillRect(x0, y, at(v) - x0, 13);
+    ctx.fillStyle = "#171713"; ctx.fillRect(x0, y + 15, at(after[i]) - x0, 13);
+    ctx.fillStyle = "#69675f"; ctx.fillText(v.toFixed(2), at(v) + 5, y + 11);
+    ctx.fillStyle = "#171713"; ctx.fillText(after[i].toFixed(2), at(after[i]) + 5, y + 26);
+  });
+  const bottom = 26 + 3 * 50 + 34;
+  ctx.strokeStyle = "#e4513f"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(at(after[0]), 18); ctx.lineTo(at(after[0]), bottom); ctx.stroke();
+  // the axis is broken, and the break is drawn rather than implied
+  ctx.strokeStyle = "#171713"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x0, 18); ctx.lineTo(x0, bottom); ctx.stroke();
+  ctx.setLineDash([3, 3]); ctx.strokeStyle = "#69675f";
+  ctx.beginPath(); ctx.moveTo(x0 - 6, 18); ctx.lineTo(x0 - 6, bottom); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "#69675f";
+  ctx.fillText("0", x0 - 22, bottom + 4);
+  ctx.fillText(String(lo), x0 - 4, bottom + 16);
+  ctx.fillStyle = "#171713";
+  ctx.fillText("engine pick ▓  fitted █", x0 - 40, cv.height - 6);
+})();
+
+/* ---- B · the exact-fit field, angle × common length --------------------- */
+(function drawField() {
+  const cv = document.getElementById("field"), ctx = cv.getContext("2d");
+  const pad = { l: 52, r: 8, t: 10, b: 30 };
+  const L0 = FIELD_LO, L1 = FIELD_HI;
+  const w = cv.width - pad.l - pad.r, h = cv.height - pad.t - pad.b;
+  const cw = w / ANGLES.length, ch = h / ((L1 - L0) / 1);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ANGLES.forEach((a, i) => {
+    for (let star = L0, j = 0; star < L1; star += 1, j++) {
+      const s = solve(B, a, star);
+      let colour;
+      if (!s || s.off) colour = COLOUR[WINDOW];
+      else if (s.r.verdict === VALID) colour = COLOUR[VALID];
+      else colour = COLOUR[s.r.verdict];
+      ctx.fillStyle = colour;
+      ctx.fillRect(pad.l + i * cw, pad.t + h - (j + 1) * ch, Math.max(cw, 1), Math.max(ch, 1));
+    }
+  });
+  // axes
+  ctx.strokeStyle = "#171713"; ctx.lineWidth = 1;
+  ctx.strokeRect(pad.l, pad.t, w, h);
+  ctx.fillStyle = "#171713"; ctx.font = "700 10px monospace";
+  ctx.fillText("126.3°", pad.l, cv.height - 10);
+  ctx.fillText("angle", pad.l + w / 2 - 14, cv.height - 10);
+  ctx.fillText("166.3°", pad.l + w - 40, cv.height - 10);
+  ctx.save(); ctx.translate(12, pad.t + h / 2 + 30); ctx.rotate(-Math.PI / 2);
+  ctx.fillText("common arm length L*", 0, 0); ctx.restore();
+  ctx.fillText(String(L1), 6, pad.t + 10);
+  ctx.fillText(String(L0), 6, pad.t + h);
+  // markers
+  const px2 = a => pad.l + ANGLES.findIndex(x => Math.abs(x - a) < 1e-6) * cw + cw / 2;
+  const py2 = v => pad.t + h - (v - L0) * ch;
+  ctx.strokeStyle = "#171713"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(px2(fit.angle), py2(fit.star), 6, 0, 7); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(px2(fit.angle) - 12, py2(fit.star)); ctx.lineTo(px2(fit.angle) + 12, py2(fit.star));
+  ctx.moveTo(px2(fit.angle), py2(fit.star) - 12); ctx.lineTo(px2(fit.angle), py2(fit.star) + 12); ctx.stroke();
+  ctx.fillStyle = "#171713"; ctx.fillText("fit", px2(fit.angle) + 14, py2(fit.star) - 8);
+  const em = enginePick.proj.reduce((a, b) => a + b, 0) / enginePick.proj.length;
+  ctx.strokeStyle = "#69675f"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(px2(enginePick.angle), py2(em), 5, 0, 7); ctx.stroke();
+  ctx.fillStyle = "#69675f";
+  ctx.fillText("engine pick (not flush)", px2(enginePick.angle) + 10, py2(em) + 4);
+})();
+
+/* ---- B2 · the rails ------------------------------------------------------ */
+(function rails() {
+  const set = (id, v) => { document.getElementById(id).textContent = v; };
+  const at = (id, frac) => { document.getElementById(id).style.left = (frac * 100).toFixed(2) + "%"; };
+  const fillTo = (id, a, b) => {
+    const el = document.getElementById(id);
+    el.style.left = (a * 100).toFixed(2) + "%";
+    el.style.width = ((b - a) * 100).toFixed(2) + "%";
+  };
+  const aFrac = (B.windowHi - B.windowLo);
+  set("r-angle", fit.angle.toFixed(1) + "°");
+  at("k-angle", (fit.angle - B.windowLo) / aFrac);
+  at("g-angle", (enginePick.angle - B.windowLo) / aFrac);
+  const good = ANGLES.filter(a => { const s = solve(B, a, fit.star); return s && !s.off && s.r.verdict === VALID; });
+  fillTo("f-angle", (Math.min(...good) - B.windowLo) / aFrac, (Math.max(...good) - B.windowLo) / aFrac);
+  const span = FIELD_HI - FIELD_LO;
+  set("r-len", fit.star.toFixed(1) + " px");
+  at("k-len", (fit.star - FIELD_LO) / span);
+  const stars = [];
+  for (let s = FIELD_LO; s <= FIELD_HI; s += 0.5) {
+    const r = solve(B, fit.angle, s);
+    if (r && !r.off && r.r.verdict === VALID) stars.push(s);
+  }
+  fillTo("f-len", (Math.min(...stars) - FIELD_LO) / span, (Math.max(...stars) - FIELD_LO) / span);
+  document.getElementById("e-len-lo").textContent = FIELD_LO;
+  document.getElementById("e-len-hi").textContent = FIELD_HI;
+  const c = coeffs(B, fit.angle);
+  fit.ext.forEach((e, p) => { set("r-e" + p, e.toFixed(2) + " px"); at("k-e" + p, e / 200); });
+  c.B.forEach((b, p) => set("r-b" + p, (-b).toFixed(3) + " px/px"));
+})();
+
+/* ---- C · the table ------------------------------------------------------- */
+(function table() {
+  const rows = [{
+    source: "fitted", tag: "fit", ext: fit.ext, angle: fit.angle, proj: fit.proj,
+    gaps: fit.gaps, dneigh: dNeigh(fit.proj), spread: spread(fit.proj),
+    margin: fit.margin, rank: -1,
+  }].concat(cells.map(c => ({
+    source: c === enginePick ? "engine pick" : "grid cell",
+    tag: c === enginePick ? "eng" : null,
+    ext: c.ext, angle: c.angle, proj: c.proj, gaps: c.gaps,
+    dneigh: c.dneigh, spread: c.spread, margin: c.margin, rank: c.rank,
+  })));
+  const key = "dneigh";
+  rows.sort((a, b) => a[key] - b[key] || b.margin - a.margin);
+  document.getElementById("t-eng").textContent = enginePick.dneigh.toFixed(2);
+  document.getElementById("t-best").textContent =
+    Math.min(...cells.map(c => c.dneigh)).toFixed(2);
+  const body = document.querySelector("#tbl tbody");
+  rows.slice(0, 7).forEach((r, i) => {
+    const tr = document.createElement("tr");
+    if (r.tag === "fit") tr.className = "fitted";
+    if (r.tag === "eng") tr.className = "engine";
+    tr.innerHTML =
+      `<td class="l num">${i + 1}</td>` +
+      `<td class="l">${r.tag ? `<span class="tag ${r.tag}">${r.source}</span>` : r.source}</td>` +
+      `<td class="num">${r.ext.map(e => e.toFixed(r.tag === "fit" ? 2 : 0)).join(", ")}</td>` +
+      `<td class="num">${r.angle.toFixed(1)}°</td>` +
+      `<td class="num">${r.proj.map(p => p.toFixed(1)).join(" · ")}</td>` +
+      `<td class="num"><b>${r.dneigh.toFixed(2)}</b></td>` +
+      `<td class="num">${r.spread.toFixed(2)}</td>` +
+      `<td class="num">${Math.min(...r.gaps).toFixed(1)}</td>` +
+      `<td class="num">${Math.max(...r.gaps).toFixed(1)}</td>` +
+      `<td class="num">${r.margin.toFixed(1)}</td>`;
+    body.appendChild(tr);
+  });
+})();
+</script>
+</body>
+</html>
