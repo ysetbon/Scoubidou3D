@@ -77,6 +77,19 @@ input[type=text], input[type=number], select {
 .seg { display: flex; border: 1px solid var(--ink); background: var(--card); }
 .seg button { flex: 1; padding: 7px 0; background: none; border: 0; cursor: pointer; font: 700 12px/1 monospace; }
 .seg button[aria-pressed=true] { background: var(--ink); color: var(--paper); }
+.seg3 button { font-size: 11px; }
+
+.sources { display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.sources > i { font: 800 10px/1 monospace; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted); font-style: normal; margin-right: 4px; }
+.sources button { padding: 5px 10px; background: none; border: 1px solid var(--line);
+  cursor: pointer; font: 700 11px/1 monospace; display: flex; align-items: center; gap: 6px; }
+.sources button[aria-pressed=true] { border-color: var(--ink); background: var(--acid); }
+.sources button b { font-weight: 700; }
+.sources button span { color: var(--muted); font-weight: 400; }
+.sources button[aria-pressed=true] span { color: var(--ink); }
+.sources .off { margin-left: auto; color: var(--muted); font: 400 11px/1.3 Arial, sans-serif; }
 .field { margin-bottom: 12px; }
 .hint { font: 400 11px/1.45 Arial, sans-serif; color: var(--muted); margin: 6px 0 0; }
 .check { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; margin-top: 8px; }
@@ -382,6 +395,16 @@ td.num { font-family: monospace; }
         <span class="spacer"></span>
         <span class="chip soft">63 valid cells</span>
       </header>
+      <div class="sources">
+        <i>source</i>
+        <button aria-pressed="true"><b>all</b></button>
+        <button aria-pressed="false"><b>fitted</b></button>
+        <button aria-pressed="false"><b>grid cells</b> <span>63</span></button>
+        <button aria-pressed="false"><b>✓ human valid</b> <span>12</span></button>
+        <button aria-pressed="false"><b>★ best</b> <span>1</span></button>
+        <button aria-pressed="false"><b>✗ rejected</b> <span>3</span></button>
+        <span class="off">the three human categories are read from <code>picks/v3/…</code> — counts drawn</span>
+      </div>
       <div class="body" style="padding:0 14px">
         <table id="tbl">
           <thead><tr>
@@ -405,16 +428,16 @@ td.num { font-family: monospace; }
     <!-- D ------------------------------------------------------------- -->
     <div class="panel">
       <header>
-        <strong>Save this pick to the shelf</strong>
-        <span>one key per parameter set, beside the run it was fitted from</span>
+        <strong>Save a judgement to the shelf</strong>
+        <span>valid · best · rejected — one key per parameter set, beside the run</span>
         <span class="spacer"></span>
         <span class="chip soft">v3 · writes need the token</span>
       </header>
       <div class="body two">
         <div>
           <div class="keyline">
-            <span>best</span><code id="k-best">—</code>
-            <em class="ok">this pick — one per parameter set</em>
+            <span>picks</span><code id="k-best">—</code>
+            <em class="ok">every judgement — valid, best, rejected</em>
           </div>
           <div class="keyline dim">
             <span>run</span><code id="k-run">—</code>
@@ -426,23 +449,29 @@ td.num { font-family: monospace; }
           </div>
           <p class="hint" style="margin:12px 0 10px">
             Same five segments as a <code>run</code>, same <code>descriptorPath()</code>, same version in the key — so a
-            pick made against one engine can never be read as a pick made against another. <code>/mxn/</code> asks for
-            <b>best</b> before <b>run</b> and opens on it, labelled, with the engine's own answer one press away.
-            The body is the pick, not the ring — about a kilobyte:
+            judgement made against one engine can never be read as one made against another. <code>/mxn/</code> asks for
+            <b>picks</b> before <b>run</b> and opens on the <b>★ best</b>, labelled, with the engine's own answer one
+            press away. The body is the judgements, not the rings — each is a pick, about 200 bytes:
           </p>
           <pre class="body-preview" id="artifact">—</pre>
         </div>
         <div>
           <div class="field">
-            <label class="f">chosen by</label>
-            <div class="seg">
-              <button aria-pressed="false">fitter</button><button aria-pressed="true">best by human</button>
+            <label class="f">your verdict on this ring</label>
+            <div class="seg seg3">
+              <button aria-pressed="false">✓ valid</button
+              ><button aria-pressed="true">★ best</button
+              ><button aria-pressed="false">✗ rejected</button>
             </div>
+            <p class="hint" style="margin-top:6px">
+              <b>★ best</b> is the one <code>/mxn/</code> opens on, and there is only ever one — marking this demotes
+              <code>j-2b10</code> to <b>valid</b>. <b>★</b> implies <b>✓</b>.
+            </p>
           </div>
           <div class="field"><label class="f">chooser — a label, not a login</label><input type="text" value="ysetbon"></div>
           <div class="field"><label class="f">note</label><input type="text" value="flush, widest gap margin of the three"></div>
           <label class="check"><input type="checkbox"> <span>embed the whole ring (≈100× bigger; opens in /app/ with no engine)</span></label>
-          <button class="go">Save as best by human</button>
+          <button class="go">Save as best</button>
           <p class="hint">Written to <code>localStorage</code> and into the export first, then to the Worker. The button
           reports which of the two happened, not one "Saved".</p>
         </div>
@@ -479,12 +508,13 @@ td.num { font-family: monospace; }
 </div>
 
 <p class="foot">
-  <b>Mock, not a page.</b> The sidebar, the batch tally, the ring-audit card and the export log are drawings — weaving
-  a ring needs the engine, and nothing here talks to it. The V band, its 63 valid
-  cells, the exact-fit field, the length bars, the table, and the shelf keys and artifact body in
-  <i>Save this pick</i> are computed here from
-  <code>mocks/fixtures/trace-plan-l1.json</code> — the payload <code>bridge.trace_plan</code> returned for L1 of a 2×1 —
-  with the arithmetic of <code>mxn_trace.sweep_combo</code>. See <code>docs/mxn-fit.md</code>.
+  <b>Mock, not a page.</b> Drawings: the sidebar, the batch tally, the ring-audit card, the source filter's counts and
+  the export log. Weaving a ring, auditing it and reading the shelf all need something this file does not talk to.
+  Computed here, from <code>mocks/fixtures/trace-plan-l1.json</code> — the payload
+  <code>bridge.trace_plan</code> returned for L1 of a 2×1 — with the arithmetic of
+  <code>mxn_trace.sweep_combo</code>: the V band, its 63 valid cells, the exact-fit field, the length bars, the sorted
+  table, and the shelf keys and every judgement in the artifact body under <i>Save a judgement</i>.
+  See <code>docs/mxn-fit.md</code>.
 </p>
 
 <script>
@@ -667,26 +697,54 @@ document.getElementById("n-marg").textContent =
     }
     return best;
   })();
+  // The H band's engine pick, ranked the way the engine ranks — so every
+  // judgement below carries both bands, as the real artifact would.
+  const hPick = (() => {
+    const b = BAND.h;
+    let best = null;
+    for (const e of b.vals) {
+      const starts = place(b, [e]);
+      for (let a = b.windowLo; a <= b.windowHi + 1e-9; a += b.step) {
+        const r = sweep(b, starts, a);
+        if (r.verdict !== VALID) continue;
+        const mean = r.gaps.reduce((x, y) => x + y, 0) / r.gaps.length;
+        const key = [r.firstLast, r.gaps.reduce((s, g) => s + (g - mean) ** 2, 0) / r.gaps.length];
+        if (!best || key[0] < best.key[0] || (key[0] === best.key[0] && key[1] < best.key[1])) {
+          best = { key, ext: [e], angle: a };
+        }
+      }
+    }
+    return best;
+  })();
+  const flushest = cells.reduce((a, c) => (c.dneigh < a.dneigh ? c : a), cells[0]);
+
   const arr = (v, d) => "[" + v.map(e => round(e, d)).join(", ") + "]";
+  const entry = (id, verdict, at, note, h, v, proj, gaps, tail) =>
+`    { "id": "${id}", "verdict": "${verdict}", "chosenBy": "human",
+      "chooser": "ysetbon", "at": "${at}",
+      "note": "${note}",
+      "levels": [ { "level": 1,
+                    "h": { "ext": ${arr(h.ext, 3)}, "angle": ${round(h.angle, 2)} },
+                    "v": { "ext": ${arr(v.ext, 3)}, "angle": ${round(v.angle, 2)} } } ],
+      "metrics": { "neighbour_delta": ${round(dNeigh(proj), 2)}, "spread": ${round(spread(proj), 2)},
+                   "gap_margin": ${round(margin(B, gaps), 3)} }${tail} }`;
+
   document.getElementById("artifact").textContent =
-`{ "kind": "best", "cacheVersion": "v3",
+`{ "kind": "picks", "cacheVersion": "v3",
   "descriptor": { "m": ${D.m}, "n": ${D.n}, "ks": [${D.ks}], "hand": "${D.hand}",
                   "direction": "${D.direction}", "shortArms": true,
                   "step": "auto", "budget": ${D.budget} },
-  "chosenBy": "human",  "chooser": "ysetbon",
-  "chosenAt": "2026-08-14T09:12:44Z",
-  "note": "flush, widest gap margin of the three",
   "engineCommit": "984d9ed", "runComputedAt": "2026-08-12T18:03:10Z",
-  "levels": [
-    { "level": 1,
-      "h": { "ext": ${arr(hFit.ext, 3)}, "angle": ${round(hFit.angle, 2)} },
-      "v": { "ext": ${arr(fit.ext, 3)}, "angle": ${round(fit.angle, 2)} },
-      "metrics": { "neighbour_delta": 0.0, "spread": 0.0,
-                   "gap_margin": ${round(fit.margin, 3)} } } ],
-  "policy": { "target": "flush", "ext": "continuous",
-              "angle": "window", "tie": "margin" },
-  "supersedes": { "chosenBy": "fitter", "chosenAt": "2026-08-14T09:04:02Z" },
-  "strands": null }`;
+  "judgements": [
+${entry("j-7f3a", "best", "2026-08-14T09:12:44Z",
+        "flush, widest gap margin of the three", hFit, fit, fit.proj, fit.gaps,
+        ',\n      "supersedes": "j-2b10"')},
+${entry("j-2b10", "valid", "2026-08-14T09:04:02Z",
+        "the engine's own — fine, just not flush", hPick, enginePick,
+        enginePick.proj, enginePick.gaps, "")},
+${entry("j-9c04", "rejected", "2026-08-14T09:06:10Z",
+        "gaps legal but the band reads twisted", hPick, flushest,
+        flushest.proj, flushest.gaps, "")} ] }`;
 })();
 
 /* ---- A · the band ------------------------------------------------------- */

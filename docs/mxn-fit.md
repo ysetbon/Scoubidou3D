@@ -20,7 +20,7 @@ Four jobs, in the order they run:
 | **1 · Export** | best solution for any `k, m, n, lh/rh`, one set or a whole sweep, written to disk | [§ Export](#1--export) |
 | **2 · Fit** | pair extension and angle moved together until neighbouring arms are the same length | [§ The fit](#2--the-fit) |
 | **3 · Sort** | rank what came out by how well neighbouring lengths agree — and it still means something *after* a fit | [§ The sort](#3--the-sort) |
-| **4 · Save** | put the chosen ring on the v3 shelf as **the best, picked by a human**, so every page reads it back | [§ Saving a pick](#4--saving-a-pick-bestv3) |
+| **4 · Save** | mark a ring on the v3 shelf **valid**, **best** or **rejected** — by hand — so every page reads the judgement back and the valid category loads | [§ Saving a judgement](#4--saving-a-judgement-picksv3) |
 
 ---
 
@@ -32,9 +32,11 @@ Every number in that image is real. The V band it draws, its 63 valid cells, the
 exact-fit field, the length bars and the whole solutions table are computed in
 the page from `mocks/fixtures/trace-plan-l1.json` — the payload
 `bridge.trace_plan` returned for L1 of a 2×1 — using the arithmetic of
-`mxn_trace.sweep_combo`. What is drawn rather than measured says so on itself:
-the batch tally, the ring-audit card and the export log. Weaving a ring and
-auditing it needs the engine, and the mock does not talk to the engine.
+`mxn_trace.sweep_combo` — including every judgement in the artifact body under
+*Save a judgement*. What is drawn rather than measured says so on itself: the
+batch tally, the ring-audit card, the source filter's counts and the export log.
+Weaving a ring, auditing it and reading the shelf all need something the mock
+does not talk to.
 
 ---
 
@@ -175,7 +177,8 @@ manifest.csv                 one row per parameter set, with every metric below
 ```
 
 **And onto the shelf.** A file is yours alone; the same pick also goes back to
-the Worker so every page finds it — see [§ Saving a pick](#4--saving-a-pick-bestv3).
+the Worker so every page finds it — see
+[§ Saving a judgement](#4--saving-a-judgement-picksv3).
 
 **Without touching the page at all.** Every control is in the URL, so the export
 is scriptable and a result is a link someone can be sent:
@@ -339,145 +342,238 @@ And on its own, with no fitting at all, it recovers 2.38 px → 0.37 px on the
 
 ---
 
-## 4 · Saving a pick: `best/v3/…`
+## 4 · Saving a judgement: `picks/v3/…`
 
 A downloaded file is yours. It is not, on its own, an answer anybody else's page
-can find. So the ring the fitter settles on — or the one **you** settle on after
-overruling it — goes back onto the same Cloudflare shelf `/mxn/gpu/` fills and
-`/mxn/` reads, under the same `v3`, marked as chosen by a person.
+can find. So what a person decides about a ring — *this is the one*, or *this
+one is fine too*, or *no* — goes back onto the same Cloudflare shelf
+`/mxn/gpu/` fills and `/mxn/` reads, under the same `v3`.
 
-### Where it goes
+### Three different things are called "valid" here
+
+This has to be settled before anything else, because the word already means two
+machine things in this codebase and the one being added is neither:
+
+| | who says it | what it means | where it lives |
+| --- | --- | --- | --- |
+| `VALID` | the census | the geometry passed every test — reach, order, overlap, too-far | `mxn_trace`, the trace panel, the green cells in the mock |
+| `healthy` / `complete` | the audit | the ring closes: crossings as expected, no strays, nothing broken | `solutions.healthy`, `AuditRow` |
+| **human `valid`** | **you** | you looked at the woven ring and it is a real, usable stitch | **the new one** |
+
+They do not imply each other in either direction. A ring can pass every
+geometric test, close cleanly, and still be one a person would not make; and the
+whole reason this page exists is that the engine's `VALID` cells include rings
+whose arms are visibly out of flush. So in code the human one is never spelled
+`VALID` — it is `verdict: "valid"` on a judgement written by a person. On screen
+it says **valid**, because that is the word for it.
+
+### One artifact per parameter set, holding every judgement
 
 A **third artifact kind beside `run` and `trace`**, on the key grammar those two
 already use, at the same cache version:
 
 ```
-run/v3/lh-cw/2x1/1/s1-eauto-b400000      what the engine computed
-trace/v3/lh-cw/2x1/1/s1-eauto-b400000/L1-v   one band's census
-best/v3/lh-cw/2x1/1/s1-eauto-b400000     ← the pick. One per parameter set
+run/v3/lh-cw/2x1/1/s1-eauto-b400000            what the engine computed
+trace/v3/lh-cw/2x1/1/s1-eauto-b400000/L1-v     one band's census
+picks/v3/lh-cw/2x1/1/s1-eauto-b400000          ← every judgement, one list
 ```
 
+> **This replaces the `best/v3/…` key** described here before the valid category
+> was asked for. Two keys — one holding the best, one holding the valid set —
+> can disagree: a best that is not in the valid list, or a valid list that
+> contradicts the best. One key cannot, and the invariants below are checkable
+> at write time. The read is one fetch either way; a judgement is about 200
+> bytes, so fifty of them gzip to under two kilobytes.
+
 Same five segments as a `run`, same `descriptorPath()`, same version in the key
-rather than on the far side — so a pick is addressed by exactly the thing that
-makes it meaningful, and a pick made against a different engine cannot be
-mistaken for one made against this one.
+— so a judgement is addressed by exactly the thing that makes it meaningful,
+and one made against a different engine cannot be mistaken for one made against
+this one.
 
-### Why not just the solutions table
+### The verdicts
 
-Because they answer different questions, and both should be written:
+| verdict | how many | what it means | what reads it |
+| --- | --- | --- | --- |
+| `best` | **at most one** | the one to open on. Implies `valid` | `/mxn/`, `/mxn/fit/` |
+| `valid` | any number | a real, usable stitch. The category you load | the fitter's table, the categoriser |
+| `rejected` | any number | looked at, and no | the loaders, to stop offering it again |
+| *(absent)* | — | nobody has judged this ring | everything, as today |
 
-| | `solutions` (D1) | `best/v3/…` (shelf) |
-| --- | --- | --- |
-| holds | every ring anyone ever starred, with its rating | **one** ring per parameter set |
-| answers | "what have people judged, and how did it score?" | "what should this page open on?" |
-| written by | the lab's ⭐, and the fitter | the fitter's **Save as best** |
-| read by | `/mxn/rate/`, `/mxn/semi/` | `/mxn/`, `/mxn/fit/`, and anything else that asks the shelf |
-| shape | append-only, many rows per size | last write wins, one key |
+`rejected` earns its place: without it "not yet looked at" and "looked at and
+turned down" are the same state, and the valid category cannot be loaded
+*correctly* — every load would re-offer the rings you already threw out. That is
+the difference between a filter and a queue.
 
-Pressing **Save as best** does both: a row in `solutions` so the judgement is on
-the record and rateable, and the `best/v3/…` key so it is the answer. The
-existing star on `/mxn/` is untouched.
+Each judgement also carries who made it:
+
+```
+chosenBy:  "human"   somebody pressed the button
+           "fitter"  a batch fitted it unattended and wrote its own answer
+```
+
+Only a human writes `valid` or `rejected`. A batch may write `best` with
+`chosenBy: "fitter"` — an unattended answer is better than none — but never over
+a human's, and the log says when it skipped one.
+
+### The invariants
+
+Enforced when the artifact is written, and re-checked when it is read:
+
+1. **At most one `best`.** Marking a new best demotes the old one to `valid` and
+   records it in `supersedes`. There is never a moment with two.
+2. **`best` implies `valid`.** A ring cannot be the one to open on and not be
+   one a person would make.
+3. **`best` and `rejected` are exclusive.** Rejecting the current best clears
+   the best; the page says so rather than silently leaving the parameter set
+   pointing at a rejected ring.
+4. **A `human` judgement is never overwritten by a `fitter` one.** In either
+   direction of verdict.
+5. **Every judgement names the run it was made against.** `engineCommit` and
+   `runComputedAt`; on a mismatch the entry is shown as *stale* and not applied.
 
 ### What is in it
 
-The pick, not the ring — about a kilobyte. `(extensions, angle)` per band per
-level is enough to rebuild the exact geometry through the same
-`NX.apply_solution` path the fit itself used, and the `run` artifact beside it
-already holds everything else:
+The judgements, not the rings — each one is a pick, and a pick is
+`(extensions, angle)` per band per level, which is enough to rebuild the exact
+geometry through the same `NX.apply_solution` path the fit itself used:
 
 ```json
 {
-  "kind": "best",
+  "kind": "picks",
   "cacheVersion": "v3",
   "descriptor": {"m": 2, "n": 1, "ks": [1], "hand": "lh", "direction": "cw",
                  "shortArms": true, "step": "auto", "budget": 400000},
-  "chosenBy": "human",
-  "chosenAt": "2026-08-14T09:12:44Z",
-  "chooser": "ysetbon",
-  "note": "flush, and the widest gap margin of the three I looked at",
   "engineCommit": "984d9ed",
   "runComputedAt": "2026-08-12T18:03:10Z",
-  "levels": [{
-    "level": 1,
-    "h": {"ext": [58.372], "angle": -156.43},
-    "v": {"ext": [84.368, 34.220], "angle": 126.81},
-    "metrics": {"neighbour_delta": 0.0, "spread": 0.0, "gap_margin": 3.771},
-    "audit": {"crossings": 8, "expected": 8, "stray": 0, "broken": 0}
-  }],
-  "policy": {"target": "flush", "ext": "continuous", "angle": "window",
-             "tie": "margin"},
-  "supersedes": {"chosenBy": "fitter", "chosenAt": "2026-08-14T09:04:02Z"},
-  "strands": null
+  "judgements": [
+    {"id": "j-7f3a", "verdict": "best", "chosenBy": "human",
+     "chooser": "ysetbon", "at": "2026-08-14T09:12:44Z",
+     "note": "flush, widest gap margin of the three",
+     "levels": [{"level": 1,
+                 "h": {"ext": [58.372], "angle": -156.43},
+                 "v": {"ext": [84.368, 34.220], "angle": 126.81}}],
+     "metrics": {"neighbour_delta": 0.0, "spread": 0.0, "gap_margin": 3.771},
+     "audit": {"crossings": 8, "expected": 8, "stray": 0, "broken": 0},
+     "supersedes": "j-2b10"},
+
+    {"id": "j-2b10", "verdict": "valid", "chosenBy": "human",
+     "chooser": "ysetbon", "at": "2026-08-14T09:04:02Z",
+     "note": "the engine's own — fine, just not flush",
+     "levels": [{"level": 1,
+                 "h": {"ext": [60], "angle": -157.93},
+                 "v": {"ext": [60, 0], "angle": 141.81}}],
+     "metrics": {"neighbour_delta": 2.38, "spread": 2.38, "gap_margin": 0.549}},
+
+    {"id": "j-9c04", "verdict": "rejected", "chosenBy": "human",
+     "chooser": "ysetbon", "at": "2026-08-14T09:06:10Z",
+     "note": "gaps legal but the band reads twisted",
+     "levels": [{"level": 1,
+                 "h": {"ext": [60], "angle": -157.93},
+                 "v": {"ext": [70, 10], "angle": 137.81}}],
+     "metrics": {"neighbour_delta": 0.37, "spread": 0.37, "gap_margin": 0.517}}
+  ]
 }
 ```
 
-`strands` is optional and normally null. Set it and the artifact carries the
-whole ring, so `/app/` can open the pick with no engine anywhere in the loop —
-at the cost of the artifact being a hundred times bigger. The fitter offers it
-as a checkbox and defaults it off.
+Every judgement optionally carries `strands`, the whole ring, so `/app/` can
+open it with no engine anywhere in the loop — at the cost of that entry being a
+hundred times bigger. The fitter offers it as a checkbox and defaults it off.
 
-### Who outranks whom
+### Loading the valid category
 
-Three things can name a best for a parameter set, and they are ordered:
+Two ways in, because there are two questions:
+
+**"The valid ones for *these* parameters."** One `GET picks/v3/…`, filter
+`verdict === "valid" || verdict === "best"`. No query engine involved, which is
+what lets a static page do it. This is what the source filter above the
+solutions table runs:
 
 ```
-human  >  fitter  >  engine
+source:   all · fitted · grid cells · ✓ human valid (12) · ★ best · ✗ rejected (3)
 ```
 
-- **engine** — no `best` key exists; the `run` artifact's own choice stands. This
-  is every parameter set today.
-- **fitter** — the fit ran unattended, in a batch, and wrote its answer. Better
-  than nothing, unreviewed.
-- **human** — somebody looked at it and pressed the button. Nothing overwrites a
-  human pick automatically: a batch that would have written `fitter` over one
-  skips it, says so in the log, and the operator can force it with an explicit
-  *overwrite human picks* switch.
+Picking **human valid** loads the artifact and puts those rings in the table —
+against the *same* columns and the *same* sort as everything else, so the
+neighbour-length ranking applies to a human-blessed category exactly as it does
+to a machine-generated one. That is the whole point of the sort reading current
+geometry rather than a stored score.
 
-`chooser` is a **self-declared label, not an identity**. The Worker has one
-`ADMIN_TOKEN`; holding it is the only thing that is actually checked. The field
-is there so a shelf shared between two people can be read, not so it can be
-policed, and the doc should not pretend otherwise.
+**"Every valid ring anyone has blessed, across sizes."** A query, and that is
+the `solutions` table's job. It gains one column:
 
-### How a pick is read back
+```sql
+-- worker-api/migrations/0003_verdict.sql
+ALTER TABLE solutions ADD COLUMN verdict TEXT;         -- 'valid'|'best'|'rejected'|NULL
+ALTER TABLE solutions ADD COLUMN verdict_by TEXT;      -- 'human'|'fitter'
+ALTER TABLE solutions ADD COLUMN verdict_at TEXT;
+CREATE INDEX IF NOT EXISTS idx_solutions_verdict ON solutions (verdict, m, n, k, level);
+```
 
-`/mxn/` and `/mxn/fit/` both ask for `best/v3/…` before `run/v3/…` — one extra
-request, cached like the rest. If one is found:
+and one filter beside the `kind`, `band`, `unrated` and `healthy` ones already
+in `listSolutions`:
 
-- the level opens on that ring rather than on the engine's, with a chip that
-  says **human pick** (or **fitted**), and the engine's own answer one press
-  away — never hidden, because a page that quietly shows something other than
-  what the engine computed is a page that cannot be trusted about anything;
-- if `engineCommit` or `runComputedAt` disagree with the run now on the shelf,
-  the pick is shown as **stale** and **not applied**. An extension and an angle
-  mean something only against the checkpoint they were measured on;
-- with no Worker configured, none of this happens and both pages behave exactly
+```
+GET /solutions?verdict=valid&m=2&n=1&limit=200
+```
+
+Which keeps the two stores doing what they are each good at, and neither
+pretending to be the other:
+
+| | `solutions` (D1) | `picks/v3/…` (shelf) |
+| --- | --- | --- |
+| holds | every ring anyone starred, its rating and now its verdict | every judgement for one parameter set |
+| answers | "show me all human-valid 3×2s" | "what do we think about *this* stitch?" |
+| shape | many rows, queryable | one key, one fetch, no query engine |
+| needed for | the categoriser, cross-size work | a static page opening on the right ring |
+
+Pressing a verdict writes **both**: the row so it is queryable and rateable, the
+artifact so `/mxn/` finds it. They cannot drift, because the artifact is the
+authority and the row carries the same `id`.
+
+### How a judgement is read back
+
+`/mxn/` and `/mxn/fit/` both ask for `picks/v3/…` before falling back to the
+`run`'s own choice — one extra request, cached like the rest.
+
+- a `best` opens the level, with a chip saying **human pick** (or **fitted**),
+  and the engine's own answer one press away — never hidden, because a page that
+  quietly shows something other than what the engine computed is a page that
+  cannot be trusted about anything;
+- `valid` entries do not change what opens. They populate the category, and the
+  count appears on the filter so you can see there is something to load;
+- `rejected` entries are not offered by any loader, and are shown only when the
+  rejected filter is picked on purpose;
+- a stale entry — `engineCommit` or `runComputedAt` no longer matching the shelf
+  — is listed, greyed, and not applied. An extension and an angle mean something
+  only against the checkpoint they were measured on;
+- with no Worker configured none of this happens and both pages behave exactly
   as they do today. The shelf has always been optional and stays optional.
 
 `/mxn/ks/` needs no change at all: it lists `run/v3/<hand-dir>/<m>x<n>/`
-prefixes explicitly (`listRuns` in `src/mxn-ks/shelf.ts`), so a `best/`
-namespace is invisible to it. `parseRunKey` returns null for a `best/…` key, so
+prefixes explicitly (`listRuns` in `src/mxn-ks/shelf.ts`), so a `picks/`
+namespace is invisible to it. `parseRunKey` returns null for a `picks/…` key, so
 even a future full-catalogue walk skips them rather than mis-reading them.
 
 ### Saving with nothing configured
 
 The lab's discipline, kept: **the local copy is written first and the network is
-an addition, never a replacement.** A pick is stored in `localStorage` and in
-the exported `.fit.json` whichever way the save goes, so a wrong URL or a bad
+an addition, never a replacement.** A judgement is stored in `localStorage` and
+in the exported `.fit.json` whichever way the save goes, so a wrong URL or a bad
 token loses the file, not the decision. The button reports which of the two
 happened rather than one "Saved".
 
 ### What it costs to build
 
-Three small changes, all of them in code that already exists:
-
 | where | change |
 | --- | --- |
-| `worker-api/src/index.ts` | `cacheKey(kind: "run" \| "trace" \| "best", …)` with `wanted = kind === "trace" ? 6 : 5`, and one more route line beside `/cache/run/`. Storage, catalogue, auth, CORS and the size ceiling are all kind-agnostic already |
-| `src/mxn-lab/cache.ts` | a `BestArtifact` type, `bestKey()`, `parseBestKey()`, and `getBest`/`putBest`/`hasBest` on the client, in the shape of the three pairs above them |
+| `worker-api/src/index.ts` | `cacheKey(kind: "run" \| "trace" \| "picks", …)` with `wanted = kind === "trace" ? 6 : 5`, one more route line beside `/cache/run/`, and one `verdict` filter in `listSolutions`. Storage, catalogue, auth, CORS and the size ceiling are all kind-agnostic already |
+| `worker-api/migrations/0003_verdict.sql` | the three columns and the index above, run once by hand as `0001` and `0002` were |
+| `src/mxn-lab/cache.ts` | a `PicksArtifact` type, `picksKey()`, `parsePicksKey()`, `getPicks`/`putPicks`/`hasPicks`, and the five invariants enforced in one `mergeJudgement()` |
 | `src/mxn-lab/weave-studio.tsx` | prefer a `best` over the run's own pick, and the chip that says so |
 
-No migration: with R2 bound it is a new key prefix, and on D1 `cache_entries` is
-keyed by the same opaque string. Reads stay public, writes stay token-gated.
+No cache migration: with R2 bound it is a new key prefix, and on D1
+`cache_entries` is keyed by the same opaque string. Reads stay public, writes
+stay token-gated.
 
 ---
 
@@ -511,7 +607,17 @@ invisible at true scale and the panel would otherwise be a picture of nothing.
 
 **Solutions, sorted.** The fitted ring against every valid cell of the engine's
 own grid, columns for extensions, angle, all the lengths, neighbour Δ, spread,
-gap min/max and margin. Headers sort.
+gap min/max and margin. Headers sort. Above them the **source filter** — `all ·
+fitted · grid cells · ✓ human valid · ★ best · ✗ rejected` — is how the valid
+category is loaded: the last three read `picks/v3/…` and pour those rings into
+the same columns under the same sort, so a human-blessed category is ranked by
+neighbour length exactly as a machine-generated one is. Each carries its count,
+so an empty category is visibly empty rather than an unhelpfully short list.
+
+**Save a judgement to the shelf.** The three keys this parameter set has on the
+shelf, then the verdict — `✓ valid`, `★ best`, `✗ rejected` — a chooser, a note,
+and the artifact body as it would be written, so what the button does is on
+screen before it is pressed.
 
 **Export.** What the batch has written, one line per parameter set, with the
 before → after on each. A refusal is a red line that names what stopped it.
@@ -555,8 +661,9 @@ Small, because nearly all of it already exists.
 | `src/mxn-fit/fit.css` | its stylesheet, importing `../mxn-lab/preflight.css` |
 | `src/mxn-fit/solve.ts` | the solver and the ranking. Pure functions over `TraceInputs`, so it runs in a node check with no browser |
 | `public/mxn/py/bridge.py` | one new function (below) |
-| `src/mxn-lab/cache.ts` | the `best` artifact — type, key, and three client methods ([§ Saving a pick](#4--saving-a-pick-bestv3)) |
-| `worker-api/src/index.ts` | one more kind in `cacheKey()` and one more route line |
+| `src/mxn-lab/cache.ts` | the `picks` artifact — type, key, client methods and `mergeJudgement()` ([§ Saving a judgement](#4--saving-a-judgement-picksv3)) |
+| `worker-api/src/index.ts` | one more kind in `cacheKey()`, one route line, one `verdict` filter |
+| `worker-api/migrations/0003_verdict.sql` | three columns and an index on `solutions` |
 | `src/mxn-lab/weave-studio.tsx` | prefer a saved `best` over the run's own pick, and say so on screen |
 
 The solver needs nothing from Python: `TraceInputs` — `origins`, `directions`,
@@ -623,9 +730,13 @@ Answer these and the rest is typing.
 6. **Should the fitter be allowed off the ±20° angle window?** Everything above
    stays inside it. Outside is more room and less precedent.
 7. **Does a batch get to write `best` at all?** As drawn it writes `chosenBy:
-   "fitter"` for every set it fits and never overwrites a human pick. The
-   alternative is that only a human press ever writes the key, and an unattended
+   "fitter"` for every set it fits and never overwrites a human judgement. The
+   alternative is that only a human press ever writes one, and an unattended
    sweep leaves the shelf alone.
-8. **One pick per parameter set, or one per level?** The key is the whole
-   descriptor — ks and all — so `[1, 1, −1]` and `[1, 1]` are different shelves
-   and a pick for the first says nothing about the second.
+8. **One judgement set per parameter set, or one per level?** The key is the
+   whole descriptor — ks and all — so `[1, 1, −1]` and `[1, 1]` are different
+   shelves and a judgement about the first says nothing about the second.
+9. **Is `rejected` wanted, or only `valid` and `best`?** It is in because
+   without it the valid category cannot be loaded correctly — every load
+   re-offers the rings you already turned down. But it is a third button, and
+   three buttons is more than two.
