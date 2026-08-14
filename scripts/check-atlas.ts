@@ -30,7 +30,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
-  parseRunKey, parseTraceKey, runKey, traceKeyPath, type RunDescriptor,
+  parsePicksKey, parseRunKey, parseTraceKey, picksKey, runKey, traceKeyPath,
+  type RunDescriptor,
 } from "../src/mxn-lab/cache";
 import { MAX_PAIR_EXTENSION, worstPairs } from "../src/mxn-lab/search-cost";
 import { kLimits } from "../src/mxn-farm/plan";
@@ -112,10 +113,19 @@ DESCRIPTORS.forEach(descriptor => {
   check(`trace ${traceKey}`, trace?.descriptor, descriptor);
   check(`trace ${traceKey} level`, trace?.level, 3);
   check(`trace ${traceKey} band`, trace?.band, "v");
+
+  // The judgements ride the run's own grammar under their own kind, so the
+  // pair has to invert the same way run keys do.
+  check(`picks/${picksKey(descriptor)}`,
+    parsePicksKey(`picks/${picksKey(descriptor)}`)?.descriptor, descriptor);
 });
 
 ok("a trace key is not a run key", parseRunKey(`trace/${traceKeyPath(DESCRIPTORS[0], 1, "h")}`) === null);
 ok("a run key is not a trace key", parseTraceKey(runKey(DESCRIPTORS[0])) === null);
+ok("a picks key is not a run key — a catalogue walk skips them",
+  parseRunKey(`picks/${picksKey(DESCRIPTORS[0])}`) === null);
+ok("a picks key with a trace tail is refused",
+  parsePicksKey(`picks/${traceKeyPath(DESCRIPTORS[0], 1, "h")}`) === null);
 ok("a short key is refused", parseRunKey("v3/lh-cw/2x2/1") === null);
 ok("a bad hand is refused", parseRunKey("v3/xx-cw/2x2/1/s1-eauto-b400000") === null);
 ok("a bad size is refused", parseRunKey("v3/lh-cw/2xx/1/s1-eauto-b400000") === null);

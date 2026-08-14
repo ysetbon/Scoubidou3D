@@ -9,7 +9,8 @@
  *   /cache      holds computed geometry: a run's whole result, and one level's
  *               one band traced. Written by /mxn/gpu/, read by /mxn/ so a page
  *               that would have spent twenty seconds in Pyodide spends one
- *               fetch instead.
+ *               fetch instead. A third kind, picks, holds what a person said
+ *               about a parameter set's rings — written by /mxn/fit/.
  *   /farm       the queue /mxn/gpu/ works through, so an hours-long sweep can
  *               be closed, reopened, resumed and split across machines.
  *
@@ -149,8 +150,8 @@ const SEG_FLAGS = /^s[01]-e(auto|\d{1,4})-b\d{1,10}$/;
 const SEG_LEVEL_BAND = /^L\d{1,3}-[hv]$/;
 
 /** The storage key for a validated cache path, or null if it is not one. */
-function cacheKey(kind: "run" | "trace", segments: string[]): string | null {
-  const wanted = kind === "run" ? 5 : 6;
+function cacheKey(kind: "run" | "trace" | "picks", segments: string[]): string | null {
+  const wanted = kind === "trace" ? 6 : 5;
   if (segments.length !== wanted) return null;
   const [version, handDirection, size, ks, flags, levelBand] = segments;
   if (!SEG_VERSION.test(version)) return null;
@@ -596,14 +597,32 @@ async function createSolution(request: Request, env: Env) {
   const refs = Number.isInteger(body.refs as number)
     ? Math.max(0, body.refs as number) : 0;
 
+  // A verdict is a person's word about a ring, so a row may only carry one
+  // with its author attached: an unattended writer has no name to give, and
+  // that is the enforcement, not a policy. NULL is simply "not judged", which
+  // is what every row was before these columns existed.
+  const verdict = ["valid", "best", "rejected"].includes(body.verdict as string)
+    ? body.verdict as string : null;
+  if (body.verdict !== undefined && body.verdict !== null && !verdict) {
+    return json({ error: "verdict must be valid, best or rejected" }, 400, request, env);
+  }
+  const verdictBy = typeof body.verdict_by === "string" && body.verdict_by
+    ? (body.verdict_by as string).slice(0, 64) : null;
+  if (verdict && !verdictBy) {
+    return json({ error: "a verdict needs verdict_by — a verdict has one author, and it is a person" },
+      400, request, env);
+  }
+  const source = ["fitter", "engine", "grid", "hand"].includes(body.source as string)
+    ? body.source as string : null;
+
   await env.DB.prepare(
     `INSERT OR REPLACE INTO solutions
        (id, created_at, hand, direction, m, n, level, k, ks_prefix,
         parent_strands, solution_strands, h_ext, v_ext, total_ext,
         audit, healthy, solution_index, kind, band, deficit, refs,
-        rating, rated_at)
+        rating, rated_at, verdict, verdict_by, verdict_at, source)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
-             ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)`
+             ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)`
   ).bind(
     id,
     (body.created_at as string) || new Date().toISOString(),
@@ -622,6 +641,9 @@ async function createSolution(request: Request, env: Env) {
     kind, band, deficit, refs,
     Number.isInteger(body.rating as number) ? body.rating : null,
     Number.isInteger(body.rating as number) ? new Date().toISOString() : null,
+    verdict, verdictBy,
+    verdict ? ((body.verdict_at as string) || new Date().toISOString()) : null,
+    source,
   ).run();
 
   return json({ id }, 201, request, env);
@@ -650,6 +672,13 @@ async function listSolutions(request: Request, env: Env) {
     where.push(`band = ?${binds.length + 1}`);
     binds.push(band);
   }
+  // "Every valid ring anyone has blessed, across sizes" — the query the picks
+  // artifact cannot answer, which is why the verdict is mirrored onto the row.
+  const verdict = params.get("verdict");
+  if (verdict && ["valid", "best", "rejected"].includes(verdict)) {
+    where.push(`verdict = ?${binds.length + 1}`);
+    binds.push(verdict);
+  }
 
   const limit = Math.min(Math.max(Number(params.get("limit")) || 100, 1), 500);
   // Closed rings sort shortest first; near-misses sort by how near they came,
@@ -660,7 +689,8 @@ async function listSolutions(request: Request, env: Env) {
     : "total_ext ASC, created_at ASC";
   const rows = await env.DB.prepare(
     `SELECT id, created_at, m, n, level, k, ks_prefix, h_ext, v_ext, total_ext,
-            audit, healthy, solution_index, kind, band, deficit, refs, rating
+            audit, healthy, solution_index, kind, band, deficit, refs, rating,
+            verdict, verdict_by, verdict_at, source
        FROM solutions
        ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
        ORDER BY ${order}
@@ -731,8 +761,10 @@ export default {
       }
 
       // ---- the cache -----------------------------------------------------
-      if (path.startsWith("/cache/run/") || path.startsWith("/cache/trace/")) {
-        const kind = path.startsWith("/cache/run/") ? "run" as const : "trace" as const;
+      if (path.startsWith("/cache/run/") || path.startsWith("/cache/trace/")
+          || path.startsWith("/cache/picks/")) {
+        const kind = path.startsWith("/cache/run/") ? "run" as const
+          : path.startsWith("/cache/trace/") ? "trace" as const : "picks" as const;
         const rest = path.slice(`/cache/${kind}/`.length).split("/");
         const key = cacheKey(kind, rest);
         if (!key) return json({ error: "bad cache key" }, 400, request, env, openRoute);

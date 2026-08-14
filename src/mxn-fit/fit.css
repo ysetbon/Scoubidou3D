@@ -152,6 +152,38 @@ tbody tr.engine td { color: var(--muted); }
 .level .ring canvas { height: 170px; }
 .level .ring figcaption var { color: var(--blue); }
 
+/* The manual fit. Slider rows read like the length bars above them: a label
+ * column, the control, the number, and what it measures as. */
+.mrow { display: grid; grid-template-columns: 150px 1fr 92px 130px; gap: 10px; align-items: center; margin-bottom: 8px; font: 700 10.5px/1.2 monospace; }
+.mrow i { color: var(--muted); font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mrow b { color: var(--ink); }
+.mrow b.bad { color: var(--red); }
+.mrow input[type=range] { width: 100%; accent-color: var(--ink); }
+.mnum { width: 92px; padding: 5px 7px; background: var(--card); border: 1px solid var(--ink); font-size: 12px; }
+@media (max-width: 720px) { .mrow { grid-template-columns: 90px 1fr 80px; } .mrow b { display: none; } }
+
+.mread { display: flex; flex-wrap: wrap; gap: 16px; margin: 12px 0 0; padding-top: 10px; border-top: 1px dashed var(--line); font: 700 10.5px/1 monospace; color: var(--muted); }
+.mread b { color: var(--ink); }
+.mread b.good { color: var(--green); }
+.mread b.bad { color: var(--red); }
+
+.mwarn { margin: 10px 0 0; font: 700 10.5px/1.5 monospace; color: var(--red); }
+
+.mbtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.mbtns button { padding: 7px 12px; background: var(--card); border: 1px solid var(--ink); font: 700 10.5px/1 monospace; letter-spacing: .04em; text-transform: uppercase; }
+.mbtns .mgo { background: var(--ink); color: var(--paper); }
+
+.follow { padding: 5px 10px; background: var(--card); border: 1px solid var(--line); font: 700 10px/1.2 monospace; }
+.follow[aria-pressed=true] { border-color: var(--ink); background: var(--acid); }
+
+/* The verdict buttons. A person's word, so they read as three distinct acts
+ * rather than one button with three labels. */
+.verdicts { display: flex; gap: 8px; margin-bottom: 10px; }
+.verdicts .verdict { flex: 1; padding: 9px 0; background: var(--card); border: 1px solid var(--ink); font: 800 11px/1 monospace; letter-spacing: .04em; }
+.verdicts .verdict.good { color: var(--green); }
+.verdicts .verdict.star { background: var(--acid); }
+.verdicts .verdict.no { color: var(--red); }
+
 /* The baseline check failing means the page is describing a different ring
  * from the one the engine made. It gets the loudest thing on the page. */
 .alarm {
