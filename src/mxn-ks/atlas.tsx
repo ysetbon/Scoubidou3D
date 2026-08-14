@@ -50,6 +50,9 @@ import {
   emptyShelf, fixtureShelf, liveShelf,
   type AtlasDump, type Shelf, type ShelfSummary,
 } from "./shelf";
+import {
+  FIXTURE_KEY, forgetSnapshot, readSnapshot, savedWhen, snapshotRecords, writeSnapshot,
+} from "./snapshot";
 
 const SIDES = [1, 2, 3, 4];
 
@@ -267,6 +270,24 @@ function RingNote({ state, what }: { state: "idle" | "loading" | "missing"; what
 
 // ---------------------------------------------------------------------------
 
+/**
+ * A single-file build's own copy of the shelf, when this is one.
+ *
+ * artifacts/build.mjs inlines the dump into the page. Such a build has no
+ * server to fetch from and carries its shelf with it, so it neither needs the
+ * saved snapshot nor has anything to say about the site's — see the guard in
+ * KAtlas.
+ */
+function inlinedDump(): AtlasDump | null {
+  return (window as { __KS_ATLAS_DUMP?: AtlasDump }).__KS_ATLAS_DUMP ?? null;
+}
+
+/** The one line the header puts on a finished read. */
+function readingOf(levels: number, runs: number) {
+  if (!levels) return "nothing on this shelf yet — sweep some sizes at /mxn/gpu/";
+  return `${levels} level${levels === 1 ? "" : "s"} across ${runs} run${runs === 1 ? "" : "s"}`;
+}
+
 export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}) {
   const [base, setBase] = useState(() => readCacheBase("atlas"));
   const [useFixture, setUseFixture] = useState(() => {
@@ -277,11 +298,43 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
       return false;
     }
   });
-  const [dump, setDump] = useState<AtlasDump | null>(null);
-  const [summary, setSummary] = useState<ShelfSummary | null>(null);
-  const [records, setRecords] = useState<AtlasRecord[]>([]);
+
+  /**
+   * Where this page is reading from, as the snapshot keys it.
+   *
+   * A tick of the checkbox or a different Worker URL is a different source, and
+   * a read of one of them says nothing about the other.
+   */
+  const sourceKey = useFixture ? FIXTURE_KEY : base;
+
+  /**
+   * Whether this build has anything to remember.
+   *
+   * A single-file build carries the shelf inside the page, so it has nothing to
+   * save and no need of what is saved — and the site's snapshot, taken off a
+   * dump that may not be this one, is not a thing it should be reading.
+   */
+  const [remembers] = useState(() => !inlinedDump());
+
+  /**
+   * The last read of this same source, taken at the first render.
+   *
+   * Read here rather than in an effect so the grid is drawn full on the first
+   * paint; a restore arriving a tick later would flash an empty page on every
+   * visit, which is the thing this is here to stop.
+   */
+  const [restored] = useState(() => (remembers ? readSnapshot(sourceKey) : null));
+
+  const [dump, setDump] = useState<AtlasDump | null>(() => restored?.dump ?? null);
+  const [summary, setSummary] = useState<ShelfSummary | null>(() => restored?.summary ?? null);
+  const [records, setRecords] = useState<AtlasRecord[]>(
+    () => (restored ? snapshotRecords(restored) : []));
+  /** True while what is on screen is the saved read rather than a fresh one. */
+  const [fromStorage, setFromStorage] = useState(() => restored?.savedAt ?? "");
   const [angles, setAngles] = useState<Record<string, Partial<Record<Band, BandStat>>>>({});
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState(() => (restored
+    ? `${readingOf(snapshotRecords(restored).length, restored.summary.runs)} · saved earlier`
+    : ""));
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -309,7 +362,7 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
     if (!useFixture || dump) return;
     let live = true;
     const url = `${import.meta.env.BASE_URL}mxn/ks-atlas.json`;
-    const inlined = (window as { __KS_ATLAS_DUMP?: AtlasDump }).__KS_ATLAS_DUMP;
+    const inlined = inlinedDump();
     if (inlined) {
       setDump(inlined);
       return;
@@ -335,7 +388,45 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
     return liveShelf(createCache({ base, hostId: "atlas" }));
   }, [useFixture, dump, base]);
 
-  const load = useCallback(async () => {
+  /**
+   * Put the shelf on screen.
+   *
+   * Restores the last read of this same source unless asked for a fresh one,
+   * which is what makes a second visit free. `fresh` is the reload button and
+   * nothing else: everything else on the page filters records that are already
+   * here, and a filter is not a reason to read Cloudflare again.
+   */
+  const load = useCallback(async (fresh = false) => {
+    if (fresh) {
+      if (remembers) forgetSnapshot();
+      setFromStorage("");
+      // The dump IS the fixture shelf, so re-reading that source means fetching
+      // it again. Dropping it puts the effect above back to work, and the load
+      // this one would have done happens when it lands.
+      if (useFixture && dump) {
+        setDump(null);
+        setStatus("re-reading the bundled dump…");
+        return;
+      }
+    } else if (remembers) {
+      const held = readSnapshot(sourceKey);
+      if (held) {
+        const rows = snapshotRecords(held);
+        setSummary(held.summary);
+        setRecords(rows);
+        setFromStorage(held.savedAt);
+        setProblem("");
+        setStatus(`${readingOf(rows.length, held.summary.runs)} · saved earlier`);
+        return;
+      }
+    }
+    // Nothing to read yet: the shelf is the placeholder emptyShelf while the
+    // dump is in flight, and loading it would report an empty shelf as an
+    // answer — and save that answer.
+    if (useFixture && !dump) {
+      setStatus("loading the bundled dump…");
+      return;
+    }
     setBusy(true);
     setProblem("");
     setStatus("reading the shelf…");
@@ -346,9 +437,20 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
       const rows = await shelf.records((done, total) => setProgress({ done, total }));
       setRecords(rows);
       setProgress(null);
-      setStatus(rows.length
-        ? `${rows.length} level${rows.length === 1 ? "" : "s"} across ${info.runs} run${info.runs === 1 ? "" : "s"}`
-        : "nothing on this shelf yet — sweep some sizes at /mxn/gpu/");
+      setFromStorage("");
+      setStatus(readingOf(rows.length, info.runs));
+      // An empty shelf is not worth remembering: it is usually a Worker that
+      // was unreachable or a source not configured yet, and both are answered
+      // by asking again rather than by keeping the nothing they returned.
+      if (rows.length && remembers) {
+        writeSnapshot({
+          version: CACHE_VERSION,
+          key: sourceKey,
+          savedAt: new Date().toISOString(),
+          summary: info,
+          ...(useFixture && dump ? { dump } : { records: rows }),
+        });
+      }
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error));
       setStatus("");
@@ -356,7 +458,7 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
     } finally {
       setBusy(false);
     }
-  }, [shelf]);
+  }, [shelf, sourceKey, useFixture, dump, remembers]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -628,6 +730,13 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
 
   // --- render -------------------------------------------------------------
 
+  // Said whenever the numbers came out of this browser rather than off the
+  // source. The page is not lying either way, but a reader deciding whether a
+  // run they just swept is missing needs to know which of the two they have.
+  const savedLine = fromStorage
+    ? [`kept in this browser · saved ${savedWhen(fromStorage)} — reload to read again`]
+    : [];
+
   const chip = (() => {
     if (problem) return { kind: "is-warn", lines: [problem] };
     if (useFixture) {
@@ -636,6 +745,7 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
         lines: [
           `bundled dump${summary?.label ? ` · ${summary.label}` : ""}`,
           summary ? `${summary.runs} runs · ${summary.traces} bands · newest ${summary.newest.slice(0, 10)}` : "loading…",
+          ...savedLine,
         ],
       };
     }
@@ -647,6 +757,7 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
         summary
           ? `${summary.runs} runs on the shelf${summary.newest ? ` · newest ${summary.newest.slice(0, 10)}` : ""}`
           : "reading…",
+        ...savedLine,
         ...(summary?.truncated.length
           ? [`⚠ ${summary.truncated.length} prefix(es) came back full — the listing may be short`]
           : []),
@@ -707,7 +818,9 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
               </span>
             </label>
             <div className="atlas-modes">
-              <button type="button" onClick={() => void load()} disabled={busy}>reload</button>
+              <button type="button" onClick={() => void load(true)} disabled={busy}>
+                reload
+              </button>
             </div>
             {progress && (
               <div className="atlas-progress">

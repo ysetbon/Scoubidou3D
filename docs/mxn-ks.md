@@ -71,6 +71,43 @@ k. They are not equivalent observations either: a k at level 3 is conditioned on
 the whole prefix that reached it, which is why the page defaults to L1 only and
 says why in the sidebar.
 
+### It reads once, and then remembers
+
+Reading the shelf is the expensive thing the page does — against the live Worker
+it is 32 catalogue requests and then one fetch per run, and even the bundled dump
+is 76 kB before a single cell can be drawn — and none of it changes between two
+visits to the same source. So the read is kept in `localStorage`
+(`src/mxn-ks/snapshot.ts`) and a revisit draws the whole grid on the first paint
+having asked nobody anything. Not a cookie: a cookie is capped near 4 kB and is
+re-sent to the server on every request for the site, and what is stored is a
+shelf.
+
+**One slot, keyed by where it was read from.** That key is the design. Ticking
+*read the bundled dump instead* puts the same question to a different source, the
+key stops matching, and the page reads for real. So exactly two things cost a
+fetch: that tick, and the **reload** button — which forgets the slot first, and on
+the bundled source drops the dump so it is fetched again rather than re-folded.
+
+What that buys is also what to watch for: after sweeping new runs at `/mxn/gpu/`,
+the atlas keeps showing the read it already had until reload is pressed. It says
+so rather than implying otherwise — the sidebar chip carries `kept in this browser
+· saved <when> — reload to read again`, and the header says `saved earlier`.
+
+Four things are deliberately *not* kept:
+
+- **an empty read**, which is usually an unreachable Worker or a URL not typed
+  yet. Both are answered by asking again, not by remembering the nothing.
+- **a read over 2 MB of JSON**, so one enormous shelf cannot crowd the lab's own
+  settings out of a 5 MB origin. Today's dump is 76 kB.
+- **the geometry dump**, at 2 MB the wrong size for storage — and the browser's
+  own HTTP cache already serves the repeat.
+- **anything at all, in a single-file build**, which carries its shelf inlined in
+  the page and has no business reading a snapshot taken off a different dump.
+
+A snapshot whose `CACHE_VERSION`, key or shape does not match is treated as
+absent. The failure mode of one that cannot be trusted is to spend the fetch it
+was there to save.
+
 ## The grid's rows, and the step, come from the shelf
 
 Both of these were constants once, and a real shelf caught both.
@@ -355,6 +392,7 @@ So a shelf of hundreds of runs lands in a file measured in tens of kB.
 | `src/mxn-ks/model.ts` | **pure, React-free.** Records, the census derivation, the fit. Imported by the page, the dump script and the check |
 | `src/mxn-ks/shelf.ts` | the `Shelf` interface, with a live and a fixture implementation. The page never learns which it has |
 | `src/mxn-ks/atlas.tsx` | the page |
+| `src/mxn-ks/snapshot.ts` | the kept read: one `localStorage` slot, keyed by the source it came from |
 | `src/mxn-ks/atlas.css` | the lab's tokens, copied as `farm.css` copies them |
 | `src/mxn-ks/mock-atlas.tsx` | the same page, forced onto the fixture |
 | `scripts/ks-dump.ts` | Worker or directory → `public/mxn/ks-atlas.json` and `…-geometry.json` |
