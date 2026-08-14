@@ -13,13 +13,14 @@ hands back **a file** — the best ring those parameters admit, with the arms of
 each band made exactly the same length, without anybody clicking through a
 census to find it.
 
-Three jobs, in the order they run:
+Four jobs, in the order they run:
 
 | | | |
 | --- | --- | --- |
 | **1 · Export** | best solution for any `k, m, n, lh/rh`, one set or a whole sweep, written to disk | [§ Export](#1--export) |
 | **2 · Fit** | pair extension and angle moved together until neighbouring arms are the same length | [§ The fit](#2--the-fit) |
 | **3 · Sort** | rank what came out by how well neighbouring lengths agree — and it still means something *after* a fit | [§ The sort](#3--the-sort) |
+| **4 · Save** | put the chosen ring on the v3 shelf as **the best, picked by a human**, so every page reads it back | [§ Saving a pick](#4--saving-a-pick-bestv3) |
 
 ---
 
@@ -172,6 +173,9 @@ and the queue walks all of them, reading the farm cache first
 ```
 manifest.csv                 one row per parameter set, with every metric below
 ```
+
+**And onto the shelf.** A file is yours alone; the same pick also goes back to
+the Worker so every page finds it — see [§ Saving a pick](#4--saving-a-pick-bestv3).
 
 **Without touching the page at all.** Every control is in the URL, so the export
 is scriptable and a result is a link someone can be sent:
@@ -335,6 +339,148 @@ And on its own, with no fitting at all, it recovers 2.38 px → 0.37 px on the
 
 ---
 
+## 4 · Saving a pick: `best/v3/…`
+
+A downloaded file is yours. It is not, on its own, an answer anybody else's page
+can find. So the ring the fitter settles on — or the one **you** settle on after
+overruling it — goes back onto the same Cloudflare shelf `/mxn/gpu/` fills and
+`/mxn/` reads, under the same `v3`, marked as chosen by a person.
+
+### Where it goes
+
+A **third artifact kind beside `run` and `trace`**, on the key grammar those two
+already use, at the same cache version:
+
+```
+run/v3/lh-cw/2x1/1/s1-eauto-b400000      what the engine computed
+trace/v3/lh-cw/2x1/1/s1-eauto-b400000/L1-v   one band's census
+best/v3/lh-cw/2x1/1/s1-eauto-b400000     ← the pick. One per parameter set
+```
+
+Same five segments as a `run`, same `descriptorPath()`, same version in the key
+rather than on the far side — so a pick is addressed by exactly the thing that
+makes it meaningful, and a pick made against a different engine cannot be
+mistaken for one made against this one.
+
+### Why not just the solutions table
+
+Because they answer different questions, and both should be written:
+
+| | `solutions` (D1) | `best/v3/…` (shelf) |
+| --- | --- | --- |
+| holds | every ring anyone ever starred, with its rating | **one** ring per parameter set |
+| answers | "what have people judged, and how did it score?" | "what should this page open on?" |
+| written by | the lab's ⭐, and the fitter | the fitter's **Save as best** |
+| read by | `/mxn/rate/`, `/mxn/semi/` | `/mxn/`, `/mxn/fit/`, and anything else that asks the shelf |
+| shape | append-only, many rows per size | last write wins, one key |
+
+Pressing **Save as best** does both: a row in `solutions` so the judgement is on
+the record and rateable, and the `best/v3/…` key so it is the answer. The
+existing star on `/mxn/` is untouched.
+
+### What is in it
+
+The pick, not the ring — about a kilobyte. `(extensions, angle)` per band per
+level is enough to rebuild the exact geometry through the same
+`NX.apply_solution` path the fit itself used, and the `run` artifact beside it
+already holds everything else:
+
+```json
+{
+  "kind": "best",
+  "cacheVersion": "v3",
+  "descriptor": {"m": 2, "n": 1, "ks": [1], "hand": "lh", "direction": "cw",
+                 "shortArms": true, "step": "auto", "budget": 400000},
+  "chosenBy": "human",
+  "chosenAt": "2026-08-14T09:12:44Z",
+  "chooser": "ysetbon",
+  "note": "flush, and the widest gap margin of the three I looked at",
+  "engineCommit": "984d9ed",
+  "runComputedAt": "2026-08-12T18:03:10Z",
+  "levels": [{
+    "level": 1,
+    "h": {"ext": [58.372], "angle": -156.43},
+    "v": {"ext": [84.368, 34.220], "angle": 126.81},
+    "metrics": {"neighbour_delta": 0.0, "spread": 0.0, "gap_margin": 3.771},
+    "audit": {"crossings": 8, "expected": 8, "stray": 0, "broken": 0}
+  }],
+  "policy": {"target": "flush", "ext": "continuous", "angle": "window",
+             "tie": "margin"},
+  "supersedes": {"chosenBy": "fitter", "chosenAt": "2026-08-14T09:04:02Z"},
+  "strands": null
+}
+```
+
+`strands` is optional and normally null. Set it and the artifact carries the
+whole ring, so `/app/` can open the pick with no engine anywhere in the loop —
+at the cost of the artifact being a hundred times bigger. The fitter offers it
+as a checkbox and defaults it off.
+
+### Who outranks whom
+
+Three things can name a best for a parameter set, and they are ordered:
+
+```
+human  >  fitter  >  engine
+```
+
+- **engine** — no `best` key exists; the `run` artifact's own choice stands. This
+  is every parameter set today.
+- **fitter** — the fit ran unattended, in a batch, and wrote its answer. Better
+  than nothing, unreviewed.
+- **human** — somebody looked at it and pressed the button. Nothing overwrites a
+  human pick automatically: a batch that would have written `fitter` over one
+  skips it, says so in the log, and the operator can force it with an explicit
+  *overwrite human picks* switch.
+
+`chooser` is a **self-declared label, not an identity**. The Worker has one
+`ADMIN_TOKEN`; holding it is the only thing that is actually checked. The field
+is there so a shelf shared between two people can be read, not so it can be
+policed, and the doc should not pretend otherwise.
+
+### How a pick is read back
+
+`/mxn/` and `/mxn/fit/` both ask for `best/v3/…` before `run/v3/…` — one extra
+request, cached like the rest. If one is found:
+
+- the level opens on that ring rather than on the engine's, with a chip that
+  says **human pick** (or **fitted**), and the engine's own answer one press
+  away — never hidden, because a page that quietly shows something other than
+  what the engine computed is a page that cannot be trusted about anything;
+- if `engineCommit` or `runComputedAt` disagree with the run now on the shelf,
+  the pick is shown as **stale** and **not applied**. An extension and an angle
+  mean something only against the checkpoint they were measured on;
+- with no Worker configured, none of this happens and both pages behave exactly
+  as they do today. The shelf has always been optional and stays optional.
+
+`/mxn/ks/` needs no change at all: it lists `run/v3/<hand-dir>/<m>x<n>/`
+prefixes explicitly (`listRuns` in `src/mxn-ks/shelf.ts`), so a `best/`
+namespace is invisible to it. `parseRunKey` returns null for a `best/…` key, so
+even a future full-catalogue walk skips them rather than mis-reading them.
+
+### Saving with nothing configured
+
+The lab's discipline, kept: **the local copy is written first and the network is
+an addition, never a replacement.** A pick is stored in `localStorage` and in
+the exported `.fit.json` whichever way the save goes, so a wrong URL or a bad
+token loses the file, not the decision. The button reports which of the two
+happened rather than one "Saved".
+
+### What it costs to build
+
+Three small changes, all of them in code that already exists:
+
+| where | change |
+| --- | --- |
+| `worker-api/src/index.ts` | `cacheKey(kind: "run" \| "trace" \| "best", …)` with `wanted = kind === "trace" ? 6 : 5`, and one more route line beside `/cache/run/`. Storage, catalogue, auth, CORS and the size ceiling are all kind-agnostic already |
+| `src/mxn-lab/cache.ts` | a `BestArtifact` type, `bestKey()`, `parseBestKey()`, and `getBest`/`putBest`/`hasBest` on the client, in the shape of the three pairs above them |
+| `src/mxn-lab/weave-studio.tsx` | prefer a `best` over the run's own pick, and the chip that says so |
+
+No migration: with R2 bound it is a new key prefix, and on D1 `cache_entries` is
+keyed by the same opaque string. Reads stay public, writes stay token-gated.
+
+---
+
 ## The UI, panel by panel
 
 Same language as `/mxn/`: drafting paper, one palette, black rule, monospace
@@ -409,6 +555,9 @@ Small, because nearly all of it already exists.
 | `src/mxn-fit/fit.css` | its stylesheet, importing `../mxn-lab/preflight.css` |
 | `src/mxn-fit/solve.ts` | the solver and the ranking. Pure functions over `TraceInputs`, so it runs in a node check with no browser |
 | `public/mxn/py/bridge.py` | one new function (below) |
+| `src/mxn-lab/cache.ts` | the `best` artifact — type, key, and three client methods ([§ Saving a pick](#4--saving-a-pick-bestv3)) |
+| `worker-api/src/index.ts` | one more kind in `cacheKey()` and one more route line |
+| `src/mxn-lab/weave-studio.tsx` | prefer a saved `best` over the run's own pick, and say so on screen |
 
 The solver needs nothing from Python: `TraceInputs` — `origins`, `directions`,
 `pairIndices`, `targets`, the gap bounds — is what `bridge.trace_plan` already
@@ -473,3 +622,10 @@ Answer these and the rest is typing.
    swept; 4×4 already refuses a trace, and 5×5 has never been run.
 6. **Should the fitter be allowed off the ±20° angle window?** Everything above
    stays inside it. Outside is more room and less precedent.
+7. **Does a batch get to write `best` at all?** As drawn it writes `chosenBy:
+   "fitter"` for every set it fits and never overwrites a human pick. The
+   alternative is that only a human press ever writes the key, and an unattended
+   sweep leaves the shelf alone.
+8. **One pick per parameter set, or one per level?** The key is the whole
+   descriptor — ks and all — so `[1, 1, −1]` and `[1, 1]` are different shelves
+   and a pick for the first says nothing about the second.

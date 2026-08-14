@@ -151,6 +151,19 @@ td.num { font-family: monospace; }
 .legend span { display: flex; align-items: center; gap: 5px; color: var(--muted); }
 .legend i { width: 10px; height: 10px; display: block; border: 1px solid rgba(0,0,0,.25); }
 
+.keyline { display: flex; align-items: baseline; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.keyline span { font: 800 9.5px/1 monospace; letter-spacing: .1em; text-transform: uppercase;
+  border: 1px solid var(--ink); padding: 3px 5px; }
+.keyline code { font: 700 12px/1.4 monospace; word-break: break-all; }
+.keyline em { margin-left: auto; font: 400 10.5px/1.3 Arial, sans-serif; color: var(--muted); font-style: normal; white-space: nowrap; }
+.keyline em.ok { color: var(--blue); font-weight: 700; }
+.keyline.dim span { border-color: var(--line); color: var(--muted); }
+.keyline.dim code { color: var(--muted); font-weight: 400; }
+
+.body-preview {
+  font: 400 11px/1.6 monospace; margin: 0; padding: 12px 14px; overflow-x: auto;
+  background: var(--paper); border: 1px solid var(--line); color: var(--ink);
+}
 .log { font: 400 11.5px/1.9 monospace; margin: 0; }
 .log b { font-weight: 700; }
 .log .dim { color: var(--muted); }
@@ -391,6 +404,59 @@ td.num { font-family: monospace; }
 
     <!-- D ------------------------------------------------------------- -->
     <div class="panel">
+      <header>
+        <strong>Save this pick to the shelf</strong>
+        <span>one key per parameter set, beside the run it was fitted from</span>
+        <span class="spacer"></span>
+        <span class="chip soft">v3 · writes need the token</span>
+      </header>
+      <div class="body two">
+        <div>
+          <div class="keyline">
+            <span>best</span><code id="k-best">—</code>
+            <em class="ok">this pick — one per parameter set</em>
+          </div>
+          <div class="keyline dim">
+            <span>run</span><code id="k-run">—</code>
+            <em>what the engine computed · 2026-08-12 · 984d9ed</em>
+          </div>
+          <div class="keyline dim">
+            <span>trace</span><code id="k-trace">—</code>
+            <em>the band census this fit was solved on</em>
+          </div>
+          <p class="hint" style="margin:12px 0 10px">
+            Same five segments as a <code>run</code>, same <code>descriptorPath()</code>, same version in the key — so a
+            pick made against one engine can never be read as a pick made against another. <code>/mxn/</code> asks for
+            <b>best</b> before <b>run</b> and opens on it, labelled, with the engine's own answer one press away.
+            The body is the pick, not the ring — about a kilobyte:
+          </p>
+          <pre class="body-preview" id="artifact">—</pre>
+        </div>
+        <div>
+          <div class="field">
+            <label class="f">chosen by</label>
+            <div class="seg">
+              <button aria-pressed="false">fitter</button><button aria-pressed="true">best by human</button>
+            </div>
+          </div>
+          <div class="field"><label class="f">chooser — a label, not a login</label><input type="text" value="ysetbon"></div>
+          <div class="field"><label class="f">note</label><input type="text" value="flush, widest gap margin of the three"></div>
+          <label class="check"><input type="checkbox"> <span>embed the whole ring (≈100× bigger; opens in /app/ with no engine)</span></label>
+          <button class="go">Save as best by human</button>
+          <p class="hint">Written to <code>localStorage</code> and into the export first, then to the Worker. The button
+          reports which of the two happened, not one "Saved".</p>
+        </div>
+      </div>
+      <p class="note">
+        <em>human</em> outranks <em>fitter</em> outranks <em>engine</em>, and nothing overwrites a human pick on its
+        own — a batch that would have written its own answer over one skips it and says so in the log. A pick whose
+        <code>engineCommit</code> or run timestamp no longer matches the shelf is shown as <em>stale</em> and not
+        applied: an extension and an angle mean something only against the checkpoint they were measured on.
+      </p>
+    </div>
+
+    <!-- E ------------------------------------------------------------- -->
+    <div class="panel">
       <header><strong>Export</strong><span>what the batch has written so far</span><span class="spacer"></span><span class="chip soft">7 of 128</span><span class="chip" style="border-color:var(--red);color:var(--red)">drawn, not measured</span></header>
       <div class="body">
         <p class="log">
@@ -415,7 +481,8 @@ td.num { font-family: monospace; }
 <p class="foot">
   <b>Mock, not a page.</b> The sidebar, the batch tally, the ring-audit card and the export log are drawings — weaving
   a ring needs the engine, and nothing here talks to it. The V band, its 63 valid
-  cells, the exact-fit field, the length bars and the table are computed here from
+  cells, the exact-fit field, the length bars, the table, and the shelf keys and artifact body in
+  <i>Save this pick</i> are computed here from
   <code>mocks/fixtures/trace-plan-l1.json</code> — the payload <code>bridge.trace_plan</code> returned for L1 of a 2×1 —
   with the arithmetic of <code>mxn_trace.sweep_combo</code>. See <code>docs/mxn-fit.md</code>.
 </p>
@@ -569,6 +636,58 @@ document.getElementById("n-ang").textContent =
   px(enginePick.angle, 1) + "° → " + px(fit.angle, 1) + "°";
 document.getElementById("n-marg").textContent =
   px(enginePick.margin, 2) + " px from a bound becomes " + px(fit.margin, 2) + " px";
+
+/* ---- D · the shelf keys ------------------------------------------------
+   descriptorPath() and runKey() out of src/mxn-lab/cache.ts, so the keys on
+   screen are the keys the client would actually ask for. */
+(function keys() {
+  const D = { m: 2, n: 1, ks: [1], hand: "lh", direction: "cw",
+              shortArms: true, step: "auto", budget: 400000 };
+  const path = `${D.hand}-${D.direction}/${D.m}x${D.n}/${D.ks.join("_")}`
+    + `/s${D.shortArms ? 1 : 0}-e${D.step === "auto" ? "auto" : Math.trunc(D.step)}`
+    + `-b${Math.trunc(D.budget)}`;
+  const CACHE_VERSION = "v3";
+  document.getElementById("k-best").textContent = `/${CACHE_VERSION}/${path}`;
+  document.getElementById("k-run").textContent = `/${CACHE_VERSION}/${path}`;
+  document.getElementById("k-trace").textContent = `/${CACHE_VERSION}/${path}/L1-v`;
+
+  // The artifact body, built from the fit this page actually computed — so the
+  // numbers in the preview are the numbers that would be stored.
+  const round = (v, d) => Number(v.toFixed(d));
+  const hFit = (() => {                    // the H band's own fit, same solver
+    const b = BAND.h;
+    let best = null;
+    for (let a = b.windowLo; a <= b.windowHi + 1e-9; a += b.step) {
+      for (let star = 150; star <= 420; star += 0.5) {
+        const s = solve(b, a, star);
+        if (!s || s.off || s.r.verdict !== VALID || s.spread > 1e-6) continue;
+        const m = margin(b, s.r.gaps);
+        if (!best || m > best.m + 1e-9) best = { m, ext: s.ext, angle: a };
+      }
+    }
+    return best;
+  })();
+  const arr = (v, d) => "[" + v.map(e => round(e, d)).join(", ") + "]";
+  document.getElementById("artifact").textContent =
+`{ "kind": "best", "cacheVersion": "v3",
+  "descriptor": { "m": ${D.m}, "n": ${D.n}, "ks": [${D.ks}], "hand": "${D.hand}",
+                  "direction": "${D.direction}", "shortArms": true,
+                  "step": "auto", "budget": ${D.budget} },
+  "chosenBy": "human",  "chooser": "ysetbon",
+  "chosenAt": "2026-08-14T09:12:44Z",
+  "note": "flush, widest gap margin of the three",
+  "engineCommit": "984d9ed", "runComputedAt": "2026-08-12T18:03:10Z",
+  "levels": [
+    { "level": 1,
+      "h": { "ext": ${arr(hFit.ext, 3)}, "angle": ${round(hFit.angle, 2)} },
+      "v": { "ext": ${arr(fit.ext, 3)}, "angle": ${round(fit.angle, 2)} },
+      "metrics": { "neighbour_delta": 0.0, "spread": 0.0,
+                   "gap_margin": ${round(fit.margin, 3)} } } ],
+  "policy": { "target": "flush", "ext": "continuous",
+              "angle": "window", "tie": "margin" },
+  "supersedes": { "chosenBy": "fitter", "chosenAt": "2026-08-14T09:04:02Z" },
+  "strands": null }`;
+})();
 
 /* ---- A · the band ------------------------------------------------------- */
 (function drawBand() {
