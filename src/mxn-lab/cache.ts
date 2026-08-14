@@ -87,6 +87,110 @@ export type TraceArtifact = {
   census: unknown;
 };
 
+// --------------------------------------------------------------------------
+// The third artifact kind: what a PERSON said about a parameter set's rings.
+//
+// A run is what the engine computed and a trace is one band censused; a picks
+// artifact is every judgement anyone has made about that parameter set, on the
+// same key grammar and the same shelf (docs/mxn-fit.md § Saving a judgement).
+// One artifact per parameter set rather than one per verdict, because two keys
+// — one holding the best, one holding the valid list — can disagree, and one
+// key cannot: the invariants are enforced in mergeJudgement() at write time.
+// --------------------------------------------------------------------------
+
+export type Verdict = "valid" | "best" | "rejected";
+
+/** Where a judged ring's geometry came from. A fact, so a machine may write it. */
+export type JudgementSource = "fitter" | "engine" | "grid" | "hand";
+
+/** One band of one level as a judgement pins it: the whole pick. */
+export type PickBand = { ext: number[]; angle: number | null } | null;
+
+export type Judgement = {
+  id: string;
+  /** What a person said. Never written by anything unattended. */
+  verdict: Verdict;
+  source: JudgementSource;
+  /** Who said it. A judgement with no chooser is refused before it is sent. */
+  chooser: string;
+  at: string;
+  note?: string;
+  /** `(extensions, angle)` per band per level — enough to rebuild the ring. */
+  levels: { level: number; h: PickBand; v: PickBand }[];
+  metrics?: { neighbour_delta: number; spread: number; gap_margin: number };
+  audit?: { crossings: number; expected: number; stray: number; broken: number };
+  /** The judgement this one demoted from best, when marking a new best. */
+  supersedes?: string;
+  /** Optionally the whole ring, so /app/ can open it with no engine anywhere. */
+  strands?: unknown;
+};
+
+export type PicksArtifact = {
+  kind: "picks";
+  cacheVersion: string;
+  descriptor: RunDescriptor;
+  engineCommit?: string;
+  runComputedAt?: string;
+  judgements: Judgement[];
+};
+
+/**
+ * Fold one judgement into a parameter set's artifact, holding the invariants.
+ *
+ * 1. At most one `best` — a new best demotes the old one to `valid` and records
+ *    it in `supersedes`.
+ * 2. `best` implies `valid` — a single verdict word, so this holds by shape.
+ * 3. `best` and `rejected` are exclusive — rejecting the pick that is currently
+ *    best replaces that best, so nothing is left pointing at a rejected ring.
+ * 4. Only a person writes a verdict — a judgement with no chooser throws here,
+ *    before any network is involved.
+ *
+ * A new judgement about the same pick replaces the old one — a judgement is
+ * the last word about that ring, not a log line — and picks are compared by
+ * their geometry, so re-judging a ring under a fresh id does not duplicate it.
+ */
+export function mergeJudgement(
+  artifact: PicksArtifact | null,
+  judgement: Judgement,
+  descriptor: RunDescriptor,
+  meta: { engineCommit?: string; runComputedAt?: string } = {},
+): PicksArtifact {
+  if (!judgement.chooser?.trim()) {
+    throw new Error("a judgement needs a chooser — a verdict has one author, and it is a person");
+  }
+  if (!["valid", "best", "rejected"].includes(judgement.verdict)) {
+    throw new Error(`not a verdict: ${String(judgement.verdict)}`);
+  }
+  const bandEq = (a: PickBand, b: PickBand) => {
+    if (!a || !b) return !a === !b;
+    return a.ext.length === b.ext.length
+      && a.ext.every((e, i) => Math.abs(e - b.ext[i]) < 1e-6)
+      && ((a.angle === null && b.angle === null)
+          || (a.angle !== null && b.angle !== null && Math.abs(a.angle - b.angle) < 1e-6));
+  };
+  const samePick = (a: Judgement, b: Judgement) =>
+    a.levels.length === b.levels.length
+    && a.levels.every((la, i) => la.level === b.levels[i].level
+      && bandEq(la.h, b.levels[i].h) && bandEq(la.v, b.levels[i].v));
+
+  let kept = (artifact?.judgements ?? [])
+    .filter(j => !samePick(j, judgement)).map(j => ({ ...j }));
+  const next = { ...judgement };
+  if (judgement.verdict === "best") {
+    const old = kept.find(j => j.verdict === "best");
+    if (old) next.supersedes = old.id;
+    kept = kept.map(j => j.verdict === "best" ? { ...j, verdict: "valid" as Verdict } : j);
+  }
+  return {
+    kind: "picks",
+    cacheVersion: artifact?.cacheVersion ?? CACHE_VERSION,
+    descriptor,
+    engineCommit: meta.engineCommit ?? artifact?.engineCommit,
+    runComputedAt: meta.runComputedAt ?? artifact?.runComputedAt,
+    judgements: [next, ...kept],
+  };
+}
+
 /** One catalogue row, as /catalogue lists it. */
 export type CatalogueEntry = {
   key: string;
@@ -131,6 +235,14 @@ export function runKey(d: RunDescriptor): string {
 
 export function traceKeyPath(d: RunDescriptor, level: number, band: string): string {
   return `${CACHE_VERSION}/${tracePath(d, level, band)}`;
+}
+
+/**
+ * A picks key is a run key under the `picks/` kind: the judgements are about
+ * the parameter set as a whole, so they are addressed by exactly what a run is.
+ */
+export function picksKey(d: RunDescriptor): string {
+  return `${CACHE_VERSION}/${descriptorPath(d)}`;
 }
 
 // --------------------------------------------------------------------------
@@ -194,6 +306,14 @@ function parseSegments(segments: string[]): ParsedRunKey | null {
 export function parseRunKey(key: string): ParsedRunKey | null {
   const segments = key.replace(/^\/+/, "").split("/");
   if (segments[0] === "run") segments.shift();
+  if (segments.length !== 5) return null;
+  return parseSegments(segments);
+}
+
+/** The same for `picks/…` — a run key under the judgements' own kind. */
+export function parsePicksKey(key: string): ParsedRunKey | null {
+  const segments = key.replace(/^\/+/, "").split("/");
+  if (segments[0] === "picks") segments.shift();
   if (segments.length !== 5) return null;
   return parseSegments(segments);
 }
@@ -320,9 +440,12 @@ export type CacheClient = {
   putRun(a: RunArtifact): Promise<number>;
   getTrace(d: RunDescriptor, level: number, band: string): Promise<TraceArtifact | null>;
   putTrace(a: TraceArtifact): Promise<number>;
+  getPicks(d: RunDescriptor): Promise<PicksArtifact | null>;
+  putPicks(a: PicksArtifact): Promise<number>;
   /** Whether an entry exists, without paying for its body. */
   hasRun(d: RunDescriptor): Promise<boolean>;
   hasTrace(d: RunDescriptor, level: number, band: string): Promise<boolean>;
+  hasPicks(d: RunDescriptor): Promise<boolean>;
   catalogue(prefix?: string, limit?: number): Promise<CatalogueEntry[]>;
   health(): Promise<Record<string, unknown>>;
 };
@@ -416,8 +539,11 @@ export function createCache(options: { base?: string; token?: string; hostId?: s
     getTrace: (d, level, band) =>
       get(`/cache/trace/${traceKeyPath(d, level, band)}`) as Promise<TraceArtifact | null>,
     putTrace: a => put(`/cache/trace/${traceKeyPath(a.descriptor, a.level, a.band)}`, a),
+    getPicks: d => get(`/cache/picks/${picksKey(d)}`) as Promise<PicksArtifact | null>,
+    putPicks: a => put(`/cache/picks/${picksKey(a.descriptor)}`, a),
     hasRun: d => head(`/cache/run/${runKey(d)}`),
     hasTrace: (d, level, band) => head(`/cache/trace/${traceKeyPath(d, level, band)}`),
+    hasPicks: d => head(`/cache/picks/${picksKey(d)}`),
     async catalogue(prefix = "", limit = 500) {
       const query = new URLSearchParams();
       if (prefix) query.set("prefix", prefix);

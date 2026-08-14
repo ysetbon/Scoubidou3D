@@ -19,8 +19,15 @@ import {
   allBounds, drawExactStage, type Bounds, type Stage, type Strand,
 } from "../mxn-lab/weave-studio";
 import { saveJson, today } from "../mxn-lab/save-file";
+import { VALID, VERDICT_NAMES } from "../mxn-lab/trace-census";
 import {
-  bySortKey, fitCandidates, isFlush, neighbourDelta, spread,
+  CACHE_TOKEN_KEY, CACHE_URL_KEY, createCache, mergeJudgement, picksKey,
+  readSetting, writeSetting,
+  type Judgement, type PickBand, type RunDescriptor, type Verdict,
+} from "../mxn-lab/cache";
+import {
+  EXT_MAX, bySortKey, fitCandidates, followPair, isFlush, neighbourDelta,
+  readAt, spread,
   type Candidate, type FitBand, type SortKey, type Tie,
 } from "./solve";
 
@@ -100,6 +107,21 @@ type Attempt = {
 
 const ksOf = (raw: string) => raw.replace(/[[\],]/g, " ").trim().split(/\s+/)
   .map(Number).filter(Number.isInteger);
+
+/**
+ * The flags the fitter's own generate runs under. It sends none, so these are
+ * the engine's defaults — spelled out here because they are part of the cache
+ * key a judgement is saved beneath, and a judgement addressed to a different
+ * search would be a judgement about a different ring.
+ */
+const DESCRIPTOR_FLAGS = { shortArms: true, step: "auto" as const, budget: 400_000 };
+
+/** Where a person's judgements are held before (and beside) any network. */
+const JUDGEMENTS_KEY = "mxn-fit-judgements";
+const CHOOSER_KEY = "mxn-fit-chooser";
+
+/** One band's manual configuration: the knobs, as the hand left them. */
+type ManualBand = { ext: number[]; angle: number };
 
 function useWorker() {
   const ref = useRef<Worker | null>(null);
@@ -222,6 +244,28 @@ export function Fitter() {
   const [candidates, setCandidates] = useState<Record<BandKey, Candidate[]>>(
     { h: [], v: [] });
 
+  // The manual fit: the knobs, per band, and what weaving them said. `held` is
+  // where the engine left each band — the value an untouched band is woven at,
+  // and the value the knobs are reset to.
+  const [held, setHeld] = useState<Record<BandKey, ManualBand | null>>({ h: null, v: null });
+  const [manual, setManual] = useState<Record<BandKey, ManualBand | null>>({ h: null, v: null });
+  const [touched, setTouched] = useState<Record<BandKey, boolean>>({ h: false, v: false });
+  const [follow, setFollow] = useState(true);
+  const [anchor, setAnchor] = useState<Record<BandKey, number>>({ h: 0, v: 0 });
+  const [followNote, setFollowNote] = useState("");
+  const [manualWoven, setManualWoven] = useState<Attempt | null>(null);
+
+  // Everything the run drew, L0 included: the solutions row a judgement writes
+  // stores the parent ring beside the judged one, and L1's parent is L0.
+  const [allStages, setAllStages] = useState<Stage[]>([]);
+  const [ranAt, setRanAt] = useState<string | null>(null);
+
+  // The shelf. Same Worker, same two localStorage fields as the lab sidebar.
+  const [apiUrl, setApiUrl] = useState(() => readSetting(CACHE_URL_KEY));
+  const [apiToken, setApiToken] = useState(() => readSetting(CACHE_TOKEN_KEY));
+  const [chooser, setChooser] = useState(() => readSetting(CHOOSER_KEY));
+  const [judgeNote, setJudgeNote] = useState("");
+
   const ks = useMemo(() => ksOf(ksText), [ksText]);
 
   /**
@@ -238,6 +282,9 @@ export function Fitter() {
     setFailed(false);
     setFitLevel(target);
     setPlan(null); setBefore(null); setAfter(null); setAttempts([]); setMismatch("");
+    setHeld({ h: null, v: null }); setManual({ h: null, v: null });
+    setTouched({ h: false, v: false }); setAnchor({ h: 0, v: 0 });
+    setFollowNote(""); setManualWoven(null);
     try {
       const level = target;
       setStatus(`Reading L${level}'s two bands…`);
@@ -263,6 +310,13 @@ export function Fitter() {
         const angle = heading(stage.strands, inputs.names) ?? inputs.appliedAngle;
         if (angle !== null) held[key] = { ext: inputs.applied, angle };
       }
+      setHeld(held);
+      // The manual knobs open where the engine left the bands, so the first
+      // drag is a change to a real ring rather than to an arbitrary zero.
+      setManual({
+        h: held.h ? { ext: [...held.h.ext], angle: held.h.angle } : null,
+        v: held.v ? { ext: [...held.v.ext], angle: held.v.angle } : null,
+      });
       const baseline = await ask({
         type: "fit-weave", level,
         hExt: held.h?.ext ?? null, hAngle: held.h?.angle ?? null,
@@ -373,6 +427,8 @@ export function Fitter() {
       const drawn: Stage[] = (result.stages ?? []).filter((s: Stage) => s.level >= 1);
       const audits: AuditRow[] = result.rows ?? [];
       setStages(drawn);
+      setAllStages(result.stages ?? []);
+      setRanAt(new Date().toISOString());
       setAuditRows(audits);
       setBusy(false);
       // The top level is the one a reader means by "the ring", so it is the one
@@ -390,8 +446,11 @@ export function Fitter() {
   const bounds = useMemo<Bounds | null>(() => {
     const all: Stage[] = [...stages];
     if (after) all.push({ level: fitLevel, k: null, label: "fitted", strands: after.woven.strands });
+    if (manualWoven && manualWoven !== after) {
+      all.push({ level: fitLevel, k: null, label: "manual", strands: manualWoven.woven.strands });
+    }
     return all.length ? allBounds(all) : null;
-  }, [stages, after, fitLevel]);
+  }, [stages, after, manualWoven, fitLevel]);
 
   const rows = useMemo<Row[]>(() => {
     const inputs = plan?.[band];
@@ -414,6 +473,247 @@ export function Fitter() {
   const chosen = after ? (band === "h" ? after.h : after.v) : null;
   const beforeLengths = before?.lengths[band] ?? [];
   const afterLengths = after?.lengths[band] ?? [];
+
+  // -------------------------------------------------------------------------
+  // The manual fit. Every drag lands in applyManual, which is arithmetic in
+  // the page: the engine is only asked when "weave and audit" is pressed.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Move a band's knobs. With follow on, the pair a hand moved is the anchor
+   * and every other pair is re-solved to the arm length it now names — the
+   * same `e = (A − L*) / B` the candidate walk inverts, anchored on a person's
+   * choice. The angle knob re-solves around the last anchor, because turning
+   * the heading moves both coefficients of every pair at once.
+   */
+  const applyManual = (key: BandKey, ext: number[], angle: number, anchorPair: number) => {
+    const inputs = plan?.[key];
+    if (!inputs || inputs.unavailable) return;
+    let next = ext;
+    let note = "";
+    if (follow && inputs.P > 1) {
+      const followed = followPair(inputs, ext, angle, anchorPair);
+      next = followed.ext;
+      if (followed.short.length) {
+        note = `pair${followed.short.length > 1 ? "s" : ""} `
+          + followed.short.map(p => p + 1).join(", ")
+          + ` cannot reach ${followed.star.toFixed(1)} px inside 0…${EXT_MAX} px`
+          + " at this heading — clamped, so the band is not flush";
+      }
+    }
+    setManual(current => ({ ...current, [key]: { ext: next, angle } }));
+    setTouched(current => ({ ...current, [key]: true }));
+    setAnchor(current => ({ ...current, [key]: anchorPair }));
+    setFollowNote(note);
+    // The last audit was about the numbers before this drag; keeping it on
+    // screen would caption one ring with another ring's verdict.
+    setManualWoven(null);
+  };
+
+  const resetManual = (key: BandKey, source: "engine" | "fitted") => {
+    const target = source === "fitted"
+      ? (after ? (key === "h" ? after.h : after.v) : null) ?? held[key]
+      : held[key];
+    if (!target) return;
+    setManual(current => ({ ...current, [key]: { ext: [...target.ext], angle: target.angle } }));
+    setTouched(current => ({ ...current, [key]: source === "fitted" }));
+    setFollowNote("");
+    setManualWoven(null);
+  };
+
+  /** What the knobs measure as right now, before any engine is asked. */
+  const manualReadout = useMemo(() => {
+    const inputs = plan?.[band];
+    const current = manual[band];
+    if (!inputs || inputs.unavailable || !current) return null;
+    return readAt(inputs, current.ext, current.angle);
+  }, [plan, band, manual]);
+
+  /** Weave the manual configuration and let the engine's audit grade it. */
+  const weaveManual = async () => {
+    if (!plan || !before) return;
+    const config: Record<BandKey, ManualBand | null> = {
+      h: touched.h && manual.h ? manual.h : held.h,
+      v: touched.v && manual.v ? manual.v : held.v,
+    };
+    setBusy(true);
+    setFailed(false);
+    setStatus("Weaving the manual configuration…");
+    try {
+      const woven = await ask({
+        type: "fit-weave", level: fitLevel,
+        hExt: config.h?.ext ?? null, hAngle: config.h?.angle ?? null,
+        vExt: config.v?.ext ?? null, vAngle: config.v?.angle ?? null,
+      }, "fit-weave-ready") as Woven;
+      const lengths = {
+        h: plan.h?.unavailable ? [] : measure(woven.strands, plan.h.names),
+        v: plan.v?.unavailable ? [] : measure(woven.strands, plan.v.names),
+      };
+      const ok = !!woven.row?.healthy
+        && woven.row.across >= (before.woven.row?.across ?? 0);
+      // The manual pick, in the candidate's own shape, so the audit log and
+      // the export read it exactly as they read a walked candidate.
+      const asCandidate = (key: BandKey): Candidate | null => {
+        const inputs = plan[key];
+        if (!inputs || inputs.unavailable || !(touched[key] && manual[key])) return null;
+        const m = manual[key]!;
+        const r = readAt(inputs, m.ext, m.angle);
+        return {
+          ext: [...m.ext], angle: m.angle, star: r.lengths[0] ?? 0,
+          lengths: r.lengths, gaps: r.gaps, margin: r.margin, delta: r.delta,
+          totalExt: m.ext.reduce((a, b) => a + b, 0),
+        };
+      };
+      setManualWoven({ h: asCandidate("h"), v: asCandidate("v"), woven, lengths, accepted: ok });
+      setStatus(ok
+        ? `The manual ring closes — ${woven.row.across}/${woven.row.expected} crossings. `
+          + "Adopt it and the stats, the export and a judgement all read it."
+        : `The audit refused the manual ring — ${woven.row.across}/${woven.row.expected} `
+          + `crossings against the engine's ${before.woven.row?.across ?? "?"}. `
+          + "The knobs and the numbers are unchanged; move them and weave again.");
+      setFailed(!ok);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Make the manual ring the fitted one, so everything downstream reads it. */
+  const adoptManual = () => {
+    if (!manualWoven?.accepted) return;
+    setAfter(manualWoven);
+    setAttempts(current => [...current, manualWoven]);
+    setStatus("Manual ring adopted as the fitted ring.");
+    setFailed(false);
+  };
+
+  // -------------------------------------------------------------------------
+  // Judgements. What a person says about the ring on screen, written local
+  // first and then — with a Worker configured — to picks/v3/… on the shelf and
+  // as a verdict-carrying row in the D1 solutions table.
+  // -------------------------------------------------------------------------
+
+  const descriptor = useMemo<RunDescriptor>(() => (
+    { m, n, ks, hand, direction, ...DESCRIPTOR_FLAGS }
+  ), [m, n, ks, hand, direction]);
+
+  /** The ring a verdict would be about: manual if woven, else fitted, else engine's. */
+  const judgedSource = manualWoven ? "hand" as const
+    : after ? "fitter" as const : "engine" as const;
+
+  const saveJudgement = async (verdict: Verdict) => {
+    if (!plan || !before) return;
+    const name = chooser.trim();
+    if (!name) {
+      setStatus("A verdict has one author, and it is a person — put a name in the chooser field.");
+      setFailed(true);
+      return;
+    }
+    const attempt = manualWoven ?? after;
+    const pickOf = (key: BandKey): PickBand => {
+      const inputs = plan[key];
+      if (!inputs || inputs.unavailable) return null;
+      const c = attempt ? (key === "h" ? attempt.h : attempt.v) : null;
+      const source = c ?? held[key];
+      return source ? { ext: [...source.ext], angle: source.angle }
+                    : { ext: [...inputs.applied], angle: inputs.appliedAngle };
+    };
+    // Metrics off the geometry being judged, measured the same way the table
+    // measures it: worst neighbour Δ and spread across the bands, and the
+    // tightest gap margin either band has.
+    let delta = 0, spr = 0, margin = Infinity;
+    for (const key of BANDS) {
+      const inputs = plan[key];
+      if (!inputs || inputs.unavailable) continue;
+      const lengths = attempt ? attempt.lengths[key] : before.lengths[key];
+      if (lengths.length) {
+        delta = Math.max(delta, neighbourDelta(lengths));
+        spr = Math.max(spr, spread(lengths));
+      }
+      const pick = pickOf(key);
+      if (pick && pick.angle !== null) {
+        margin = Math.min(margin, readAt(inputs, pick.ext, pick.angle).margin);
+      }
+    }
+    const row = attempt ? attempt.woven.row : before.woven.row;
+    const at = new Date().toISOString();
+    const judgement: Judgement = {
+      id: `j-${at.replace(/\D/g, "").slice(0, 14)}-${Math.random().toString(36).slice(2, 6)}`,
+      verdict, source: judgedSource, chooser: name, at,
+      ...(judgeNote.trim() ? { note: judgeNote.trim() } : {}),
+      levels: [{ level: fitLevel, h: pickOf("h"), v: pickOf("v") }],
+      metrics: { neighbour_delta: delta, spread: spr,
+                 gap_margin: Number.isFinite(margin) ? margin : 0 },
+      audit: { crossings: row.across, expected: row.expected,
+               stray: row.stray, broken: row.broken },
+    };
+
+    // Local first, always: a wrong URL or a bad token must lose the upload,
+    // never the decision.
+    let heldLocally = true;
+    try {
+      const rows = JSON.parse(readSetting(JUDGEMENTS_KEY) || "[]");
+      rows.push({ key: `picks/${picksKey(descriptor)}`, judgement });
+      writeSetting(JUDGEMENTS_KEY, JSON.stringify(rows));
+    } catch {
+      heldLocally = false;
+    }
+
+    const reports: string[] = [heldLocally
+      ? "held locally" : "local copy failed (storage full or blocked)"];
+    if (apiUrl.trim()) {
+      setBusy(true);
+      setStatus("Writing the judgement to the shelf…");
+      const cache = createCache({ base: apiUrl.trim(), token: apiToken.trim() });
+      try {
+        const existing = await cache.getPicks(descriptor);
+        const merged = mergeJudgement(existing, judgement, descriptor,
+          ranAt ? { runComputedAt: ranAt } : {});
+        await cache.putPicks(merged);
+        reports.push(`shelf: picks/${picksKey(descriptor)} now holds `
+          + `${merged.judgements.length} judgement${merged.judgements.length === 1 ? "" : "s"}`);
+      } catch (error) {
+        reports.push(`shelf: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      // And the queryable half: the same verdict as a solutions row, so
+      // "every human-valid ring across sizes" stays one GET.
+      try {
+        const parent = allStages.find(s => s.level === fitLevel - 1);
+        if (!parent) {
+          reports.push("D1 row skipped: the run kept no parent ring for this level");
+        } else {
+          const response = await fetch(`${apiUrl.trim().replace(/\/+$/, "")}/solutions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json",
+                       Authorization: `Bearer ${apiToken.trim()}` },
+            body: JSON.stringify({
+              id: judgement.id, created_at: at, hand, direction, m, n,
+              level: fitLevel, k: plan.k, ks_prefix: ks.slice(0, fitLevel),
+              parent_strands: parent.strands,
+              solution_strands: attempt ? attempt.woven.strands : before.stage.strands,
+              h_ext: row.ext?.[0] ?? [], v_ext: row.ext?.[1] ?? [],
+              audit: row, solution_index: 0, rating: null,
+              kind: "complete", band: null, deficit: 0, refs: 0,
+              verdict, verdict_by: name, verdict_at: at, source: judgedSource,
+            }),
+          });
+          reports.push(response.ok ? "D1 row written"
+            : `D1 refused the row (HTTP ${response.status})`);
+        }
+      } catch {
+        reports.push("D1 unreachable");
+      }
+      setBusy(false);
+    } else {
+      reports.push("no Worker URL — the shelf and D1 were not written");
+    }
+    writeSetting(CHOOSER_KEY, name);
+    const glyph = verdict === "best" ? "★" : verdict === "valid" ? "✓" : "✗";
+    setStatus(`${glyph} ${verdict} saved · ${reports.join(" · ")}`);
+    setFailed(!heldLocally);
+  };
 
   const exportRing = () => {
     if (!plan || !before) return;
@@ -448,6 +748,16 @@ export function Fitter() {
         before: before.woven.row, after: source ? source.woven.row : null,
         candidatesWoven: attempts.length,
       },
+      // The hand's own configuration, whether or not it was adopted: a manual
+      // weave a person walked away from is still the record of what they tried.
+      manual: manualWoven ? {
+        adopted: after === manualWoven,
+        accepted: manualWoven.accepted,
+        h: manualWoven.h ? { ext: manualWoven.h.ext, angle: manualWoven.h.angle } : "held",
+        v: manualWoven.v ? { ext: manualWoven.v.ext, angle: manualWoven.v.angle } : "held",
+        lengths: manualWoven.lengths,
+        audit: manualWoven.woven.row,
+      } : null,
     });
   };
 
@@ -549,6 +859,46 @@ export function Fitter() {
             {(status || progress) && (
               <p className={`status${failed ? " bad" : ""}`}>{status || progress}</p>
             )}
+          </section>
+
+          <section>
+            <h2 className="kicker">Judgement</h2>
+            <div className="field">
+              <label className="f" htmlFor="fit-api">worker url</label>
+              <input id="fit-api" type="url" placeholder="https://….workers.dev" value={apiUrl}
+                onChange={e => { setApiUrl(e.target.value); writeSetting(CACHE_URL_KEY, e.target.value.trim()); }} />
+            </div>
+            <div className="field">
+              <label className="f" htmlFor="fit-token">admin token</label>
+              <input id="fit-token" type="password" placeholder="ADMIN_TOKEN" value={apiToken}
+                onChange={e => { setApiToken(e.target.value); writeSetting(CACHE_TOKEN_KEY, e.target.value.trim()); }} />
+            </div>
+            <div className="field">
+              <label className="f" htmlFor="fit-chooser">chooser — who is judging</label>
+              <input id="fit-chooser" type="text" placeholder="your name" value={chooser}
+                onChange={e => setChooser(e.target.value)} />
+            </div>
+            <div className="field">
+              <label className="f" htmlFor="fit-note">note</label>
+              <input id="fit-note" type="text" placeholder="why (optional)" value={judgeNote}
+                onChange={e => setJudgeNote(e.target.value)} />
+            </div>
+            <div className="verdicts">
+              <button type="button" className="verdict good" disabled={!before || busy}
+                onClick={() => saveJudgement("valid")}>✓ valid</button>
+              <button type="button" className="verdict star" disabled={!before || busy}
+                onClick={() => saveJudgement("best")}>★ best</button>
+              <button type="button" className="verdict no" disabled={!before || busy}
+                onClick={() => saveJudgement("rejected")}>✗ rejected</button>
+            </div>
+            <p className="hint">
+              A verdict is about the ring on screen — right now the{" "}
+              <em>{judgedSource === "hand" ? "manual" : judgedSource === "fitter" ? "fitted" : "engine's own"}</em>{" "}
+              ring. It is held in this browser first, and with a Worker configured it is
+              also written to <code>picks/{picksKey(descriptor)}</code> on the shelf and as
+              a row in the D1 solutions table, so <code>/mxn/rate/</code> and a{" "}
+              <code>?verdict=</code> query can find it. Only a person writes one.
+            </p>
           </section>
         </div>
 
@@ -690,6 +1040,131 @@ export function Fitter() {
                   not context.
                 </p>
               </div>
+
+              {plan[band] && !plan[band].unavailable && manual[band] && (() => {
+                const inputs = plan[band];
+                const knobs = manual[band]!;
+                const angleLo = Math.min(inputs.windowLo ?? -180, knobs.angle) - 25;
+                const angleHi = Math.max(inputs.windowHi ?? 180, knobs.angle) + 25;
+                const armName = (p: number) => {
+                  const [li, ri] = inputs.pairIndices[p];
+                  return ri === null || ri === undefined
+                    ? inputs.names[li]
+                    : `${inputs.names[li]}+${inputs.names[ri]}`;
+                };
+                const setAngle = (value: number) => {
+                  if (Number.isFinite(value)) applyManual(band, knobs.ext, value, anchor[band]);
+                };
+                const setExt = (p: number, value: number) => {
+                  if (!Number.isFinite(value)) return;
+                  const next = [...knobs.ext];
+                  next[p] = Math.min(EXT_MAX, Math.max(0, value));
+                  applyManual(band, next, knobs.angle, p);
+                };
+                const read = manualReadout;
+                return (
+                  <div className="panel">
+                    <header>
+                      <strong>Manual fit — {BAND_NAME[band]} band</strong>
+                      <span>
+                        drag the heading and each pair's extension; every number is
+                        measured live, and the engine audits on demand
+                      </span>
+                      <span className="spacer" />
+                      <button type="button" className="follow" aria-pressed={follow}
+                        onClick={() => setFollow(value => !value)}
+                        title="Re-solve the other pairs to the moved pair's arm length">
+                        {follow
+                          ? `follow: others match pair ${anchor[band] + 1}`
+                          : "follow: off — pairs move alone"}
+                      </button>
+                    </header>
+                    <div className="body">
+                      <div className="mrow">
+                        <i>angle</i>
+                        <input type="range" min={angleLo} max={angleHi} step={0.01}
+                          value={knobs.angle} aria-label="band angle"
+                          onChange={e => setAngle(Number(e.target.value))} />
+                        <input className="mnum" type="number" step={0.01}
+                          value={Number(knobs.angle.toFixed(2))}
+                          onChange={e => setAngle(Number(e.target.value))} />
+                        <b className={read && !read.inWindow ? "bad" : ""}>
+                          {read ? (read.inWindow ? "in its ±20° window" : "off window") : ""}
+                        </b>
+                      </div>
+                      {knobs.ext.map((value, p) => (
+                        <div className="mrow" key={p}>
+                          <i>{follow && anchor[band] === p ? "⚓ " : ""}pair {p + 1} · {armName(p)}</i>
+                          <input type="range" min={0} max={EXT_MAX} step={0.05}
+                            value={value} aria-label={`pair ${p + 1} extension`}
+                            onChange={e => setExt(p, Number(e.target.value))} />
+                          <input className="mnum" type="number" min={0} max={EXT_MAX} step={0.05}
+                            value={Number(value.toFixed(2))}
+                            onChange={e => setExt(p, Number(e.target.value))} />
+                          <b>
+                            {read ? `${(read.lengths[inputs.pairIndices[p][0]] ?? 0).toFixed(1)} px` : ""}
+                          </b>
+                        </div>
+                      ))}
+                      {read && (
+                        <div className="mread">
+                          <span>Δ neigh{" "}
+                            <b className={read.delta < 0.01 ? "good" : ""}>{read.delta.toFixed(2)} px</b>
+                          </span>
+                          <span>spread <b>{read.spread.toFixed(2)} px</b></span>
+                          <span>gap margin{" "}
+                            <b className={read.margin < 0 ? "bad" : ""}>{read.margin.toFixed(2)} px</b>
+                          </span>
+                          <span>geometry{" "}
+                            <b className={read.verdict === VALID ? "good" : "bad"}>
+                              {VERDICT_NAMES[read.verdict] ?? "?"}
+                            </b>
+                          </span>
+                        </div>
+                      )}
+                      {followNote && <p className="mwarn">{followNote}</p>}
+                      <div className="mbtns">
+                        <button type="button" disabled={busy}
+                          onClick={() => resetManual(band, "engine")}>reset to engine</button>
+                        <button type="button" disabled={busy || !after || after === manualWoven}
+                          onClick={() => resetManual(band, "fitted")}>load fitted</button>
+                        <button type="button" className="mgo"
+                          disabled={busy || !(touched.h || touched.v)}
+                          onClick={weaveManual}>Weave and audit</button>
+                        <button type="button"
+                          disabled={busy || !manualWoven?.accepted || after === manualWoven}
+                          onClick={adoptManual}>
+                          {after === manualWoven ? "adopted" : "adopt as fitted"}
+                        </button>
+                      </div>
+                      {manualWoven && (
+                        <div className="rings" style={{ marginTop: 14 }}>
+                          <RingFigure title="manual · woven"
+                            stage={{ level: fitLevel, k: plan.k, label: "manual",
+                                     strands: manualWoven.woven.strands }}
+                            bounds={bounds}
+                            caption={`${manualWoven.woven.row.across}/${manualWoven.woven.row.expected}`
+                              + ` crossings · ${manualWoven.accepted ? "accepted" : "refused"}`} />
+                          <div>
+                            <LengthBars before={beforeLengths}
+                              after={manualWoven.lengths[band]} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <p className="note">
+                      The two knobs are coupled — <code>L = A(a) − B(a)·e</code>, and the angle
+                      sets both coefficients — so with <em>follow</em> on, moving one pair
+                      re-solves the others to the arm length it names, and moving the angle
+                      re-solves them around the anchored pair. The lengths beside the sliders
+                      are computed in the page by the same arithmetic the candidate walk uses;
+                      what the page cannot decide alone is whether the ring still closes, which
+                      is what <em>weave and audit</em> asks the engine. An untouched band is
+                      woven where the engine left it.
+                    </p>
+                  </div>
+                );
+              })()}
 
               <div className="panel">
                 <header>

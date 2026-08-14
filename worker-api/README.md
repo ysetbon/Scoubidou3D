@@ -223,13 +223,15 @@ none of them.
 ```bash
 npx wrangler d1 execute mxn-solutions --remote --file=./migrations/0001_semicomplete.sql
 npx wrangler d1 execute mxn-solutions --remote --file=./migrations/0002_cache.sql
+npx wrangler d1 execute mxn-solutions --remote --file=./migrations/0003_verdict.sql
 ```
 
 | file | adds |
 |---|---|
 | `0001_semicomplete.sql` | `kind`, `band`, `deficit` and the near-miss index |
 | `0002_cache.sql` | `cache_entries` and `farm_jobs` |
+| `0003_verdict.sql` | `verdict`, `verdict_by`, `verdict_at`, `source` and the verdict index |
 
 `ALTER TABLE … ADD COLUMN` errors if the column is already there, so a second run
-of `0001` fails loudly rather than half-applying. That is intended. `0002` is all
-`CREATE … IF NOT EXISTS`, so a second run of it is a no-op.
+of `0001` or `0003` fails loudly rather than half-applying. That is intended.
+`0002` is all `CREATE … IF NOT EXISTS`, so a second run of it is a no-op.

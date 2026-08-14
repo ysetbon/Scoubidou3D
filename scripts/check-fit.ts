@@ -16,7 +16,8 @@
 import { readFileSync } from "node:fs";
 import { VALID, sweepAngle, placeStarts } from "../src/mxn-lab/trace-census";
 import {
-  fitCandidates, isFlush, neighbourDelta, windowFor, type FitBand,
+  EXT_MAX, fitCandidates, followPair, isFlush, neighbourDelta, readAt,
+  windowFor, type FitBand,
 } from "../src/mxn-fit/solve";
 
 // Resolved against the working directory rather than import.meta.url: the
@@ -94,6 +95,33 @@ for (const [size, entry] of Object.entries(data.sizes)) {
       check("a band with no flush ring is reported as such", true,
         flushAlready ? "already flush, nothing to fit"
                      : "no flush configuration survives the tests");
+    }
+
+    // The manual panel's follow: any pair, moved anywhere, and the others
+    // re-solved to its length — the flushness has to be exact wherever the
+    // answer stays inside 0…EXT_MAX, and readAt has to report the same
+    // geometry sweepAngle does, because it is the page's whole feedback loop.
+    if (band.P > 1) {
+      const angle = (band.windowLo + band.windowHi) / 2;
+      let worstFollow = 0;
+      let clamped = 0;
+      let tried = 0;
+      for (let anchorPair = 0; anchorPair < band.P; anchorPair += 1) {
+        for (const e of [0, 35.5, 120, 200]) {
+          const ext = new Array(band.P).fill(60);
+          ext[anchorPair] = e;
+          const followed = followPair(band, ext, angle, anchorPair);
+          if (followed.short.length) { clamped += 1; continue; }
+          tried += 1;
+          worstFollow = Math.max(worstFollow,
+            neighbourDelta(readAt(band, followed.ext, angle).lengths));
+          if (followed.ext.some(x => x < -1e-9 || x > EXT_MAX + 1e-9)) clamped += 1;
+        }
+      }
+      check("follow re-solves the other pairs exactly flush",
+        tried === 0 || worstFollow < 1e-9,
+        `worst Δ ${worstFollow.toExponential(2)}px over ${tried} follows`
+        + (clamped ? `, ${clamped} out of reach and reported` : ""));
     }
 
     // And the two sides agree about the one number they both compute.

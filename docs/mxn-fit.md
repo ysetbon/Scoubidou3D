@@ -264,8 +264,16 @@ metaphor here — it is `L_p = A_p(a) − B_p(a)·e_p`, in which the angle sets 
 coefficients. Move the angle and every extension that keeps the band flush moves
 with it. Move one extension and the angle that keeps the band flush moves back.
 
-The middle panel makes that the interaction rather than a caveat. **Pin one, the
-other two follow:**
+The middle panel makes that the interaction rather than a caveat. On the built
+page this is the **Manual fit** panel: a slider and a number field for the
+heading and for each pair's extension, every number beside them measured live
+by the page's own arithmetic, and a *follow* toggle — on by default — that
+re-solves the other pairs to the arm length the moved pair names (`followPair`
+in `src/mxn-fit/solve.ts`). A pair that cannot reach the named length inside
+0…200 px is clamped and said so, never silently landed somewhere flush-looking.
+*Weave and audit* puts the hand's configuration through `bridge.fit_weave`, and
+an accepted ring can be adopted as the fitted one, so the stats, the export and
+a judgement all read it. **Pin one, the other two follow:**
 
 | pinned | driven | what it answers |
 | --- | --- | --- |
@@ -351,6 +359,13 @@ A downloaded file is yours. It is not, on its own, an answer anybody else's page
 can find. So what a person decides about a ring — *this is the one*, or *this
 one is fine too*, or *no* — goes back onto the same Cloudflare shelf
 `/mxn/gpu/` fills and `/mxn/` reads, under the same `v3`.
+
+This is built: the artifact and its invariants live in `src/mxn-lab/cache.ts`
+(`PicksArtifact`, `picksKey`, `mergeJudgement`), the Worker stores the third
+kind beside `run` and `trace` and mirrors the verdict onto the `solutions` row
+(`migrations/0003_verdict.sql`), and the fitter's sidebar carries the verdict
+buttons — local copy first, then the shelf and the D1 row, with the status line
+naming which of the three happened.
 
 ### Three different things are called "valid" here
 

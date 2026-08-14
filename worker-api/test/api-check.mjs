@@ -218,6 +218,25 @@ for (const store of ["r2", "d1"]) {
   });
   eq(`[${store}] a census stores under its level and band`, trace.status, 201);
 
+  // The third kind: judgements. Same key grammar as a run, its own namespace.
+  const picks = { kind: "picks", cacheVersion: "v2", descriptor: ARTIFACT.descriptor,
+    judgements: [{ id: "j-1", verdict: "best", source: "fitter", chooser: "ysetbon",
+      at: "2026-08-14T00:00:00Z", levels: [] }] };
+  const picksGz = gzipSync(Buffer.from(JSON.stringify(picks)));
+  eq(`[${store}] a picks artifact stores under the run's own key`,
+    (await call(env, `/cache/picks/${RUN_KEY}`, {
+      method: "PUT", body: picksGz, headers: { "X-Mxn-Codec": "gzip" },
+    })).status, 201);
+  const picksBack = await call(env, `/cache/picks/${RUN_KEY}`, { auth: false });
+  eq(`[${store}] and reads back publicly`, picksBack.status, 200);
+  eq(`[${store}] and round-trips the judgements`,
+    JSON.parse(gunzipSync(Buffer.from(await picksBack.arrayBuffer())).toString()), picks);
+  eq(`[${store}] a picks key with a trace tail is refused`,
+    (await call(env, `/cache/picks/${TRACE_KEY}`, { method: "PUT", body: picksGz })).status, 400);
+  eq(`[${store}] and picks do not shadow the run stored beside them`,
+    JSON.parse(gunzipSync(Buffer.from(await (await call(env, `/cache/run/${RUN_KEY}`,
+      { auth: false })).arrayBuffer())).toString()).kind, "run");
+
   eq(`[${store}] a write without a token is refused`,
     (await call(env, `/cache/run/${RUN_KEY}`, { method: "PUT", body: gz, auth: false })).status, 401);
   eq(`[${store}] a key that is not one this repo builds is refused`,
@@ -384,6 +403,28 @@ for (const store of ["r2", "d1"]) {
     (await call(env, "/solutions/test-1", { method: "PATCH", body: JSON.stringify({ rating: 900 }) })).status, 400);
   eq("a half-formed row does not",
     (await call(env, "/solutions", { method: "POST", body: JSON.stringify({ m: 2 }) })).status, 400);
+
+  // Verdicts: a person's word about a ring, mirrored onto the row so it can be
+  // queried across sizes.
+  const judged = { ...row, id: "test-judged", verdict: "valid", verdict_by: "ysetbon",
+    verdict_at: "2026-08-14T00:00:00Z", source: "hand" };
+  eq("a row carrying a verdict stores",
+    (await call(env, "/solutions", { method: "POST", body: JSON.stringify(judged) })).status, 201);
+  const valid = (await (await call(env, "/solutions?verdict=valid")).json()).solutions;
+  eq("and the verdict filter finds it", valid.map(r => r.id), ["test-judged"]);
+  eq("with its author on the row", valid[0].verdict_by, "ysetbon");
+  eq("and where the geometry came from", valid[0].source, "hand");
+  eq("the unjudged rows stay out of the category",
+    (await (await call(env, "/solutions?verdict=best")).json()).solutions.length, 0);
+  eq("a verdict with no author is refused",
+    (await call(env, "/solutions", {
+      method: "POST", body: JSON.stringify({ ...row, id: "x", verdict: "best" }),
+    })).status, 400);
+  eq("a word that is not a verdict is refused",
+    (await call(env, "/solutions", {
+      method: "POST", body: JSON.stringify({ ...row, id: "x", verdict: "great", verdict_by: "me" }),
+    })).status, 400);
+
   eq("an unknown route is a 404",
     (await call(env, "/nowhere")).status, 404);
 }

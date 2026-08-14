@@ -267,6 +267,82 @@ function rank(tie: Tie, inputs: FitBand) {
 export const isFlush = (lengths: number[], eps = FLUSH_EPS) =>
   lengths.length < 2 || neighbourDelta(lengths) <= eps;
 
+// ---------------------------------------------------------------------------
+// The manual fit. Same algebra as the walk above, driven by a hand instead of
+// a policy: a person moves one knob and the arithmetic answers what the other
+// knobs would have to do about it.
+// ---------------------------------------------------------------------------
+
+/** What one manual configuration measures as, before any engine is asked. */
+export type Readout = {
+  lengths: number[];
+  gaps: number[];
+  delta: number;
+  spread: number;
+  margin: number;
+  /** mxn_trace's own verdict index — VALID means every geometric test passed. */
+  verdict: number;
+  /** Whether the angle sits inside its own ±20° window at these extensions. */
+  inWindow: boolean;
+};
+
+/**
+ * Measure an arbitrary `(ext, angle)`, exactly as a candidate is measured.
+ *
+ * This is the manual panel's whole feedback loop: every drag lands here, and
+ * everything it reports is computed off the same `sweepAngle` the census and
+ * the candidate walk use — so a configuration a hand finds reads the same as
+ * one the walk found, and neither flatters the other.
+ */
+export function readAt(inputs: FitBand, ext: number[], angleDeg: number): Readout {
+  const starts = placeStarts(inputs, ext);
+  const swept = sweepAngle(inputs, starts, angleDeg);
+  const [wlo, whi] = windowFor(inputs, starts);
+  return {
+    lengths: swept.proj,
+    gaps: swept.gaps,
+    delta: neighbourDelta(swept.proj),
+    spread: spread(swept.proj),
+    margin: gapMargin(inputs, swept.gaps),
+    verdict: swept.verdict,
+    inWindow: angleDeg >= wlo - 1e-9 && angleDeg <= whi + 1e-9,
+  };
+}
+
+export type Follow = {
+  ext: number[];
+  /** The arm length the anchor pair set, which the others were solved to. */
+  star: number;
+  /** Pairs that could not reach it — clamped to 0…extMax, or without leverage. */
+  short: number[];
+};
+
+/**
+ * Re-solve every other pair to the length the anchor pair's arms now have.
+ *
+ * `L_p = A_p − B_p·e_p`, so the anchor's extension names a length and each
+ * other pair's extension follows by one division — the same equation the
+ * candidate walk inverts, anchored on a person's choice instead of a sampled
+ * `L*`. A pair whose answer leaves `0…extMax` is clamped and reported rather
+ * than silently landed somewhere flush-looking; a pair with no leverage at
+ * this heading (`B_p ≈ 0`) cannot follow at all and is reported the same way.
+ */
+export function followPair(inputs: FitBand, ext: number[], angleDeg: number,
+                           anchor: number, extMax = EXT_MAX): Follow {
+  const { A, B } = coefficients(inputs, angleDeg);
+  const star = A[anchor] - B[anchor] * ext[anchor];
+  const next = [...ext];
+  const short: number[] = [];
+  for (let p = 0; p < inputs.P; p += 1) {
+    if (p === anchor) continue;
+    if (Math.abs(B[p]) < 1e-9) { short.push(p); continue; }
+    const e = (A[p] - star) / B[p];
+    if (e < -1e-9 || e > extMax + 1e-9) short.push(p);
+    next[p] = Math.min(extMax, Math.max(0, e));
+  }
+  return { ext: next, star, short };
+}
+
 /**
  * Rank a set of rings by how well neighbouring arms agree — the sort.
  *

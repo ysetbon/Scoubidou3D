@@ -51,7 +51,17 @@ CREATE TABLE IF NOT EXISTS solutions (
   refs              INTEGER NOT NULL DEFAULT 0,
 
   rating            INTEGER,                -- 0..100, NULL until rated
-  rated_at          TEXT
+  rated_at          TEXT,
+
+  -- A person's word about the ring, mirrored here from the picks/v3 artifact
+  -- so "every human-valid 3x2" is a query. NULL is "not judged", which every
+  -- row was before these columns existed. verdict_by is never NULL when
+  -- verdict is not -- the Worker refuses the pair half-formed, because a
+  -- verdict has one author and it is a person.
+  verdict           TEXT,                   -- 'valid' | 'best' | 'rejected' | NULL
+  verdict_by        TEXT,                   -- who said it
+  verdict_at        TEXT,
+  source            TEXT                    -- 'fitter' | 'engine' | 'grid' | 'hand'
 );
 
 -- The categoriser's main axis: "show me everything for this size and k".
@@ -65,6 +75,10 @@ CREATE INDEX IF NOT EXISTS idx_solutions_rating
 -- The near-miss queue: "unrated semi rings, nearest first".
 CREATE INDEX IF NOT EXISTS idx_solutions_kind
   ON solutions (kind, rating, deficit);
+
+-- The categoriser's human axis: "every valid ring anyone has blessed".
+CREATE INDEX IF NOT EXISTS idx_solutions_verdict
+  ON solutions (verdict, m, n, k, level);
 
 -- This file only ever CREATEs, so running it against a database that already
 -- has rows is a no-op -- including for the three columns above, which an
@@ -89,7 +103,7 @@ CREATE INDEX IF NOT EXISTS idx_solutions_kind
 -- value. With an R2 bucket bound as CACHE this table is simply not read.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS cache_entries (
-  key          TEXT PRIMARY KEY,   -- run|trace / version / hand-dir / mxn / ks / flags [/ Lv-band]
+  key          TEXT PRIMARY KEY,   -- run|trace|picks / version / hand-dir / mxn / ks / flags [/ Lv-band]
   codec        TEXT NOT NULL,      -- 'gzip' | 'identity'; how body was encoded
   bytes        INTEGER NOT NULL,   -- length of the encoded body, before base64
   computed_at  TEXT NOT NULL,

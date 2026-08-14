@@ -135,6 +135,43 @@ ok('the baseline agrees with the run', !seen.alarm, seen.alarm || 'no disagreeme
 ok('a band that cannot be flushed says so, not that it is flush',
   !/already flush/.test(seen.status) || !/cannot be made flush/.test(seen.status),
   seen.status.slice(0, 120));
+// The manual panel: knobs for the angle and each pair, numbers measured live
+// in the page — so a stub that cannot weave still proves the arithmetic and
+// the follow behaviour, which never touch the engine.
+const knobs = await page.evaluate(() => ({
+  rows: document.querySelectorAll('.mrow').length,
+  nums: [...document.querySelectorAll('.mrow .mnum')].map(i => i.value),
+  read: document.querySelector('.mread')?.textContent ?? '',
+  follow: document.querySelector('.follow')?.getAttribute('aria-pressed') ?? '',
+  verdicts: document.querySelectorAll('.verdicts .verdict').length,
+}));
+ok('the manual panel has a knob per pair plus the angle', knobs.rows >= 2,
+  `${knobs.rows} rows`);
+ok('and measures the configuration live', /Δ neigh/.test(knobs.read),
+  knobs.read.slice(0, 60));
+ok('follow is on by default', knobs.follow === 'true');
+ok('the three verdict buttons are on the page', knobs.verdicts === 3);
+
+if (knobs.rows >= 3) {
+  const before = await page.evaluate(() => ({
+    other: document.querySelectorAll('.mrow .mnum')[2].value,
+    read: document.querySelector('.mread')?.textContent ?? '',
+  }));
+  // Drive pair 1's own number field; with follow on, pair 2 has to move too —
+  // that is the whole claim the panel makes.
+  const first = page.locator('.mrow .mnum').nth(1);
+  await first.fill('150');
+  await page.waitForTimeout(300);
+  const after = await page.evaluate(() => ({
+    other: document.querySelectorAll('.mrow .mnum')[2].value,
+    read: document.querySelector('.mread')?.textContent ?? '',
+  }));
+  ok('moving one pair re-solves the other to match',
+    after.other !== before.other, `pair 2: ${before.other} → ${after.other}`);
+  ok('and the live readout follows the knobs', after.read !== before.read,
+    after.read.slice(0, 60));
+}
+
 ok('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
 if (network.length) console.log(`  note  ${network.length} resource(s) blocked by the environment, not the page`);
 
