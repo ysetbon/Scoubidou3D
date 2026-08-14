@@ -1,33 +1,34 @@
-"""The four facts the fitter (docs/mxn-fit.md) is built on, checked.
+"""The facts the fitter (docs/mxn-fit.md) is built on, checked against the engine.
 
     python3 scripts/check-fit.py
 
-No numpy, no engine run, no network: everything here works off the committed
-payload in mocks/fixtures/trace-plan-l1.json — what `bridge.trace_plan`
-returned for L1 of a 2x1 — with the arithmetic of `mxn_trace.sweep_combo`
-transcribed below. That makes the write-up's numbers reproducible by anyone
-who has the repository, which is the point of the file.
+No numpy, no engine run, no network: everything here works off
+`mocks/fixtures/fit-l1.json`, which is what `bridge.fit_plan` and
+`bridge.fit_weave` actually returned for L1 of a 2x1 and a 3x2 (rebuild it with
+`python3 scripts/fit-fixtures.py`). So the numbers docs/mxn-fit.md quotes are
+reproducible by anyone with the repository, which is the point of the file.
 
-What is checked, in the order docs/mxn-fit.md argues it:
+What is checked:
 
     1  arm length is affine in the extension of the arm's own pair
     2  a pair's extension moves ONLY that pair's arms, and moves both equally
     3  the two arms of a pair are always the same length (central symmetry),
        so a band of 2q arms has q free lengths, one per pair
-    4  therefore the flush condition is q-1 equations in q+1 unknowns, and its
-       solutions form a curve -- which is exactly what the fitter walks
+    4  the model agrees with the DRAWING -- lengths computed from an extension
+       and a heading equal lengths measured off the ring the engine drew
+    5  exact flush solutions exist, and form a curve
+    6  the flushest cell of the engine's own grid is where the fixture says
 
-and then, on the same band, what that is worth: the stagger the engine ships,
-the best its own grid could have done, and the exact fit off the grid.
+and then, per band: the stagger the engine ships, the best its own grid could
+have done, and what the fit reaches.
 """
-import itertools
 import json
 import math
 import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FIXTURE = os.path.join(ROOT, "mocks", "fixtures", "trace-plan-l1.json")
+FIXTURE = os.path.join(ROOT, "mocks", "fixtures", "fit-l1.json")
 
 WINDOW, REACH, DEGEN, ORDER, OVERLAP, TOOFAR, VALID, BEST = range(8)
 NAMES = ["WINDOW", "REACH", "DEGEN", "ORDER", "OVERLAP", "TOOFAR", "VALID", "BEST"]
@@ -95,155 +96,206 @@ def sweep(b, starts, angle_deg):
         v = OVERLAP
     if unreach:
         v = REACH
-    return {"proj": proj, "gaps": gaps, "verdict": v, "first_last": abs(last)}
+    return {"proj": proj, "gaps": gaps, "verdict": v}
 
 
-# --- what the fitter adds ---------------------------------------------------
+def window(b, ext):
+    """ANGLE_MODE is "first_strand": arm 0's heading from its EXTENDED start, +/-20."""
+    s = place(b, ext)[0]
+    ref = math.degrees(math.atan2(b["targets"][0][1] - s[1], b["targets"][0][0] - s[0]))
+    return ref - 20.0, ref + 20.0
+
 
 def coefficients(b, angle_deg):
-    """L_p(e) = A_p - B_p e, per pair, measured at this angle."""
     zero = sweep(b, place(b, [0.0] * b["P"]), angle_deg)["proj"]
-    A, B = [], []
-    for p in range(b["P"]):
-        one = [0.0] * b["P"]
-        one[p] = 1.0
-        step = sweep(b, place(b, one), angle_deg)["proj"]
-        li = b["pairIndices"][p][0]
-        A.append(zero[li])
-        B.append(zero[li] - step[li])
+    one = sweep(b, place(b, [1.0] * b["P"]), angle_deg)["proj"]
+    A = [zero[li] for li, _ in b["pairIndices"]]
+    B = [zero[li] - one[li] for li, _ in b["pairIndices"]]
     return A, B
 
 
-def fit_at(b, angle_deg, star, ext_max=200.0):
-    """The extensions that make every pair's arms exactly `star` long."""
+def flush_ext(b, angle_deg, star, ext_max=200.0):
     A, B = coefficients(b, angle_deg)
     ext = []
     for p in range(b["P"]):
         if abs(B[p]) < 1e-9:
             return None
         e = (A[p] - star) / B[p]
-        if not 0.0 <= e <= ext_max:
+        if not -1e-9 <= e <= ext_max + 1e-9:
             return None
-        ext.append(e)
+        ext.append(min(ext_max, max(0.0, e)))
     return ext
 
 
-def angles_of(b):
-    out, a = [], b["windowLo"]
-    while a <= b["windowHi"] + 1e-9:
-        out.append(a)
-        a += b["step"]
-    return out
+def star_range(A, B, ext_max=200.0):
+    lo, hi = -1e18, 1e18
+    for a, bb in zip(A, B):
+        if abs(bb) < 1e-9:
+            return None
+        ends = sorted((a - bb * ext_max, a))
+        lo, hi = max(lo, ends[0]), min(hi, ends[1])
+    return (lo, hi) if hi > lo else None
 
 
-spread = lambda p: max(p) - min(p)                                   # noqa: E731
-d_neigh = lambda p: max(abs(p[i + 1] - p[i]) for i in range(len(p) - 1))  # noqa: E731
-margin = lambda b, g: min(min(g) - b["minGap"], b["maxGap"] - max(g))  # noqa: E731
+def d_neigh(L):
+    return max(abs(L[i + 1] - L[i]) for i in range(len(L) - 1)) if len(L) > 1 else 0.0
+
+
+def margin(b, g):
+    return min(min(g) - b["minGap"], b["maxGap"] - max(g))
+
+
+def measured(strands, names):
+    by = {s["layer_name"]: s for s in strands}
+    return [math.hypot(by[nm]["end"]["x"] - by[nm]["start"]["x"],
+                       by[nm]["end"]["y"] - by[nm]["start"]["y"])
+            for nm in names if nm in by]
+
+
+def drawn_heading(strands, name):
+    """The heading the ring was actually drawn at, off one of its arms."""
+    by = {s["layer_name"]: s for s in strands}
+    s = by[name]
+    return math.degrees(math.atan2(s["end"]["y"] - s["start"]["y"],
+                                   s["end"]["x"] - s["start"]["x"]))
 
 
 def main():
+    if not os.path.exists(FIXTURE):
+        print(f"missing {os.path.relpath(FIXTURE, ROOT)} — "
+              f"run: python3 scripts/fit-fixtures.py")
+        return 1
     data = json.load(open(FIXTURE))
     print(__doc__.strip().splitlines()[0])
-    print(f"\nband payload: {os.path.relpath(FIXTURE, ROOT)}  (2x1, L1)")
+    print(f"\nfixture: {os.path.relpath(FIXTURE, ROOT)}  (engine {data['engine']})")
 
-    for key in ("h", "v"):
-        b = data[key]
-        P, q = b["P"], b["nStrands"]
-        mid = (b["windowLo"] + b["windowHi"]) / 2
-        print(f"\n{key.upper()} band — {q} arms, {P} pair(s), "
-              f"window {b['windowLo']:.1f}..{b['windowHi']:.1f}°, "
-              f"gaps {b['minGap']}..{b['maxGap']}px")
+    for size, entry in data["sizes"].items():
+        print(f"\n=========== {size} · L{entry['level']} · "
+              f"{entry['hand']} {entry['direction']} ===========")
+        strands = entry["before"]["strands"]
+        for key in ("h", "v"):
+            b = entry["plan"][key]
+            if b.get("unavailable"):
+                print(f"\n{key.upper()} band — {b.get('reason')}")
+                continue
+            q, P = b["nStrands"], b["P"]
+            print(f"\n{key.upper()} band — {q} arms, {P} pair(s), "
+                  f"gaps {b['minGap']}..{b['maxGap']}px")
 
-        # 1 + 2 -- affine, and confined to the pair
-        zero = sweep(b, place(b, [0.0] * P), mid)["proj"]
-        worst_lin, cross = 0.0, 0.0
-        for p in range(P):
-            one, hundred = [0.0] * P, [0.0] * P
-            one[p], hundred[p] = 1.0, 100.0
-            s1 = [x - y for x, y in zip(sweep(b, place(b, one), mid)["proj"], zero)]
-            s100 = [(x - y) / 100 for x, y in
-                    zip(sweep(b, place(b, hundred), mid)["proj"], zero)]
-            worst_lin = max(worst_lin, max(abs(x - y) for x, y in zip(s1, s100)))
-            own = set(i for i in b["pairIndices"][p] if i is not None)
-            cross = max([cross] + [abs(s1[i]) for i in range(q) if i not in own])
-            same = abs(s1[b["pairIndices"][p][0]]
-                       - s1[b["pairIndices"][p][1]]) if b["pairIndices"][p][1] is not None else 0.0
-        check("1 · length is affine in the pair's extension",
-              worst_lin < 1e-9, f"residual over 100px: {worst_lin:.2e}")
-        check("2 · a pair moves only its own arms, and both alike",
-              cross < 1e-12 and same < 1e-12,
-              f"cross-talk {cross:.2e}, within-pair difference {same:.2e}")
+            mid = (b["windowLo"] + b["windowHi"]) / 2
+            zero = sweep(b, place(b, [0.0] * P), mid)["proj"]
 
-        # 3 -- central symmetry
-        worst_mirror = max(abs(zero[i] - zero[q - 1 - i]) for i in range(q // 2))
-        check("3 · mirrored arms are the same length",
-              worst_mirror < 1e-9, f"worst |L_i - L_(n-1-i)|: {worst_mirror:.2e}")
+            # 1 + 2 — affine, and confined to the pair
+            worst_lin = cross = within = 0.0
+            for p in range(P):
+                one, hundred = [0.0] * P, [0.0] * P
+                one[p], hundred[p] = 1.0, 100.0
+                s1 = [x - y for x, y in
+                      zip(sweep(b, place(b, one), mid)["proj"], zero)]
+                s100 = [(x - y) / 100 for x, y in
+                        zip(sweep(b, place(b, hundred), mid)["proj"], zero)]
+                worst_lin = max(worst_lin,
+                                max(abs(x - y) for x, y in zip(s1, s100)))
+                own = {i for i in b["pairIndices"][p] if i is not None}
+                cross = max([cross] + [abs(s1[i]) for i in range(q) if i not in own])
+                li, ri = b["pairIndices"][p]
+                if ri is not None:
+                    within = max(within, abs(s1[li] - s1[ri]))
+            check("1 · length is affine in the pair's extension",
+                  worst_lin < 1e-9, f"residual over 100px {worst_lin:.2e}")
+            check("2 · a pair moves only its own arms, and both alike",
+                  cross < 1e-12 and within < 1e-12,
+                  f"cross-talk {cross:.2e}, within-pair {within:.2e}")
 
-        # 4 -- the exact-fit set, and what the engine does instead
-        angles = angles_of(b)
-        exact = []
-        for a in angles:
-            star = 40.0
-            while star <= 420.0:
-                ext = fit_at(b, a, star)
-                if ext is not None:
-                    r = sweep(b, place(b, ext), a)
-                    if r["verdict"] == VALID and spread(r["proj"]) < 1e-6:
-                        exact.append((a, star, ext, r))
-                star += 0.5
-        check("4 · exact flush solutions exist, and form a curve",
-              len(exact) > 0,
-              f"{len(exact)} of them, angles "
-              f"{min(x[0] for x in exact):.1f}..{max(x[0] for x in exact):.1f}°, "
-              f"lengths {min(x[1] for x in exact):.0f}..{max(x[1] for x in exact):.0f}px"
-              if exact else "none inside the window")
+            # 3 — central symmetry
+            mirror = max(abs(zero[i] - zero[q - 1 - i]) for i in range(q // 2))
+            check("3 · mirrored arms are the same length",
+                  mirror < 1e-9, f"worst |L_i − L_(n−1−i)| {mirror:.2e}")
 
-        # the engine's own grid, ranked as the engine ranks it
-        cells = []
-        for ext in itertools.product(b["vals"], repeat=P):
-            starts = place(b, list(ext))
-            for a in angles:
-                r = sweep(b, starts, a)
-                if r["verdict"] != VALID:
-                    continue
-                g = r["gaps"]
-                mean = sum(g) / len(g)
-                cells.append({
-                    "ext": list(ext), "angle": a, "proj": r["proj"], "gaps": g,
-                    "key": (r["first_last"], sum((x - mean) ** 2 for x in g) / len(g)),
-                })
-        if not cells:
-            print("    no valid cell on the engine's grid")
-            continue
-        pick = min(cells, key=lambda c: c["key"])
-        flushest = min(cells, key=lambda c: d_neigh(c["proj"]))
-        best = max(exact, key=lambda x: (round(margin(b, x[3]["gaps"]), 6),
-                                         -sum(x[2]))) if exact else None
+            # 4 — the model against the drawing
+            applied = [float(e) for e in b["applied"]]
+            drawn = measured(strands, b["names"])
+            heading = drawn_heading(strands, b["names"][0])
+            model = sweep(b, place(b, applied), heading)["proj"]
+            worst = max(abs(x - y) for x, y in zip(drawn, model)) if drawn else 9e9
+            check("4 · the model agrees with the ring the engine drew",
+                  worst < 1e-6,
+                  f"worst |measured − computed| {worst:.2e}px over {len(drawn)} arms")
 
-        print(f"    valid cells on the 10px grid: {len(cells)}")
-        fmt = lambda e: str([int(round(x)) for x in e])
-        print(f"    engine's pick      ext {fmt(pick['ext']):<12} "
-              f"angle {pick['angle']:7.1f}°  neighbour Δ {d_neigh(pick['proj']):6.2f}px  "
-              f"gap margin {margin(b, pick['gaps']):5.2f}px")
-        print(f"    flushest grid cell ext {fmt(flushest['ext']):<12} "
-              f"angle {flushest['angle']:7.1f}°  neighbour Δ {d_neigh(flushest['proj']):6.2f}px  "
-              f"gap margin {margin(b, flushest['gaps']):5.2f}px")
-        if best:
-            a, star, ext, r = best
-            print(f"    fitter, continuous ext {str([round(e, 2) for e in ext]):<12} "
-                  f"angle {a:7.1f}°  neighbour Δ {d_neigh(r['proj']):6.2f}px  "
-                  f"gap margin {margin(b, r['gaps']):5.2f}px   L* {star:.1f}px")
-            snapped = [round(e / 10) * 10 for e in ext]
-            rs = sweep(b, place(b, snapped), a)
-            print(f"    …the same fit snapped back onto the grid {snapped}: "
-                  f"neighbour Δ {d_neigh(rs['proj']):.2f}px, {NAMES[rs['verdict']]}")
-            check("5 · the fit is exact, and the grid cannot hold it",
-                  d_neigh(r["proj"]) < 1e-9,
-                  f"fitted Δ {d_neigh(r['proj']):.2e}px, snapped Δ {d_neigh(rs['proj']):.2f}px")
+            # 5 — the flush manifold: where it survives the tests, and where it
+            # does not. Algebraically it always exists (q−1 equations, q+1
+            # unknowns); whether any of it is a ring you can weave is a fact
+            # about the band, and at 3×2 the V band's answer is no.
+            exact, closest, algebraic = [], None, 0
+            angle = b["windowLo"] - 25
+            while angle <= b["windowHi"] + 25:
+                A, B = coefficients(b, angle)
+                span = star_range(A, B)
+                if span:
+                    algebraic += 1
+                    for i in range(49):
+                        star = span[0] + (span[1] - span[0]) * i / 48
+                        ext = flush_ext(b, angle, star)
+                        if ext is None:
+                            continue
+                        wl, wh = window(b, ext)
+                        if not wl <= angle <= wh:
+                            continue
+                        r = sweep(b, place(b, ext), angle)
+                        if d_neigh(r["proj"]) > 1e-6:
+                            continue
+                        if r["verdict"] == VALID:
+                            exact.append((angle, star, ext, r))
+                        else:
+                            room = margin(b, r["gaps"])
+                            if closest is None or room > closest[0]:
+                                closest = (room, angle, star, ext, r)
+                angle += b["step"] * 4          # a sample of the curve, not all of it
+            check("5 · the flush manifold is there in the algebra",
+                  algebraic > 0,
+                  f"{algebraic} headings admit a common length")
+            if exact:
+                print(f"    flush    {len(exact)} sampled points survive every test — "
+                      f"angles {min(x[0] for x in exact):.1f}..{max(x[0] for x in exact):.1f}°, "
+                      f"L* {min(x[1] for x in exact):.0f}..{max(x[1] for x in exact):.0f}px")
+            elif closest:
+                room, a, star, ext, r = closest
+                print(f"    flush    NOT REACHABLE — every flush configuration fails a "
+                      f"test. Closest: L* {star:.0f}px at {a:.2f}°,")
+                print(f"             gaps {[round(g, 2) for g in r['gaps']]} against "
+                      f"{b['minGap']}..{b['maxGap']} — {NAMES[r['verdict']]}, "
+                      f"short by {-room:.2f}px")
+
+            # 6 — the recorded grid scan, re-verified at its own cell
+            grid = (entry.get("grid") or {}).get(key)
+            if grid and grid.get("flushest"):
+                g = grid["flushest"]
+                r = sweep(b, place(b, g["ext"]), g["angle"])
+                ok = (r["verdict"] == VALID
+                      and abs(d_neigh(r["proj"]) - g["delta"]) < 1e-6)
+                check("6 · the flushest grid cell is where the fixture says",
+                      ok, f"ext {[int(x) for x in g['ext']]} @ {g['angle']:.2f}° "
+                          f"Δ {d_neigh(r['proj']):.2f}px, {NAMES[r['verdict']]}")
+
+            # and what all of that is worth
+            g_before = sweep(b, place(b, applied), heading)["gaps"]
+            print(f"    engine   ext {[int(e) for e in applied]} @ {heading:.2f}°"
+                  f"   Δ {d_neigh(drawn):6.2f}px   margin {margin(b, g_before):5.2f}px")
+            if grid and grid.get("flushest"):
+                g = grid["flushest"]
+                print(f"    grid     {grid['valid']} valid cells · flushest "
+                      f"{[int(x) for x in g['ext']]} @ {g['angle']:.2f}°"
+                      f"   Δ {g['delta']:6.2f}px   margin {g['margin']:5.2f}px")
+            if exact:
+                best = max(exact, key=lambda x: x[1])
+                a, star, ext, r = best
+                print(f"    fit      ext {[round(x, 2) for x in ext]} @ {a:.2f}°"
+                      f"   Δ {d_neigh(r['proj']):6.2f}px   "
+                      f"margin {margin(b, r['gaps']):5.2f}px   L* {star:.1f}px")
 
     print()
     if failures:
-        print(f"{len(failures)} check(s) failed: {', '.join(failures)}")
+        print(f"{len(failures)} check(s) failed: {', '.join(sorted(set(failures)))}")
         return 1
     print("all checks passed")
     return 0

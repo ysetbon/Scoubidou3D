@@ -21,6 +21,9 @@ import { fileURLToPath } from 'node:url';
 //   mxn/ks/index.html  the k atlas (see docs/mxn-ks.md) — that same shelf read
 //                      whole and folded by k, to predict the angle range and the
 //                      extension ceiling for sizes nobody has swept yet.
+//   mxn/fit/index.html the fitter (see docs/mxn-fit.md) — the same engine asked
+//                      for a ring whose neighbouring arms are the same length,
+//                      for any m, n, k and hand, and then exported.
 //
 // Base is set for GitHub Pages project-site hosting (ysetbon.github.io/Scoubidou3D/).
 // Override with `vite build --base=/` for root hosting.
@@ -28,7 +31,7 @@ const page = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
 export default defineConfig({
   base: process.env.BASE_PATH ?? '/Scoubidou3D/',
-  plugins: [react({ include: ['**/mxn-lab/**', '**/mxn-farm/**', '**/mxn-ks/**'] })],
+  plugins: [react({ include: ['**/mxn-lab/**', '**/mxn-farm/**', '**/mxn-ks/**', '**/mxn-fit/**'] })],
   server: { open: true },
   build: {
     rollupOptions: {
@@ -43,6 +46,7 @@ export default defineConfig({
         mxnSemi: page('mxn/semi/index.html'),
         mxnGpu: page('mxn/gpu/index.html'),
         mxnKs: page('mxn/ks/index.html'),
+        mxnFit: page('mxn/fit/index.html'),
       },
     },
   },
