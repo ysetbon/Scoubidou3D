@@ -24,6 +24,7 @@
     "qa:trace": "node scripts/qa-trace-widget.mjs",
     "qa:semi": "node scripts/qa-semi-sort.mjs",
     "qa:widgets": "node scripts/qa-widgets.mjs",
+    "qa:fit": "node scripts/qa-fit.mjs",
     "qa:cache": "node scripts/qa-cache.mjs",
     "shots": "node scripts/site-shots.mjs",
     "icon": "node scripts/icon-shot.mjs",

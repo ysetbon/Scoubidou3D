@@ -33,15 +33,38 @@ const BAND_NAME = { h: "horizontal", v: "vertical" } as const;
 type Plan = { level: number; k: number; m: number; n: number;
               hand: string; direction: string; h: FitBand; v: FitBand };
 
+/** One row of the engine's own audit, as `generate` and `fit_weave` report it. */
+type AuditRow = {
+  level: number; k: number | null; expected: number; across: number;
+  within: number; masks: number; stray: number; broken: number;
+  healthy: boolean; ext: number[][];
+};
+
 type Woven = {
   level: number; unavailable?: boolean; reason?: string;
   h: { ext: number[]; angle: number | null };
   v: { ext: number[]; angle: number | null };
   crossings: number;
-  row: { across: number; expected: number; within: number; masks: number;
-         stray: number; broken: number; healthy: boolean; ext: number[][] };
+  row: AuditRow;
   strands: Strand[];
 };
+
+/**
+ * The heading a band was actually drawn at, off its first arm.
+ *
+ * `bridge.fit_plan` reports the adopted angle only where the level kept a
+ * candidate list, and a seeded level — which is most levels above the first —
+ * keeps none. The ring itself always knows: arm 0 is never one of the reversed
+ * ones, so the direction it is drawn in IS the band's heading. Recovering it
+ * this way is what lets the page hold a band exactly where the engine left it
+ * on a level that cannot say where that was.
+ */
+function heading(strands: Strand[], names: string[]) {
+  const first = strands.find(s => s.layer_name === names[0]);
+  if (!first) return null;
+  return (Math.atan2(first.end.y - first.start.y,
+                     first.end.x - first.start.x) * 180) / Math.PI;
+}
 
 /** Arm lengths, off the ring as drawn. The only place a length is produced. */
 function measure(strands: Strand[], names: string[]) {
@@ -185,6 +208,12 @@ export function Fitter() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [failed, setFailed] = useState(false);
+  // Every level the run drew, which is what the page is really about: a stitch
+  // is a stack of rings, and fitting one of them moves the one underneath.
+  const [stages, setStages] = useState<Stage[]>([]);
+  const [auditRows, setAuditRows] = useState<AuditRow[]>([]);
+  const [fitLevel, setFitLevel] = useState(1);
+  const [mismatch, setMismatch] = useState("");
   const [plan, setPlan] = useState<Plan | null>(null);
   const [before, setBefore] = useState<{ stage: Stage; lengths: Record<BandKey, number[]>;
                                          woven: Woven } | null>(null);
@@ -194,20 +223,24 @@ export function Fitter() {
     { h: [], v: [] });
 
   const ks = useMemo(() => ksOf(ksText), [ksText]);
-  const level = ks.length;
 
-  const run = async () => {
-    if (!ks.length) { setStatus("Give at least one k."); setFailed(true); return; }
+  /**
+   * Fit one level of the stitch that is already in the worker's session.
+   *
+   * Separate from the run because a run is expensive and a level is not: the
+   * session survives, so any level can be fitted, and re-fitted under a
+   * different policy, without the engine being asked to think again.
+   */
+  const fitAt = async (target: number, drawn: Stage[], audits: AuditRow[]) => {
+    const stage = drawn.find(s => s.level === target);
+    if (!stage) { setStatus(`the run came back without an L${target}`); setFailed(true); return; }
     setBusy(true);
     setFailed(false);
-    setPlan(null); setBefore(null); setAfter(null); setAttempts([]);
+    setFitLevel(target);
+    setPlan(null); setBefore(null); setAfter(null); setAttempts([]); setMismatch("");
     try {
-      setStatus("Running the engine…");
-      const result = await ask({ type: "generate", m, n, ks, hand, direction }, "result");
-      const stage = (result.stages ?? []).find((s: Stage) => s.level === level);
-      if (!stage) throw new Error(`the run came back without an L${level}`);
-
-      setStatus("Reading both bands…");
+      const level = target;
+      setStatus(`Reading L${level}'s two bands…`);
       const got: Plan = await ask({ type: "fit-plan", level }, "fit-plan-ready");
       setPlan(got);
 
@@ -217,8 +250,40 @@ export function Fitter() {
         h: got.h?.unavailable ? [] : measure(stage.strands, got.h.names),
         v: got.v?.unavailable ? [] : measure(stage.strands, got.v.names),
       };
-      const baseline = await ask({ type: "fit-weave", level }, "fit-weave-ready") as Woven;
+      // Where the engine left each band, recovered from the ring it drew. This
+      // is what a band that is NOT being fitted is held at. Holding it by
+      // passing null instead would apply nothing at all on a seeded level, and
+      // the ring would be audited unaligned — 6 crossings of 8 on a 2×1's L2,
+      // against the 8 the engine actually produced.
+      const held: Record<BandKey, { ext: number[]; angle: number } | null> =
+        { h: null, v: null };
+      for (const key of BANDS) {
+        const inputs = got[key];
+        if (!inputs || inputs.unavailable) continue;
+        const angle = heading(stage.strands, inputs.names) ?? inputs.appliedAngle;
+        if (angle !== null) held[key] = { ext: inputs.applied, angle };
+      }
+      const baseline = await ask({
+        type: "fit-weave", level,
+        hExt: held.h?.ext ?? null, hAngle: held.h?.angle ?? null,
+        vExt: held.v?.ext ?? null, vAngle: held.v?.angle ?? null,
+      }, "fit-weave-ready") as Woven;
       setBefore({ stage, lengths: beforeLengths, woven: baseline });
+
+      // The baseline is the engine's own configuration, put back through the
+      // engine — so it has to come out as the engine's own ring. If it does
+      // not, the page is holding the bands somewhere other than where they
+      // were, and every number after this is about a different ring. Said out
+      // loud rather than absorbed.
+      const engineRow = audits.find(r => r.level === target);
+      if (engineRow && baseline.row
+          && (baseline.row.across !== engineRow.across
+              || baseline.row.healthy !== engineRow.healthy)) {
+        setMismatch(`the ring rebuilt from L${target}'s own extensions audits `
+          + `${baseline.row.across}/${baseline.row.expected}, while the run `
+          + `reported ${engineRow.across}/${engineRow.expected} — treat what `
+          + "follows with suspicion");
+      }
 
       // Each band that needs fitting gets its own ordered list. A band whose
       // arms already agree is held where the engine left it: there is nothing
@@ -232,9 +297,18 @@ export function Fitter() {
       }
       setCandidates(lists);
       if (!lists.h.length && !lists.v.length) {
-        setStatus(beforeLengths.h.length || beforeLengths.v.length
-          ? "Both bands are already flush — nothing to fit."
-          : "Neither band was searched, so there is nothing to read.");
+        // Two very different reasons to have no candidates, and saying the
+        // wrong one would be the page lying about the thing it is for.
+        const stuck = BANDS.filter(key => !got[key]?.unavailable
+          && beforeLengths[key].length && !isFlush(beforeLengths[key]));
+        setStatus(stuck.length
+          ? `${stuck.map(k => BAND_NAME[k]).join(" and ")} cannot be made flush: `
+            + "every configuration that equalises its arms fails one of the "
+            + "engine's own tests. The ring is unchanged."
+          : beforeLengths.h.length || beforeLengths.v.length
+            ? "Both bands are already flush — nothing to fit."
+            : "Neither band was searched, so there is nothing to read.");
+        setFailed(stuck.length > 0);
         setBusy(false);
         return;
       }
@@ -256,8 +330,10 @@ export function Fitter() {
           setStatus(`Weaving candidate ${tried.length + 1}…`);
           const woven = await ask({
             type: "fit-weave", level,
-            hExt: h?.ext ?? null, hAngle: h?.angle ?? null,
-            vExt: v?.ext ?? null, vAngle: v?.angle ?? null,
+            hExt: h?.ext ?? held.h?.ext ?? null,
+            hAngle: h?.angle ?? held.h?.angle ?? null,
+            vExt: v?.ext ?? held.v?.ext ?? null,
+            vAngle: v?.angle ?? held.v?.angle ?? null,
           }, "fit-weave-ready") as Woven;
           const lengths = {
             h: got.h?.unavailable ? [] : measure(woven.strands, got.h.names),
@@ -286,12 +362,36 @@ export function Fitter() {
     }
   };
 
+  const run = async () => {
+    if (!ks.length) { setStatus("Give at least one k."); setFailed(true); return; }
+    setBusy(true);
+    setFailed(false);
+    setStages([]); setPlan(null); setBefore(null); setAfter(null); setAttempts([]);
+    try {
+      setStatus("Running the engine…");
+      const result = await ask({ type: "generate", m, n, ks, hand, direction }, "result");
+      const drawn: Stage[] = (result.stages ?? []).filter((s: Stage) => s.level >= 1);
+      const audits: AuditRow[] = result.rows ?? [];
+      setStages(drawn);
+      setAuditRows(audits);
+      setBusy(false);
+      // The top level is the one a reader means by "the ring", so it is the one
+      // fitted first; every other level is a click away.
+      await fitAt(drawn.length ? drawn[drawn.length - 1].level : 1, drawn, audits);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+      setFailed(true);
+      setBusy(false);
+    }
+  };
+
+  // One frame for every card, so the levels can be read against each other:
+  // a ring that grew is drawn bigger, rather than rescaled to look the same.
   const bounds = useMemo<Bounds | null>(() => {
-    const stages: Stage[] = [];
-    if (before) stages.push(before.stage);
-    if (after) stages.push({ level, k: null, label: "fitted", strands: after.woven.strands });
-    return stages.length ? allBounds(stages) : null;
-  }, [before, after, level]);
+    const all: Stage[] = [...stages];
+    if (after) all.push({ level: fitLevel, k: null, label: "fitted", strands: after.woven.strands });
+    return all.length ? allBounds(all) : null;
+  }, [stages, after, fitLevel]);
 
   const rows = useMemo<Row[]>(() => {
     const inputs = plan?.[band];
@@ -318,11 +418,11 @@ export function Fitter() {
   const exportRing = () => {
     if (!plan || !before) return;
     const source = after ?? null;
-    const name = `mxn-${m}x${n}-k${ks.join("_")}-${hand}-${direction}-L${level}`;
+    const name = `mxn-${m}x${n}-k${ks.join("_")}-${hand}-${direction}-L${fitLevel}`;
     saveJson(`${name}-${today()}.json`, source ? source.woven.strands : before.stage.strands);
     saveJson(`${name}-${today()}.fit.json`, {
       params: { m, n, ks, hand, direction },
-      engine: { level, k: plan.k },
+      engine: { level: fitLevel, k: plan.k },
       fitted: !!source,
       policy: { target: "flush", ext: "continuous", angle: "window", tie },
       bands: BANDS.filter(key => !plan[key]?.unavailable).map(key => ({
@@ -468,12 +568,13 @@ export function Fitter() {
                 {after
                   ? <span className="chip ok">fitted · proposed</span>
                   : <span className="chip warn">not fitted</span>}
-                <span className="chip soft">L{level} of {ks.length}</span>
+                <span className="chip soft">fitting L{fitLevel} of {stages.length}</span>
                 {health && (
                   <span className={`chip ${health.healthy ? "soft" : "warn"}`}>
                     {health.across}/{health.expected} crossings
                   </span>
                 )}
+                {mismatch && <span className="chip warn">baseline disagrees</span>}
                 <div className="tabs">
                   {BANDS.map(key => (
                     <button key={key} type="button" aria-pressed={band === key}
@@ -484,6 +585,8 @@ export function Fitter() {
                   ))}
                 </div>
               </div>
+
+              {mismatch && <p className="alarm">Baseline check failed — {mismatch}.</p>}
 
               <div className="stats">
                 <div className="stat">
@@ -527,18 +630,50 @@ export function Fitter() {
 
               <div className="panel">
                 <header>
-                  <strong>The ring, before and after</strong>
-                  <span>drawn by the studio's own renderer, from the strands the engine returned</span>
+                  <strong>Every level</strong>
+                  <span>
+                    the run's own diagrams — press one to fit that level instead
+                  </span>
+                  <span className="spacer" />
+                  <span className="chip soft">{stages.length} level{stages.length === 1 ? "" : "s"}</span>
+                </header>
+                <div className="body">
+                  <div className="levels">
+                    {stages.map(s => (
+                      <button key={s.level} type="button" className="level"
+                        aria-pressed={s.level === fitLevel} disabled={busy}
+                        onClick={() => { if (s.level !== fitLevel) fitAt(s.level, stages, auditRows); }}
+                        title={`Fit L${s.level}`}>
+                        <RingFigure title={`L${s.level}${s.k === null ? "" : ` · k=${s.k}`}`}
+                          stage={s} bounds={bounds}
+                          caption={s.level === fitLevel ? "fitting" : ""} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="note">
+                  Each card is the stitch as it stood at that level, drawn by{" "}
+                  <code>drawExactStage</code> — the same renderer <code>/mxn/</code> uses, off
+                  the same strands. They share one frame, so a ring that grew is drawn bigger
+                  rather than rescaled to look the same.
+                </p>
+              </div>
+
+              <div className="panel">
+                <header>
+                  <strong>L{fitLevel}, before and after</strong>
+                  <span>the level being fitted, and what the fit did to it</span>
                 </header>
                 <div className="body">
                   <div className="rings">
-                    <RingFigure title="engine" stage={before?.stage ?? null} bounds={bounds}
+                    <RingFigure title={`L${fitLevel} · engine`} stage={before?.stage ?? null}
+                      bounds={bounds}
                       caption={beforeLengths.length
                         ? `Δ ${neighbourDelta(beforeLengths).toFixed(2)} px` : ""} />
                     <RingFigure
-                      title={after ? "fitted" : "fitted — none accepted"}
+                      title={after ? `L${fitLevel} · fitted` : "fitted — none accepted"}
                       stage={after
-                        ? { level, k: plan.k, label: "fitted", strands: after.woven.strands }
+                        ? { level: fitLevel, k: plan.k, label: "fitted", strands: after.woven.strands }
                         : null}
                       bounds={bounds}
                       caption={afterLengths.length
@@ -547,10 +682,12 @@ export function Fitter() {
                   <LengthBars before={beforeLengths} after={afterLengths} />
                 </div>
                 <p className="note">
-                  Both rings are the engine's own output, drawn by{" "}
-                  <code>drawExactStage</code> — the same renderer <code>/mxn/</code> uses. The
-                  lengths beside them are measured off those strands rather than recomputed
-                  from the extensions that were asked for, so what is quoted is what is drawn.
+                  Both are the engine's own output. The lengths beside them are measured off
+                  those strands rather than recomputed from the extensions that were asked for,
+                  so what is quoted is what is drawn. Fitting a level slides its arms along
+                  their parents, which <em>lengthens the level below by the same amount</em> —
+                  so the card for L{Math.max(1, fitLevel - 1)} above is part of the answer too,
+                  not context.
                 </p>
               </div>
 

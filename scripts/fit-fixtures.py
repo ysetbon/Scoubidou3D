@@ -19,6 +19,10 @@ Two sizes, and both earn their place:
     3x2  the case that decides whether this page needs to exist: its V band's
          stagger is the worst of the small sizes, and no cell of the engine's
          own extension grid does better than the one it already picked
+    2x1 twice
+         two levels, because fitting one level slides its arms along their
+         parents and so lengthens the level below it. A one-level fixture
+         cannot show that, and the page's level strip has nothing to strip
 """
 import json
 import math
@@ -33,7 +37,7 @@ sys.path.insert(0, os.path.join(ROOT, "public", "mxn", "py"))
 import bridge  # noqa: E402
 import mxn_trace  # noqa: E402
 
-SIZES = [(2, 1, [1]), (3, 2, [1])]
+SIZES = [(2, 1, [1]), (3, 2, [1]), (2, 1, [1, 1])]
 
 
 def window(band, ext):
@@ -100,6 +104,22 @@ def scan_grid(band, p):
     return {"valid": valid, "flushest": best}
 
 
+def heading(strands, names):
+    """The heading a band was drawn at, off its first arm.
+
+    fit_plan reports the adopted angle only where the level kept a candidate
+    list, and a seeded level keeps none -- so the ring itself is asked instead.
+    Arm 0 is never one of the reversed ones, so the direction it is drawn in IS
+    the band's heading.
+    """
+    by = {s["layer_name"]: s for s in strands}
+    first = by.get(names[0]) if names else None
+    if first is None:
+        return None
+    return math.degrees(math.atan2(first["end"]["y"] - first["start"]["y"],
+                                   first["end"]["x"] - first["start"]["x"]))
+
+
 def measure(strands, names):
     """Arm lengths, off the ring as drawn."""
     by = {s["layer_name"]: s for s in strands}
@@ -121,16 +141,45 @@ for m, n, ks in SIZES:
     run = json.loads(bridge.generate(m, n, ks, "lh", "cw"))
     level = len(ks)
     plan = json.loads(bridge.fit_plan(level))
-    # The engine's own ring, through the fitter's own call, so "before" and
-    # "after" come back down the same path and can be compared without a caveat.
-    before = json.loads(bridge.fit_weave(level, None, None, None, None))
     stage = next(s for s in run["stages"] if s["level"] == level)
+
+    # The engine's own ring, through the fitter's own call, so "before" and
+    # "after" come back down the same path and can be compared without a
+    # caveat. Both bands are held where the engine left them -- and WHERE that
+    # is has to be recovered from the ring, because passing None applies
+    # nothing at all on a seeded level: a 2x1's L2 comes back 6 crossings of 8
+    # that way, against the 8 the run reported.
+    held = {}
+    for k in ("h", "v"):
+        if plan[k].get("unavailable"):
+            held[k] = (None, None)
+            continue
+        held[k] = (plan[k]["applied"],
+                   heading(stage["strands"], plan[k].get("names") or []))
+    before = json.loads(bridge.fit_weave(level, held["h"][0], held["h"][1],
+                                         held["v"][0], held["v"][1]))
+    engine_row = run["rows"][level - 1]
+    if before["row"]["across"] != engine_row["across"]:
+        print(f"  !! baseline {before['row']['across']}/{before['row']['expected']}"
+              f" but the run reported {engine_row['across']}", flush=True)
+
+    # Every level, not just the fitted one: a stitch is a stack of rings, the
+    # page draws a card for each, and fitting one level moves the one below it.
+    stages = [s for s in run["stages"] if s["level"] >= 1]
+    plans = {}
+    for other in range(1, level + 1):
+        plans[str(other)] = (plan if other == level
+                             else json.loads(bridge.fit_plan(other)))
 
     entry = {
         "m": m, "n": n, "ks": ks, "level": level,
         "hand": "lh", "direction": "cw",
         "row": run["rows"][level - 1],
+        "rows": run["rows"],
         "plan": {k: plan[k] for k in ("h", "v")},
+        "stages": stages,
+        "plans": plans,
+        "held": {k: {"ext": held[k][0], "angle": held[k][1]} for k in ("h", "v")},
         "before": {
             "crossings": before.get("crossings"),
             "row": before.get("row"),

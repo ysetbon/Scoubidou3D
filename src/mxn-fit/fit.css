@@ -138,3 +138,24 @@ tbody tr.engine td { color: var(--muted); }
 
 .footer { border-top: 1px solid var(--ink); padding: 20px clamp(16px, 4vw, 28px); font: 400 11.5px/1.7 Arial, sans-serif; color: var(--muted); }
 .footer a { color: var(--muted); }
+
+/* The level strip. One card per level of the stitch, and pressing one fits
+ * that level: a stitch is a stack of rings and the fit moves more than one of
+ * them, so the levels are the workspace rather than an illustration. */
+.levels { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+.level {
+  flex: 0 0 210px; padding: 8px; background: none;
+  border: 1px solid var(--line); text-align: left;
+}
+.level[aria-pressed=true] { border-color: var(--ink); background: rgba(219, 234, 101, .22); }
+.level:disabled { opacity: .5; }
+.level .ring canvas { height: 170px; }
+.level .ring figcaption var { color: var(--blue); }
+
+/* The baseline check failing means the page is describing a different ring
+ * from the one the engine made. It gets the loudest thing on the page. */
+.alarm {
+  margin: 0 0 18px; padding: 12px 14px;
+  border: 1px solid var(--red); background: rgba(228, 81, 63, .08);
+  color: var(--red); font: 700 12px/1.6 monospace;
+}
