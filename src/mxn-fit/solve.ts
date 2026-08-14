@@ -27,6 +27,11 @@ import {
 /** What `bridge.fit_plan` adds to a band's TraceInputs. */
 export type FitBand = TraceInputs & {
   band: "horizontal" | "vertical";
+  /** How many arms the band holds — `2q`. */
+  nStrands: number;
+  /** The window of the combo the plan probed, which is where the walk starts. */
+  windowLo: number;
+  windowHi: number;
   unavailable?: boolean;
   reason?: string;
   /** The extensions this level adopted. */
@@ -35,8 +40,6 @@ export type FitBand = TraceInputs & {
   appliedAngle: number | null;
   /** The band's arms, in the band's own order — the names to measure on a ring. */
   names: string[];
-  windowLo: number;
-  windowHi: number;
 };
 
 /** The engine's own ceiling on one pair's extension (MAX_PAIR_EXTENSION). */
@@ -180,7 +183,7 @@ export type Candidate = {
  * verdict: the page audits candidates in this order and takes the first ring
  * that still closes.
  */
-export function fitCandidates(inputs: TraceInputs, options: FitOptions = {}) {
+export function fitCandidates(inputs: FitBand, options: FitOptions = {}) {
   const {
     tie = "longest", extMax = EXT_MAX, offWindow = false, snap = null,
     limit = 48,
@@ -245,8 +248,8 @@ export function fitCandidates(inputs: TraceInputs, options: FitOptions = {}) {
  * reads like the safer choice and measurably is not — on a 2×1 the widest-margin
  * point of the V curve is one of the points that loses the ring two crossings.
  */
-function rank(tie: Tie, inputs: TraceInputs) {
-  const applied = (inputs as FitBand).applied ?? [];
+function rank(tie: Tie, inputs: FitBand) {
+  const applied = inputs.applied ?? [];
   const near = (c: Candidate) =>
     c.ext.reduce((sum, e, i) => sum + Math.abs(e - (applied[i] ?? 0)), 0);
   return (a: Candidate, b: Candidate) => {

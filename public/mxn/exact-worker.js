@@ -120,8 +120,13 @@ const HANDLERS = {
     runtime.globals.set("mxn_short", preferShortArms !== false);
     runtime.globals.set("mxn_step", extStep ?? null);
     runtime.globals.set("mxn_budget", comboBudget ?? null);
+    // The lab and the farm have only ever asked for lh/cw and send neither, so
+    // the defaults keep them identical; /mxn/fit/ sends both, because "for any
+    // k, m, n, lh, rh" is the thing it is for.
+    runtime.globals.set("mxn_hand", data.hand ?? "lh");
+    runtime.globals.set("mxn_direction", data.direction ?? "cw");
     const parsed = JSON.parse(await runtime.runPythonAsync(
-      "bridge.generate(mxn_m, mxn_n, mxn_ks.to_py(), 'lh', 'cw',"
+      "bridge.generate(mxn_m, mxn_n, mxn_ks.to_py(), mxn_hand, mxn_direction,"
       + " prefer_short_arms=mxn_short, ext_step=mxn_step, combo_budget=mxn_budget)"
     ));
     // Count every level's solutions BEFORE the result posts, so the cards land
@@ -273,6 +278,31 @@ const HANDLERS = {
     runtime.globals.set("mxn_angle", data.angle);
     return ["trace-weave-ready", await runtime.runPythonAsync(
       "bridge.trace_weave(mxn_level, mxn_band, mxn_ext.to_py(), mxn_angle)"
+    )];
+  },
+  // The fitter, /mxn/fit/. Two calls, and the page does the solving between
+  // them: fit-plan hands it both bands' inputs, it works out the extensions
+  // that flush each band, and fit-weave applies a candidate pair and audits the
+  // ring it makes. The bands close jointly, so the page walks its own ordered
+  // list through fit-weave rather than trusting one answer (docs/mxn-fit.md).
+  "fit-plan": async (runtime, data) => {
+    runtime.globals.set("mxn_level", data.level);
+    return ["fit-plan-ready", await runtime.runPythonAsync(
+      "bridge.fit_plan(mxn_level)"
+    )];
+  },
+  "fit-weave": async (runtime, data) => {
+    runtime.globals.set("mxn_level", data.level);
+    // null for a band means "leave it where the engine left it", which is what
+    // a band that is already flush asks for. to_py() on a null would throw.
+    runtime.globals.set("mxn_h_ext", data.hExt ?? null);
+    runtime.globals.set("mxn_h_angle", data.hAngle ?? null);
+    runtime.globals.set("mxn_v_ext", data.vExt ?? null);
+    runtime.globals.set("mxn_v_angle", data.vAngle ?? null);
+    return ["fit-weave-ready", await runtime.runPythonAsync(
+      "bridge.fit_weave(mxn_level,"
+      + " None if mxn_h_ext is None else mxn_h_ext.to_py(), mxn_h_angle,"
+      + " None if mxn_v_ext is None else mxn_v_ext.to_py(), mxn_v_angle)"
     )];
   },
   "semi-select": async (runtime, data) => {
