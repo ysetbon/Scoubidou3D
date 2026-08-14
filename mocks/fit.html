@@ -276,6 +276,7 @@ td.num { font-family: monospace; }
     <div class="runbar">
       <h1>2×1 · k=1 · LH · CW</h1>
       <span class="chip ok">fitted exactly</span>
+      <span class="chip" style="border-color:var(--red);color:var(--red)">proposed · not yet judged</span>
       <span class="chip soft">cache hit · 984d9ed</span>
       <span class="chip soft">L1 of 1</span>
       <div class="tabs">
@@ -477,10 +478,12 @@ td.num { font-family: monospace; }
         </div>
       </div>
       <p class="note">
-        <em>human</em> outranks <em>fitter</em> outranks <em>engine</em>, and nothing overwrites a human pick on its
-        own — a batch that would have written its own answer over one skips it and says so in the log. A pick whose
-        <code>engineCommit</code> or run timestamp no longer matches the shelf is shown as <em>stale</em> and not
-        applied: an extension and an angle mean something only against the checkpoint they were measured on.
+        <em>Nothing unattended writes a verdict.</em> Not the fitter, not a batch — a judgement with no chooser is
+        refused before it is sent, so the only two states a parameter set can be in are <em>you chose</em> and
+        <em>the engine did</em>. <code>source</code> is a fact about where the geometry came from and the machine may
+        write it; <code>verdict</code> is yours. A judgement whose <code>engineCommit</code> or run timestamp no longer
+        matches the shelf is shown as <em>stale</em> and not applied: an extension and an angle mean something only
+        against the checkpoint they were measured on.
       </p>
     </div>
 
@@ -501,7 +504,9 @@ td.num { font-family: monospace; }
       </div>
       <p class="note">
         Every line is a claim that can be checked: the report beside each file carries the extensions, the angle, the
-        four lengths, the gaps and the audit, so a reader can recompute the fit without this page.
+        four lengths, the gaps and the audit, so a reader can recompute the fit without this page. None of them is a
+        verdict — the batch writes files and queues each ring for judgement, and the shelf holds no more opinions in
+        the morning than it did last night.
       </p>
     </div>
   </div>
@@ -719,8 +724,8 @@ document.getElementById("n-marg").textContent =
   const flushest = cells.reduce((a, c) => (c.dneigh < a.dneigh ? c : a), cells[0]);
 
   const arr = (v, d) => "[" + v.map(e => round(e, d)).join(", ") + "]";
-  const entry = (id, verdict, at, note, h, v, proj, gaps, tail) =>
-`    { "id": "${id}", "verdict": "${verdict}", "chosenBy": "human",
+  const entry = (id, verdict, source, at, note, h, v, proj, gaps, tail) =>
+`    { "id": "${id}", "verdict": "${verdict}", "source": "${source}",
       "chooser": "ysetbon", "at": "${at}",
       "note": "${note}",
       "levels": [ { "level": 1,
@@ -736,13 +741,13 @@ document.getElementById("n-marg").textContent =
                   "step": "auto", "budget": ${D.budget} },
   "engineCommit": "984d9ed", "runComputedAt": "2026-08-12T18:03:10Z",
   "judgements": [
-${entry("j-7f3a", "best", "2026-08-14T09:12:44Z",
+${entry("j-7f3a", "best", "fitter", "2026-08-14T09:12:44Z",
         "flush, widest gap margin of the three", hFit, fit, fit.proj, fit.gaps,
         ',\n      "supersedes": "j-2b10"')},
-${entry("j-2b10", "valid", "2026-08-14T09:04:02Z",
+${entry("j-2b10", "valid", "engine", "2026-08-14T09:04:02Z",
         "the engine's own — fine, just not flush", hPick, enginePick,
         enginePick.proj, enginePick.gaps, "")},
-${entry("j-9c04", "rejected", "2026-08-14T09:06:10Z",
+${entry("j-9c04", "rejected", "grid", "2026-08-14T09:06:10Z",
         "gaps legal but the band reads twisted", hPick, flushest,
         flushest.proj, flushest.gaps, "")} ] }`;
 })();

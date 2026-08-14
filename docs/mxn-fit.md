@@ -176,8 +176,11 @@ and the queue walks all of them, reading the farm cache first
 manifest.csv                 one row per parameter set, with every metric below
 ```
 
-**And onto the shelf.** A file is yours alone; the same pick also goes back to
-the Worker so every page finds it — see
+**And onto the shelf — but only as work for you.** A batch writes files, and it
+posts each fitted ring to the `solutions` table with **no verdict**, so it turns
+up in the queue with everything else waiting to be looked at. It does not write
+a judgement, ever: what is valid and what is best is yours to say, and the batch
+exists to put the candidates in front of you rather than to answer for you. See
 [§ Saving a judgement](#4--saving-a-judgement-picksv3).
 
 **Without touching the page at all.** Every control is in the URL, so the export
@@ -399,21 +402,44 @@ this one.
 | `rejected` | any number | looked at, and no | the loaders, to stop offering it again |
 | *(absent)* | — | nobody has judged this ring | everything, as today |
 
+One word doing two jobs, and it is worth separating them: the sidebar's
+**Export best** produces the fitter's answer for a parameter set, and that is a
+*proposal*. `★ best` is a verdict, and only you can write one. A ring can be the
+fitter's best and never become the `best` — that is the normal case until you
+say otherwise.
+
 `rejected` earns its place: without it "not yet looked at" and "looked at and
 turned down" are the same state, and the valid category cannot be loaded
 *correctly* — every load would re-offer the rings you already threw out. That is
 the difference between a filter and a queue.
 
-Each judgement also carries who made it:
+### A verdict has one author, and it is a person
+
+**Nothing unattended ever writes a verdict.** Not the fitter, not a batch, not a
+future version of either. A verdict is what *you* said about a ring, and if a
+program could write one the word would mean nothing.
+
+So the two things that were tangled up in "chosen by" are separated, and only
+one of them is a judgement:
 
 ```
-chosenBy:  "human"   somebody pressed the button
-           "fitter"  a batch fitted it unattended and wrote its own answer
+source:   where the geometry came from — "fitter" | "engine" | "grid" | "hand"
+verdict:  what you said about it       — "valid" | "best" | "rejected"
+chooser:  who said it
 ```
 
-Only a human writes `valid` or `rejected`. A batch may write `best` with
-`chosenBy: "fitter"` — an unattended answer is better than none — but never over
-a human's, and the log says when it skipped one.
+`source` is a fact about the ring and the machine may write it. `verdict` is
+yours, and the write path has no other author to offer: a judgement with no
+`chooser` is rejected by the client before it is sent.
+
+What the fitter produces is therefore a **proposal**, not an answer. It is
+labelled that way on screen — a fitted ring shows *proposed*, never *best* —
+until you press something.
+
+**The cost, stated plainly:** a parameter set nobody has looked at stays
+unjudged forever. A batch can fit a hundred sizes overnight and the shelf will
+still hold zero verdicts in the morning. That is the point, but it means the
+batch's job is to *prepare* work rather than finish it — see below.
 
 ### The invariants
 
@@ -426,8 +452,9 @@ Enforced when the artifact is written, and re-checked when it is read:
 3. **`best` and `rejected` are exclusive.** Rejecting the current best clears
    the best; the page says so rather than silently leaving the parameter set
    pointing at a rejected ring.
-4. **A `human` judgement is never overwritten by a `fitter` one.** In either
-   direction of verdict.
+4. **Only a person writes a verdict.** The Worker takes a judgement with no
+   `chooser`, and the client refuses to send one. An unattended run has no way
+   to express an opinion, by construction rather than by policy.
 5. **Every judgement names the run it was made against.** `engineCommit` and
    `runComputedAt`; on a mismatch the entry is shown as *stale* and not applied.
 
@@ -446,7 +473,7 @@ geometry through the same `NX.apply_solution` path the fit itself used:
   "engineCommit": "984d9ed",
   "runComputedAt": "2026-08-12T18:03:10Z",
   "judgements": [
-    {"id": "j-7f3a", "verdict": "best", "chosenBy": "human",
+    {"id": "j-7f3a", "verdict": "best", "source": "fitter",
      "chooser": "ysetbon", "at": "2026-08-14T09:12:44Z",
      "note": "flush, widest gap margin of the three",
      "levels": [{"level": 1,
@@ -456,7 +483,7 @@ geometry through the same `NX.apply_solution` path the fit itself used:
      "audit": {"crossings": 8, "expected": 8, "stray": 0, "broken": 0},
      "supersedes": "j-2b10"},
 
-    {"id": "j-2b10", "verdict": "valid", "chosenBy": "human",
+    {"id": "j-2b10", "verdict": "valid", "source": "engine",
      "chooser": "ysetbon", "at": "2026-08-14T09:04:02Z",
      "note": "the engine's own — fine, just not flush",
      "levels": [{"level": 1,
@@ -464,7 +491,7 @@ geometry through the same `NX.apply_solution` path the fit itself used:
                  "v": {"ext": [60, 0], "angle": 141.81}}],
      "metrics": {"neighbour_delta": 2.38, "spread": 2.38, "gap_margin": 0.549}},
 
-    {"id": "j-9c04", "verdict": "rejected", "chosenBy": "human",
+    {"id": "j-9c04", "verdict": "rejected", "source": "grid",
      "chooser": "ysetbon", "at": "2026-08-14T09:06:10Z",
      "note": "gaps legal but the band reads twisted",
      "levels": [{"level": 1,
@@ -504,8 +531,9 @@ the `solutions` table's job. It gains one column:
 ```sql
 -- worker-api/migrations/0003_verdict.sql
 ALTER TABLE solutions ADD COLUMN verdict TEXT;         -- 'valid'|'best'|'rejected'|NULL
-ALTER TABLE solutions ADD COLUMN verdict_by TEXT;      -- 'human'|'fitter'
+ALTER TABLE solutions ADD COLUMN verdict_by TEXT;      -- who; NULL is impossible when verdict is not
 ALTER TABLE solutions ADD COLUMN verdict_at TEXT;
+ALTER TABLE solutions ADD COLUMN source TEXT;          -- 'fitter'|'engine'|'grid'|'hand'
 CREATE INDEX IF NOT EXISTS idx_solutions_verdict ON solutions (verdict, m, n, k, level);
 ```
 
@@ -535,10 +563,14 @@ authority and the row carries the same `id`.
 `/mxn/` and `/mxn/fit/` both ask for `picks/v3/…` before falling back to the
 `run`'s own choice — one extra request, cached like the rest.
 
-- a `best` opens the level, with a chip saying **human pick** (or **fitted**),
-  and the engine's own answer one press away — never hidden, because a page that
-  quietly shows something other than what the engine computed is a page that
-  cannot be trusted about anything;
+- a `best` opens the level, with a chip saying **human pick** — it can say
+  nothing else, since nothing else can write one — and the engine's own answer
+  one press away, never hidden, because a page that quietly shows something
+  other than what the engine computed is a page that cannot be trusted about
+  anything;
+- **no `best` means the engine's own pick stands**, exactly as today. There is
+  no middle tier: either a person chose, or the engine did. The fitter's own
+  answer is never adopted by a page on its own, however good its numbers look;
 - `valid` entries do not change what opens. They populate the category, and the
   count appears on the filter so you can see there is something to load;
 - `rejected` entries are not offered by any loader, and are shown only when the
@@ -716,6 +748,10 @@ does for the lab's widgets.
 
 Answer these and the rest is typing.
 
+*Decided already:* **you decide what is valid and what is best.** No unattended
+process writes a verdict — see
+[§ A verdict has one author](#a-verdict-has-one-author-and-it-is-a-person).
+
 1. **The name and the address.** `/mxn/fit/`, "the fitter"? It sits beside
    `/mxn/ks/` and `/mxn/gpu/` in the masthead and in `docs/links.md`.
 2. **Which is the default tie-break** along the exact-fit curve — widest gap
@@ -729,14 +765,10 @@ Answer these and the rest is typing.
    swept; 4×4 already refuses a trace, and 5×5 has never been run.
 6. **Should the fitter be allowed off the ±20° angle window?** Everything above
    stays inside it. Outside is more room and less precedent.
-7. **Does a batch get to write `best` at all?** As drawn it writes `chosenBy:
-   "fitter"` for every set it fits and never overwrites a human judgement. The
-   alternative is that only a human press ever writes one, and an unattended
-   sweep leaves the shelf alone.
-8. **One judgement set per parameter set, or one per level?** The key is the
+7. **One judgement set per parameter set, or one per level?** The key is the
    whole descriptor — ks and all — so `[1, 1, −1]` and `[1, 1]` are different
    shelves and a judgement about the first says nothing about the second.
-9. **Is `rejected` wanted, or only `valid` and `best`?** It is in because
+8. **Is `rejected` wanted, or only `valid` and `best`?** It is in because
    without it the valid category cannot be loaded correctly — every load
    re-offers the rings you already turned down. But it is a third button, and
    three buttons is more than two.
