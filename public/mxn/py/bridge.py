@@ -304,6 +304,11 @@ def _register_level(level, k, checkpoint, result, search):
     _SESSION["levels"][level] = {
         "level": level, "k": k, "checkpoint": checkpoint,
         "h_cands": h_cands, "v_cands": v_cands,
+        # What the level actually adopted, straight off the alignment result.
+        # The candidate lists are empty on a seeded or square-mirrored level --
+        # it only ever saw the combo it was told to use -- so a reader asking
+        # "what did this level do" cannot always be answered from them.
+        "engine_ext": {"horizontal": list(engine_h), "vertical": list(engine_v)},
         "search": result.get("search") or {},
         "enumerated": enumerated, "reason": reason,
         "engine_pick_hv": (pick_h, pick_v),
@@ -685,9 +690,18 @@ def _over_ceiling(entry, want, combos, angles, budget):
 
 
 def _applied_ext(entry, want):
+    """The extensions this level adopted for one band.
+
+    From the candidate list where there is one, and from the alignment result
+    where there is not: a seeded or square-mirrored level has no list to index
+    into, and used to answer this question with an empty list even though the
+    combo it adopted was never in doubt.
+    """
     picked = entry["engine_pick_hv"][0 if want == "horizontal" else 1]
     cands = entry["h_cands"] if want == "horizontal" else entry["v_cands"]
-    return list(cands[picked]["ext"]) if picked < len(cands) else []
+    if picked < len(cands):
+        return list(cands[picked]["ext"])
+    return list((entry.get("engine_ext") or {}).get(want) or ())
 
 
 def trace_plan(level, band="v"):
@@ -806,6 +820,41 @@ def trace_level(level, band="v"):
     return trace_census(level, band)
 
 
+def _band_moves(data, ext, angle_deg):
+    """Where one band's arms land, as the moves NX._apply_candidate consumes.
+
+    The same geometry sweep_combo vectorises, at one angle: each arm starts from
+    its displaced original_start and runs its projection along the shared
+    heading, flipped for the arms that head the other way.
+
+    Pure geometry over a band's own inputs, so both the trace preview (one band
+    swept, the other held at the engine's pick) and the fitter (both bands
+    placed by the caller) run the same arithmetic rather than two copies of it.
+    Extensions are floats throughout: the search walks a 10px grid, but nothing
+    downstream of the placement cares, and the fit lands between its points.
+    """
+    import math
+
+    import mxn_trace
+
+    placed = mxn_trace.place(data, [float(e) for e in ext])
+    starts = [(s["original_start"]["x"], s["original_start"]["y"]) for s in placed]
+    deltas = [(s["target_position"]["x"] - sx, s["target_position"]["y"] - sy)
+              for s, (sx, sy) in zip(placed, starts)]
+    ref = math.atan2(deltas[0][1], deltas[0][0])
+    a = math.radians(float(angle_deg))
+    moves, lengths = [], []
+    for s, (sx, sy), (dx, dy) in zip(placed, starts, deltas):
+        sa = a if dx * math.cos(ref) + dy * math.sin(ref) >= 0 else a + math.pi
+        proj = dx * math.cos(sa) + dy * math.sin(sa)
+        lengths.append(proj)
+        moves.append((s["strand_4_5"]["layer_name"],
+                      (s.get("strand_2_3") or {}).get("layer_name"),
+                      sx, sy,
+                      sx + proj * math.cos(sa), sy + proj * math.sin(sa)))
+    return moves, lengths
+
+
 def _weave_cell(entry, want, ext, angle_deg):
     """Materialise the ring one traced (combo, angle) cell would produce.
 
@@ -819,8 +868,6 @@ def _weave_cell(entry, want, ext, angle_deg):
     checkpoint replay per call rather than a fresh search. Returns a dict:
     trace_weave sends it alone, trace_level embeds one for the engine's pick.
     """
-    import math
-
     ext = [float(e) for e in ext]
     angle_deg = float(angle_deg)
     data = (entry.get("trace_bands") or {}).get(want)
@@ -831,25 +878,7 @@ def _weave_cell(entry, want, ext, angle_deg):
             "reason": "trace this band first; the weave preview reads its inputs",
         }
 
-    import mxn_trace
-
-    # The same geometry sweep_combo vectorises, at one angle: each arm starts
-    # from its displaced original_start and runs its projection along the
-    # shared heading, flipped for the arms that head the other way.
-    placed = mxn_trace.place(data, ext)
-    starts = [(s["original_start"]["x"], s["original_start"]["y"]) for s in placed]
-    deltas = [(s["target_position"]["x"] - sx, s["target_position"]["y"] - sy)
-              for s, (sx, sy) in zip(placed, starts)]
-    ref = math.atan2(deltas[0][1], deltas[0][0])
-    a = math.radians(angle_deg)
-    moves = []
-    for s, (sx, sy), (dx, dy) in zip(placed, starts, deltas):
-        sa = a if dx * math.cos(ref) + dy * math.sin(ref) >= 0 else a + math.pi
-        proj = dx * math.cos(sa) + dy * math.sin(sa)
-        moves.append((s["strand_4_5"]["layer_name"],
-                      (s.get("strand_2_3") or {}).get("layer_name"),
-                      sx, sy,
-                      sx + proj * math.cos(sa), sy + proj * math.sin(sa)))
+    moves, _lengths = _band_moves(data, ext, angle_deg)
 
     swept = {"ext": tuple(int(e) for e in ext), "angle": angle_deg,
              "gap": None, "moves": moves}
@@ -884,6 +913,114 @@ def trace_weave(level, band, ext, angle_deg):
     want = "vertical" if str(band).lower().startswith("v") else "horizontal"
     return json.dumps(_weave_cell(entry, want, ext, angle_deg),
                       separators=(",", ":"))
+
+
+# ---------------------------------------------------------------------------
+# The fitter, /mxn/fit/.
+#
+# The page solves for itself: arm length is affine in the pair's own extension,
+# so the extensions that make a band flush at a given angle are a division per
+# pair, and mxn_trace.plan already carries everything that division needs. What
+# the page cannot do without the engine is WEAVE a ring and audit it, which is
+# the whole of what these two add (see docs/mxn-fit.md).
+# ---------------------------------------------------------------------------
+
+def fit_plan(level):
+    """Both bands of a level, as inputs the page can solve against.
+
+    mxn_trace.plan for each band -- the extension grid, the angle window, the
+    gap bounds, and the origins/directions/targets every configuration is
+    affine in -- plus the engine's own pick, so the fit has something to be
+    measured against. Costs one checkpoint replay per band and NO census: the
+    fitter walks a curve, not a grid, and never needs the verdict raster the
+    trace panel draws.
+    """
+    import mxn_trace
+
+    entry = _level_session(int(level))
+    out = {"level": entry["level"], "k": entry["k"],
+           "m": _SESSION["m"], "n": _SESSION["n"],
+           "hand": _SESSION["hand"], "direction": _SESSION["direction"]}
+    for want, key in (("horizontal", "h"), ("vertical", "v")):
+        data = _trace_band_inputs(entry, want)
+        if data is None:
+            out[key] = _no_search(entry, want)
+            continue
+        band = mxn_trace.plan(data)
+        picked = entry["engine_pick_hv"][0 if want == "horizontal" else 1]
+        cands = entry["h_cands"] if want == "horizontal" else entry["v_cands"]
+        band.update({
+            "band": want, "unavailable": False,
+            "applied": _applied_ext(entry, want),
+            # The angle the engine settled on. Best-effort: a seeded level has
+            # no candidate to read it off. The page does not depend on it --
+            # it measures the arms it is drawing rather than recomputing them
+            # from an extension and a heading (docs/mxn-fit.md).
+            "appliedAngle": (float(cands[picked]["angle"])
+                             if picked < len(cands) else None),
+            # The band's arms, in the band's own order. What makes it possible
+            # to measure a length off a drawn ring rather than off a model of
+            # one: these are the layer names to look for in a stage's strands.
+            "names": [s["strand_4_5"]["layer_name"] for s in data["strands_list"]],
+        })
+        out[key] = band
+    return json.dumps(out, separators=(",", ":"))
+
+
+def fit_weave(level, h_ext, h_angle, v_ext, v_angle):
+    """Weave a ring with BOTH bands placed by the caller, and audit it.
+
+    _weave_cell holds one band at the engine's pick because a trace is about one
+    band at a time. A fit is not: it moves both, and the ring has to be measured
+    as the pair it will be exported as. Pass None for a band's extensions to
+    hold that one at the engine's own answer -- which is what a band that needs
+    no fitting (two arms are a mirror pair, so they are always the same length)
+    asks for.
+
+    The arms' lengths come back with it. They are the thing being fitted, and
+    measuring them here rather than in the page means the number quoted in an
+    export is the number the applied geometry actually has.
+    """
+    entry = _level_session(int(level))
+    pick_h, pick_v = entry["engine_pick_hv"]
+    h_cands, v_cands = entry["h_cands"], entry["v_cands"]
+    cands = []
+    lengths = {}
+    for want, ext, angle, picked, pool in (
+            ("horizontal", h_ext, h_angle, pick_h, h_cands),
+            ("vertical", v_ext, v_angle, pick_v, v_cands)):
+        if ext is None:
+            cands.append(pool[picked] if picked < len(pool) else None)
+            continue
+        data = (entry.get("trace_bands") or {}).get(want)
+        if data is None:
+            return json.dumps({
+                "level": entry["level"], "unavailable": True,
+                "reason": "call fit_plan first; the weave reads its band inputs",
+            }, separators=(",", ":"))
+        ext = [float(e) for e in ext]
+        moves, arms = _band_moves(data, ext, angle)
+        lengths["h" if want == "horizontal" else "v"] = [float(x) for x in arms]
+        cands.append({"ext": tuple(ext), "angle": float(angle),
+                      "gap": None, "moves": moves})
+    h_cand, v_cand = cands
+
+    m, n = _SESSION["m"], _SESSION["n"]
+    strands, info = copy.deepcopy(entry["checkpoint"])
+    crossings = NX.apply_solution(strands, info, entry["level"], m, n,
+                                  _SESSION["hand"], h_cand, v_cand)
+    row = describe(_synth_result(entry, h_cand or {}, v_cand or {}),
+                   [dict(s) for s in strands], entry["level"], entry["k"],
+                   4 * m * n, (2 * m, 2 * n))
+    return json.dumps({
+        "level": entry["level"], "unavailable": False,
+        "h": {"ext": list(h_cand["ext"]) if h_cand else [],
+              "angle": h_cand["angle"] if h_cand else None},
+        "v": {"ext": list(v_cand["ext"]) if v_cand else [],
+              "angle": v_cand["angle"] if v_cand else None},
+        "lengths": lengths, "crossings": crossings, "row": row,
+        "strands": _stage_strands(NX._snapshot_json(strands)),
+    }, separators=(",", ":"))
 
 
 def select_solution(level, index, healthy_only=False, cursor=None):
