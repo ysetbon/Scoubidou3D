@@ -1,6 +1,6 @@
 {
- "generatedAt": "2026-08-13T22:29:47.159Z",
- "source": "local engine sweep (node_modules/.cache/ks-raw)",
+ "generatedAt": "2026-08-14T10:46:02.984Z",
+ "source": "local engine sweep (node_modules/.cache/ks-raw) + https://mxn-solutions-api.ysetbon.workers.dev",
  "cacheVersion": "v3",
  "filter": {
   "hand": "lh",
@@ -3291,6 +3291,180 @@
   {
    "m": 2,
    "n": 4,
+   "k": -3,
+   "level": 1,
+   "runKey": "run/v3/lh-cw/2x4/-3/s1-e5-b100000000",
+   "computedAt": "2026-08-13T01:49:13.455Z",
+   "flags": "s1-e5-b100000000",
+   "status": "lowerBound",
+   "pairs": 4,
+   "step": 5,
+   "stepResolved": false,
+   "chosen": {
+    "h": [
+     85,
+     120,
+     45,
+     65
+    ],
+    "v": [
+     110,
+     60
+    ],
+    "peak": 120
+   },
+   "bands": {
+    "h": {
+     "state": "unavailable",
+     "reason": "194481 combos x 240 angles is over the 4000000 trace ceiling",
+     "combos": 194481,
+     "overCeiling": true
+    },
+    "v": {
+     "state": "measured",
+     "pairs": 2,
+     "combos": 441,
+     "combosValid": 46,
+     "windowLo": 41.39,
+     "windowHi": 81.39,
+     "validLo": 33.63,
+     "validHi": 58.94,
+     "validSpan": 25.31,
+     "bestLo": 33.63,
+     "bestHi": 58.44,
+     "extCeilingNeeded": 70,
+     "extPeakValid": 200,
+     "perPair": [
+      {
+       "lo": 70,
+       "hi": 200
+      },
+      {
+       "lo": 0,
+       "hi": 160
+      }
+     ],
+     "counts": [
+      70119,
+      0,
+      0,
+      26887,
+      2847,
+      5901,
+      40,
+      46
+     ],
+     "inWindowShare": 0.3375
+    }
+   },
+   "needs": {
+    "h": null,
+    "v": {
+     "pairs": 2,
+     "extCeiling": 70,
+     "extPeakValid": 200,
+     "angleFrom": 33.63,
+     "angleTo": 58.94,
+     "angleSpan": 25.31,
+     "windowFrom": 41.39,
+     "windowTo": 81.39,
+     "combosNow": 1681,
+     "combosAtCeiling": 225,
+     "saving": 7.5
+    },
+    "combined": null
+   }
+  },
+  {
+   "m": 2,
+   "n": 4,
+   "k": -2,
+   "level": 1,
+   "runKey": "run/v3/lh-cw/2x4/-2/s1-e5-b100000000",
+   "computedAt": "2026-08-13T02:17:05.164Z",
+   "flags": "s1-e5-b100000000",
+   "status": "lowerBound",
+   "pairs": 4,
+   "step": 5,
+   "stepResolved": false,
+   "chosen": {
+    "h": [
+     115,
+     90,
+     65,
+     15
+    ],
+    "v": [
+     60,
+     40
+    ],
+    "peak": 115
+   },
+   "bands": {
+    "h": {
+     "state": "unavailable",
+     "reason": "194481 combos x 240 angles is over the 4000000 trace ceiling",
+     "combos": 194481,
+     "overCeiling": true
+    },
+    "v": {
+     "state": "measured",
+     "pairs": 2,
+     "combos": 441,
+     "combosValid": 49,
+     "windowLo": -132.62,
+     "windowHi": -92.62,
+     "validLo": -128.11,
+     "validHi": -107.36,
+     "validSpan": 20.75,
+     "bestLo": -127.61,
+     "bestHi": -107.36,
+     "extCeilingNeeded": 50,
+     "extPeakValid": 200,
+     "perPair": [
+      {
+       "lo": 0,
+       "hi": 200
+      },
+      {
+       "lo": 10,
+       "hi": 110
+      }
+     ],
+     "counts": [
+      70119,
+      0,
+      0,
+      24711,
+      946,
+      9975,
+      40,
+      49
+     ],
+     "inWindowShare": 0.3375
+    }
+   },
+   "needs": {
+    "h": null,
+    "v": {
+     "pairs": 2,
+     "extCeiling": 50,
+     "extPeakValid": 200,
+     "angleFrom": -128.11,
+     "angleTo": -107.36,
+     "angleSpan": 20.75,
+     "windowFrom": -132.62,
+     "windowTo": -92.62,
+     "combosNow": 1681,
+     "combosAtCeiling": 121,
+     "saving": 13.9
+    },
+    "combined": null
+   }
+  },
+  {
+   "m": 2,
+   "n": 4,
    "k": 1,
    "level": 1,
    "runKey": "run/v3/lh-cw/2x4/1/s1-eauto-b400000",
@@ -3371,6 +3545,190 @@
      "combosNow": 441,
      "combosAtCeiling": 9,
      "saving": 49
+    },
+    "combined": null
+   }
+  },
+  {
+   "m": 3,
+   "n": 4,
+   "k": -3,
+   "level": 1,
+   "runKey": "run/v3/lh-cw/3x4/-3/s1-e5-b100000000",
+   "computedAt": "2026-08-13T00:30:37.739Z",
+   "flags": "s1-e5-b100000000",
+   "status": "lowerBound",
+   "pairs": 4,
+   "step": 5,
+   "stepResolved": false,
+   "chosen": {
+    "h": [
+     140,
+     75,
+     95,
+     20
+    ],
+    "v": [
+     75,
+     115,
+     10
+    ],
+    "peak": 140
+   },
+   "bands": {
+    "h": {
+     "state": "unavailable",
+     "reason": "194481 combos x 240 angles is over the 4000000 trace ceiling",
+     "combos": 194481,
+     "overCeiling": true
+    },
+    "v": {
+     "state": "measured",
+     "pairs": 3,
+     "combos": 9261,
+     "combosValid": 99,
+     "windowLo": 41.39,
+     "windowHi": 81.39,
+     "validLo": 40.13,
+     "validHi": 62.44,
+     "validSpan": 22.31,
+     "bestLo": 40.13,
+     "bestHi": 62.44,
+     "extCeilingNeeded": 100,
+     "extPeakValid": 200,
+     "perPair": [
+      {
+       "lo": 70,
+       "hi": 200
+      },
+      {
+       "lo": 0,
+       "hi": 180
+      },
+      {
+       "lo": 0,
+       "hi": 140
+      }
+     ],
+     "counts": [
+      1472499,
+      0,
+      0,
+      627870,
+      6569,
+      115573,
+      30,
+      99
+     ],
+     "inWindowShare": 0.3375
+    }
+   },
+   "needs": {
+    "h": null,
+    "v": {
+     "pairs": 3,
+     "extCeiling": 100,
+     "extPeakValid": 200,
+     "angleFrom": 40.13,
+     "angleTo": 62.44,
+     "angleSpan": 22.31,
+     "windowFrom": 41.39,
+     "windowTo": 81.39,
+     "combosNow": 68921,
+     "combosAtCeiling": 9261,
+     "saving": 7.4
+    },
+    "combined": null
+   }
+  },
+  {
+   "m": 3,
+   "n": 4,
+   "k": -1,
+   "level": 1,
+   "runKey": "run/v3/lh-cw/3x4/-1/s1-e5-b100000000",
+   "computedAt": "2026-08-13T22:54:37.385Z",
+   "flags": "s1-e5-b100000000",
+   "status": "lowerBound",
+   "pairs": 4,
+   "step": 5,
+   "stepResolved": false,
+   "chosen": {
+    "h": [
+     50,
+     85,
+     45,
+     65
+    ],
+    "v": [
+     60,
+     30,
+     5
+    ],
+    "peak": 85
+   },
+   "bands": {
+    "h": {
+     "state": "unavailable",
+     "reason": "194481 combos x 240 angles is over the 4000000 trace ceiling",
+     "combos": 194481,
+     "overCeiling": true
+    },
+    "v": {
+     "state": "measured",
+     "pairs": 3,
+     "combos": 9261,
+     "combosValid": 214,
+     "windowLo": 62.41,
+     "windowHi": 102.41,
+     "validLo": 74.71,
+     "validHi": 81.23,
+     "validSpan": 6.52,
+     "bestLo": 74.71,
+     "bestHi": 81.23,
+     "extCeilingNeeded": 60,
+     "extPeakValid": 200,
+     "perPair": [
+      {
+       "lo": 40,
+       "hi": 80
+      },
+      {
+       "lo": 30,
+       "hi": 200
+      },
+      {
+       "lo": 0,
+       "hi": 160
+      }
+     ],
+     "counts": [
+      1472499,
+      0,
+      0,
+      566617,
+      11492,
+      171741,
+      77,
+      214
+     ],
+     "inWindowShare": 0.3375
+    }
+   },
+   "needs": {
+    "h": null,
+    "v": {
+     "pairs": 3,
+     "extCeiling": 60,
+     "extPeakValid": 200,
+     "angleFrom": 74.71,
+     "angleTo": 81.23,
+     "angleSpan": 6.52,
+     "windowFrom": 62.41,
+     "windowTo": 102.41,
+     "combosNow": 68921,
+     "combosAtCeiling": 2197,
+     "saving": 31.4
     },
     "combined": null
    }
@@ -3464,6 +3822,180 @@
      "combosAtCeiling": 216,
      "saving": 42.9
     },
+    "combined": null
+   }
+  },
+  {
+   "m": 4,
+   "n": 2,
+   "k": -3,
+   "level": 1,
+   "runKey": "run/v3/lh-cw/4x2/-3/s1-e5-b100000000",
+   "computedAt": "2026-08-13T03:05:37.008Z",
+   "flags": "s1-e5-b100000000",
+   "status": "lowerBound",
+   "pairs": 4,
+   "step": 5,
+   "stepResolved": false,
+   "chosen": {
+    "h": [
+     110,
+     60
+    ],
+    "v": [
+     140,
+     100,
+     105,
+     35
+    ],
+    "peak": 140
+   },
+   "bands": {
+    "h": {
+     "state": "measured",
+     "pairs": 2,
+     "combos": 441,
+     "combosValid": 46,
+     "windowLo": 131.39,
+     "windowHi": 171.39,
+     "validLo": 123.63,
+     "validHi": 148.94,
+     "validSpan": 25.31,
+     "bestLo": 123.63,
+     "bestHi": 148.44,
+     "extCeilingNeeded": 70,
+     "extPeakValid": 200,
+     "perPair": [
+      {
+       "lo": 70,
+       "hi": 200
+      },
+      {
+       "lo": 0,
+       "hi": 160
+      }
+     ],
+     "counts": [
+      70119,
+      0,
+      0,
+      26887,
+      2847,
+      5901,
+      40,
+      46
+     ],
+     "inWindowShare": 0.3375
+    },
+    "v": {
+     "state": "unavailable",
+     "reason": "194481 combos x 240 angles is over the 4000000 trace ceiling",
+     "combos": 194481,
+     "overCeiling": true
+    }
+   },
+   "needs": {
+    "h": {
+     "pairs": 2,
+     "extCeiling": 70,
+     "extPeakValid": 200,
+     "angleFrom": 123.63,
+     "angleTo": 148.94,
+     "angleSpan": 25.31,
+     "windowFrom": 131.39,
+     "windowTo": 171.39,
+     "combosNow": 1681,
+     "combosAtCeiling": 225,
+     "saving": 7.5
+    },
+    "v": null,
+    "combined": null
+   }
+  },
+  {
+   "m": 4,
+   "n": 2,
+   "k": -2,
+   "level": 1,
+   "runKey": "run/v3/lh-cw/4x2/-2/s1-e5-b100000000",
+   "computedAt": "2026-08-13T03:51:06.006Z",
+   "flags": "s1-e5-b100000000",
+   "status": "lowerBound",
+   "pairs": 4,
+   "step": 5,
+   "stepResolved": false,
+   "chosen": {
+    "h": [
+     60,
+     40
+    ],
+    "v": [
+     115,
+     90,
+     65,
+     15
+    ],
+    "peak": 115
+   },
+   "bands": {
+    "h": {
+     "state": "measured",
+     "pairs": 2,
+     "combos": 441,
+     "combosValid": 49,
+     "windowLo": -42.62,
+     "windowHi": -2.62,
+     "validLo": -38.11,
+     "validHi": -17.36,
+     "validSpan": 20.75,
+     "bestLo": -37.61,
+     "bestHi": -17.36,
+     "extCeilingNeeded": 50,
+     "extPeakValid": 200,
+     "perPair": [
+      {
+       "lo": 0,
+       "hi": 200
+      },
+      {
+       "lo": 10,
+       "hi": 110
+      }
+     ],
+     "counts": [
+      70434,
+      0,
+      0,
+      24396,
+      946,
+      9975,
+      40,
+      49
+     ],
+     "inWindowShare": 0.3345238095238095
+    },
+    "v": {
+     "state": "unavailable",
+     "reason": "194481 combos x 240 angles is over the 4000000 trace ceiling",
+     "combos": 194481,
+     "overCeiling": true
+    }
+   },
+   "needs": {
+    "h": {
+     "pairs": 2,
+     "extCeiling": 50,
+     "extPeakValid": 200,
+     "angleFrom": -38.11,
+     "angleTo": -17.36,
+     "angleSpan": 20.75,
+     "windowFrom": -42.62,
+     "windowTo": -2.62,
+     "combosNow": 1681,
+     "combosAtCeiling": 121,
+     "saving": 13.9
+    },
+    "v": null,
     "combined": null
    }
   },
@@ -3704,15 +4236,15 @@
     "kRel"
    ],
    "coefficients": [
-    24.383659037667606,
-    61.113921958519306,
-    -20.913324811248938,
-    22.480909798153412,
-    -41.486473455607715
+    46.64803181259215,
+    34.54230793916972,
+    -11.461167460252645,
+    17.546457573488432,
+    -21.729470494084893
    ],
-   "r2": 0.48650716017286766,
-   "sd": 37.658399879550046,
-   "n": 29,
+   "r2": 0.3455099514187179,
+   "sd": 38.65690897983198,
+   "n": 35,
    "maxPairs": 4
   },
   "extCeilingNeeded": {
@@ -4025,7 +4557,7 @@
   }
  ],
  "totals": {
-  "cells": 29,
+  "cells": 35,
   "cellsMeasured": 24,
   "combosNow": 168924,
   "combosAtCeiling": 13315,
