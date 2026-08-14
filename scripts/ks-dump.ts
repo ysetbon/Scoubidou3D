@@ -21,6 +21,11 @@
  *
  *     Artifacts written by scripts/ks-fixtures.py, for a machine with no Worker.
  *
+ *   …either of them with --keep
+ *
+ *     Union the read with the dump already on disk instead of replacing it.
+ *     The two sources hold different sweeps -- see the comment on `keep`.
+ *
  * What it prunes, and why it can:
  *
  *   result.stages  the strand geometry, and 238 kB of a 240 kB run. The atlas
@@ -90,8 +95,31 @@ const geometryOnly = arg("geometry-only", "ks=1");
  */
 const envelopeOut = arg("envelope-out", "public/mxn/ks-envelope.json");
 
+/**
+ * Union this read with the dump already on disk, instead of replacing it.
+ *
+ * One shelf is not one sweep. Cloudflare holds what the farm has computed —
+ * 4x2 and 3x4 at `e5` on a 100,000,000 budget, because that is what the big
+ * sizes need — while the committed dump is the exhaustive small-size walk at
+ * `eauto` that a laptop can do in an evening. They barely overlap, and a run
+ * against either one alone silently throws the other away: the atlas drops from
+ * sixteen sizes to five, or from the farm's real answers to none of them.
+ *
+ * So --keep reads what is at --out (and --geometry-out) and merges this read
+ * over it, one record per run key and level, the fresher read winning. The page
+ * is already built for the result — the flags dropdown exists precisely because
+ * a shelf can hold more than one search, and it says so when two are mixed into
+ * one fit.
+ *
+ * Off by default. A dump that quietly accumulated everything ever read would
+ * make "what does the shelf hold" unanswerable, and no amount of it could ever
+ * be removed.
+ */
+const keep = flag("keep");
+
 if (!url && !from) {
-  console.error("usage: npm run dump:ks -- --url <worker> | --from <dir> [--out <file>]");
+  console.error("usage: npm run dump:ks -- --url <worker> | --from <dir> "
+    + "[--out <file>] [--keep]");
   process.exit(2);   // before any socket exists, so there is nothing to unwind
 }
 
@@ -411,12 +439,87 @@ function fromDirectory() {
 }
 
 // ---------------------------------------------------------------------------
+// Keeping what is already there.
+// ---------------------------------------------------------------------------
+
+/** What either source hands back. */
+type Read = {
+  records: AtlasRecord[];
+  bands: Record<string, BandStat>;
+  stages: Record<string, Stage[]>;
+  truncated: string[];
+  runs: number;
+  source: string;
+};
+
+/** A committed file, or null if it is absent or unreadable. Never a throw. */
+function onDisk<T>(path: string): T | null {
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+/** One record per run key and level — the grain the page folds on. */
+const recordSlot = (record: AtlasRecord) => `${record.runKey}|L${record.level}`;
+
+/**
+ * This read, over what is at --out.
+ *
+ * Fresher wins per (run key, level): a run read again is the same question
+ * asked twice, and the later answer is the one the shelf holds now. A band is
+ * kept even where the new read has none for that cell — it is a census of the
+ * same run at the same level, and dropping it would lose a measurement to a
+ * source that simply was not asked for one.
+ */
+function unionWithDisk(fresh: Read): Read {
+  const previous = onDisk<AtlasDump>(out);
+  if (!previous?.records?.length) {
+    console.log(`  --keep: nothing readable at ${out}, so there is nothing to keep`);
+    return fresh;
+  }
+  if (previous.cacheVersion !== CACHE_VERSION) {
+    // Not merged, and not silently: records under an older cache version answer
+    // a different question, and mixing the two would put two engines' numbers
+    // in one column.
+    console.log(`  --keep: ${out} is ${previous.cacheVersion} and this is ${CACHE_VERSION}`
+      + " — replacing it rather than mixing two engines");
+    return fresh;
+  }
+
+  const merged = new Map(previous.records.map(record => [recordSlot(record), record]));
+  const held = merged.size;
+  let replaced = 0;
+  fresh.records.forEach(record => {
+    if (merged.has(recordSlot(record))) replaced += 1;
+    merged.set(recordSlot(record), record);
+  });
+  const records = [...merged.values()];
+  console.log(`  --keep: ${held} record(s) from ${out}, ${fresh.records.length} read`
+    + ` (${replaced} of them a re-read) → ${records.length}`);
+
+  return {
+    records,
+    bands: { ...previous.bands, ...fresh.bands },
+    stages: fresh.stages,   // merged against --geometry-out, not against --out
+    truncated: [...new Set([...(previous.truncated ?? []), ...fresh.truncated])],
+    // What the file actually holds records for, which is the only run count a
+    // merged dump can honestly state: the two reads counted their own listings,
+    // and neither saw the other's.
+    runs: new Set(records.map(record => record.runKey)).size,
+    source: [...new Set([...previous.source.split(" + "), fresh.source])].join(" + "),
+  };
+}
+
+// ---------------------------------------------------------------------------
 
 async function main() {
   console.log(url ? `Reading ${url}` : `Reading ${from}`);
-  const { records, bands, stages, truncated, runs, source } = url
-    ? await fromWorker()
-    : fromDirectory();
+  const read: Read = url ? await fromWorker() : fromDirectory();
+  const { records, bands, stages, truncated, runs, source } = keep
+    ? unionWithDisk(read)
+    : read;
 
   // Newest first, so a truncated read of the file is still the current shelf.
   records.sort((a, b) =>
@@ -477,8 +580,19 @@ async function main() {
 
   writeEnvelope(dump.generatedAt, source, records, bands);
 
-  const geometry: GeometryDump = { generatedAt: dump.generatedAt, source, stages };
-  const drawings = Object.keys(stages).length;
+  // Merged against the geometry file rather than the atlas one: the drawings
+  // live apart, are keyed by run rather than by level, and a read that asked
+  // for none of them (--geometry-only narrowed, or a source that has none) must
+  // not wipe the ones already committed.
+  const drawn = keep
+    ? { ...onDisk<GeometryDump>(geometryOut)?.stages, ...stages }
+    : stages;
+  if (keep) {
+    const added = Object.keys(drawn).length - Object.keys(stages).length;
+    console.log(`  --keep: ${added} drawing(s) kept from ${geometryOut}`);
+  }
+  const geometry: GeometryDump = { generatedAt: dump.generatedAt, source, stages: drawn };
+  const drawings = Object.keys(drawn).length;
   if (drawings) {
     const geometryText = JSON.stringify(geometry);
     // The same guard the atlas file gets, and it needs it more: widening

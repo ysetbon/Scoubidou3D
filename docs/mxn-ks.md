@@ -376,6 +376,51 @@ by `src/mxn-ks/model.ts`, which is the module the live page uses. A fixture
 derived by a second implementation would make the mock a lie about the page,
 which is the one thing a mock must never be.
 
+### One shelf is not one sweep — `--keep`
+
+The two routes above do not read the same shelf. Cloudflare holds what the farm
+has computed — the big sizes at `e5` on a 100,000,000 budget, because that is
+what they need — while the committed dump has been the exhaustive small-size walk
+at `eauto` that a laptop does in an evening. They barely overlap, and each route
+run alone **replaces** the file: the atlas drops from sixteen sizes to five, or
+loses the farm's answers entirely.
+
+```sh
+npm run dump:ks -- --url https://…workers.dev --keep    # union, don't replace
+```
+
+`--keep` merges the read over whatever is already at `--out` and
+`--geometry-out`: one record per run key and level, the fresher read winning, and
+the drawings unioned separately because they live in their own file and a
+narrowed `--geometry-only` must not wipe the ones already committed. A band is
+kept even where the new read has none — it is a census of the same run at the
+same level, and a source that was not asked for one has said nothing about it.
+Running it twice changes nothing, and a file under an older `cacheVersion` is
+replaced rather than mixed, because two engines' numbers do not belong in one
+column.
+
+The page is already built for the result: the flags dropdown lists each search
+with its count, and says so out loud when more than one is mixed into a single
+fit. It is off by default — a dump that quietly accumulated everything ever read
+would make *what does the shelf hold* unanswerable, and nothing could ever be
+taken out of it again.
+
+### On Windows, run the script rather than the npm script
+
+PowerShell's `npm run … -- --flag` does **not** forward the flags. npm's own
+parser takes them first — `--force` it keeps for itself, and `--url X` it reads
+as config, forwarding a bare `X` — so the script sees positional arguments it has
+no use for and prints its usage line. Go around npm:
+
+```powershell
+npx esbuild scripts/ks-dump.ts --bundle --platform=node --format=esm `
+  --outfile=node_modules/.cache/ks-dump.mjs
+node node_modules/.cache/ks-dump.mjs --url https://…workers.dev --keep --force
+```
+
+The same trap applies to every `npm run check:*` in this repo that takes an
+argument.
+
 What the dump prunes, and why it can:
 
 | dropped | size | why it is safe |
