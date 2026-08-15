@@ -152,6 +152,19 @@ tbody tr.engine td { color: var(--muted); }
 .level .ring canvas { height: 170px; }
 .level .ring figcaption var { color: var(--blue); }
 
+/* The manual fit is the page's main instrument, and it looks like it: the
+ * loudest header on the page, and a live diagram beside the knobs. */
+.panel.hero { border-width: 2px; }
+.panel.hero > header { background: var(--acid); }
+
+.mgrid { display: grid; grid-template-columns: minmax(280px, 400px) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 980px) { .mgrid { grid-template-columns: 1fr; } }
+.mfig canvas { height: 340px; }
+
+.mlegend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; font: 700 10px/1 monospace; color: var(--muted); }
+.mlegend u { display: inline-block; width: 18px; height: 8px; text-decoration: none; vertical-align: middle; margin-right: 5px; border-radius: 2px; }
+.mlegend u.dashline { background: repeating-linear-gradient(90deg, var(--red) 0 4px, transparent 4px 8px); height: 2px; }
+
 /* The manual fit. Slider rows read like the length bars above them: a label
  * column, the control, the number, and what it measures as. */
 .mrow { display: grid; grid-template-columns: 150px 1fr 92px 130px; gap: 10px; align-items: center; margin-bottom: 8px; font: 700 10.5px/1.2 monospace; }
