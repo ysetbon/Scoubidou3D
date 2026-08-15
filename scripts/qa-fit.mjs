@@ -147,6 +147,35 @@ const knobs = await page.evaluate(() => ({
 }));
 ok('the manual panel has a knob per pair plus the angle', knobs.rows >= 2,
   `${knobs.rows} rows`);
+const hero = await page.evaluate(() => {
+  const first = document.querySelector('.results .panel');
+  const canvas = document.querySelector('.mfig canvas');
+  const sample = () => {
+    if (!canvas) return '';
+    const ctx = canvas.getContext('2d');
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let acc = 0;
+    for (let i = 0; i < data.length; i += 4 * 61) acc = (acc * 31 + data[i]) >>> 0;
+    return String(acc);
+  };
+  const distinct = () => {
+    if (!canvas) return 0;
+    const ctx = canvas.getContext('2d');
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const seen = new Set();
+    for (let i = 0; i < data.length; i += 4 * 97) {
+      seen.add(`${data[i]},${data[i + 1]},${data[i + 2]}`);
+    }
+    return seen.size;
+  };
+  return {
+    firstIsManual: !!first && /manual fit/i.test(first.querySelector('header strong')?.textContent ?? ''),
+    inked: distinct(),
+    hash: sample(),
+  };
+});
+ok('the manual panel is the first thing under the stats', hero.firstIsManual);
+ok('its diagram is drawn, not blank', hero.inked > 3, `${hero.inked} colours`);
 ok('and measures the configuration live', /Δ neigh/.test(knobs.read),
   knobs.read.slice(0, 60));
 ok('follow is on by default', knobs.follow === 'true');
@@ -170,6 +199,19 @@ if (knobs.rows >= 3) {
     after.other !== before.other, `pair 2: ${before.other} → ${after.other}`);
   ok('and the live readout follows the knobs', after.read !== before.read,
     after.read.slice(0, 60));
+  // The diagram is the panel's other half: a drag has to redraw it, or the
+  // picture is captioning numbers it no longer shows.
+  const redrawn = await page.evaluate(() => {
+    const canvas = document.querySelector('.mfig canvas');
+    if (!canvas) return '';
+    const ctx = canvas.getContext('2d');
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let acc = 0;
+    for (let i = 0; i < data.length; i += 4 * 61) acc = (acc * 31 + data[i]) >>> 0;
+    return String(acc);
+  });
+  ok('and the diagram redraws under the drag', redrawn !== hero.hash,
+    `${hero.hash} → ${redrawn}`);
 }
 
 ok('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));

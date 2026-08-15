@@ -19,7 +19,9 @@ import {
   allBounds, drawExactStage, type Bounds, type Stage, type Strand,
 } from "../mxn-lab/weave-studio";
 import { saveJson, today } from "../mxn-lab/save-file";
-import { VALID, VERDICT_NAMES } from "../mxn-lab/trace-census";
+import {
+  VALID, VERDICT_NAMES, placeStarts, sweepAngle,
+} from "../mxn-lab/trace-census";
 import {
   CACHE_TOKEN_KEY, CACHE_URL_KEY, createCache, mergeJudgement, picksKey,
   readSetting, writeSetting,
@@ -122,6 +124,122 @@ const CHOOSER_KEY = "mxn-fit-chooser";
 
 /** One band's manual configuration: the knobs, as the hand left them. */
 type ManualBand = { ext: number[]; angle: number };
+
+/** One colour per pair, so a slider and the arms it moves read as one thing. */
+const PAIR_COLOURS = ["#276b72", "#924ab0", "#e28a1c", "#3474c4", "#c63c28", "#3a9c58"];
+
+/**
+ * The manual panel's own diagram: the band as the knobs place it, live.
+ *
+ * Drawn from the same `placeStarts`/`sweepAngle` arithmetic the readouts are
+ * measured by — so the picture and the numbers cannot disagree — over a faded
+ * copy of the ring as the engine left it, which is what the hand is departing
+ * from. Every drag redraws it; no engine is involved until a weave is asked
+ * for, which is exactly the readouts' own bargain.
+ */
+function drawManualBand(canvas: HTMLCanvasElement, inputs: FitBand,
+                        ext: number[], angleDeg: number, backdrop: Strand[],
+                        bounds: Bounds, anchorPair: number, follow: boolean) {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const width = Math.max(1, rect.width);
+  const height = Math.max(1, rect.height);
+  const pixelWidth = Math.round(width * dpr);
+  const pixelHeight = Math.round(height * dpr);
+  if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+  if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = "#f2f2f7";
+  ctx.fillRect(0, 0, width, height);
+
+  // The same frame the ring figures share, so the diagram is comparable with
+  // the cards beside it rather than rescaling itself under the cursor.
+  const pad = 10;
+  const sourceWidth = Math.max(1, bounds.maxX - bounds.minX);
+  const sourceHeight = Math.max(1, bounds.maxY - bounds.minY);
+  const scale = Math.max(0.001, Math.min(
+    Math.max(1, width - pad * 2) / sourceWidth,
+    Math.max(1, height - pad * 2) / sourceHeight));
+  const offsetX = (width - sourceWidth * scale) / 2 - bounds.minX * scale;
+  const offsetY = (height - sourceHeight * scale) / 2 - bounds.minY * scale;
+  const at = (x: number, y: number) => [x * scale + offsetX, y * scale + offsetY] as const;
+
+  const line = (x1: number, y1: number, x2: number, y2: number,
+                colour: string, lineWidth: number, dash: number[] = []) => {
+    ctx.beginPath();
+    ctx.moveTo(...at(x1, y1));
+    ctx.lineTo(...at(x2, y2));
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = Math.max(1, lineWidth);
+    ctx.lineCap = "round";
+    ctx.setLineDash(dash);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  };
+
+  // The ring as the engine left it — context, so it is grey and behind. The
+  // band's own arms are faded further: their replacements are the subject.
+  const bandNames = new Set(inputs.names);
+  const widthOf = new Map(backdrop.map(s => [s.layer_name, s.width]));
+  for (const strand of backdrop) {
+    if (strand.type === "MaskedStrand" || strand.is_hidden) continue;
+    line(strand.start.x, strand.start.y, strand.end.x, strand.end.y,
+      bandNames.has(strand.layer_name) ? "rgba(23, 23, 19, .07)" : "rgba(23, 23, 19, .18)",
+      strand.width * scale);
+  }
+
+  // The band as the knobs place it.
+  const starts = placeStarts(inputs, ext);
+  const swept = sweepAngle(inputs, starts, angleDeg);
+  const bodyWidth = (widthOf.get(inputs.names[0]) ?? 40) * scale;
+  inputs.pairIndices.forEach(([li, ri], p) => {
+    const colour = PAIR_COLOURS[p % PAIR_COLOURS.length];
+    const emphasised = follow && p === anchorPair;
+    for (const arm of [li, ri]) {
+      if (arm === null || arm === undefined) continue;
+      const [sx, sy] = starts[arm];
+      const [ex, ey] = swept.ends[arm];
+      const [tx, ty] = inputs.targets[arm];
+      // How far the arm's end sits from the target it is meant to reach —
+      // the REACH verdict, drawn rather than only named.
+      if (Math.hypot(ex - tx, ey - ty) > 2) {
+        line(ex, ey, tx, ty, "rgba(228, 81, 63, .8)", 1.5, [4, 4]);
+      }
+      line(sx, sy, ex, ey, colour, Math.max(3, bodyWidth * (emphasised ? 1 : 0.72)));
+      ctx.beginPath();
+      const [cx, cy] = at(tx, ty);
+      ctx.arc(cx, cy, Math.max(3, bodyWidth * 0.35), 0, Math.PI * 2);
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  });
+}
+
+function ManualFigure({ inputs, knobs, backdrop, bounds, anchorPair, follow, caption }: {
+  inputs: FitBand; knobs: ManualBand; backdrop: Strand[]; bounds: Bounds | null;
+  anchorPair: number; follow: boolean; caption: string;
+}) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas || !bounds) return;
+    const draw = () => drawManualBand(canvas, inputs, knobs.ext, knobs.angle,
+      backdrop, bounds, anchorPair, follow);
+    draw();
+    const observer = new ResizeObserver(draw);
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [inputs, knobs, backdrop, bounds, anchorPair, follow]);
+  return (
+    <figure className="ring mfig">
+      <figcaption><span>the band, as the knobs place it</span><var>{caption}</var></figcaption>
+      <canvas ref={ref} role="img" aria-label="manual band diagram" />
+    </figure>
+  );
+}
 
 function useWorker() {
   const ref = useRef<Worker | null>(null);
@@ -978,69 +1096,6 @@ export function Fitter() {
                 </div>
               </div>
 
-              <div className="panel">
-                <header>
-                  <strong>Every level</strong>
-                  <span>
-                    the run's own diagrams — press one to fit that level instead
-                  </span>
-                  <span className="spacer" />
-                  <span className="chip soft">{stages.length} level{stages.length === 1 ? "" : "s"}</span>
-                </header>
-                <div className="body">
-                  <div className="levels">
-                    {stages.map(s => (
-                      <button key={s.level} type="button" className="level"
-                        aria-pressed={s.level === fitLevel} disabled={busy}
-                        onClick={() => { if (s.level !== fitLevel) fitAt(s.level, stages, auditRows); }}
-                        title={`Fit L${s.level}`}>
-                        <RingFigure title={`L${s.level}${s.k === null ? "" : ` · k=${s.k}`}`}
-                          stage={s} bounds={bounds}
-                          caption={s.level === fitLevel ? "fitting" : ""} />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <p className="note">
-                  Each card is the stitch as it stood at that level, drawn by{" "}
-                  <code>drawExactStage</code> — the same renderer <code>/mxn/</code> uses, off
-                  the same strands. They share one frame, so a ring that grew is drawn bigger
-                  rather than rescaled to look the same.
-                </p>
-              </div>
-
-              <div className="panel">
-                <header>
-                  <strong>L{fitLevel}, before and after</strong>
-                  <span>the level being fitted, and what the fit did to it</span>
-                </header>
-                <div className="body">
-                  <div className="rings">
-                    <RingFigure title={`L${fitLevel} · engine`} stage={before?.stage ?? null}
-                      bounds={bounds}
-                      caption={beforeLengths.length
-                        ? `Δ ${neighbourDelta(beforeLengths).toFixed(2)} px` : ""} />
-                    <RingFigure
-                      title={after ? `L${fitLevel} · fitted` : "fitted — none accepted"}
-                      stage={after
-                        ? { level: fitLevel, k: plan.k, label: "fitted", strands: after.woven.strands }
-                        : null}
-                      bounds={bounds}
-                      caption={afterLengths.length
-                        ? `Δ ${neighbourDelta(afterLengths).toFixed(2)} px` : ""} />
-                  </div>
-                  <LengthBars before={beforeLengths} after={afterLengths} />
-                </div>
-                <p className="note">
-                  Both are the engine's own output. The lengths beside them are measured off
-                  those strands rather than recomputed from the extensions that were asked for,
-                  so what is quoted is what is drawn. Fitting a level slides its arms along
-                  their parents, which <em>lengthens the level below by the same amount</em> —
-                  so the card for L{Math.max(1, fitLevel - 1)} above is part of the answer too,
-                  not context.
-                </p>
-              </div>
-
               {plan[band] && !plan[band].unavailable && manual[band] && (() => {
                 const inputs = plan[band];
                 const knobs = manual[band]!;
@@ -1063,7 +1118,7 @@ export function Fitter() {
                 };
                 const read = manualReadout;
                 return (
-                  <div className="panel">
+                  <div className="panel hero">
                     <header>
                       <strong>Manual fit — {BAND_NAME[band]} band</strong>
                       <span>
@@ -1080,6 +1135,24 @@ export function Fitter() {
                       </button>
                     </header>
                     <div className="body">
+                      <div className="mgrid">
+                      <div>
+                        <ManualFigure inputs={inputs} knobs={knobs}
+                          backdrop={before?.stage.strands ?? []} bounds={bounds}
+                          anchorPair={anchor[band]} follow={follow}
+                          caption={read ? `Δ ${read.delta.toFixed(2)} px` : ""} />
+                        <div className="mlegend">
+                          {knobs.ext.map((_, p) => (
+                            <span key={p}>
+                              <u style={{ background: PAIR_COLOURS[p % PAIR_COLOURS.length] }} />
+                              pair {p + 1}
+                            </span>
+                          ))}
+                          <span><u style={{ background: "rgba(23, 23, 19, .25)" }} /> engine's ring</span>
+                          <span><u className="dashline" /> gap to target</span>
+                        </div>
+                      </div>
+                      <div>
                       <div className="mrow">
                         <i>angle</i>
                         <input type="range" min={angleLo} max={angleHi} step={0.01}
@@ -1137,6 +1210,8 @@ export function Fitter() {
                           {after === manualWoven ? "adopted" : "adopt as fitted"}
                         </button>
                       </div>
+                      </div>
+                      </div>
                       {manualWoven && (
                         <div className="rings" style={{ marginTop: 14 }}>
                           <RingFigure title="manual · woven"
@@ -1165,6 +1240,69 @@ export function Fitter() {
                   </div>
                 );
               })()}
+
+              <div className="panel">
+                <header>
+                  <strong>L{fitLevel}, before and after</strong>
+                  <span>the level being fitted, and what the fit did to it</span>
+                </header>
+                <div className="body">
+                  <div className="rings">
+                    <RingFigure title={`L${fitLevel} · engine`} stage={before?.stage ?? null}
+                      bounds={bounds}
+                      caption={beforeLengths.length
+                        ? `Δ ${neighbourDelta(beforeLengths).toFixed(2)} px` : ""} />
+                    <RingFigure
+                      title={after ? `L${fitLevel} · fitted` : "fitted — none accepted"}
+                      stage={after
+                        ? { level: fitLevel, k: plan.k, label: "fitted", strands: after.woven.strands }
+                        : null}
+                      bounds={bounds}
+                      caption={afterLengths.length
+                        ? `Δ ${neighbourDelta(afterLengths).toFixed(2)} px` : ""} />
+                  </div>
+                  <LengthBars before={beforeLengths} after={afterLengths} />
+                </div>
+                <p className="note">
+                  Both are the engine's own output. The lengths beside them are measured off
+                  those strands rather than recomputed from the extensions that were asked for,
+                  so what is quoted is what is drawn. Fitting a level slides its arms along
+                  their parents, which <em>lengthens the level below by the same amount</em> —
+                  so the card for L{Math.max(1, fitLevel - 1)} above is part of the answer too,
+                  not context.
+                </p>
+              </div>
+
+              <div className="panel">
+                <header>
+                  <strong>Every level</strong>
+                  <span>
+                    the run's own diagrams — press one to fit that level instead
+                  </span>
+                  <span className="spacer" />
+                  <span className="chip soft">{stages.length} level{stages.length === 1 ? "" : "s"}</span>
+                </header>
+                <div className="body">
+                  <div className="levels">
+                    {stages.map(s => (
+                      <button key={s.level} type="button" className="level"
+                        aria-pressed={s.level === fitLevel} disabled={busy}
+                        onClick={() => { if (s.level !== fitLevel) fitAt(s.level, stages, auditRows); }}
+                        title={`Fit L${s.level}`}>
+                        <RingFigure title={`L${s.level}${s.k === null ? "" : ` · k=${s.k}`}`}
+                          stage={s} bounds={bounds}
+                          caption={s.level === fitLevel ? "fitting" : ""} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="note">
+                  Each card is the stitch as it stood at that level, drawn by{" "}
+                  <code>drawExactStage</code> — the same renderer <code>/mxn/</code> uses, off
+                  the same strands. They share one frame, so a ring that grew is drawn bigger
+                  rather than rescaled to look the same.
+                </p>
+              </div>
 
               <div className="panel">
                 <header>
