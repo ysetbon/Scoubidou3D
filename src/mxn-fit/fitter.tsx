@@ -25,12 +25,13 @@ import {
 import {
   CACHE_TOKEN_KEY, CACHE_URL_KEY, createCache, mergeJudgement, picksKey,
   readSetting, writeSetting,
-  type Judgement, type PickBand, type RunDescriptor, type Verdict,
+  type Judgement, type PickBand, type PicksArtifact, type RunDescriptor,
+  type Verdict,
 } from "../mxn-lab/cache";
 import {
   EXT_MAX, FLUSH_EPS, bySortKey, fitCandidates, fixOthers, followPair, isFlush,
   neighbourDelta, readAt, spread,
-  type Candidate, type FitBand, type SortKey, type Tie,
+  type Candidate, type FitBand, type SortKey,
 } from "./solve";
 
 const BASE = import.meta.env.BASE_URL;
@@ -343,7 +344,6 @@ export function Fitter() {
   const [ksText, setKsText] = useState("1");
   const [hand, setHand] = useState<"lh" | "rh">("lh");
   const [direction, setDirection] = useState<"cw" | "ccw">("cw");
-  const [tie, setTie] = useState<Tie>("longest");
   const [sortKey, setSortKey] = useState<SortKey>("delta");
   const [band, setBand] = useState<BandKey>("v");
 
@@ -389,11 +389,48 @@ export function Fitter() {
   const ks = useMemo(() => ksOf(ksText), [ksText]);
 
   /**
+   * The best ring anyone has judged for this parameter set at this level.
+   *
+   * Read from the shelf when a Worker is configured, and either way folded
+   * together with this browser's own local judgements — the local copy is
+   * written first on every save, so it can hold a decision the shelf never
+   * received. mergeJudgement holds the invariants while folding, so at most
+   * one `best` survives and a rejected best never comes back. Returns null
+   * when nobody has marked a best for this level, or when neither store is
+   * reachable — a fit must never be blocked by the database being away.
+   */
+  const loadBestPick = async (level: number) => {
+    const d: RunDescriptor = { m, n, ks, hand, direction, ...DESCRIPTOR_FLAGS };
+    let artifact: PicksArtifact | null = null;
+    let from = "this browser's judgements";
+    if (apiUrl.trim()) {
+      try {
+        artifact = await createCache({ base: apiUrl.trim(), token: apiToken.trim() })
+          .getPicks(d);
+        if (artifact) from = "the shelf";
+      } catch { /* the shelf being away must not block the fit */ }
+    }
+    try {
+      const key = `picks/${picksKey(d)}`;
+      const rows = JSON.parse(readSetting(JUDGEMENTS_KEY) || "[]") as
+        { key: string; judgement: Judgement }[];
+      for (const row of rows) {
+        if (row.key !== key) continue;
+        artifact = mergeJudgement(artifact, row.judgement, d);
+      }
+    } catch { /* a torn local store reads as no judgements, not as an error */ }
+    const best = artifact?.judgements.find(j => j.verdict === "best");
+    const bands = best?.levels.find(l => l.level === level);
+    if (!best || !bands || (!bands.h && !bands.v)) return null;
+    return { h: bands.h, v: bands.v, chooser: best.chooser, from };
+  };
+
+  /**
    * Fit one level of the stitch that is already in the worker's session.
    *
    * Separate from the run because a run is expensive and a level is not: the
-   * session survives, so any level can be fitted, and re-fitted under a
-   * different policy, without the engine being asked to think again.
+   * session survives, so any level can be fitted, and re-fitted, without the
+   * engine being asked to think again.
    */
   const fitAt = async (target: number, drawn: Stage[], audits: AuditRow[]) => {
     const stage = drawn.find(s => s.level === target);
@@ -467,21 +504,72 @@ export function Fitter() {
         const inputs = got[key];
         if (!inputs || inputs.unavailable) continue;
         if (isFlush(beforeLengths[key])) continue;
-        lists[key] = fitCandidates(inputs, { tie });
+        lists[key] = fitCandidates(inputs);
       }
       setCandidates(lists);
+
+      // A person's word comes before any policy: if somebody has marked a
+      // best ring for this parameter set — on the shelf, or in this browser's
+      // own judgements — that ring is woven and audited first, and taken when
+      // it still closes. Only without one (or when the stored best no longer
+      // survives the audit, which is a finding worth saying) does the page
+      // fall back to the default walk below.
+      setStatus("Looking for a judged best fit…");
+      const pick = await loadBestPick(level);
+      let pickNote = "";
+      if (pick) {
+        setStatus(`Weaving the best fit ${pick.chooser} judged…`);
+        const woven = await ask({
+          type: "fit-weave", level,
+          hExt: pick.h?.ext ?? held.h?.ext ?? null,
+          hAngle: pick.h?.angle ?? held.h?.angle ?? null,
+          vExt: pick.v?.ext ?? held.v?.ext ?? null,
+          vAngle: pick.v?.angle ?? held.v?.angle ?? null,
+        }, "fit-weave-ready") as Woven;
+        const lengths = {
+          h: got.h?.unavailable ? [] : measure(woven.strands, got.h.names),
+          v: got.v?.unavailable ? [] : measure(woven.strands, got.v.names),
+        };
+        const ok = !!woven.row?.healthy
+          && woven.row.across >= (baseline.row?.across ?? 0);
+        const asCandidate = (key: BandKey): Candidate | null => {
+          const inputs = got[key];
+          const p = key === "h" ? pick.h : pick.v;
+          if (!inputs || inputs.unavailable || !p || p.angle === null) return null;
+          const r = readAt(inputs, p.ext, p.angle);
+          return {
+            ext: [...p.ext], angle: p.angle, star: r.lengths[0] ?? 0,
+            lengths: r.lengths, gaps: r.gaps, margin: r.margin, delta: r.delta,
+            totalExt: p.ext.reduce((a, b) => a + b, 0),
+          };
+        };
+        const attempt: Attempt = {
+          h: asCandidate("h"), v: asCandidate("v"), woven, lengths, accepted: ok,
+        };
+        setAttempts([attempt]);
+        if (ok) {
+          setAfter(attempt);
+          setStatus(`Loaded the best fit from ${pick.from} — judged by ${pick.chooser}, `
+            + `and the ring still closes (${woven.row.across}/${woven.row.expected}).`);
+          setBusy(false);
+          return;
+        }
+        pickNote = `The best fit from ${pick.from} no longer survives the audit `
+          + `(${woven.row?.across ?? 0}/${woven.row?.expected ?? "?"}) — fitting fresh. `;
+      }
+
       if (!lists.h.length && !lists.v.length) {
         // Two very different reasons to have no candidates, and saying the
         // wrong one would be the page lying about the thing it is for.
         const stuck = BANDS.filter(key => !got[key]?.unavailable
           && beforeLengths[key].length && !isFlush(beforeLengths[key]));
-        setStatus(stuck.length
+        setStatus(pickNote + (stuck.length
           ? `${stuck.map(k => BAND_NAME[k]).join(" and ")} cannot be made flush: `
             + "every configuration that equalises its arms fails one of the "
             + "engine's own tests. The ring is unchanged."
           : beforeLengths.h.length || beforeLengths.v.length
             ? "Both bands are already flush — nothing to fit."
-            : "Neither band was searched, so there is nothing to read.");
+            : "Neither band was searched, so there is nothing to read."));
         setFailed(stuck.length > 0);
         setBusy(false);
         return;
@@ -522,11 +610,11 @@ export function Fitter() {
         }
       }
       setAfter(accepted);
-      setStatus(accepted
+      setStatus(pickNote + (accepted
         ? `Fitted, and the ring still closes — ${tried.length} candidate${
             tried.length === 1 ? "" : "s"} woven.`
         : `No flush ring survived the audit in ${tried.length} candidates. `
-          + "The engine's own ring is unchanged.");
+          + "The engine's own ring is unchanged."));
       setFailed(!accepted);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
@@ -889,7 +977,7 @@ export function Fitter() {
       params: { m, n, ks, hand, direction },
       engine: { level: fitLevel, k: plan.k },
       fitted: !!source,
-      policy: { target: "flush", ext: "continuous", angle: "window", tie },
+      policy: { target: "flush", ext: "continuous", angle: "window", tie: "longest" },
       bands: BANDS.filter(key => !plan[key]?.unavailable).map(key => ({
         band: BAND_NAME[key],
         arms: plan[key].nStrands,
@@ -984,26 +1072,6 @@ export function Fitter() {
           </section>
 
           <section>
-            <h2 className="kicker">Fit policy</h2>
-            <div className="field">
-              <label className="f" htmlFor="fit-tie">order the candidates by</label>
-              <select id="fit-tie" value={tie}
-                onChange={e => setTie(e.target.value as Tie)}>
-                <option value="longest">longest common arm</option>
-                <option value="margin">widest gap margin</option>
-                <option value="least-ext">least total extension</option>
-                <option value="near-engine">nearest the engine's own pick</option>
-              </select>
-            </div>
-            <p className="hint">
-              Every candidate is exactly flush; this is the order they are offered to the
-              engine's audit in. <code>longest</code> is the default because the ring closes
-              when one band's arms reach across the other — <code>margin</code> reads safer
-              and measurably is not.
-            </p>
-          </section>
-
-          <section>
             <h2 className="kicker">Sort</h2>
             <div className="field">
               <label className="f" htmlFor="fit-sort">rank the table by</label>
@@ -1021,6 +1089,14 @@ export function Fitter() {
             </button>
             <button className="go ghost" type="button" onClick={exportRing}
               disabled={!before}>Export</button>
+            <p className="hint">
+              The fit loads the ring somebody judged <b>★ best</b> for these
+              parameters — from the shelf when a worker url is set below, and from
+              this browser's own judgements either way. Without one it fits fresh:
+              exactly-flush candidates offered to the engine's audit longest-arm
+              first, because the ring closes when one band's arms reach across the
+              other.
+            </p>
             {(status || progress) && (
               <p className={`status${failed ? " bad" : ""}`}>{status || progress}</p>
             )}

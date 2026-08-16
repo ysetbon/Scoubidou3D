@@ -363,7 +363,7 @@ fit  →  sort by neighbour length
 ```
 
 works, and the fitted row is not pinned to the top of the table by fiat; it is
-0.00 px, so it sorts to the top. Change the fit policy and it moves. Turn the
+0.00 px, so it sorts to the top. Change the sort key and it moves. Turn the
 fit off and the table is still a table — that is the "works after autofix" test:
 the ordering is a function of the geometry, so it is meaningful before, during
 and after.
@@ -386,6 +386,16 @@ kind beside `run` and `trace` and mirrors the verdict onto the `solutions` row
 (`migrations/0003_verdict.sql`), and the fitter's sidebar carries the verdict
 buttons — local copy first, then the shelf and the D1 row, with the status line
 naming which of the three happened.
+
+And the fitter reads it back. **Run and fit** looks for a judged **★ best**
+before any policy is consulted — the shelf when a Worker URL is configured,
+folded with the browser's own local judgements either way — and a found best is
+woven, audited, and taken when the ring still closes, with the status naming
+where it came from and who judged it. Only without one (or when a stored best
+no longer survives the audit, which the status says out loud) does the page
+fall back to the default walk, exactly-flush candidates offered longest-arm
+first. There is no policy dropdown any more: a person's decision is the policy,
+and the default covers the rest.
 
 ### Three different things are called "valid" here
 
