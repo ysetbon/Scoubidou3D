@@ -31,6 +31,7 @@ import {
   type PicksArtifact, type RunArtifact, type RunDescriptor,
 } from "../mxn-lab/cache";
 import type { Stage } from "../mxn-lab/exact-draw";
+import { JUDGEMENTS_KEY } from "../mxn-lab/picks-shelf";
 import { recordsFromRun } from "./model";
 import {
   BOARD_MAX, entriesFromPicks, entryFromJudgement, entryFromRecord,
@@ -41,9 +42,6 @@ const HAND_DIRECTIONS = ["lh-cw", "lh-ccw", "rh-cw", "rh-ccw"];
 
 /** Matched to the Worker's own clamp, so "exactly full" is detectable. */
 const PAGE = 1000;
-
-/** Where /mxn/fit/ holds a judgement before, and beside, any network. */
-const JUDGEMENTS_KEY = "mxn-fit-judgements";
 
 /** A bounded pool. Dozens of small fetches, never hundreds at once. */
 export async function pooled<T>(items: T[], width: number, run: (item: T) => Promise<void>) {

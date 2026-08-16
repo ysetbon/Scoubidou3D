@@ -43,6 +43,11 @@ The ladder is by what an answer **is**, never by where it was read from. A ★
 best in a file you dropped on the page outranks an engine run on Cloudflare
 exactly as one on the shelf would.
 
+The same rule now holds at [`/mxn/`](mxn-lab.md): a size whose tile here carries
+a ★ opens there with that ring on its card rather than the engine's pick, from
+the same `picks/v3/…` artifact. The board is where you see which cells a hand
+has been to; the lab is where you open one.
+
 ## Three things it must not get wrong
 
 All three are about **absence**, which is what a board of mostly-empty tiles is

@@ -26,10 +26,16 @@ import {
   CACHE_TOKEN_KEY, CACHE_URL_KEY, CACHE_VERSION, createCache, mergeJudgement,
   parsePicksKey, picksKey, runKey,
   readSetting, writeSetting,
-  type Judgement, type JudgementSource, type PickBand, type PicksArtifact,
+  type Judgement, type JudgementSource, type PickBand,
   type RunDescriptor,
   type Verdict,
 } from "../mxn-lab/cache";
+// The two-store fold moved up to picks-shelf.ts when /mxn/ started asking the
+// same question: one reading of "what has anybody said about these parameters",
+// or the two pages drift and one draws a best the other has superseded.
+import {
+  JUDGEMENTS_KEY, readPicks, type Picks,
+} from "../mxn-lab/picks-shelf";
 // Imported rather than respelled: this page takes larger sizes than the lab
 // does, and the number it is being larger THAN has to be the lab's own.
 import { MAX_SIDE } from "../mxn-farm/plan";
@@ -122,9 +128,6 @@ type Attempt = {
   audited: boolean;
 };
 
-/** The judgements for one parameter set, and which stores answered for them. */
-type Picks = { judgements: Judgement[]; from: string; reached: boolean };
-
 /**
  * Where the ring in the "after" card came from.
  *
@@ -152,8 +155,6 @@ const ksOf = (raw: string) => raw.replace(/[[\],]/g, " ").trim().split(/\s+/)
  */
 const DESCRIPTOR_FLAGS = { shortArms: true, step: "auto" as const, budget: 400_000 };
 
-/** Where a person's judgements are held before (and beside) any network. */
-const JUDGEMENTS_KEY = "mxn-fit-judgements";
 const CHOOSER_KEY = "mxn-fit-chooser";
 
 /**
@@ -213,50 +214,6 @@ function askedFor() {
   };
 }
 
-/**
- * Every judgement anyone has made about ONE parameter set, from both stores.
- *
- * Module-level rather than a closure over the form fields, because the callers
- * ask it about different parameter sets: the fit asks about the one that was
- * run, and the preload below asks about the k = 0 default and then about every
- * set on the shelf.
- *
- * Read from the Cloudflare shelf when a Worker is configured, and either way
- * folded together with this browser's own local judgements — the local copy is
- * written first on every save, so it can hold a decision the shelf never
- * received. mergeJudgement holds the invariants while folding, so at most one
- * `best` survives and a rejected best never comes back. Neither store being
- * reachable is not an error: a fit must never be blocked by the database being
- * away, so an unreachable shelf reads as "no judgements there".
- */
-async function readPicks(d: RunDescriptor, base: string, token: string): Promise<Picks> {
-  let artifact: PicksArtifact | null = null;
-  let from = "this browser";
-  let reached = !base;
-  if (base) {
-    try {
-      artifact = await createCache({ base, token }).getPicks(d);
-      reached = true;
-      if (artifact) from = "Cloudflare";
-    } catch { /* the shelf being away must not block the fit */ }
-  }
-  try {
-    const key = `picks/${picksKey(d)}`;
-    const rows = JSON.parse(readSetting(JUDGEMENTS_KEY) || "[]") as
-      { key: string; judgement: Judgement }[];
-    // Latched before the loop rather than recomputed off `from` inside it:
-    // reading the previous answer back made a SECOND local judgement drop
-    // "Cloudflare" from the credit, because "Cloudflare and this browser" is
-    // not "Cloudflare".
-    const fromShelf = from === "Cloudflare";
-    for (const row of rows) {
-      if (row.key !== key) continue;
-      artifact = mergeJudgement(artifact, row.judgement, d);
-      from = fromShelf ? "Cloudflare and this browser" : "this browser";
-    }
-  } catch { /* a torn local store reads as no judgements, not as an error */ }
-  return { judgements: artifact?.judgements ?? [], from, reached };
-}
 
 /**
  * The parameter set a miss falls back to: the same size, hand and direction,

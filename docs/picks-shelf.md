@@ -10,6 +10,12 @@ The commands are Windows PowerShell, since that is where they get run. The
 clone is at `$HOME\Scoubidou3D` and the Worker is
 `https://mxn-solutions-api.ysetbon.workers.dev`.
 
+Judgements are not only readable from a terminal. `/mxn/fit/` loads them,
+`/mxn/ks/<k>/` folds them into a board, and `/mxn/` draws a ★ best in place of
+the engine's own pick for the parameters on screen
+([docs/mxn-lab.md](mxn-lab.md)) — so "did my ★ best save?" usually has a visual
+answer before it needs a PowerShell one.
+
 **No token is required.** The Worker runs with `CACHE_PUBLIC_READS = "1"`, and
 `publicReads()` opens `/catalogue` and `/cache/…` to GET, so the whole check is
 anonymous. Only `/solutions` needs `Authorization: Bearer <ADMIN_TOKEN>`, and it

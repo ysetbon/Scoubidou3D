@@ -351,6 +351,70 @@ fallback and it is worth keeping true: `npm run qa:cache` asserts both halves.
 
 `docs/mxn-farm.md` has the key layout, the queue, the transport and the checks.
 
+### A person's ★ best, in place of the engine's pick
+
+The run is what the engine said. The other shelf — `picks/v3/…`, written by
+[`/mxn/fit/`](mxn-fit.md) — is what a **person** said, and the rule the k boards
+are built around ([docs/mxn-ks-board.md](mxn-ks-board.md)) applies here too:
+
+> **A person outranks the engine.**
+
+So when a run lands, from the cache or from the engine, the lab asks that shelf
+too. A ★ best goes onto the level it was judged for, the card says **human
+pick** and who pressed it, and the sidebar names where it was read from. This is
+why a ring starred at `/mxn/fit/`, or drawn on a k board, now appears here
+without anybody loading a file: the judgement was always on the shelf and this
+page was the one that never asked.
+
+A judgement carries its whole ring, so drawing it costs no Pyodide, no
+`generate` and no fit — one public GET, no token, and the fast path stays as
+fast as it was.
+
+Four things it is careful about, and each is a way the card could look right
+while lying about which ring is on it:
+
+- **Only a ★ best is adopted.** Never the newest ✓ valid, never a ✗ rejected.
+  Either a person chose or the engine did; there is no middle tier, and a page
+  that promoted the newest valid on its own would be inventing a verdict nobody
+  pressed.
+- **The engine's own ring is one press away and never hidden.** The chip toggles
+  in both directions, and the solution browser greys its `‹ index / count ›`
+  while a judged ring is up, exactly as it does for a traced cell — the number
+  describes a ring that is not on screen and says so.
+- **The numbers under a judged ring are the judgement's.** A run's audit row is
+  not reused: it measured a different ring. A judgement carries crossings,
+  expected, stray, broken and the extensions it was fitted at, and carries
+  nothing about gaps, `within` or masks — so those print `—`. A zero nobody
+  measured reads exactly like a zero somebody did.
+- **The ⭐ will not bank it.** The rating dataset is a queue of *this run's*
+  solutions, and a judged ring is neither — it has its own geometry, none of the
+  audit row beside it, and a home already (`picks/v3/…`). The star is disabled
+  while one is up and says why.
+- **A judgement with no ring is reported, not drawn.** Judgements saved before
+  rings were stored in a pick (`hasRing = False` in
+  [docs/picks-shelf.md](picks-shelf.md)) genuinely need the engine. The sidebar
+  says so and names the fix, rather than showing the engine's ring under a
+  "human pick" chip.
+
+**The search flags are allowed to differ.** The farm sweeps at
+`s1-e5-b100000000` and the fitter always writes `s1-eauto-b400000`, so requiring
+the run's key and the judgement's key to match would mean a ★ best that is
+plainly visible at `/mxn/ks/-1/` could never appear at `/mxn/` — which is
+exactly what used to happen. A judgement is not a search: it is a ring somebody
+placed and a verdict they pressed, and the flags in its key say only which run
+was on screen at the time. The lookup asks the run's own key first, then the
+fitter's canonical flags, then any other flags-variant of the *same size, hand,
+direction and ks* that the shelf or this browser lists — so an exact match is
+never passed over for a looser one. Nothing else is ever substituted.
+
+`src/mxn-lab/picks-shelf.ts` is pure and React-free so `npm run check:picks` can
+pin all of the above without a browser; `npm run qa:cache` drives the same rules
+through the real page, against a real Worker, and asserts the engine stayed
+asleep throughout.
+
+The size clamp still applies: the lab takes m and n up to 4, so a ★ best judged
+at `5×1` is on the shelf and on its k board but has no lab card to land on.
+
 ### The dataset API
 
 ⭐ and 🚩 always write to `localStorage`. If a Worker URL and admin token are set in

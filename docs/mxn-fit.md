@@ -914,7 +914,9 @@ authority and the row carries the same `id`.
 ### How a judgement is read back
 
 `/mxn/` and `/mxn/fit/` both ask for `picks/v3/…` before falling back to the
-`run`'s own choice — one extra request, cached like the rest.
+`run`'s own choice — one extra request, cached like the rest. Both are built;
+the lab's half is [docs/mxn-lab.md § A person's ★ best](mxn-lab.md), and the
+two-store fold they share is `src/mxn-lab/picks-shelf.ts`.
 
 - a `best` opens the level, with a chip saying **human pick** — it can say
   nothing else, since nothing else can write one — and the engine's own answer
@@ -930,7 +932,14 @@ authority and the row carries the same `id`.
   rejected filter is picked on purpose;
 - a stale entry — `engineCommit` or `runComputedAt` no longer matching the shelf
   — is listed, greyed, and not applied. An extension and an angle mean something
-  only against the checkpoint they were measured on;
+  only against the checkpoint they were measured on. **This rung is not built,
+  and deliberately so:** nothing writes `engineCommit` at all, and
+  `runComputedAt` records the run the *fitter* had, which is a different key
+  from the farm run a lab card is showing whenever the flags differ — so
+  comparing them would grey out nearly every judgement and call it staleness.
+  What does hold is the version: a picks key embeds `v3`, so an artifact from an
+  older engine is never read under this one's key. A real staleness signal needs
+  something to write `engineCommit` first;
 - with no Worker configured none of this happens and both pages behave exactly
   as they do today. The shelf has always been optional and stays optional.
 
@@ -954,7 +963,8 @@ happened rather than one "Saved".
 | `worker-api/src/index.ts` | `cacheKey(kind: "run" \| "trace" \| "picks", …)` with `wanted = kind === "trace" ? 6 : 5`, one more route line beside `/cache/run/`, and one `verdict` filter in `listSolutions`. Storage, catalogue, auth, CORS and the size ceiling are all kind-agnostic already |
 | `worker-api/migrations/0003_verdict.sql` | the three columns and the index above, run once by hand as `0001` and `0002` were |
 | `src/mxn-lab/cache.ts` | a `PicksArtifact` type, `picksKey()`, `parsePicksKey()`, `getPicks`/`putPicks`/`hasPicks`, and the five invariants enforced in one `mergeJudgement()` |
-| `src/mxn-lab/weave-studio.tsx` | prefer a `best` over the run's own pick, and the chip that says so |
+| `src/mxn-lab/weave-studio.tsx` | prefer a `best` over the run's own pick, and the chip that says so — built, with the numbers under the diagram coming from the judgement rather than from the run it displaced |
+| `src/mxn-lab/picks-shelf.ts` | the two-store fold, lifted out of this file once /mxn/ needed it too, plus which flags-variants of one size a lab card may look under |
 
 No cache migration: with R2 bound it is a new key prefix, and on D1
 `cache_entries` is keyed by the same opaque string. Reads stay public, writes

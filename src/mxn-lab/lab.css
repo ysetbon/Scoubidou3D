@@ -229,6 +229,19 @@ textarea {
 .cache-chip.is-miss { border-left-color: var(--line); }
 .cache-chip.is-miss b { color: var(--muted); }
 
+/* The other shelf: what a person said, rather than what the engine computed.
+   Deliberately not a fourth cache-chip state -- the two answer different
+   questions and can both be true at once. */
+.picks-chip {
+  margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line);
+  border-left: 3px solid var(--acid); background: var(--card);
+  display: grid; gap: 3px;
+}
+.picks-chip b {
+  font: 800 9px/1.3 monospace; text-transform: uppercase; letter-spacing: .1em;
+}
+.picks-chip span { font: 600 10px/1.45 monospace; color: var(--muted); }
+
 .api-settings { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
 .advanced-settings summary,
 .api-settings summary {
@@ -509,6 +522,24 @@ textarea {
   padding: 4px 7px; cursor: pointer; border: 1px solid var(--line); background: var(--paper);
 }
 .traced-chip button:hover, .traced-chip button:focus-visible {
+  border-color: var(--ink); background: var(--acid); outline: none;
+}
+
+/* A person's ★ best, on the card that drew it. Same furniture as the traced
+   chip because it does the same job -- names what displaced the level's own
+   ring and gives it back -- and carries the star's own colour so a card
+   showing a judged ring is distinguishable across the page at a glance. */
+.judged-chip { display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--ink); border-left-width: 3px;
+  border-left-color: var(--acid); padding: 3px 4px 3px 8px; background: var(--card); }
+.judged-chip b { font: 800 9px/1 monospace; letter-spacing: .12em; text-transform: uppercase; }
+.judged-chip i { font: 600 10px/1 monospace; font-style: normal; color: var(--muted);
+  font-variant-numeric: tabular-nums; }
+.judged-chip button {
+  font: 700 9px/1 monospace; letter-spacing: .08em; text-transform: uppercase;
+  padding: 4px 7px; cursor: pointer; border: 1px solid var(--line); background: var(--paper);
+}
+.judged-chip button:hover, .judged-chip button:focus-visible {
   border-color: var(--ink); background: var(--acid); outline: none;
 }
 
