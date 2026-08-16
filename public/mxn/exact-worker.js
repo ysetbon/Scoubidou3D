@@ -331,7 +331,22 @@ const HANDLERS = {
 self.onmessage = async (event) => {
   const data = event.data || {};
   const handler = HANDLERS[data.type];
-  if (!handler) return;
+  // An unknown type used to return silently, which meant the page's promise
+  // for it never settled and the tab sat on "Working…" forever with nothing
+  // said. The realistic cause is a CACHED worker: this file is served from
+  // public/ under a stable URL, so a browser holding yesterday's copy answers
+  // today's page and simply drops any message type that was added since.
+  // Failing loudly turns a permanent hang into one line a reader can act on.
+  if (!handler) {
+    self.postMessage({
+      type: "error",
+      id: data.id,
+      message: `this engine worker does not understand "${data.type}" — it is `
+        + "probably a cached copy from an older deploy. Reload the page "
+        + "bypassing the cache (Ctrl+Shift+R).",
+    });
+    return;
+  }
   const { id } = data;
   // Only a fresh generate invalidates in-flight frames; a browse reuses the
   // session the last generate built, so it must not move the generation id.

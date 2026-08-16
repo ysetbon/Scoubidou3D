@@ -560,8 +560,15 @@ function useWorker(onProgress: (message: string) => void) {
   report.current = onProgress;
 
   useEffect(() => {
-    const worker = new Worker(new URL(`${BASE}mxn/exact-worker.js`, window.location.href),
-                              { type: "module" });
+    // The version is not decoration. This file lives in public/ and is served
+    // under a stable URL, so without it a browser keeps yesterday's worker and
+    // answers today's page with it — and a message type added since is dropped
+    // on the floor. That is what made "Open the knobs · no search" hang: the
+    // cached worker had no fit-plan-now. BUMP THIS whenever the worker's
+    // message vocabulary changes. src/mxn-lab/weave-studio.tsx does the same.
+    const worker = new Worker(
+      new URL(`${BASE}mxn/exact-worker.js?v=fit-plan-now-v1`, window.location.href),
+      { type: "module" });
     worker.onmessage = (event) => {
       const data = event.data || {};
       if (data.type === "progress") {
