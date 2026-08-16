@@ -407,6 +407,28 @@ fall back to the default walk, exactly-flush candidates offered longest-arm
 first. There is no policy dropdown any more: a person's decision is the policy,
 and the default covers the rest.
 
+**What the run costs, and what it no longer costs.** Two caches sit in front of
+the engine, because the slow part of pressing *Run* was never Cloudflare — it
+was Pyodide booting and `bridge.generate` walking:
+
+- **The run artifact.** `generate` is a pure function of the descriptor, so the
+  fitter now asks the shelf for `run/v3/…` before asking the engine, and
+  *writes back on a miss*. The write is the half that makes it work: the runs
+  already on the shelf were computed under different flags
+  (`s1-e5-b100000000`) and can never match the fitter's own
+  (`s1-eauto-b400000`), so a read-only cache would miss forever and be
+  decoration. Writing needs the token; reading does not.
+- **The ring inside a judgement.** `Judgement.strands` is filled at save time,
+  so reading a judgement back no longer needs an engine to rebuild a ring
+  somebody already built — the strands *are* the answer, and the audit
+  travelled with them. Judgements saved before this carry no strands and still
+  ask for a weave, which is why both paths stay.
+
+`qa:fit` proves the second by refusal rather than by timing: the seeded
+judgement names extensions the stub worker explicitly declines to weave, so
+the pick loading at all — status `ring read as stored` — can only mean the
+stored strands were used. A stub cannot fake a ring it refuses to build.
+
 **Judged rings — the panel that shows the others.** The auto-load takes the ★
 best and stops, so every other judgement needs a way to be looked at: somebody
 else's, an older one, or a ✓ valid worth comparing against the best. The
