@@ -45,6 +45,7 @@ import {
   searchEnvelope, sweptGridStep,
   type AtlasRecord, type BandStat, type Fit, type FitPoint,
 } from "./model";
+import { boardKRange } from "./board-model";
 import { saveJson, today } from "../mxn-lab/save-file";
 import {
   emptyShelf, fixtureShelf, liveShelf,
@@ -788,6 +789,19 @@ export function KAtlas({ forceFixture = false }: { forceFixture?: boolean } = {}
         is <b>±20°</b> — and the shelf is the only thing that can say what they should have
         been. Nothing here computes: if a cell is empty, nobody has swept it yet.
       </p>
+
+      {/* The other half of the same question, and the page an empty cell here is
+          really about: this one folds a shelf, the boards are for filling one.
+          Every board rather than only the k rows below — those are the k values
+          this SHELF holds, and a board's whole subject is the ones it does not. */}
+      <nav className="atlas-boards" aria-label="the k boards">
+        <b>one k, every size →</b>
+        {boardKRange().map(k => (
+          <a key={k} className="atlas-board-link" href={`${k}/`}>
+            {k > 0 ? `+${k}` : k}
+          </a>
+        ))}
+      </nav>
 
       <div className="atlas-grid">
         <div className="atlas-col">

@@ -11,6 +11,11 @@ screen was computed by the farm on someone's machine and is being read back. An
 empty cell means nobody has swept those parameters yet, and says so with a link
 to the page that would.
 
+The other half of the same question is at **[/mxn/ks/-1/](mxn-ks-board.md)** —
+one k held still and every size laid out as a plane, drawing the judged ★ best
+above the engine's run and linking each hole straight into the fitter. This page
+folds a shelf; that one is for filling it.
+
 ## Why it exists
 
 The engine sizes its search with two constants that are guesses:
