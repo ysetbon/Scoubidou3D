@@ -253,6 +253,42 @@ if (knobs.rows >= 3) {
     fixed.warn ? fixed.warn.slice(0, 80) : fixed.read.slice(0, 80));
 }
 
+// A judged best is the fit policy now. Seed this browser's own judgements
+// with a ★ best whose pick is exactly where the engine held the bands — the
+// one configuration the stub can weave — reload, and the page has to load it
+// instead of walking candidates, naming the store and the chooser. The policy
+// dropdown it replaced has to be gone.
+const topLevel = Math.max(...size.stages.map(s => s.level));
+await page.evaluate(({ key, judgement }) => {
+  localStorage.setItem('mxn-fit-judgements', JSON.stringify([{ key, judgement }]));
+}, {
+  key: `picks/v3/lh-cw/${size.m}x${size.n}/${size.ks.join('_')}/s1-eauto-b400000`,
+  judgement: {
+    id: 'j-qa-best', verdict: 'best', source: 'hand', chooser: 'qa',
+    at: '2026-08-16T00:00:00.000Z',
+    levels: [{
+      level: topLevel,
+      h: size.held.h.ext ? { ext: size.held.h.ext, angle: null } : null,
+      v: size.held.v.ext ? { ext: size.held.v.ext, angle: null } : null,
+    }],
+  },
+});
+await page.reload({ waitUntil: 'domcontentloaded' });
+await page.waitForSelector('button.go');
+await page.fill('#fit-m', String(size.m));
+await page.fill('#fit-n', String(size.n));
+await page.fill('#fit-ks', size.ks.join(' '));
+await page.click('button.go');
+await page.waitForTimeout(1500);
+const judged = await page.evaluate(() => ({
+  status: document.querySelector('.status')?.textContent ?? '',
+  tieGone: !document.querySelector('#fit-tie'),
+}));
+ok('a judged ★ best loads instead of the candidate walk',
+  /Loaded the best fit/.test(judged.status) && /judged by qa/.test(judged.status),
+  judged.status.slice(0, 110));
+ok('the fit-policy dropdown is gone', judged.tieGone);
+
 ok('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
 if (network.length) console.log(`  note  ${network.length} resource(s) blocked by the environment, not the page`);
 
