@@ -152,9 +152,13 @@ const offSite = url =>
   const page = await browser.newPage({ viewport: { width: 1500, height: 1200 } });
   const errors = [];
   const external = [];
+  const notFound = [];
   page.on('pageerror', error => errors.push(String(error)));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   page.on('request', request => { if (offSite(request.url())) external.push(request.url()); });
+  page.on('response', reply => {
+    if (reply.status() === 404) notFound.push(new URL(reply.url()).pathname);
+  });
 
   const started = Date.now();
   await page.goto(`${base}/mxn/?${cacheArg}&m=2&n=2&ks=1%202%202`,
@@ -201,8 +205,16 @@ const offSite = url =>
     await page.$('.trace-panel canvas') !== null);
 
   await page.screenshot({ path: `${CACHE_DIR}/qa-cache-lab.png` });
+  // Nothing on this shelf has been judged, so the lab's picks read misses --
+  // the ordinary state of a parameter set nobody has starred, exactly as a
+  // missing run is (cache.ts). Chrome logs every failed fetch as a console
+  // error, so the assertion below excuses a 404 and this one pins WHICH: a
+  // miss on anything else is a real fault wearing the same clothes.
+  ok('the only thing missing is judgements nobody has written',
+    notFound.every(path => path.startsWith('/api/cache/picks/')), notFound.join(', '));
   ok('no page errors in the lab',
-    errors.filter(error => !/ERR_|TUNNEL/.test(error)).length === 0, errors.slice(0, 3).join(' ~ '));
+    errors.filter(error => !/ERR_|TUNNEL|404/.test(error)).length === 0,
+    errors.slice(0, 3).join(' ~ '));
   await page.close();
 }
 
@@ -225,6 +237,108 @@ const offSite = url =>
   const budget = await page.$eval('#combo-budget', el => el.value);
   ok('and the fields adopt what was loaded',
     step === 'auto' && budget === '400000', `step ${step} · budget ${budget}`);
+  await page.close();
+}
+
+// ---- A3 · a person's ★ best, drawn in place of the engine's own pick ---------
+//
+// The rule the k boards are built around, on the page that draws the ring: a
+// judgement outranks the run. Seeded under DIFFERENT search flags from the run
+// on purpose -- the farm sweeps at one set and /mxn/fit/ always writes
+// s1-eauto-b400000, and requiring them to match is exactly why a ★ best that
+// was plainly visible at /mxn/ks/-1/ was invisible here.
+{
+  const run = JSON.parse(readFileSync(`${FIXTURES}/${index.run}`, 'utf8'));
+  // A real ring, and visibly not L2's: L1's own strands, so a card drawing the
+  // judgement instead of the run is telling the truth about geometry too.
+  const judged = run.result.stages.find(stage => stage.level === 1).strands;
+  const picks = {
+    kind: 'picks', cacheVersion: 'v3',
+    descriptor: { ...index.descriptor, step: 10 },
+    judgements: [{
+      id: 'qa-best', verdict: 'best', source: 'fitter', chooser: 'yonatan',
+      at: '2026-08-16T00:00:00Z',
+      levels: [{ level: 2, h: { ext: [70, 30], angle: -172.5 },
+                 v: { ext: [20, 20], angle: 8.25 } }],
+      audit: { crossings: 16, expected: 16, stray: 0, broken: 0 },
+      strands: judged,
+    }],
+  };
+  const body = gzipSync(Buffer.from(JSON.stringify(picks)));
+  const seeding = await api('/cache/picks/v3/lh-cw/2x2/1_2_2/s1-e10-b400000', {
+    method: 'PUT', body,
+    headers: { Authorization: `Bearer ${TOKEN}`, 'X-Mxn-Codec': 'gzip' },
+  });
+  ok('the shelf takes a picks artifact', seeding.status === 201, `HTTP ${seeding.status}`);
+
+  const page = await browser.newPage({ viewport: { width: 1500, height: 1200 } });
+  const external = [];
+  page.on('request', request => { if (offSite(request.url())) external.push(request.url()); });
+  await page.goto(`${base}/mxn/?${cacheArg}&m=2&n=2&ks=1%202%202`,
+    { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.judged-chip', { timeout: 30000 });
+
+  const onCard = level => page.$eval(`.diagram-card:nth-child(${level + 1})`,
+    card => ({
+      chip: card.querySelector('.judged-chip b')?.textContent ?? null,
+      button: card.querySelector('.judged-chip button')?.textContent ?? null,
+      corner: card.querySelector('.canvas-corner').textContent,
+      hExt: card.querySelector('.exact-metrics .metric:nth-child(3) strong').textContent,
+      crossings: card.querySelector('.exact-metrics .metric:nth-child(2) strong').textContent,
+      strip: [...card.querySelectorAll('.audit-strip span')].map(s => s.textContent),
+      stale: !!card.querySelector('.solution-nav.is-stale'),
+    }));
+
+  const chips = await page.$$eval('.judged-chip', nodes => nodes.length);
+  ok('exactly one card carries the judgement, and it is the level judged',
+    chips === 1 && (await onCard(2)).chip === 'human pick', `${chips} chips`);
+
+  const judgedCard = await onCard(2);
+  ok('the ring on it is captioned as a person\'s, not as an audit',
+    /^JUDGED BY YONATAN/.test(judgedCard.corner), judgedCard.corner);
+  ok('the extensions under it are the JUDGEMENT\'s, not the run\'s',
+    judgedCard.hExt === '(70, 30)', judgedCard.hExt);
+  ok('the crossings are the ones the judgement carried',
+    judgedCard.crossings === '16/16', judgedCard.crossings);
+  ok('and what a judgement does not measure is a dash, never a zero',
+    judgedCard.strip[0] === 'gap H/V\u2014' && judgedCard.strip[1] === 'within\u2014'
+    && judgedCard.strip[2] === 'masks\u2014',
+    judgedCard.strip.join(' | '));
+  ok('the solution browser says its number is not the ring on screen',
+    judgedCard.stale);
+  ok('and no other level was touched',
+    (await onCard(1)).hExt === '(40, 10)' && (await onCard(3)).hExt === '(60, 50)');
+  ok('none of which woke the engine', external.length === 0,
+    external.slice(0, 3).join(', '));
+
+  // The rating dataset is about the run's own solutions. A judged ring carries
+  // its own geometry and none of the audit row beside it, so banking it here
+  // would file a person's ring under the engine's numbers.
+  ok('and the star will not bank a judged ring as one of the run\'s solutions',
+    await page.$eval('.diagram-card:nth-child(3) .save-solution',
+      button => button.disabled));
+
+  // The card itself rather than the viewport: what this section is about is
+  // one card's chip, corner and numbers, and they are below the fold.
+  await page.locator('.diagram-card:nth-child(3)')
+    .screenshot({ path: `${CACHE_DIR}/qa-cache-picks.png` });
+
+  // The engine's own answer, one press away and never hidden.
+  await page.click('.diagram-card:nth-child(3) .judged-chip button');
+  await page.waitForFunction(
+    () => document.querySelector('.diagram-card:nth-child(3) .judged-chip b')
+      ?.textContent !== 'human pick', null, { timeout: 5000 });
+  const back = await onCard(2);
+  ok('pressing engine puts the run\'s own ring and numbers back',
+    back.hExt === '(50, 60)' && /WEAVE$/.test(back.corner)
+    && back.strip[1] === 'within0',
+    `${back.hExt} · ${back.corner} · ${back.strip[1]}`);
+  ok('and the \u2605 best is offered rather than dropped',
+    back.chip === '\u2605 best on the shelf' && back.button === '\u2605 best',
+    `${back.chip} / ${back.button}`);
+
+  await page.locator('.diagram-card:nth-child(3)')
+    .screenshot({ path: `${CACHE_DIR}/qa-cache-picks-engine.png` });
   await page.close();
 }
 

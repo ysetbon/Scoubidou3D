@@ -12,6 +12,10 @@ import {
   type Bounds, type Stage, type Strand,
 } from "./exact-draw";
 import {
+  auditOfPick, findShelfBest,
+  type CardAudit, type JudgedPick,
+} from "./picks-shelf";
+import {
   DEFAULT_COMBO_BUDGET, ENGINE_COMBO_LIMIT,
   autoStep, comboCount, worstCase, worstPairs,
 } from "./search-cost";
@@ -239,6 +243,27 @@ function ExactCanvas({ stage, bounds, showLabels = true, label, fixedSize }: { s
 
 function formatExtensions(values: number[]) {
   return values.length ? `(${values.join(", ")})` : "—";
+}
+
+/**
+ * A run's audit row as the card reads it.
+ *
+ * The card now draws two kinds of ring — what the engine computed, and what a
+ * person judged — and the two carry different amounts of measurement. Both go
+ * through CardAudit so the numbers under a diagram always describe the ring
+ * that is on it; see auditOfPick in picks-shelf.ts for the other half.
+ */
+function auditOfRow(row: AuditRow | null): CardAudit | null {
+  return row ? {
+    across: row.across, expected: row.expected, ext: row.ext, gap: row.gap,
+    within: row.within, masks: row.masks, stray: row.stray, broken: row.broken,
+    applied: row.applied,
+  } : null;
+}
+
+/** A number nobody measured is a dash, never a zero. */
+function measured(value: number | null) {
+  return value === null ? "—" : String(value);
 }
 
 /**
@@ -472,6 +497,15 @@ export function ContinuationLab() {
   const [tracedShown, setTracedShown] = useState<Record<number, TraceWeave>>({});
   const [tracedRing, setTracedRing] =
     useState<Record<number, { strands: Strand[]; row: AuditRow }>>({});
+  // A person's ★ best for a level, and the run's own ring it displaced. Same
+  // shape as the traced pair above, for the same reason: going back has to
+  // return the level's OWN ring rather than whatever replaced it last.
+  const [judgedShown, setJudgedShown] = useState<Record<number, JudgedPick>>({});
+  const [judgedRing, setJudgedRing] = useState<Record<number, Strand[]>>({});
+  /** What the shelf holds for the run on screen, applied or not. */
+  const [shelfBest, setShelfBest] = useState<Record<number, JudgedPick>>({});
+  /** What the picks lookup found, for the sidebar. "" until one has run. */
+  const [picksNote, setPicksNote] = useState("");
   // The in-run counting, level by level, for the strip under the busy sheet:
   // the walk's position and what it has found so far.
   const [counting, setCounting] =
@@ -491,6 +525,28 @@ export function ContinuationLab() {
       delete next[level];
       return next;
     });
+  };
+  /** The same for a judged ring, for when the worker has just sent another. */
+  const clearJudged = (level: number) => {
+    setJudgedShown(current => {
+      if (!current[level]) return current;
+      const next = { ...current };
+      delete next[level];
+      return next;
+    });
+    setJudgedRing(current => {
+      if (!current[level]) return current;
+      const next = { ...current };
+      delete next[level];
+      return next;
+    });
+  };
+  /** Every judged ring forgotten: a new run is about different parameters. */
+  const clearJudgedAll = () => {
+    setJudgedShown({});
+    setJudgedRing({});
+    setShelfBest({});
+    setPicksNote("");
   };
   const [browsingLevel, setBrowsingLevel] = useState<number | null>(null);
   const [savedCount, setSavedCount] = useState(() => readSaved().length);
@@ -628,6 +684,7 @@ export function ContinuationLab() {
 
   /** Everything a new run invalidates, minus the result itself. */
   const clearDerived = () => {
+    clearJudgedAll();
     setSemi({});
     setSemiMode({});
     setTraces({});
@@ -666,8 +723,10 @@ export function ContinuationLab() {
       if (message.type === "solution") {
         setBrowsingLevel(null);
         // The browser is putting a ring on the card, so whatever the trace
-        // widget had put there is gone -- and the ring it displaced with it.
+        // widget or the shelf had put there is gone -- and the ring it
+        // displaced with it.
         clearTraced(message.level);
+        clearJudged(message.level);
         if (message.meta) {
           setSolutions(current => ({ ...current, [message.meta.level]: {
             ...current[message.meta.level], ...message.meta,
@@ -787,6 +846,7 @@ export function ContinuationLab() {
       if (message.type === "semi-solution") {
         setBrowsingLevel(null);
         clearTraced(message.level);
+        clearJudged(message.level);
         if (message.item === undefined) {
           setStatus(message.reason || "No near-miss at that position.");
           return;
@@ -891,6 +951,11 @@ export function ContinuationLab() {
             frameStore.set(null);
             setEngineError(null);
             setStatus(`Exact calculation complete · ${message.result.seconds}s`);
+            // And what a PERSON has said about these parameters, which the
+            // engine has no way to know. A warm gets none of this: its cards
+            // are already on screen, judged ring and all.
+            const ran = lastParamsRef.current;
+            if (ran) loadJudgedRef.current(descriptorFor(ran), message.id);
           }
 
           // Firm every count up front. The engine counts lazily — a browser
@@ -968,6 +1033,7 @@ export function ContinuationLab() {
       sessionRef.current = null;
       setSessionReady(false);
       setCachedRun(null);
+      clearJudgedAll();
       afterWarmRef.current = null;
       warmIdRef.current = null;
       const id = ++activeIdRef.current;
@@ -1009,6 +1075,10 @@ export function ContinuationLab() {
         setBusy(false);
         setStatus(`From the cache · computed ${artifact.computedAt.slice(0, 10)}`
           + ` in ${artifact.seconds}s` + (note ? ` · ${note}` : ", served in one fetch"));
+        // The run is what the engine said; this is what a person said. Asked
+        // off the artifact's OWN descriptor, so an adopted variant looks for
+        // judgements about the parameters actually on screen.
+        loadJudgedRef.current(artifact.descriptor, id);
         const queued = pendingRef.current;
         pendingRef.current = null;
         if (queued) dispatchRef.current(queued);
@@ -1412,6 +1482,9 @@ export function ContinuationLab() {
    */
   const showTraced = (level: number, w: TraceWeave) => {
     if (!w.strands?.length || !w.row) return;
+    // A judged ring put back first, so the ring this holds to return to is the
+    // one the run produced rather than somebody's ★ best.
+    if (judgedShown[level]) restoreJudged(level);
     const seeded = traces[traceKey(level, w.band)]?.weave;
     const isEnginePick = !!seeded?.ext
       && weaveKey(seeded.ext, seeded.angle) === weaveKey(w.ext, w.angle);
@@ -1461,6 +1534,104 @@ export function ContinuationLab() {
     clearTraced(level);
   };
 
+  /**
+   * Put a person's ★ best on the level it is about.
+   *
+   * The rule the k boards are built around (docs/mxn-ks-board.md) — A PERSON
+   * OUTRANKS THE ENGINE — applied on the card that draws the ring. A judgement
+   * carries its whole ring, so this costs no Pyodide, no `generate` and no fit:
+   * the strands go onto the stage and the numbers under them come from the
+   * judgement rather than from the run, because the run's audit describes a
+   * different ring and printing it here would caption one answer with another's
+   * measurements.
+   *
+   * `result.rows` is deliberately NOT rewritten, unlike showTraced: a traced
+   * cell arrives with a full audit row the engine computed for it, and a
+   * judgement carries four numbers and no gaps, no `within` and no masks.
+   * Faking the rest as zeroes would be indistinguishable from having measured
+   * them. The card reads through CardAudit instead and prints a dash.
+   *
+   * The engine's own ring is one press away and never hidden — a page that
+   * quietly showed something other than what the engine computed is a page that
+   * cannot be trusted about anything else it draws.
+   */
+  const showJudged = (level: number, pick: JudgedPick) => {
+    if (judgedShown[level]) return;
+    // One override at a time on a card: a traced cell put back first, so what
+    // this holds to return to is the level's own ring and not that cell.
+    if (tracedShown[level]) restoreTraced(level);
+    setResult(current => {
+      if (!current) return current;
+      // Inside the updater, because the run this is about may have been set in
+      // the same batch: the `result` this render closed over is the previous
+      // one. A judgement naming a level the run does not have changes nothing
+      // and is not recorded as shown, which would be a chip on no card.
+      const stage = current.stages.find(entry => entry.level === level);
+      if (!stage) return current;
+      setJudgedRing(held => held[level] ? held : { ...held, [level]: stage.strands });
+      setJudgedShown(held => ({ ...held, [level]: pick }));
+      return {
+        ...current,
+        stages: current.stages.map(entry => entry.level === level
+          ? { ...entry, strands: pick.strands } : entry),
+      };
+    });
+  };
+
+  /** Back to the engine's own ring for this level. */
+  const restoreJudged = (level: number) => {
+    const held = judgedRing[level];
+    if (held) {
+      setResult(current => current ? {
+        ...current,
+        stages: current.stages.map(stage => stage.level === level
+          ? { ...stage, strands: held } : stage),
+      } : current);
+    }
+    clearJudged(level);
+  };
+
+  /**
+   * Ask the shelf what a person has said about the run that just landed.
+   *
+   * One public GET in the ordinary case, on the same Worker the run came off,
+   * and it is why a ★ best pressed at /mxn/fit/ or drawn on a k board now
+   * appears here without anybody loading a file: the judgement was always on
+   * the shelf, and this page was the one that never asked.
+   *
+   * A shelf that is away, misconfigured or serving nonsense leaves the engine's
+   * own answer exactly where it is. Nothing here can be the reason a run stops
+   * being shown.
+   */
+  const loadJudged = async (d: RunDescriptor, id: number) => {
+    try {
+      const client = cacheRef.current;
+      const found = await findShelfBest(
+        d, client.base, client.token, () => id === activeIdRef.current);
+      if (id !== activeIdRef.current) return;
+      if (found.ringless) {
+        // hasRing = False in docs/picks-shelf.md: judged before rings were
+        // stored in a pick. Said out loud rather than passed over, because the
+        // fix — re-press ★ best at /mxn/fit/ — is a thing a reader can do.
+        setPicksNote(`★ best by ${found.ringless.chooser} — saved without its`
+          + " ring, so only /mxn/fit/ can draw it");
+        return;
+      }
+      const pick = found.pick;
+      if (!pick) return;
+      setShelfBest({ [pick.level]: pick });
+      showJudgedRef.current(pick.level, pick);
+      setPicksNote(`★ best on L${pick.level} by ${pick.judgement.chooser}`
+        + ` · from ${pick.from}`);
+    } catch { /* the shelf being away must not cost anybody their run */ }
+  };
+  // Both callers are closures the worker and the dispatcher captured on an
+  // earlier render, so these go through refs for the same reason cacheRef does.
+  const showJudgedRef = useRef(showJudged);
+  showJudgedRef.current = showJudged;
+  const loadJudgedRef = useRef(loadJudged);
+  loadJudgedRef.current = loadJudged;
+
   const toggleWidget = (level: number) => {
     const opening = !openWidgets.has(level);
     setOpenWidgets(current => {
@@ -1475,6 +1646,16 @@ export function ContinuationLab() {
 
   const saveSolution = (stage: Stage) => {
     if (!result) return;
+    // A judged ring on the card is not one of this run's solutions: it carries
+    // its own geometry and none of the audit row beside it, so banking
+    // `stage.strands` under `result.rows` would file a person's ring with the
+    // engine's numbers and an index belonging to a ring nobody is looking at.
+    // It also already has a home -- picks/v3/…, where it was judged.
+    if (judgedShown[stage.level]) {
+      setStatus(`L${stage.level} is showing a judged ★ best, which is already`
+        + " saved on the picks shelf — press engine to star this run's own ring");
+      return;
+    }
     const row = result.rows[stage.level - 1];
     const parent = result.stages.find(other => other.level === stage.level - 1);
     if (!row || !parent) return;
@@ -1702,6 +1883,13 @@ export function ContinuationLab() {
               </div>
             )}
 
+            {/* What a PERSON said about these parameters, which is a different
+                shelf from the run and a different kind of answer. Shown
+                whether or not a cache is configured: a judgement is written to
+                this browser first, so a ★ best pressed two minutes ago with no
+                Worker set exists and should still be found. */}
+            {picksNote && <div className="picks-chip"><b>the picks shelf</b><span>{picksNote}</span></div>}
+
             <details className="api-settings">
               <summary>dataset API {apiUrl && apiToken ? "· connected" : "· local only"}</summary>
               <div className="field">
@@ -1778,6 +1966,16 @@ export function ContinuationLab() {
                 const row = stage.level ? result.rows[stage.level - 1] : null;
                 const compact = !fullSizeLevels.has(stage.level);
                 const widgetOpen = openWidgets.has(stage.level);
+                // Which ring is actually on this card, and therefore which
+                // numbers belong under it. Two things can displace the run's
+                // own: a traced cell, and a person's judged ★ best.
+                const judged = judgedShown[stage.level];
+                const best = shelfBest[stage.level];
+                const audit = judged ? auditOfPick(judged) : auditOfRow(row);
+                const displaced = tracedShown[stage.level] ? "a traced cell"
+                  : judged ? "a person's ★ best" : undefined;
+                const notThis = (what: string) =>
+                  displaced && `The diagram is showing ${displaced}, not this ${what}`;
                 return (
                   <article className={`diagram-card ${compact ? "is-compact" : ""}`} key={`${result.m}-${result.n}-${result.ks.join("-")}-${stage.level}`}>
                     <div className="card-head">
@@ -1796,6 +1994,28 @@ export function ContinuationLab() {
                             <button type="button" onClick={() => restoreTraced(stage.level)}
                               title="Put this level's own ring back on the diagram">
                               back
+                            </button>
+                          </span>
+                        )}
+                        {/* A person outranks the engine, and the card says
+                            who — the same rule the k boards are built around
+                            (docs/mxn-ks-board.md), here on the drawing itself.
+                            The engine's own ring is one press away and is
+                            never hidden, in either direction. */}
+                        {best && (
+                          <span className="judged-chip">
+                            <b>{judged ? "human pick" : "★ best on the shelf"}</b>
+                            <i>{best.judgement.chooser}
+                              {best.judgement.at
+                                ? ` · ${best.judgement.at.slice(0, 10)}` : ""}</i>
+                            <button type="button"
+                              onClick={() => judged
+                                ? restoreJudged(stage.level)
+                                : showJudged(stage.level, best)}
+                              title={judged
+                                ? "Put the engine's own ring back on this level"
+                                : "Draw the judged ★ best on this level"}>
+                              {judged ? "engine" : "★ best"}
                             </button>
                           </span>
                         )}
@@ -1838,10 +2058,8 @@ export function ContinuationLab() {
                             const item = near?.current;
                             return (
                               <span className={`solution-nav is-semi${
-                                tracedShown[stage.level] ? " is-stale" : ""}`}
-                                title={tracedShown[stage.level]
-                                  ? "The diagram is showing a traced cell, not this near-miss"
-                                  : undefined}>
+                                displaced ? " is-stale" : ""}`}
+                                title={notThis("near-miss")}>
                                 <button type="button" onClick={() => browseSemi(stage.level, (near?.index ?? 0) - 1)}
                                   disabled={busyHere || !near || near.index === 0}
                                   aria-label={`Previous near-miss for level ${stage.level}`}>‹</button>
@@ -1919,15 +2137,13 @@ export function ContinuationLab() {
                               meta.countExact ? "" : "+"}`;
                           return (
                             <span className={`solution-nav${
-                              tracedShown[stage.level] ? " is-stale" : ""}`}
-                              title={tracedShown[stage.level]
-                                ? "The diagram is showing a traced cell, not this solution"
-                                : undefined}>
+                              displaced ? " is-stale" : ""}`}
+                              title={notThis("solution")}>
                               <button type="button" onClick={() => browse(stage.level, meta.index - 1)}
                                 disabled={busyHere || meta.index === 0}
                                 aria-label={`Previous solution for level ${stage.level}`}>‹</button>
                               <b>{busyHere ? "…" : shown}</b>
-                              {meta.index === meta.enginePick && !tracedShown[stage.level]
+                              {meta.index === meta.enginePick && !displaced
                                 && <em>engine pick</em>}
                               {/* With the count exact the list has a real end,
                                   so the arrow stops there instead of walking
@@ -1948,7 +2164,10 @@ export function ContinuationLab() {
                                 </i>
                               )}
                               <button className="save-solution" type="button" onClick={() => saveSolution(stage)}
-                                title="Save this closed ring for rating — goes to /mxn/rate/"
+                                disabled={!!judged}
+                                title={judged
+                                  ? "This card is showing a judged ★ best, which is already on the picks shelf — press engine to star the run's own ring"
+                                  : "Save this closed ring for rating — goes to /mxn/rate/"}
                                 aria-label={`Save level ${stage.level} solution to the dataset`}>⭐</button>
                               {semiFlags}
                             </span>
@@ -1961,20 +2180,31 @@ export function ContinuationLab() {
                     </div>
                     <div id={`level-panel-${stage.level}`} className="level-body">
                       <div className="level-main">
-                      <div className="canvas-wrap exact-canvas"><ExactCanvas stage={stage} bounds={bounds} /><span className="canvas-corner">{row ? `${row.state} · ${row.healthy ? "WEAVE" : "NOT A WEAVE"}` : "starting stitch"}</span></div>
+                      <div className="canvas-wrap exact-canvas"><ExactCanvas stage={stage} bounds={bounds} /><span className="canvas-corner">{
+                        judged ? `JUDGED BY ${judged.judgement.chooser.toUpperCase()}`
+                          : row ? `${row.state} · ${row.healthy ? "WEAVE" : "NOT A WEAVE"}`
+                          : "starting stitch"}</span></div>
                       <div className="card-foot exact-metrics">
                         <div className="metric"><span>suffixes</span><strong>{suffixLabel(stage.level)}</strong></div>
-                        <div className="metric"><span>crossings</span><strong>{row ? `${row.across}/${row.expected}` : "—"}</strong></div>
-                        <div className="metric"><span>H extensions</span><strong>{row ? formatExtensions(row.ext[0]) : "—"}</strong></div>
-                        <div className="metric"><span>V extensions</span><strong>{row ? formatExtensions(row.ext[1]) : "—"}</strong></div>
+                        <div className="metric"><span>crossings</span><strong>{
+                          audit && audit.across !== null
+                            ? `${audit.across}/${measured(audit.expected)}` : "—"}</strong></div>
+                        <div className="metric"><span>H extensions</span><strong>{audit?.ext ? formatExtensions(audit.ext[0]) : "—"}</strong></div>
+                        <div className="metric"><span>V extensions</span><strong>{audit?.ext ? formatExtensions(audit.ext[1]) : "—"}</strong></div>
                       </div>
-                      {row && <div className="audit-strip">
-                        <span><b>gap H/V</b>{row.gap[0].toFixed(2)} / {row.gap[1].toFixed(2)}</span>
-                        <span><b>within</b>{row.within}</span>
-                        <span><b>masks</b>{row.masks}</span>
-                        <span><b>stray</b>{row.stray}</span>
-                        <span><b>broken</b>{row.broken}</span>
-                        <em>{row.applied.length ? row.applied.join(" · ") : "k-based groups"}</em>
+                      {audit && <div className="audit-strip">
+                        <span><b>gap H/V</b>{audit.gap
+                          ? `${audit.gap[0].toFixed(2)} / ${audit.gap[1].toFixed(2)}` : "—"}</span>
+                        <span><b>within</b>{measured(audit.within)}</span>
+                        <span><b>masks</b>{measured(audit.masks)}</span>
+                        <span><b>stray</b>{measured(audit.stray)}</span>
+                        <span><b>broken</b>{measured(audit.broken)}</span>
+                        {/* A judgement carries four numbers and no grouping,
+                            so the strip says where the rest of the row went
+                            rather than leaving five dashes unexplained. */}
+                        <em>{audit.applied === null
+                          ? "a judged ring — the run's own numbers are not this ring's"
+                          : audit.applied.length ? audit.applied.join(" · ") : "k-based groups"}</em>
                       </div>}
                       </div>
                       {/* The level widget: a column of the card, to the right of
