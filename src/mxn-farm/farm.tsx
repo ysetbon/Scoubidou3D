@@ -17,7 +17,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   CACHE_TOKEN_KEY, CACHE_URL_KEY, CACHE_VERSION,
-  createCache, readCacheBase, readSetting, runKey, traceKeyPath, writeSetting,
+  createCache, parseRunKey, readCacheBase, readSetting, runKey, traceKeyPath,
+  writeSetting,
   type RunDescriptor,
 } from "../mxn-lab/cache";
 import { DEFAULT_COMBO_BUDGET } from "../mxn-lab/search-cost";
@@ -48,6 +49,9 @@ const DEFAULT_SPEC: SweepSpec = {
   // sweep over sizes wants a band per size.
   kFollowsSize: true,
   kFrom: -1, kTo: 2,
+  // Off, like the lab's own default: a sweep stores what the engine ships
+  // unless somebody asks for the other search.
+  reachFromPrevious: false,
   depth: 1,
   ksText: "1\n1 1 -1\n-1 -1",
   hand: "lh",
@@ -127,12 +131,18 @@ function jobFromRow(row: QueueRow, spec: SweepSpec): PlanJob {
     hand: String(raw.hand ?? "lh"), direction: String(raw.direction ?? "cw"),
     shortArms: Number(raw.short_arms) !== 0,
     step, budget: Number(raw.combo_budget) || DEFAULT_COMBO_BUDGET,
+    // Off the row's ID rather than a column of its own: a job's id IS its cache
+    // key, so the reach cap is already in there and reading it back needs no
+    // migration on a queue an operator is mid-sweep through. A column would
+    // also be a second place for it to disagree with the key it is stored at.
+    reachFromPrevious: !!parseRunKey(row.id)?.descriptor.reachFromPrevious,
   };
   return {
     id: row.id, descriptor,
     m: row.m, n: row.n, ks,
     hand: descriptor.hand, direction: descriptor.direction,
     shortArms: descriptor.shortArms, step, budget: descriptor.budget,
+    reachFromPrevious: !!descriptor.reachFromPrevious,
     weight: row.weight,
     wantTraces: Number(raw.want_traces) !== 0,
     // Runner policy rather than part of the answer's identity: how patient THIS
@@ -370,7 +380,7 @@ export function ComputeFarm() {
 
   const spawnHand = () => {
     const worker = new Worker(
-      new URL(`${FARM_BASE}farm-worker.js?v=trace-plan-v21`, window.location.href),
+      new URL(`${FARM_BASE}farm-worker.js?v=trace-plan-v22`, window.location.href),
       { type: "module" });
     workersRef.current.push(worker);
     return worker;
@@ -834,6 +844,14 @@ export function ComputeFarm() {
               <input type="checkbox" checked={spec.shortArms}
                 onChange={e => patchSpec({ shortArms: e.target.checked })} />
               <span>prefer shorter arms</span>
+            </label>
+            {/* Rides in the job's ID, which is the run's cache key, so a sweep
+                under it fills a shelf of its own and never overwrites the
+                ordinary search's answers. docs/mxn-lab.md has the numbers. */}
+            <label className="farm-check">
+              <input type="checkbox" checked={spec.reachFromPrevious}
+                onChange={e => patchSpec({ reachFromPrevious: e.target.checked })} />
+              <span>learn each level&rsquo;s reach from the ones below it</span>
             </label>
             <label className="farm-check">
               <input type="checkbox" checked={spec.fastEngine}

@@ -27,7 +27,7 @@ import { bandKey, type Band } from "./trace-band";
 /**
  * Bumped when the engine changes what it answers.
  *
- * Same job as the `trace-plan-v21` key in the worker URL, for the same reason
+ * Same job as the `trace-plan-v22` key in the worker URL, for the same reason
  * and with the same discipline: a reader whose browser is holding last month's
  * geometry under this month's key is worse off than one who computed it.
  */
@@ -58,6 +58,19 @@ export type RunDescriptor = {
   shortArms: boolean;
   step: number | "auto";
   budget: number;
+  /**
+   * Cap each level past the first at the longest arm the levels below it
+   * actually used, instead of escalating the ceiling to 200.
+   *
+   * In the descriptor because it changes WHICH ring a level settles on, not
+   * merely how long the search takes to find it — measured on 3×1 `[-1,-1]`,
+   * where level 2 goes from `(190, 190, 70)` in 54s to `(50, 0, 0)` in 4.9s at
+   * the same 10/12 crossings. Two different answers must never share a key.
+   *
+   * Optional, and absent means off, so every key ever written stays exactly
+   * where it was: descriptorPath only appends a segment when it is on.
+   */
+  reachFromPrevious?: boolean;
 };
 
 export type RunArtifact = {
@@ -227,8 +240,11 @@ const KS_SEPARATOR = "_";
  */
 export function descriptorPath(d: RunDescriptor): string {
   const ks = d.ks.map(k => String(Math.trunc(k))).join(KS_SEPARATOR);
+  // `-r1` is appended only when the reach cap is on. Every key the farm and
+  // the fitter have ever written was written without it, and a flag that
+  // spelled itself `-r0` on those would have moved every one of them.
   const flags = `s${d.shortArms ? 1 : 0}-e${d.step === "auto" ? "auto" : Math.trunc(d.step)}`
-    + `-b${Math.trunc(d.budget)}`;
+    + `-b${Math.trunc(d.budget)}` + (d.reachFromPrevious ? "-r1" : "");
   return `${d.hand}-${d.direction}/${d.m}x${d.n}/${ks}/${flags}`;
 }
 
@@ -289,7 +305,7 @@ const KEY_VERSION = /^v(\d{1,3})$/;
 const KEY_HAND_DIRECTION = /^(lh|rh)-(cw|ccw)$/;
 const KEY_SIZE = /^([1-9][0-9]?)x([1-9][0-9]?)$/;
 const KEY_KS = /^-?\d{1,3}(_-?\d{1,3}){0,15}$/;
-const KEY_FLAGS = /^s([01])-e(auto|\d{1,4})-b(\d{1,10})$/;
+const KEY_FLAGS = /^s([01])-e(auto|\d{1,4})-b(\d{1,10})(?:-r([01]))?$/;
 const KEY_LEVEL_BAND = /^L(\d{1,3})-([hv])$/;
 
 function parseSegments(segments: string[]): ParsedRunKey | null {
@@ -310,6 +326,8 @@ function parseSegments(segments: string[]): ParsedRunKey | null {
       shortArms: fl[1] === "1",
       step: fl[2] === "auto" ? "auto" : Number(fl[2]),
       budget: Number(fl[3]),
+      // Absent reads as off, which is what every key without the segment is.
+      reachFromPrevious: fl[4] === "1",
     },
   };
 }

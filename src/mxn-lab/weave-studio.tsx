@@ -203,6 +203,8 @@ function writeSaved(rows: SavedSolution[]) {
 type Params = {
   m: number; n: number; ks: number[]; key: string;
   preferShortArms: boolean; extStep: number | null; comboBudget: number;
+  /** Cap each level past the first at the reach the levels below it used. */
+  reachFromPrevious: boolean;
 };
 
 function parseKs(raw: string) {
@@ -468,6 +470,9 @@ export function ContinuationLab() {
   const [copiedLevel, setCopiedLevel] = useState<number | null>(null);
   const [fullSizeLevels, setFullSizeLevels] = useState<Set<number>>(() => new Set());
   const [preferShortArms, setPreferShortArms] = useState(true);
+  // Off by default, and deliberately: it changes which ring a level settles on,
+  // and what the engine ships is still what a reader gets unless they ask.
+  const [reachFromPrevious, setReachFromPrevious] = useState(false);
   const [extStep, setExtStep] = useState<ExtStep>("auto");
   const [comboBudget, setComboBudget] = useState(DEFAULT_COMBO_BUDGET);
   const [ranKey, setRanKey] = useState<string | null>(null);
@@ -611,7 +616,8 @@ export function ContinuationLab() {
   const resolvedStep = extStep === "auto" ? autoStep(worstPairCount, comboBudget) : Number(extStep);
   const estimatedCombos = comboCount(resolvedStep, worstPairCount);
   const overEngineLimit = estimatedCombos > ENGINE_COMBO_LIMIT;
-  const paramsKey = `${m}:${n}:${ks.join(",")}:${preferShortArms}:${extStep}:${comboBudget}`;
+  const paramsKey = `${m}:${n}:${ks.join(",")}:${preferShortArms}:${extStep}:${comboBudget}`
+    + `:${reachFromPrevious}`;
   const staleParams = ranKey !== null && ranKey !== paramsKey && !busy;
   // Frozen at the end of a run: browsing changes a level's geometry, and a
   // viewport recomputed from the last stage would rescale every card per click.
@@ -637,6 +643,7 @@ export function ContinuationLab() {
     shortArms: params.preferShortArms,
     step: params.extStep ?? "auto",
     budget: params.comboBudget,
+    reachFromPrevious: params.reachFromPrevious,
   });
 
   /**
@@ -653,6 +660,8 @@ export function ContinuationLab() {
   const findShelfVariant = async (params: Params) => {
     const ksPath = params.ks.map(k => String(Math.trunc(k))).join("_");
     const prefix = `run/${CACHE_VERSION}/lh-cw/${params.m}x${params.n}/${ksPath}/`;
+    // The prefix stops at the ks, so this lists BOTH shelves for this size --
+    // capped and not. The flag filter below is what keeps them apart.
     let entries: CatalogueEntry[];
     try {
       entries = await cacheRef.current.catalogue(prefix, 50);
@@ -668,10 +677,18 @@ export function ContinuationLab() {
       // The step select only offers these values; adopting one it cannot show
       // would leave the fields unable to say what is on screen.
       if (!(EXT_STEP_CHOICES as readonly string[]).includes(step)) return [];
+      // The reach cap is the one flag a variant may NOT differ on. A step and a
+      // budget describe how the grid was walked, and a reader who typed m, n
+      // and ks is asking about the size rather than about a step -- but the cap
+      // decides which ring a level settles on, so adopting across it would
+      // answer a question nobody asked and, worse, make ticking the box appear
+      // to do nothing: the uncapped run is always there to be adopted instead.
+      if (!!parsed.descriptor.reachFromPrevious !== params.reachFromPrevious) return [];
       return [{
         shortArms: parsed.descriptor.shortArms,
         step: step as ExtStep,
         budget: parsed.descriptor.budget,
+        reach: !!parsed.descriptor.reachFromPrevious,
         computedAt: entry.computedAt,
       }];
     });
@@ -703,7 +720,7 @@ export function ContinuationLab() {
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
     const worker = new Worker(
-      `${LAB_BASE}exact-worker.js?v=trace-plan-v21${FAST_ENGINE ? "&engine=fast" : ""}`,
+      `${LAB_BASE}exact-worker.js?v=trace-plan-v22${FAST_ENGINE ? "&engine=fast" : ""}`,
       { type: "module" },
     );
     worker.onmessage = (event) => {
@@ -1045,6 +1062,7 @@ export function ContinuationLab() {
           preferShortArms: params.preferShortArms,
           extStep: params.extStep,
           comboBudget: params.comboBudget,
+          reachFromPrevious: params.reachFromPrevious,
         });
       };
 
@@ -1102,10 +1120,12 @@ export function ContinuationLab() {
         const adopted: Params = {
           m: params.m, n: params.n, ks: [...params.ks],
           key: `${params.m}:${params.n}:${params.ks.join(",")}`
-            + `:${variant.shortArms}:${variant.step}:${variant.budget}`,
+            + `:${variant.shortArms}:${variant.step}:${variant.budget}`
+            + `:${variant.reach}`,
           preferShortArms: variant.shortArms,
           extStep: variant.step === "auto" ? null : Number(variant.step),
           comboBudget: variant.budget,
+          reachFromPrevious: variant.reach,
         };
         const stored = await cacheRef.current.getRun(descriptorFor(adopted));
         if (id !== activeIdRef.current) return;
@@ -1119,6 +1139,7 @@ export function ContinuationLab() {
         setPreferShortArms(variant.shortArms);
         setExtStep(variant.step);
         setComboBudget(variant.budget);
+        setReachFromPrevious(variant.reach);
         setRanKey(adopted.key);
         ranKeyRef.current = adopted.key;
         lastParamsRef.current = adopted;
@@ -1145,6 +1166,7 @@ export function ContinuationLab() {
       preferShortArms,
       extStep: extStep === "auto" ? null : Number(extStep),
       comboBudget,
+      reachFromPrevious,
     });
   };
 
@@ -1242,6 +1264,10 @@ export function ContinuationLab() {
       ? rawStep as ExtStep : "auto";
     const nextBudget = Number(query.get("budget")) || DEFAULT_COMBO_BUDGET;
     const nextShort = query.get("short") !== "0";
+    // Opt-in in the URL as it is in the sidebar: `reach=1` and nothing else
+    // turns it on, so every link written before it exists still means the
+    // search the engine ships.
+    const nextReach = query.get("reach") === "1";
 
     setM(nextM);
     setN(nextN);
@@ -1249,12 +1275,15 @@ export function ContinuationLab() {
     setExtStep(nextStep);
     setComboBudget(nextBudget);
     setPreferShortArms(nextShort);
+    setReachFromPrevious(nextReach);
     dispatchRef.current({
       m: nextM, n: nextN, ks: parsedQuery.values,
-      key: `${nextM}:${nextN}:${parsedQuery.values.join(",")}:${nextShort}:${nextStep}:${nextBudget}`,
+      key: `${nextM}:${nextN}:${parsedQuery.values.join(",")}:${nextShort}:${nextStep}:${nextBudget}`
+        + `:${nextReach}`,
       preferShortArms: nextShort,
       extStep: nextStep === "auto" ? null : Number(nextStep),
       comboBudget: nextBudget,
+      reachFromPrevious: nextReach,
     });
   }, []);
 
@@ -1307,6 +1336,7 @@ export function ContinuationLab() {
       preferShortArms: params.preferShortArms,
       extStep: params.extStep,
       comboBudget: params.comboBudget,
+      reachFromPrevious: params.reachFromPrevious,
     });
   };
 
@@ -1829,6 +1859,28 @@ export function ContinuationLab() {
                 />
                 <span>prefer shorter arms</span>
               </label>
+              {/* The ceiling, learned rather than escalated. A level past the
+                  first ordinarily walks its extension ceiling up to 200px
+                  because a deeper ring "sits further out"; measured, it does
+                  not need to. 3×1 [-1,-1] L2: 54s to (190, 190, 70) escalating,
+                  4.9s to (50, 0, 0) capped, at the same 10/12 crossings.
+                  Off by default because it changes which ring the level
+                  settles on -- which is also why it is in the cache key. */}
+              <label className="toggle-line" htmlFor="reach-cap">
+                <input
+                  id="reach-cap" type="checkbox" checked={reachFromPrevious}
+                  onChange={e => setReachFromPrevious(e.target.checked)}
+                />
+                <span>learn each level&rsquo;s reach from the ones below it</span>
+              </label>
+              {reachFromPrevious && (
+                <p className="range-note">
+                  Levels past the first stop at the longest arm the levels below
+                  them used, instead of escalating to 200px. Much faster on a
+                  repeated k, and a different ring — stored under its own cache
+                  key, never mixed with the ordinary search.
+                </p>
+              )}
               <label className="toggle-line" htmlFor="healthy-only">
                 <input id="healthy-only" type="checkbox" checked={healthyOnly}
                   onChange={e => setHealthyOnly(e.target.checked)} />

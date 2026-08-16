@@ -41,6 +41,8 @@ export type SweepSpec = {
   shortArms: boolean;
   step: number | "auto";
   budget: number;
+  /** Cap each level past the first at the reach the levels below it used. */
+  reachFromPrevious: boolean;
   wantTraces: boolean;
   /** Product cells per level the counting may walk. 0 walks all of them. */
   countCeiling: number;
@@ -59,6 +61,7 @@ export type PlanJob = {
   shortArms: boolean;
   step: number | "auto";
   budget: number;
+  reachFromPrevious: boolean;
   /** The run's worst-case combo count: what the queue sorts cheapest-first on. */
   weight: number;
   wantTraces: boolean;
@@ -206,6 +209,7 @@ export function planSweep(spec: SweepSpec): PlanResult {
           m, n, ks: [...ks],
           hand: spec.hand, direction: spec.direction,
           shortArms: spec.shortArms, step: spec.step, budget: spec.budget,
+          reachFromPrevious: !!spec.reachFromPrevious,
         };
         const id = runKey(descriptor);
         // The same parameters can be reached twice — a k that is valid at two
@@ -220,6 +224,7 @@ export function planSweep(spec: SweepSpec): PlanResult {
           id, descriptor, m, n, ks: [...ks],
           hand: spec.hand, direction: spec.direction,
           shortArms: spec.shortArms, step: spec.step, budget: spec.budget,
+          reachFromPrevious: !!spec.reachFromPrevious,
           weight: worstCase(m, n, ks.length, step).total,
           wantTraces: spec.wantTraces,
           countCeiling: Math.max(0, Math.trunc(spec.countCeiling)),

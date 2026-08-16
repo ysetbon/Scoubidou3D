@@ -342,6 +342,62 @@ const offSite = url =>
   await page.close();
 }
 
+// ---- A4 · the reach cap is a different shelf, not a different view ----------
+//
+// The cap changes which ring a level settles on, so the one thing that must
+// never happen is a run stored under it being served to a page that did not
+// ask for it, or the other way round. The shelf here holds `2x2 [1,2,2]` at
+// the ordinary flags only.
+{
+  const page = await browser.newPage({ viewport: { width: 1500, height: 1200 } });
+  const external = [];
+  const asked = [];
+  page.on('request', request => {
+    if (offSite(request.url())) external.push(request.url());
+    if (request.url().includes('/cache/run/')) asked.push(new URL(request.url()).pathname);
+  });
+  await page.goto(`${base}/mxn/?${cacheArg}&m=2&n=2&ks=1%202%202&reach=1`,
+    { waitUntil: 'domcontentloaded' });
+  // Attached rather than visible: the knob lives inside the collapsed
+  // <details> for advanced search, which is where it belongs.
+  await page.waitForSelector('#reach-cap', { state: 'attached', timeout: 20000 });
+  ok('?reach=1 turns the cap on in the sidebar',
+    await page.$eval('#reach-cap', box => box.checked));
+  ok('and the run it looks for is the capped shelf, not the ordinary one',
+    asked.some(path => path.endsWith('-r1')) && !asked.some(path => /b400000$/.test(path)),
+    asked.join(', '));
+  // Nothing capped is on this shelf, so the page must COMPUTE rather than
+  // quietly serve the uncapped run sitting right next to it — which is the
+  // whole reason findShelfVariant may vary a step but never this flag. Reaching
+  // for Pyodide is the fallback working, not a fault.
+  const chip = await page.$eval('.cache-chip', el => el.textContent);
+  ok('a capped miss says miss instead of adopting the uncapped run',
+    /computed here|nothing stored/.test(chip), chip);
+  ok('and that is what sends it to the engine',
+    external.some(url => url.includes('jsdelivr')), external.slice(0, 2).join(', '));
+  await page.close();
+}
+
+{
+  // And the default is still the default: no `reach` in the URL is the shelf
+  // every key ever written lives on.
+  const page = await browser.newPage({ viewport: { width: 1500, height: 1200 } });
+  const asked = [];
+  page.on('request', request => {
+    if (request.url().includes('/cache/run/')) asked.push(new URL(request.url()).pathname);
+  });
+  await page.goto(`${base}/mxn/?${cacheArg}&m=2&n=2&ks=1%202%202`,
+    { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.diagram-card', { timeout: 30000 });
+  await page.waitForSelector('#reach-cap', { state: 'attached', timeout: 20000 });
+  ok('with no reach in the URL the cap is off',
+    !(await page.$eval('#reach-cap', box => box.checked)));
+  ok('and the ordinary key is what was asked for',
+    asked.some(path => /b400000$/.test(path)) && !asked.some(path => path.endsWith('-r1')),
+    asked.join(', '));
+  await page.close();
+}
+
 // ---- C · the farm plans, queues and agrees with the Worker -----------------
 {
   const page = await browser.newPage({ viewport: { width: 1500, height: 1200 } });
