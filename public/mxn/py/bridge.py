@@ -319,8 +319,29 @@ def _register_level(level, k, checkpoint, result, search):
     }
 
 
+def _learned_reach(rows):
+    """
+    The longest arm any level so far actually used.
+
+    The escalating search walks the extension ceiling up to 200 because "every
+    ring past the first sits further out and needs longer arms" -- true of the
+    ceiling it MIGHT need, and measurably not true of the one it uses. Measured
+    on 3x1 ks=[-1,-1]: level 1 reaches 80, level 2's escalating search spends
+    54s to land on (190, 190, 70), and the same level capped at 80 spends 4.9s
+    to land on (50, 0, 0) with the same 10/12 crossings. The 120px of ceiling
+    above what the previous level needed bought nothing but time and arm length.
+
+    Zero means nothing was learned -- a k=0 level preserves the continuation and
+    extends nothing -- and the caller leaves that level's search alone rather
+    than capping it at a ceiling with no cells under it.
+    """
+    return max((value for row in rows for side in row["ext"] for value in side),
+               default=0)
+
+
 def generate(m, n, ks, hand="lh", direction="cw",
-             prefer_short_arms=True, ext_step=None, combo_budget=None):
+             prefer_short_arms=True, ext_step=None, combo_budget=None,
+             reach_from_previous=False):
     m, n = int(m), int(n)
     ks = [int(k) for k in ks]
     if not ks:
@@ -336,6 +357,7 @@ def generate(m, n, ks, hand="lh", direction="cw",
     if combo_budget:
         search["combo_budget"] = int(combo_budget)
     search["collect_candidates"] = True
+    reach_from_previous = bool(reach_from_previous)
     _SESSION.clear()
     _SESSION.update({"m": m, "n": n, "ks": ks, "hand": hand,
                      "direction": direction, "levels": {}})
@@ -386,6 +408,15 @@ def generate(m, n, ks, hand="lh", direction="cw",
                 k_prev=ks[level - 2], prev_virtual_to_real=prev_v2r,
                 verbose=False)
             prev_v2r = info["virtual_to_real"]
+            # What the levels below reached, when this run is asked to learn
+            # from them rather than escalate. Off by default: it changes which
+            # ring the level settles on, so it is part of the cache key and a
+            # run stored under it is never confused with the ordinary search.
+            level_search = dict(search)
+            learned = _learned_reach(rows) if reach_from_previous else 0
+            if learned:
+                level_search["max_pair_extension"] = learned
+                level_search["escalate_extension"] = False
             checkpoint = copy.deepcopy((strands, info))
             _send_stage_frame(strands, level, k_level, "ring built")
             NX._progress_frame_callback = _candidate_frame_emitter(
@@ -393,7 +424,7 @@ def generate(m, n, ks, hand="lh", direction="cw",
             try:
                 result = NX.align_continuation_level(
                     strands, m, n, k_level, direction, hand, level, info,
-                    seed_extensions=level_seeds, verbose=False, **search)
+                    seed_extensions=level_seeds, verbose=False, **level_search)
             finally:
                 NX._progress_frame_callback = None
             _send_stage_frame(
@@ -410,6 +441,7 @@ def generate(m, n, ks, hand="lh", direction="cw",
         "m": m, "n": n, "ks": ks, "hand": hand, "direction": direction,
         "expected": expected, "seconds": round(time.time() - started, 1),
         "rows": rows, "stages": stages,
+        "reachFromPrevious": reach_from_previous,
         "solutions": [_solution_meta(_SESSION["levels"][lv])
                       for lv in sorted(_SESSION["levels"])],
     }, separators=(",", ":"))

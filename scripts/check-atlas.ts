@@ -94,10 +94,16 @@ function near(what: string, got: number, want: number, tolerance = 1e-6) {
 console.log("\nkeys — parseRunKey and parseTraceKey invert what builds them");
 // ---------------------------------------------------------------------------
 
+// `reachFromPrevious` is stated on every one of these rather than left off:
+// parsing a key always answers with it, so a fixture that omitted it would be
+// asserting that the grammar has a field it does not report. The one that omits
+// it — and must still read as off — is checked in scripts/check-reach.ts, along
+// with the rest of that flag's key grammar.
 const DESCRIPTORS: RunDescriptor[] = [
-  { m: 2, n: 2, ks: [1, 2, 2], hand: "lh", direction: "cw", shortArms: true, step: "auto", budget: 400000 },
-  { m: 1, n: 4, ks: [-3], hand: "rh", direction: "ccw", shortArms: false, step: 20, budget: 1000 },
-  { m: 4, n: 4, ks: [0, -1, 4, 4, 4, 4, 4, 4], hand: "lh", direction: "ccw", shortArms: true, step: 5, budget: 10000000 },
+  { m: 2, n: 2, ks: [1, 2, 2], hand: "lh", direction: "cw", shortArms: true, step: "auto", budget: 400000, reachFromPrevious: false },
+  { m: 1, n: 4, ks: [-3], hand: "rh", direction: "ccw", shortArms: false, step: 20, budget: 1000, reachFromPrevious: false },
+  { m: 4, n: 4, ks: [0, -1, 4, 4, 4, 4, 4, 4], hand: "lh", direction: "ccw", shortArms: true, step: 5, budget: 10000000, reachFromPrevious: false },
+  { m: 3, n: 1, ks: [-1, -1], hand: "lh", direction: "cw", shortArms: true, step: "auto", budget: 400000, reachFromPrevious: true },
 ];
 
 DESCRIPTORS.forEach(descriptor => {

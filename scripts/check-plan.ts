@@ -121,7 +121,8 @@ const base: SweepSpec = {
   mFrom: 1, mTo: 1, nFrom: 1, nTo: 1,
   ksMode: "each", kFollowsSize: false, kFrom: 1, kTo: 1, depth: 1, ksText: "",
   hand: "lh", direction: "cw", shortArms: true, step: "auto",
-  budget: 400_000, wantTraces: true, countCeiling: 0, fastEngine: true,
+  budget: 400_000, reachFromPrevious: false,
+  wantTraces: true, countCeiling: 0, fastEngine: true,
 };
 
 check("k limits are square-aware", kLimits(2, 2), { min: -1, max: 2 });

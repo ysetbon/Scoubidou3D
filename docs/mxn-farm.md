@@ -79,6 +79,14 @@ Readable rather than hashed, so a key is something you can look for by hand
 when a run and a lab disagree about whether something is cached. Two things
 about its contents are deliberate:
 
+- **The reach cap appends `-r1`, and only when it is on.** `…-b400000-r1` is
+  the sweep that caps each level past the first at the reach the levels below it
+  used ([docs/mxn-lab.md](mxn-lab.md) has the numbers); it settles on a
+  different ring, so it is a different shelf. A flag that spelled itself `-r0`
+  when off would have moved every key ever written, so off is the absence of the
+  segment. A job's ID *is* its cache key, which is where the runner reads the
+  flag back from — no queue column, and no second place for it to disagree with
+  the key it is stored at.
 - **The step is stored as it was given.** `eauto` and `e20` are different
   shelves even when auto resolves to 20, because the engine's ladder is per
   band: passing a resolved number where the page passed nothing is not the same

@@ -137,6 +137,95 @@ orientation exchange from one level into the next. A copy that loses that will
 still render; it will just quietly stop weaving, which is why the check is on
 the numbers and not on whether a picture appeared.
 
+### Learning each level's reach from the ones below it
+
+A level past the first ordinarily walks its extension ceiling **up to 200px**.
+`escalate_extension` defaults to on for `level >= 2` on the stated grounds that
+"every ring past the first sits further out and needs longer arms than the
+sheet's 200px ceiling allows" — which is true of the ceiling a deeper ring
+*might* need, and measurably not true of the one it *uses*.
+
+The sidebar checkbox **learn each level's reach from the ones below it** caps
+each level past the first at the longest arm any level below it actually
+reached, and turns the escalation off. Measured on `3×1 ks = [-1, -1]`, where
+level 1 reaches 80:
+
+| level 2's search | seconds | arms | crossings |
+| --- | --- | --- | --- |
+| escalating to 200 (what ships) | **54.0** | `(190, 190, 70)` | 10/12 |
+| ceiling 200, no escalation | 61.1 | `(190, 190, 70)` | 10/12 |
+| ceiling 110 — reach + 30 | 11.4 | `(50, 0, 0)` | 10/12 |
+| **capped at level 1's reach, 80** | **4.9** | `(50, 0, 0)` | 10/12 |
+
+The 120px of ceiling above what level 1 needed bought **no extra crossings** —
+it bought fifty seconds and arms nine times longer. Whole runs through
+`bridge.generate`, both levels, cap off → on:
+
+| size · ks | seconds | level 2's arms | level 2's crossings |
+| --- | --- | --- | --- |
+| `2×1 [-1,-1]` | 6.8 → **3.9** | 220 → **30** | 6/8 → **8/8** |
+| `1×2 [-1,-1]` | 6.5 → **3.9** | 220 → **30** | 6/8 → **8/8** |
+| `1×3 [-1,-1]` | 116.2 → **64.6** | 450 → **50** | 10/12, unchanged |
+| `3×1 [-1,-1]` | 115.4 → **63.4** | 450 → **50** | 10/12, unchanged |
+| `2×2 [-1,-1]` | 2.2 → 2.1 | 220, unchanged | 16/16, a weave either way |
+| `1×1 [1,1]`, `1×2 [1,1]`, `1×3 [1,1]` | unchanged | unchanged | unchanged |
+
+Crossings never fall in any case measured, and rise in two.
+
+#### Why the cases it does nothing for are the closing ones
+
+`2×2 [-1,-1]` and every `[1,1]` row above are untouched, and that is not luck.
+`align_continuation_level` already warm-starts a level from the combos the
+levels below settled on — but it accepts a seeded attempt **only when the ring
+it produces is complete**, so that "seeding can speed a level up but never
+change what is reachable". Where a ring closes, the seed wins, the escalation
+never runs, and there is nothing left for a cap to save.
+
+Where a ring *cannot* close — `k = -1` on `2×1`, `1×2`, `1×3`, `3×1`, which is
+the whole family the boards at `/mxn/ks/-1/` are about — the seed is tried,
+rejected for being incomplete, and the full escalation runs anyway. Measured on
+`3×1`: seeding costs **+8.9s** there and never once wins. The cap is what turns
+that dead warm-start into a live one.
+
+`scripts/reach-matrix.py` is what produced the table, and running each case
+twice is the only honest way to offer this: crossings are the thing that must
+not fall, while seconds and arm length are what the cap is meant to buy. It goes
+to sides of 3 by default because a `1×4` pair is many minutes; `--max-side=4`
+is the overnight version.
+
+**It is off by default, and it is in the cache key.** It changes which ring a
+level settles on, not merely how long the search takes to find it, so a run
+stored under it is addressed as `…/s1-eauto-b400000-r1` and can never be
+confused with the ordinary search's answer for the same parameters. The segment
+is appended *only when the cap is on*, so every key the farm and the fitter have
+ever written stays exactly where it is — `npm run check:reach` pins that, along
+with the Worker's own validator agreeing about the shape.
+
+`?reach=1` turns it on in a deep link. The farm has the same checkbox, so a
+sweep can fill a shelf under it.
+
+**It is also the one flag `findShelfVariant` may not cross.** That fallback
+exists so a reader who types m, n and ks and misses on the exact step still gets
+a stored answer — the size is what they asked about, not the step. The cap is
+not like that: it decides which ring a level settles on, and adopting across it
+would both answer a question nobody asked and make ticking the box appear to do
+nothing, since the uncapped run is always sitting there to be adopted instead.
+Tick it with nothing capped on the shelf and the page computes, and says so.
+
+#### What it does not do
+
+**The first level is still searched.** A cap is learned from the levels below,
+and level 1 has none — so `3×1 [-1,-1]` goes from 115s to 63s, and the
+52 seconds that remain are level 1 being computed again. Its answer is very
+likely already on the shelf, and reusing it would mean replaying a stored combo
+instead of searching for it: cheap (`_pinned_search` costs seconds where the
+escalating search costs a minute) but it hands the level a candidate list of one,
+which is the solution browser gone. That trade is not made here.
+
+The way to not pay for level 1 at all is the one the whole shelf exists for:
+sweep the sequence at [`/mxn/gpu/`](mxn-farm.md) with **depth 2**, and
+`[-1, -1]` arrives in one fetch like any other stored run.
+
 ### Browsing every solution
 
 Each level's card carries `‹ index / count ›` and a ⭐. The engine already
@@ -582,7 +671,7 @@ standing in. See `mocks/README.md`.
 There are two of them, and they are bumped for the same reason and never
 together.
 
-**`trace-plan-v21`**, the engine-file key, appears in six places: the worker URL
+**`trace-plan-v22`**, the engine-file key, appears in six places: the worker URL
 (`weave-studio.tsx`), the Python fetch URL and the counting-hand URL
 (`exact-worker.js`), the counting hand's own fetch (`count-worker.js`), the farm
 hand's fetch (`farm-worker.js`) and the URL the farm page spawns it with

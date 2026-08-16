@@ -83,7 +83,7 @@ async function prepare(fastEngine) {
       // exact-worker.js uses: the two load the identical engine and a farm that
       // silently ran an older copy would fill the shelf with answers the lab
       // then disagrees with.
-      const url = new URL(`./py/${name}?v=trace-plan-v21`, import.meta.url);
+      const url = new URL(`./py/${name}?v=trace-plan-v22`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
@@ -181,11 +181,15 @@ async function runJob(runtime, message, post) {
   runtime.globals.set("mxn_budget", job.budget ?? null);
   runtime.globals.set("mxn_hand", job.hand || "lh");
   runtime.globals.set("mxn_dir", job.direction || "cw");
+  // Part of the answer's identity, and already in the job's id — see
+  // jobFromRow. Absent means off, which is what every key without `-r1` is.
+  runtime.globals.set("mxn_reach", job.reachFromPrevious === true);
 
   post({ message: `${job.m}×${job.n} ks ${job.ks.join(" ")} — searching`, phase: "generate" });
   const result = JSON.parse(await runtime.runPythonAsync(
     "bridge.generate(mxn_m, mxn_n, mxn_ks.to_py(), mxn_hand, mxn_dir,"
-    + " prefer_short_arms=mxn_short, ext_step=mxn_step, combo_budget=mxn_budget)"
+    + " prefer_short_arms=mxn_short, ext_step=mxn_step, combo_budget=mxn_budget,"
+    + " reach_from_previous=mxn_reach)"
   ));
 
   // Counts, walked all the way. This is the difference between a cached card

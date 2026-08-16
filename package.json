@@ -19,6 +19,7 @@
     "check:plan": "esbuild scripts/check-plan.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-plan.mjs --log-level=warning && node node_modules/.cache/check-plan.mjs",
     "check:atlas": "esbuild scripts/check-atlas.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-atlas.mjs --log-level=warning && node node_modules/.cache/check-atlas.mjs",
     "check:fit": "esbuild scripts/check-fit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-fit.mjs --log-level=warning && node node_modules/.cache/check-fit.mjs",
+    "check:reach": "esbuild scripts/check-reach.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-reach.mjs --log-level=warning && node node_modules/.cache/check-reach.mjs",
     "check:picks": "esbuild scripts/check-lab-picks.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-lab-picks.mjs --log-level=warning && node node_modules/.cache/check-lab-picks.mjs",
     "check:board": "esbuild scripts/check-board.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-board.mjs --log-level=warning && node node_modules/.cache/check-board.mjs",
     "check:enginekey": "node scripts/engine-key.mjs --check",
