@@ -21,33 +21,73 @@ and the Worker is `https://mxn-solutions-api.ysetbon.workers.dev`.
 needs `Authorization: Bearer <ADMIN_TOKEN>`, and it is never needed to answer
 this question — the picks artifact is the record; the D1 row is a mirror of it.
 
+**A cache read has to gunzip.** This is the one thing that makes the check
+non-obvious, and getting it wrong looks exactly like "nothing was saved".
+`encode()` in `src/mxn-lab/cache.ts` gzips every artifact before the PUT, and
+`serveArtifact()` in `worker-api/src/index.ts` hands those bytes back untouched
+under `application/octet-stream` with the codec in a private `X-Mxn-Codec`
+header — the client compresses and the client decompresses, deliberately, so no
+proxy can rewrite it. `Invoke-RestMethod` therefore returns a **byte array** for
+`/cache/…`, not an object: `.judgements` on it is `$null`, the pipeline is
+empty, and PowerShell prints nothing at all — no error to notice. Only
+`/catalogue` is ordinary JSON, because the Worker builds that itself.
+
 ```powershell
 cd $HOME\Scoubidou3D
 $api = "https://mxn-solutions-api.ysetbon.workers.dev"
 
-# 1 — every parameter set that has judgements. Empty output = nothing saved.
-(Invoke-RestMethod "$api/catalogue?prefix=picks/").entries.key
-
-# 2 — one set's judgements. $key is a step-1 line with "picks/" stripped.
-$key = "v3/lh-cw/2x1/1/s1-eauto-b400000"
-(Invoke-RestMethod "$api/cache/picks/$key").judgements |
-  Select-Object verdict, chooser, at,
-    @{n='levels';   e={ $_.levels.level -join ',' }},
-    @{n='crossings';e={ "$($_.audit.crossings)/$($_.audit.expected)" }},
-    @{n='hasRing';  e={ [bool]$_.strands }} | Format-Table -AutoSize
-
-# 3 — the exact knobs of the best, which is what reproduces the ring.
-(Invoke-RestMethod "$api/cache/picks/$key").judgements |
-  Where-Object verdict -eq 'best' | ForEach-Object {
-    foreach ($l in $_.levels) {
-      "L{0}  H ext={1} angle={2}  V ext={3} angle={4}" -f `
-        $l.level, ($l.h.ext -join ','), $l.h.angle, ($l.v.ext -join ','), $l.v.angle
-    }
+# Read one artifact off the shelf, gunzipping it. Sniffs the gzip magic bytes
+# rather than trusting the header, so it also reads an `identity` entry.
+function Get-MxnArtifact {
+  param([Parameter(Mandatory)][string]$Path)
+  $tmp = [IO.Path]::GetTempFileName()
+  try {
+    Invoke-WebRequest "$api/$Path" -OutFile $tmp -UseBasicParsing | Out-Null
+    $bytes = [IO.File]::ReadAllBytes($tmp)
+  } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
+  if ($bytes.Length -ge 2 -and $bytes[0] -eq 0x1f -and $bytes[1] -eq 0x8b) {
+    $ms = New-Object IO.MemoryStream(,$bytes)
+    $gz = New-Object IO.Compression.GZipStream($ms,
+            [IO.Compression.CompressionMode]::Decompress)
+    $text = (New-Object IO.StreamReader($gz, [Text.Encoding]::UTF8)).ReadToEnd()
+  } else {
+    $text = [Text.Encoding]::UTF8.GetString($bytes)
   }
+  $text | ConvertFrom-Json
+}
+
+# 1 — every parameter set that has judgements. Empty output = nothing saved.
+$keys = (Invoke-RestMethod "$api/catalogue?prefix=picks/").entries.key
+$keys
+
+# 2 — every judgement on every one of them. Catalogue keys already carry the
+# `picks/` prefix, so they append to `cache/` as they stand.
+foreach ($k in $keys) {
+  ""; "=== $k"
+  (Get-MxnArtifact "cache/$k").judgements |
+    Select-Object verdict, chooser, at,
+      @{n='levels';   e={ $_.levels.level -join ',' }},
+      @{n='crossings';e={ "$($_.audit.crossings)/$($_.audit.expected)" }},
+      @{n='hasRing';  e={ [bool]$_.strands }} | Format-Table -AutoSize
+}
+
+# 3 — the exact knobs of each ★ best, which is what reproduces the ring.
+foreach ($k in $keys) {
+  (Get-MxnArtifact "cache/$k").judgements |
+    Where-Object verdict -eq 'best' | ForEach-Object {
+      "=== $k  (chooser: $($_.chooser))"
+      foreach ($l in $_.levels) {
+        "L{0}  H ext={1} angle={2}  V ext={3} angle={4}" -f `
+          $l.level, ($l.h.ext -join ','), $l.h.angle, ($l.v.ext -join ','), $l.v.angle
+      }
+    }
+}
 ```
 
-Step 2 in a browser tab works too, since reads are public:
-`https://mxn-solutions-api.ysetbon.workers.dev/cache/picks/v3/lh-cw/2x1/1/s1-eauto-b400000`
+A browser tab on a `/cache/…` URL does **not** work, for the same reason: the
+body is gzip under `application/octet-stream` with no `Content-Encoding`, so the
+browser downloads a binary file instead of rendering JSON. Reads being public
+buys anonymity, not readability. `/catalogue?prefix=picks/` does render in a tab.
 
 **Building the key from parameters.** `v3/<hand>-<direction>/<m>x<n>/<ks joined
 by _>/s<1|0>-e<step|auto>-b<budget>`. The fitter always writes
@@ -55,6 +95,11 @@ by _>/s<1|0>-e<step|auto>-b<budget>`. The fitter always writes
 `v3/lh-cw/2x1/1/s1-eauto-b400000`. Note the farm's own runs use different flags
 (`s1-e5-b100000000`), so a `run/` key for the same size will not match a
 fitter `picks/` key — that is expected, not a bug.
+
+**If step 1 lists keys but step 2 prints nothing**, the read is not gunzipping —
+that is the failure above, not a missing judgement. A key exists in the
+catalogue only because something was PUT to it, so a listed key always has an
+artifact behind it.
 
 **If step 1 comes back empty, the diagnosis order is:**
 
