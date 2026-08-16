@@ -566,6 +566,42 @@ re-solves the other pair, the diagram redraws — and the worker's message count
 is `0` through all of it. Knobs on screen is easy to fake; knobs on screen with
 an engine that was never spoken to is not.
 
+**The timeline — which step is actually slow.** A long run said `Working…` and
+nothing else, for as long as it took. The engine was never silent about it —
+`bridge` emits *Loading the exact MXN engine…*, *Loading the numerical search
+kernel…*, *Calculating L₁…*, and the worker forwards every one — but the page
+rendered `{status || progress}`, so the page's own summary outranked all of it
+and the longest wait on the site looked like a frozen string.
+
+Now both are drawn, and every message is kept in a **Timeline** panel,
+timestamped from the moment *Run* was pressed. The `+` column is the gap from
+the line above, which is the one that names the slow step; rows over two
+seconds are marked. `page` rows are the fitter's own — cache HIT or MISS with
+the key it asked for, the session wait, `fit-plan`, the judgement read, the
+candidate walk — and `engine` rows come from the worker. There is a **copy**
+button, because the answer to "why is this slow" is usually a paste.
+
+It exists because the distinction it draws is invisible without it. Measured
+natively with `python3` against this repo's own engine:
+
+| parameters | `generate` | `fit_plan` | plan size |
+| --- | --- | --- | --- |
+| 2×1 `k=1` | 1.0 s | — | — |
+| 2×1 `k=1,1` | 1.2 s | 0.44 s | 1,925 B |
+| 3×1 `k=-1` | 13.5 s | 3.98 s | 1,658 B |
+| 4×1 `k=-1` | **280.7 s** | — | — |
+
+On a 2×1 the search is one second and the **Pyodide boot** is the whole wait; on
+a 4×1 the boot is a rounding error and the **search** is four minutes and forty
+seconds — in WASM, more. Those are opposite problems with opposite fixes, and a
+single `Working…` cannot tell them apart. The timeline can.
+
+It also makes the run cache's limit legible. A cache hit draws the levels
+immediately and then opens a browsing session anyway, because `fit_plan` reads
+engine state the artifact does not hold — so the timeline says so in as many
+words: *Levels drawn from the cache. Opening the browsing session — this runs
+generate again, and it is the wait.*
+
 **Judged rings — the panel that shows the others.** The auto-load takes the ★
 best and stops, so every other judgement needs a way to be looked at: somebody
 else's, an older one, or a ✓ valid worth comparing against the best. The

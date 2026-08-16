@@ -75,6 +75,11 @@ const STUB = ({ size, delay }) => {
       }, 0);
       if (data.type === 'generate') {
         window.__stubGenerates += 1;
+        // The real engine narrates its boot before it answers. The timeline is
+        // built out of exactly these, so the stub has to send one or the check
+        // below would be asserting against a silence the engine never keeps.
+        setTimeout(() => this.onmessage?.({
+          data: { type: 'progress', message: 'Loading the exact MXN engine…' } }), 0);
         setTimeout(() => {
           sessioned = true;
           this.onmessage?.({ data: { id: data.id, type: 'result',
@@ -144,6 +149,31 @@ const seen = await page.evaluate(() => ({
   alarm: document.querySelector('.alarm')?.textContent ?? '',
 }));
 
+// The timeline. A slow run used to say "Working…" and nothing else, because
+// the status line outranked every word the engine said — so the one question a
+// reader had (WHICH step is slow?) had no answer on the page at all.
+const tl = await page.evaluate(() => {
+  const panel = [...document.querySelectorAll('.panel')].find(p =>
+    /timeline/i.test(p.querySelector('header strong')?.textContent ?? ''));
+  return {
+    rows: [...(panel?.querySelectorAll('.tl tr') ?? [])].map(r =>
+      [...r.querySelectorAll('td')].map(t => t.textContent.trim())),
+    copy: !!panel && [...panel.querySelectorAll('.minibtn')]
+      .some(b => /copy/i.test(b.textContent)),
+  };
+});
+ok('a run leaves a timeline', tl.rows.length >= 3, `${tl.rows.length} rows`);
+ok('it starts from the press', /Run pressed/.test(tl.rows[0]?.[3] ?? ''),
+  tl.rows[0]?.[3] ?? '(empty)');
+// The whole point: the engine's own words reach the page now.
+ok("the engine's own progress is recorded, not swallowed by the status line",
+  tl.rows.some(r => r[2] === 'engine'),
+  tl.rows.filter(r => r[2] === 'engine').map(r => r[3]).join(' · ') || '(none)');
+ok('every row is timestamped from the press',
+  tl.rows.every(r => /^\d+\.\d\ds$/.test(r[0] ?? '')),
+  tl.rows.map(r => r[0]).join(' '));
+ok('and the timeline can be copied out', tl.copy);
+
 ok('a card per level', seen.levels === size.ks.length,
   `${seen.levels} cards for ks ${size.ks.join(',')}`);
 ok('every level diagram is drawn, not blank',
@@ -172,7 +202,10 @@ const knobs = await page.evaluate(() => ({
 ok('the manual panel has a knob per pair plus the angle', knobs.rows >= 2,
   `${knobs.rows} rows`);
 const hero = await page.evaluate(() => {
-  const first = document.querySelector('.results .panel');
+  // The panel that follows the stats — deliberately not ".results .panel",
+  // which the diagnostic timeline now takes. The claim is about the hero's
+  // place in the WORK, not its place in the document.
+  const first = document.querySelector('.stats ~ .panel');
   const canvas = document.querySelector('.mfig canvas');
   const sample = () => {
     if (!canvas) return '';
