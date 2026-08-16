@@ -52,7 +52,17 @@ page.on('console', m => {
 });
 
 // The stub, installed before any of the page's own code runs.
-await page.addInitScript(({ size }) => {
+//
+// It keeps the one piece of engine STATE the real worker has: the browsing
+// session `bridge.generate` opens and every fit call reads. Faking it is what
+// lets this catch a page that fits without having opened one — the real engine
+// answers that with "level N has no browsing session; run generate first", and
+// a stub that happily replied anyway would hide it (see the cached-run check
+// at the bottom). `delay` slows the generate so a run drawn from the cache can
+// be told apart from one drawn by the engine.
+const STUB = ({ size, delay }) => {
+  let sessioned = false;
+  window.__stubGenerates = 0;
   class StubWorker {
     constructor() { this.onmessage = null; }
     postMessage(data) {
@@ -60,7 +70,15 @@ await page.addInitScript(({ size }) => {
         this.onmessage?.({ data: { id: data.id, ...message } });
       }, 0);
       if (data.type === 'generate') {
-        reply({ type: 'result', result: { stages: size.stages, rows: size.rows } });
+        window.__stubGenerates += 1;
+        setTimeout(() => {
+          sessioned = true;
+          this.onmessage?.({ data: { id: data.id, type: 'result',
+            result: { stages: size.stages, rows: size.rows } } });
+        }, delay);
+      } else if (!sessioned) {
+        reply({ type: 'error',
+                message: `level ${data.level} has no browsing session; run generate first` });
       } else if (data.type === 'fit-plan') {
         reply({ type: 'fit-plan-ready', ...size.plans[String(data.level)] });
       } else if (data.type === 'fit-weave') {
@@ -76,16 +94,18 @@ await page.addInitScript(({ size }) => {
     terminate() {}
   }
   window.Worker = StubWorker;
-}, {
-  size: {
-    // Every level's diagram, as the run drew them.
-    stages: size.stages,
-    plans: size.plans,
-    rows: size.rows,
-    baseline: size.before,
-    held: { h: size.held.h.ext ?? null, v: size.held.v.ext ?? null },
-  },
-});
+};
+
+const STUB_SIZE = {
+  // Every level's diagram, as the run drew them.
+  stages: size.stages,
+  plans: size.plans,
+  rows: size.rows,
+  baseline: size.before,
+  held: { h: size.held.h.ext ?? null, v: size.held.v.ext ?? null },
+};
+
+await page.addInitScript(STUB, { size: STUB_SIZE, delay: 0 });
 
 await page.goto(URL_BASE, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('button.go');
@@ -406,6 +426,77 @@ const hWithEngineV = await hashFigure();
 ok('the diagram keeps the other band where the hand left it',
   hWithMovedV !== hWithEngineV && hWithMovedV !== '',
   `H-band diagram: V moved ${hWithMovedV} vs V reset ${hWithEngineV}`);
+
+// ---------------------------------------------------------------------------
+// A run served from the cache still has to be fittable.
+//
+// The run artifact holds what `generate` RETURNED — stages and audit rows, all
+// JSON. Every fit call reads what it LEFT BEHIND: the level checkpoints and
+// band inputs that live in the engine's own memory. A cache hit that skipped
+// the generate skipped the session with it, and the first fit died on "level 1
+// has no browsing session; run generate first" — which the stub above now
+// answers with, so this check can only pass if the session is opened.
+//
+// A fresh page, because the cache is read off a worker url in localStorage and
+// this needs its own; the generate is slowed so the cached diagrams can be
+// seen landing BEFORE the engine answers, which is the whole point of keeping
+// the cache rather than deleting the read.
+{
+  const cachedPage = await browser.newPage({ viewport: { width: 1440, height: 1300 } });
+  const cachedErrors = [];
+  cachedPage.on('pageerror', e => cachedErrors.push(String(e)));
+  await cachedPage.addInitScript(STUB, { size: STUB_SIZE, delay: 900 });
+  await cachedPage.addInitScript(() =>
+    localStorage.setItem('mxn-lab-api', 'https://example.workers.dev'));
+
+  let runReads = 0;
+  await cachedPage.route('**/cache/run/**', route => {
+    runReads += 1;
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        kind: 'run', cacheVersion: 'v3',
+        descriptor: { m: size.m, n: size.n, ks: size.ks, hand: 'lh', direction: 'cw',
+                      shortArms: true, step: 'auto', budget: 400000 },
+        computedAt: '2026-08-01T00:00:00.000Z', seconds: 12,
+        result: { stages: size.stages, rows: size.rows },
+      }),
+    });
+  });
+  // Nothing else on the shelf: the judgements read has to miss, not hang.
+  await cachedPage.route('**/cache/picks/**', route => route.fulfill({ status: 404, body: '' }));
+
+  await cachedPage.goto(URL_BASE, { waitUntil: 'domcontentloaded' });
+  await cachedPage.waitForSelector('button.go');
+  await cachedPage.fill('#fit-m', String(size.m));
+  await cachedPage.fill('#fit-n', String(size.n));
+  await cachedPage.fill('#fit-ks', size.ks.join(' '));
+  await cachedPage.click('button.go');
+  // Mid-flight: the engine has not answered yet, so anything on screen came
+  // from the artifact.
+  await cachedPage.waitForTimeout(400);
+  const early = await cachedPage.evaluate(() => ({
+    levels: document.querySelectorAll('.levels .level').length,
+    status: document.querySelector('.status')?.textContent ?? '',
+  }));
+  ok('a cached run draws its levels before the engine answers', early.levels > 0,
+    `${early.levels} cards · ${early.status.slice(0, 70)}`);
+
+  await cachedPage.waitForTimeout(2500);
+  const settled = await cachedPage.evaluate(() => ({
+    status: document.querySelector('.status')?.textContent ?? '',
+    knobs: document.querySelectorAll('.mrow').length,
+    generates: window.__stubGenerates,
+  }));
+  ok('the cached run was read, not recomputed', runReads > 0, `${runReads} cache read(s)`);
+  ok('and a cache hit still opens the browsing session the fit reads',
+    !/no browsing session/.test(settled.status), settled.status.slice(0, 110));
+  ok('so the fit reads its plan on top of a cached run', settled.knobs >= 2,
+    `${settled.knobs} knob rows · one generate: ${settled.generates === 1}`);
+  ok('no page errors on the cached-run path', cachedErrors.length === 0,
+    cachedErrors.slice(0, 2).join(' | '));
+  await cachedPage.close();
+}
 
 ok('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
 if (network.length) console.log(`  note  ${network.length} resource(s) blocked by the environment, not the page`);

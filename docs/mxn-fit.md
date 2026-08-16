@@ -412,12 +412,23 @@ the engine, because the slow part of pressing *Run* was never Cloudflare — it
 was Pyodide booting and `bridge.generate` walking:
 
 - **The run artifact.** `generate` is a pure function of the descriptor, so the
-  fitter now asks the shelf for `run/v3/…` before asking the engine, and
-  *writes back on a miss*. The write is the half that makes it work: the runs
-  already on the shelf were computed under different flags
-  (`s1-e5-b100000000`) and can never match the fitter's own
-  (`s1-eauto-b400000`), so a read-only cache would miss forever and be
-  decoration. Writing needs the token; reading does not.
+  fitter asks the shelf for `run/v3/…` before asking the engine, and *writes
+  back on a miss*. The write is the half that makes it work: the runs already
+  on the shelf were computed under different flags (`s1-e5-b100000000`) and can
+  never match the fitter's own (`s1-eauto-b400000`), so a read-only cache would
+  miss forever and be decoration. Writing needs the token; reading does not.
+
+  **What a hit buys is the diagrams, not the engine.** The artifact holds what
+  `generate` *returned* — the stages and the audit rows, all JSON. Every fit
+  call reads what it *left behind*: the level checkpoints, candidate lists and
+  band inputs that live in `bridge._SESSION`, in the worker's own Python. So a
+  hit draws the whole stitch the moment Cloudflare answers, and the engine
+  boots behind it to open the browsing session `fit_plan` and `fit_weave`
+  read — `fitAt` is what waits, because it is what needs it. Skipping that
+  session on a hit was a real bug: every fit died on `ValueError: level 1 has
+  no browsing session; run generate first`, thrown by `bridge._level_session`,
+  and it died *only* for readers with a worker url configured, because only
+  they could get a hit.
 - **The ring inside a judgement.** `Judgement.strands` is filled at save time,
   so reading a judgement back no longer needs an engine to rebuild a ring
   somebody already built — the strands *are* the answer, and the audit
@@ -428,6 +439,14 @@ was Pyodide booting and `bridge.generate` walking:
 judgement names extensions the stub worker explicitly declines to weave, so
 the pick loading at all — status `ring read as stored` — can only mean the
 stored strands were used. A stub cannot fake a ring it refuses to build.
+
+It proves the first the same way. The stub worker keeps the one piece of engine
+*state* the real one has — the browsing session — and answers any fit call that
+arrives before a `generate` with the engine's own `no browsing session`
+message. A last pass then drives a cache hit against a slowed generate: the
+level cards have to be on screen while the engine is still booting (the hit is
+worth something), and the fit that follows has to read its plan (the session
+was opened). Neither can pass by accident.
 
 **Judged rings — the panel that shows the others.** The auto-load takes the ★
 best and stops, so every other judgement needs a way to be looked at: somebody
