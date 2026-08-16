@@ -282,12 +282,35 @@ await page.click('button.go');
 await page.waitForTimeout(1500);
 const judged = await page.evaluate(() => ({
   status: document.querySelector('.status')?.textContent ?? '',
-  tieGone: !document.querySelector('#fit-tie'),
+  dropdownsGone: !document.querySelector('#fit-tie') && !document.querySelector('#fit-sort'),
+  button: document.querySelector('button.go')?.textContent ?? '',
+  sortable: document.querySelectorAll('th.sortable').length,
+  pointerOnPlainHeaders: [...document.querySelectorAll('th:not(.sortable)')]
+    .some(th => getComputedStyle(th).cursor === 'pointer'),
 }));
 ok('a judged ★ best loads instead of the candidate walk',
   /Loaded the best fit/.test(judged.status) && /judged by qa/.test(judged.status),
   judged.status.slice(0, 110));
-ok('the fit-policy dropdown is gone', judged.tieGone);
+ok('the fit-policy and sort dropdowns are gone', judged.dropdownsGone);
+// The run button names what it does: with no worker url configured it must not
+// claim to read Cloudflare, because it cannot.
+ok('the run button says it loads the best fit, without claiming Cloudflare',
+  /load best/i.test(judged.button) && !/cloudflare/i.test(judged.button),
+  judged.button.trim());
+// The sort survived the dropdown as clickable headings — and only the columns
+// that sort may offer a pointer.
+ok('the numeric columns are still sortable by clicking them', judged.sortable === 4,
+  `${judged.sortable} sortable headings`);
+ok('non-sorting headers do not pretend to be clickable',
+  !judged.pointerOnPlainHeaders);
+
+// With a worker url set, the button names the shelf it will read.
+await page.fill('#fit-api', 'https://example.workers.dev');
+await page.waitForTimeout(200);
+const labelled = await page.evaluate(() =>
+  document.querySelector('button.go')?.textContent ?? '');
+ok('and names Cloudflare once a worker url is set', /cloudflare/i.test(labelled),
+  labelled.trim());
 
 ok('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
 if (network.length) console.log(`  note  ${network.length} resource(s) blocked by the environment, not the page`);
