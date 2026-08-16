@@ -1,0 +1,277 @@
+/* The k board, in the lab's own language.
+ *
+ * Same drafting paper, same black rule, same acid and blue as /mxn/, /mxn/gpu/
+ * and /mxn/ks/. Moving between them should read as staying in one place.
+ *
+ * Tokens are copied from src/mxn-lab/lab.css rather than imported, exactly as
+ * atlas.css and farm.css copy them and for the same reason: this page does not
+ * load lab.css (it would drag the lab's whole layout in), and the palette is a
+ * handful of values. Change them together.
+ */
+:root {
+  --ink: #171713;
+  --muted: #69675f;
+  --paper: #f4f0e6;
+  --card: #fbf8ef;
+  --line: #d7d0c0;
+  --red: #e4513f;
+  --red-ink: #8f2e22;
+  --blue: #276b72;
+  --acid: #dbea65;
+  --green: #5c9f5d;
+  --gold: #c9922b;
+}
+
+body {
+  margin: 0;
+  background:
+    linear-gradient(rgba(23, 23, 19, .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(23, 23, 19, .035) 1px, transparent 1px),
+    var(--paper);
+  background-size: 28px 28px;
+  color: var(--ink);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 14px;
+}
+button, input, select { font: inherit; color: inherit; }
+a { color: var(--blue); }
+
+.board { max-width: 1680px; margin: 0 auto; padding: 0 clamp(12px, 2vw, 28px) 60px; }
+
+.board-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+  height: 68px; margin: 0 calc(-1 * clamp(12px, 2vw, 28px));
+  padding: 0 clamp(12px, 2vw, 28px);
+  border-bottom: 1px solid var(--ink);
+  background: rgba(244, 240, 230, .9); backdrop-filter: blur(12px);
+  position: sticky; top: 0; z-index: 20;
+}
+.board-brand {
+  display: flex; align-items: center; gap: 12px; text-decoration: none;
+  color: inherit; font-weight: 900; letter-spacing: -.04em;
+}
+.board-mark {
+  display: grid; place-items: center; width: 34px; height: 34px;
+  color: var(--paper); background: var(--ink); border-radius: 50%; font-size: 12px;
+}
+.board-brand b { font-size: 18px; letter-spacing: -.02em; }
+.board-brand i {
+  font: 700 10px/1 monospace; letter-spacing: .14em;
+  color: var(--muted); font-style: normal;
+}
+.board-top-right { font: 700 11px/1.4 monospace; color: var(--muted); text-align: right; }
+
+.board-lede { max-width: 96ch; color: var(--muted); line-height: 1.6; margin: 18px 0 14px; }
+.board-lede b { color: var(--ink); }
+
+/* The k strip: every board there is, with this one held. */
+.board-ks { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 20px; }
+.board-k {
+  display: grid; place-items: center; min-width: 36px; height: 28px; padding: 0 6px;
+  border: 1px solid var(--line); background: var(--card); border-radius: 2px;
+  font: 700 11px/1 monospace; text-decoration: none; color: var(--muted);
+}
+.board-k:hover, .board-k:focus-visible { border-color: var(--ink); color: var(--ink); outline: none; }
+.board-k.is-on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+.board-grid { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 18px; }
+@media (max-width: 1180px) { .board-grid { grid-template-columns: 1fr; } }
+.board-col { display: grid; gap: 18px; align-content: start; }
+
+.board-panel {
+  background: var(--card); border: 1px solid var(--line); border-radius: 2px;
+  padding: 16px; display: grid; gap: 12px; align-content: start;
+}
+.board-panel h2 {
+  margin: 0; font: 800 12px/1 monospace;
+  letter-spacing: .12em; text-transform: uppercase;
+}
+.board-note { margin: 0; color: var(--muted); font: 400 12px/1.55 Arial, sans-serif; }
+.board-note code, .board-list code { font: 600 11px/1 monospace; }
+.board-warn {
+  margin: 0; padding: 9px 11px; border-left: 3px solid var(--red);
+  background: rgba(228, 81, 63, .07); color: var(--red-ink);
+  font: 400 12px/1.55 Arial, sans-serif;
+}
+
+.board-field { display: grid; gap: 7px; }
+.board-field > span {
+  font: 700 10px/1 monospace; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--muted);
+}
+.board-field input, .board-field select {
+  border: 1px solid var(--line); background: var(--paper); border-radius: 2px;
+  padding: 8px 10px; outline: none;
+}
+.board-field input[type="range"] { padding: 0; accent-color: var(--blue); }
+.board-field input:focus, .board-field select:focus { box-shadow: 0 0 0 3px var(--acid); }
+.board-check {
+  display: grid; grid-template-columns: auto 1fr; gap: 9px; align-items: start;
+  color: var(--muted); font: 400 12px/1.5 Arial, sans-serif; cursor: pointer;
+}
+.board-check input { margin-top: 1px; width: 16px; height: 16px; accent-color: var(--blue); cursor: pointer; }
+
+.board-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.board-go, .board-ghost {
+  border: 1px solid var(--ink); background: var(--card); border-radius: 2px;
+  padding: 9px 14px; cursor: pointer; font: 800 12px/1 monospace;
+  letter-spacing: .06em; text-transform: uppercase; text-decoration: none;
+  color: inherit; display: inline-grid; place-items: center;
+}
+.board-go { background: var(--acid); }
+.board-go:hover:not(:disabled), .board-ghost:hover:not(:disabled) { box-shadow: 0 0 0 3px var(--acid); }
+.board-go:disabled, .board-ghost:disabled { opacity: .45; cursor: default; }
+.board-inline {
+  border: 0; background: none; padding: 0 4px; cursor: pointer;
+  color: var(--blue); text-decoration: underline; font: inherit;
+}
+
+.board-progress { height: 6px; background: var(--paper); border: 1px solid var(--line); }
+.board-progress i { display: block; height: 100%; background: var(--acid); }
+
+.board-details summary {
+  cursor: pointer; font: 700 10px/1 monospace; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--muted);
+}
+.board-list { margin: 10px 0 0; padding-left: 18px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.board-list b { color: var(--ink); }
+
+.board-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.board-files li {
+  display: flex; align-items: start; justify-content: space-between; gap: 8px;
+  border: 1px solid var(--line); background: var(--paper); padding: 7px 9px;
+}
+.board-files span { display: grid; gap: 3px; min-width: 0; }
+.board-files b { font: 700 11px/1.3 monospace; word-break: break-all; }
+.board-files i { font: 400 11px/1.4 Arial, sans-serif; color: var(--muted); font-style: normal; }
+.board-files button {
+  border: 1px solid var(--line); background: var(--card); cursor: pointer;
+  font: 700 10px/1 monospace; padding: 5px 7px; text-transform: uppercase;
+}
+
+.board-tally { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.board-tally li { display: grid; grid-template-columns: 44px 1fr; gap: 10px; align-items: baseline; }
+.board-tally b { font: 800 18px/1 monospace; text-align: right; }
+.board-tally span { color: var(--muted); font-size: 12px; line-height: 1.4; }
+
+.board-legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px;
+                color: var(--muted); font-size: 12px; }
+.board-legend li { display: flex; align-items: center; gap: 8px; }
+.board-swatch { width: 14px; height: 14px; border: 1px solid var(--line); flex: none; }
+.board-swatch.is-best { background: var(--acid); border-color: var(--ink); }
+.board-swatch.is-valid { background: rgba(92, 159, 93, .3); border-color: var(--green); }
+.board-swatch.is-engine { background: var(--card); }
+.board-swatch.is-rejected { background: rgba(228, 81, 63, .14); border-color: var(--red); }
+.board-swatch.is-hole { background: transparent; border-style: dashed; }
+.board-swatch.is-outside {
+  background: repeating-linear-gradient(45deg, var(--line) 0 2px, transparent 2px 5px);
+}
+
+/* ------------------------------------------------------------------------ */
+/* The plane itself. m across, n down, one grid so the row and column heads   */
+/* line up with the tiles rather than being laid out beside them.            */
+/* ------------------------------------------------------------------------ */
+
+.board-plane {
+  display: grid;
+  grid-template-columns: 26px repeat(8, minmax(0, var(--tile, 134px)));
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+.board-corner { display: grid; place-items: center; }
+.board-corner i { font: 700 9px/1 monospace; color: var(--muted); font-style: normal; }
+.board-head {
+  display: grid; place-items: center; font: 800 12px/1 monospace; color: var(--muted);
+  min-height: 20px;
+}
+.board-head.is-side { align-self: center; }
+
+.board-tile {
+  display: grid; gap: 4px; justify-items: center; align-content: start;
+  border: 1px solid var(--line); background: var(--card); border-radius: 2px;
+  padding: 6px 4px; text-decoration: none; color: inherit; cursor: pointer;
+  font: inherit; text-align: center; min-height: 60px;
+}
+.board-tile b { font: 800 11px/1 monospace; }
+.board-tile i { font: 600 10px/1.2 monospace; font-style: normal; color: var(--muted);
+                word-break: break-word; }
+.board-tile em { font: 700 12px/1 monospace; font-style: normal; }
+.board-tile-top {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 6px; width: 100%; padding: 0 2px;
+}
+.board-art { display: grid; place-items: center; }
+.board-art canvas { display: block; }
+.board-noring {
+  display: grid; place-items: center; border: 1px dashed var(--line);
+  color: var(--muted); font: 600 9px/1.3 monospace; padding: 4px; text-align: center;
+}
+
+.board-tile:hover, .board-tile:focus-visible {
+  border-color: var(--ink); outline: none; box-shadow: 0 0 0 2px var(--acid);
+}
+.board-tile.is-on { border-color: var(--ink); box-shadow: inset 0 0 0 2px var(--ink); }
+.board-tile.is-best { border-color: var(--ink); background: linear-gradient(var(--acid) 0 26px, var(--card) 26px); }
+.board-tile.is-best em { color: var(--gold); }
+.board-tile.is-valid { border-color: var(--green); }
+.board-tile.is-engine { background: var(--card); }
+.board-tile.is-engine em, .board-tile.is-valid em { color: var(--muted); }
+
+.board-tile.is-hole {
+  border-style: dashed; background: transparent; color: var(--muted);
+  align-content: center;
+}
+.board-tile.is-hole:hover { background: var(--card); color: var(--ink); }
+.board-plus { font: 800 22px/1 monospace; }
+.board-tile.is-rejected { border-color: var(--red); color: var(--red-ink); border-style: solid; }
+.board-tile.is-rejected i { color: var(--red-ink); }
+
+.board-tile.is-outside {
+  cursor: default; align-content: center; color: var(--muted);
+  background:
+    repeating-linear-gradient(45deg, rgba(23, 23, 19, .06) 0 2px, transparent 2px 6px),
+    var(--paper);
+}
+
+/* ------------------------------------------------------------------------ */
+/* One cell, opened.                                                         */
+/* ------------------------------------------------------------------------ */
+
+.board-entry {
+  border: 1px solid var(--line); background: var(--paper); padding: 12px;
+  display: grid; gap: 10px; justify-items: start;
+}
+.board-entry.is-drawn { border-color: var(--ink); }
+.board-entry.is-best { border-left: 3px solid var(--gold); }
+.board-entry.is-valid { border-left: 3px solid var(--green); }
+.board-entry.is-rejected { border-left: 3px solid var(--red); }
+.board-entry.is-engine { border-left: 3px solid var(--line); }
+.board-entry header { display: grid; gap: 3px; }
+.board-entry header b { font: 800 12px/1 monospace; }
+.board-entry header span { font: 400 11px/1.4 Arial, sans-serif; color: var(--muted); }
+.board-entry canvas { border: 1px solid var(--line); background: var(--card); }
+.board-entry dl {
+  margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px 14px; width: 100%;
+}
+.board-entry dl div { display: grid; gap: 2px; }
+.board-entry dt {
+  font: 700 9px/1 monospace; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted);
+}
+.board-entry dd { margin: 0; font: 700 12px/1.3 monospace; }
+.board-entry dd.is-warn { color: var(--red-ink); }
+.board-key { margin: 0; }
+.board-key code {
+  font: 600 10px/1.4 monospace; color: var(--muted); word-break: break-all;
+}
+
+/* The drop target is the whole page: a file is about the board, not about a box. */
+.board.is-dragging { outline: 3px dashed var(--blue); outline-offset: -8px; }
+.board-drop {
+  position: fixed; inset: auto 0 24px 0; margin: 0 auto; width: max-content;
+  background: var(--ink); color: var(--paper); padding: 10px 16px;
+  font: 800 12px/1 monospace; letter-spacing: .06em; text-transform: uppercase;
+  pointer-events: none; z-index: 40;
+}

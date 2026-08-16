@@ -64,6 +64,24 @@ a { color: var(--blue); }
 .atlas-lede { max-width: 92ch; color: var(--muted); line-height: 1.6; margin: 18px 0 22px; }
 .atlas-lede b { color: var(--ink); }
 
+/* The way through to /mxn/ks/<k>/. A strip rather than a sentence: the boards
+   are a set, and which one you want is a value rather than a name. */
+.atlas-boards {
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 0 0 22px;
+}
+.atlas-boards b {
+  font: 800 10px/1 monospace; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted); margin-right: 6px;
+}
+.atlas-board-link {
+  display: grid; place-items: center; min-width: 34px; height: 26px; padding: 0 6px;
+  border: 1px solid var(--line); background: var(--card); border-radius: 2px;
+  font: 700 11px/1 monospace; text-decoration: none; color: var(--muted);
+}
+.atlas-board-link:hover, .atlas-board-link:focus-visible {
+  border-color: var(--ink); color: var(--ink); background: var(--acid); outline: none;
+}
+
 .atlas-grid { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 18px; }
 @media (max-width: 1100px) { .atlas-grid { grid-template-columns: 1fr; } }
 .atlas-col { display: grid; gap: 18px; align-content: start; }

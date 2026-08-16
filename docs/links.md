@@ -15,9 +15,10 @@ change lands there. Paths are relative to the base above.
 
 ## The MXN Continuation Lab and its tools
 
-One engine, five pages over it. The first is the one to hand out; the rest are
-tools, and the last two are the operator's own — both `noindex`, both useless
-without the Worker token.
+One engine, eight pages over it. The first is the one to hand out; the rest are
+tools. `/mxn/rate/`, `/mxn/semi/` and `/mxn/gpu/` are the operator's own — all
+three `noindex`, and the farm needs the Worker token to write. Everything else
+here reads public data and needs no token at all.
 
 | Page | Link | What it is |
 | --- | --- | --- |
@@ -27,6 +28,8 @@ without the Worker token.
 | Near-misses | [`/mxn/semi/`](https://ysetbon.github.io/Scoubidou3D/mxn/semi/) | the same queue over rings that fell short, where one band is being blamed |
 | Compute farm | [`/mxn/gpu/`](https://ysetbon.github.io/Scoubidou3D/mxn/gpu/) | precompute a whole range of sizes onto Cloudflare so the lab loads instead of computing — [docs/mxn-farm.md](mxn-farm.md) |
 | k atlas | [`/mxn/ks/`](https://ysetbon.github.io/Scoubidou3D/mxn/ks/) | that same shelf read whole and folded by k: how the angle range and the extension ceiling move with m and n, and what they should be at sizes nobody has swept — [docs/mxn-ks.md](mxn-ks.md) |
+| The fitter | [`/mxn/fit/`](https://ysetbon.github.io/Scoubidou3D/mxn/fit/) | a ring whose neighbouring arms come out the same length, for any m, n, k and hand — then sort, audit, judge ★ best and export — [docs/mxn-fit.md](mxn-fit.md) |
+| k boards | [`/mxn/ks/-1/`](https://ysetbon.github.io/Scoubidou3D/mxn/ks/-1/) | one k, every size to 8×8, drawing the ★ best somebody judged above the engine's run — and every empty tile a link into the fitter. One page per k, `-14`…`+15` — [docs/mxn-ks-board.md](mxn-ks-board.md) |
 
 The lab takes its parameters from the URL, so a size that has been precomputed is
 one link: [`/mxn/?m=2&n=2&ks=1%202%202`](https://ysetbon.github.io/Scoubidou3D/mxn/?m=2&n=2&ks=1%202%202).

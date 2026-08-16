@@ -23,5 +23,13 @@ jobs:
 
       - run: npm ci
 
+      # Before the build, because a missing shell fails the build with a
+      # rollup path error rather than with the sentence that says what to run.
+      - name: The k board pages are in step with the k range
+        run: node scripts/ks-board-pages.mjs --check
+
+      - name: The k board's ladder
+        run: npm run check:board
+
       - name: Type-check and build
         run: npm run build

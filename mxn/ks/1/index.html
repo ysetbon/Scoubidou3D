@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MXN k 1 board · Scoubidou3D</title>
+    <meta name="description" content="Every m×n up to 8×8 at k = 1 (64 sizes admit it), drawn from the best ring anybody has for each — a judged ★ best first, the engine's run second, and an empty tile linking straight to the fitter." />
+    <link rel="icon" href="../../../favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../../../icon-32.png" />
+    <link rel="apple-touch-icon" href="../../../icon-180.png" />
+    <!-- Counted like every other page, and indexed like /mxn/ks/: this one
+         reads public data and has something to say to a reader without a token. -->
+    <script type="module" src="../../../site/count.js"></script>
+    <!-- Same pre-paint as the rest of the suite: the page paints its own
+         background, this only stops a white flash before its stylesheet lands. -->
+    <style>html { background: #f4f0e6; }</style>
+  </head>
+  <body>
+    <!-- data-k is what this page is about, and is stated rather than parsed:
+         the path is the fallback (src/mxn-ks/board-main.tsx), so a board served
+         from an unexpected prefix still opens at the k it was built for.
+         data-cache is the site-wide default Worker URL, the same value
+         mxn/index.html and mxn/ks/index.html carry. Reads are public; this page
+         never writes. ?cache= overrides it. -->
+    <div id="board" data-k="1" data-cache="https://mxn-solutions-api.ysetbon.workers.dev"></div>
+    <script type="module" src="../../../src/mxn-ks/board-main.tsx"></script>
+  </body>
+</html>

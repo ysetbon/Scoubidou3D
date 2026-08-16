@@ -28,6 +28,9 @@ import {
   type Judgement, type PickBand, type PicksArtifact, type RunDescriptor,
   type Verdict,
 } from "../mxn-lab/cache";
+// Imported rather than respelled: this page takes larger sizes than the lab
+// does, and the number it is being larger THAN has to be the lab's own.
+import { MAX_SIDE } from "../mxn-farm/plan";
 import {
   EXT_MAX, FLUSH_EPS, bySortKey, fitCandidates, fixOthers, followPair, isFlush,
   neighbourDelta, readAt, spread,
@@ -141,6 +144,63 @@ const DESCRIPTOR_FLAGS = { shortArms: true, step: "auto" as const, budget: 400_0
 /** Where a person's judgements are held before (and beside) any network. */
 const JUDGEMENTS_KEY = "mxn-fit-judgements";
 const CHOOSER_KEY = "mxn-fit-chooser";
+
+/**
+ * How large a size this page will take.
+ *
+ * `MAX_SIDE` is 4, and it is a LAB clamp rather than an engine one:
+ * `bridge.generate` takes whatever m and n it is given. The lab caps at 4
+ * because /mxn/ is a browsing tool over a shelf the farm filled, and a cached
+ * answer nobody can reach is no answer.
+ *
+ * The fitter is the page where a size that is on nobody's shelf gets made by
+ * hand, and the k boards at /mxn/ks/<k>/ ask for exactly that — their whole
+ * point is the empty tiles, which run to 8×8. So this page takes 8, and says
+ * plainly what is not known about the sizes past 4 rather than either refusing
+ * them or pretending they are routine.
+ */
+const MAX_FIT_SIDE = 8;
+
+/**
+ * The parameter set the URL asks for, if it asks for one.
+ *
+ * `/mxn/fit/?m=3&n=2&ks=-1&hand=lh&direction=cw` opens the form already filled
+ * in. The k boards at /mxn/ks/<k>/ are the caller this exists for: a tile with
+ * nothing on it is a link to exactly this, so pressing a hole and starting to
+ * edit is one click and no retyping.
+ *
+ * Every field is validated and a bad one is simply not applied, rather than
+ * being coerced. A URL that half-parsed into a form the reader did not ask for
+ * is worse than one that was ignored — the defaults below are a working page,
+ * and `2x1 k=1` silently becoming `2x0` is not.
+ *
+ * `ks` is the sequence and `k` is accepted as an alias for the one-level case,
+ * because a board cell IS the one-level case and writing `k=-1` by hand is what
+ * anybody would try first.
+ */
+function askedFor() {
+  let query: URLSearchParams;
+  try {
+    query = new URLSearchParams(window.location.search);
+  } catch {
+    return {};
+  }
+  const side = (name: string) => {
+    const value = Number(query.get(name));
+    return Number.isInteger(value) && value >= 1 && value <= MAX_FIT_SIDE ? value : undefined;
+  };
+  const ks = ksOf(query.get("ks") ?? query.get("k") ?? "");
+  const hand = query.get("hand");
+  const direction = query.get("direction");
+  return {
+    m: side("m"),
+    n: side("n"),
+    ksText: ks.length ? ks.join(" ") : undefined,
+    hand: hand === "lh" || hand === "rh" ? (hand as "lh" | "rh") : undefined,
+    direction: direction === "cw" || direction === "ccw"
+      ? (direction as "cw" | "ccw") : undefined,
+  };
+}
 
 /**
  * Every judgement anyone has made about ONE parameter set, from both stores.
@@ -472,11 +532,15 @@ function LengthBars({ before, after }: { before: number[]; after: number[] }) {
 
 export function Fitter() {
   const { ask, progress } = useWorker();
-  const [m, setM] = useState(2);
-  const [n, setN] = useState(1);
-  const [ksText, setKsText] = useState("1");
-  const [hand, setHand] = useState<"lh" | "rh">("lh");
-  const [direction, setDirection] = useState<"cw" | "ccw">("cw");
+  // Read once, at the first render, so the preload below asks the shelf about
+  // the parameters the URL named rather than about the defaults and then again
+  // about the real ones a tick later.
+  const [asked] = useState(askedFor);
+  const [m, setM] = useState(asked.m ?? 2);
+  const [n, setN] = useState(asked.n ?? 1);
+  const [ksText, setKsText] = useState(asked.ksText ?? "1");
+  const [hand, setHand] = useState<"lh" | "rh">(asked.hand ?? "lh");
+  const [direction, setDirection] = useState<"cw" | "ccw">(asked.direction ?? "cw");
   const [sortKey, setSortKey] = useState<SortKey>("delta");
   const [band, setBand] = useState<BandKey>("v");
 
@@ -1483,15 +1547,29 @@ export function Fitter() {
             <div className="field row2">
               <div>
                 <label className="f" htmlFor="fit-m">m</label>
-                <input id="fit-m" type="number" min={1} max={4} value={m}
-                  onChange={e => setM(Math.max(1, Math.min(4, Number(e.target.value) || 1)))} />
+                <input id="fit-m" type="number" min={1} max={MAX_FIT_SIDE} value={m}
+                  onChange={e => setM(Math.max(1, Math.min(MAX_FIT_SIDE, Number(e.target.value) || 1)))} />
               </div>
               <div>
                 <label className="f" htmlFor="fit-n">n</label>
-                <input id="fit-n" type="number" min={1} max={4} value={n}
-                  onChange={e => setN(Math.max(1, Math.min(4, Number(e.target.value) || 1)))} />
+                <input id="fit-n" type="number" min={1} max={MAX_FIT_SIDE} value={n}
+                  onChange={e => setN(Math.max(1, Math.min(MAX_FIT_SIDE, Number(e.target.value) || 1)))} />
               </div>
             </div>
+            {(m > MAX_SIDE || n > MAX_SIDE) && (
+              // Said once, at the point of typing it, rather than buried in a
+              // doc: the engine takes this size, and nothing else knows what
+              // happens next. /mxn/ and /mxn/gpu/ both stop at 4, so there is
+              // no shelf to compare against and no measured run time either.
+              <p className="hint beyond">
+                Past {MAX_SIDE}×{MAX_SIDE}. The engine accepts this — <code>bridge.generate</code> takes
+                any m and n — but nothing has swept it: the lab and the farm both stop at {MAX_SIDE},
+                so there is no cached run to compare against and no measurement of how long the
+                search takes. At 4×4 the engine already picks <code>MAX_PAIR_EXTENSION</code> itself,
+                so bigger may be slow, may hit the ceiling, or may not close at all. Worth trying;
+                not worth assuming.
+              </p>
+            )}
             <div className="field">
               <label className="f" htmlFor="fit-ks">k sequence</label>
               <input id="fit-ks" type="text" value={ksText}
