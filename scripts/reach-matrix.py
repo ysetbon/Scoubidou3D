@@ -4,8 +4,12 @@
     python3 scripts/reach-matrix.py                 # sides up to 3
     python3 scripts/reach-matrix.py --max-side=4    # overnight
 
-Writes docs/reach-matrix.json and prints a line per case as it goes, so a
-long run is readable while it is still running.
+Prints a line per case as it goes, so a long run is readable while it is
+still running, and writes the lot to node_modules/.cache/reach-matrix.json
+-- the same place scripts/cache-fixtures.py puts its own output, and for the
+same reason: it is regenerable measurement, not a thing to keep in a
+repository. What belongs in the repository is the CONCLUSION, and that is
+the table in docs/mxn-lab.md.
 
 `reach_from_previous` changes which ring a level settles on, so the only
 honest way to offer it is to measure it: every case here is run twice, and
@@ -62,6 +66,8 @@ for m, n, ks in CASES:
     rows.append(line)
     print(json.dumps(line), flush=True)
 
-with open(os.path.join(ROOT, "docs", "reach-matrix.json"), "w") as handle:
+OUT = os.path.join(ROOT, "node_modules", ".cache", "reach-matrix.json")
+os.makedirs(os.path.dirname(OUT), exist_ok=True)
+with open(OUT, "w") as handle:
     json.dump({"maxSide": MAX_SIDE, "rows": rows}, handle, indent=1)
-print("wrote docs/reach-matrix.json")
+print(f"wrote {OUT}")
