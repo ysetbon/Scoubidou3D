@@ -151,35 +151,55 @@ const rgbaOf = (hex: string) => ({
  * arm's target ringed, and any shortfall drawn as a dashed red line — the REACH
  * verdict drawn rather than only named.
  */
-function drawManualRing(canvas: HTMLCanvasElement, inputs: FitBand,
-                        ext: number[], angleDeg: number, stage: Stage,
-                        bounds: Bounds) {
-  const starts = placeStarts(inputs, ext);
-  const swept = sweepAngle(inputs, starts, angleDeg);
+/** One band as the diagram should place it. `focus` is the band being edited. */
+type FigureBand = { inputs: FitBand; ext: number[]; angle: number; focus: boolean };
+
+/**
+ * The ring with EVERY manually-placed band moved, not just the one on screen.
+ *
+ * The bands are edited one at a time but they close jointly, so a diagram that
+ * showed only the selected band's knobs would redraw the other band from the
+ * engine's weave — silently discarding, in the picture, work a hand had
+ * already done. Switching bands would then appear to undo the previous band's
+ * fit. So each band is placed from its own knobs here, and only the tinting
+ * distinguishes them: the focused band takes the per-pair colours and the
+ * target rings, the other keeps the strand colours it was drawn in.
+ */
+function drawManualRing(canvas: HTMLCanvasElement, bands: FigureBand[],
+                        stage: Stage, bounds: Bounds) {
   const moved = new Map<string, { start: { x: number; y: number };
                                   end: { x: number; y: number };
-                                  colour: ReturnType<typeof rgbaOf> }>();
-  inputs.pairIndices.forEach(([li, ri], p) => {
-    const colour = rgbaOf(PAIR_COLOURS[p % PAIR_COLOURS.length]);
-    for (const arm of [li, ri]) {
-      if (arm === null || arm === undefined) continue;
-      moved.set(inputs.names[arm], {
-        start: { x: starts[arm][0], y: starts[arm][1] },
-        end: { x: swept.ends[arm][0], y: swept.ends[arm][1] },
-        colour,
-      });
-    }
-  });
+                                  colour: ReturnType<typeof rgbaOf> | null }>();
+  let focus: { inputs: FitBand; swept: ReturnType<typeof sweepAngle> } | null = null;
+  for (const band of bands) {
+    const starts = placeStarts(band.inputs, band.ext);
+    const swept = sweepAngle(band.inputs, starts, band.angle);
+    if (band.focus) focus = { inputs: band.inputs, swept };
+    band.inputs.pairIndices.forEach(([li, ri], p) => {
+      const colour = band.focus
+        ? rgbaOf(PAIR_COLOURS[p % PAIR_COLOURS.length]) : null;
+      for (const arm of [li, ri]) {
+        if (arm === null || arm === undefined) continue;
+        moved.set(band.inputs.names[arm], {
+          start: { x: starts[arm][0], y: starts[arm][1] },
+          end: { x: swept.ends[arm][0], y: swept.ends[arm][1] },
+          colour,
+        });
+      }
+    });
+  }
   const strands = stage.strands.map(strand => {
     const to = moved.get(strand.layer_name);
-    return to ? { ...strand, start: to.start, end: to.end, color: to.colour } : strand;
+    if (!to) return strand;
+    return { ...strand, start: to.start, end: to.end,
+             ...(to.colour ? { color: to.colour } : {}) };
   });
   drawExactStage(canvas, { ...stage, label: "manual", strands }, bounds, false);
 
   // The overlay shares drawExactStage's own transform (same pad, same fit), so
   // the rings and shortfall lines land exactly on the strands it just drew.
   const ctx = canvas.getContext("2d");
-  if (!ctx) return;
+  if (!ctx || !focus) return;
   const rect = canvas.getBoundingClientRect();
   const width = Math.max(1, rect.width);
   const height = Math.max(1, rect.height);
@@ -194,6 +214,7 @@ function drawManualRing(canvas: HTMLCanvasElement, inputs: FitBand,
   const at = (x: number, y: number) => [x * scale + offsetX, y * scale + offsetY] as const;
 
   const widthOf = new Map(stage.strands.map(s => [s.layer_name, s.width]));
+  const { inputs, swept } = focus;
   inputs.pairIndices.forEach(([li, ri], p) => {
     const colour = PAIR_COLOURS[p % PAIR_COLOURS.length];
     for (const arm of [li, ri]) {
@@ -221,21 +242,20 @@ function drawManualRing(canvas: HTMLCanvasElement, inputs: FitBand,
   });
 }
 
-function ManualFigure({ inputs, knobs, stage, bounds, caption }: {
-  inputs: FitBand; knobs: ManualBand; stage: Stage | null; bounds: Bounds | null;
+function ManualFigure({ bands, stage, bounds, caption }: {
+  bands: FigureBand[]; stage: Stage | null; bounds: Bounds | null;
   caption: string;
 }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
   useEffect(() => {
     const canvas = ref.current;
-    if (!canvas || !stage || !bounds) return;
-    const draw = () => drawManualRing(canvas, inputs, knobs.ext, knobs.angle,
-      stage, bounds);
+    if (!canvas || !stage || !bounds || !bands.length) return;
+    const draw = () => drawManualRing(canvas, bands, stage, bounds);
     draw();
     const observer = new ResizeObserver(draw);
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [inputs, knobs, stage, bounds]);
+  }, [bands, stage, bounds]);
   return (
     <figure className="ring mfig">
       <figcaption><span>the ring, as the knobs place it</span><var>{caption}</var></figcaption>
@@ -774,6 +794,24 @@ export function Fitter() {
     setManualWoven(null);
   };
 
+  /**
+   * Both bands as the diagram should place them, the selected one focused.
+   *
+   * The band switch changes which set of knobs is on screen, not which work
+   * survives: a band is included here whenever it has knobs at all, so the V
+   * band a hand already moved stays moved while the H band is being edited,
+   * and the reverse. Memoised because ManualFigure redraws on identity.
+   */
+  const figureBands = useMemo<FigureBand[]>(() => {
+    if (!plan) return [];
+    return BANDS.flatMap(key => {
+      const inputs = plan[key];
+      const knobs = manual[key];
+      if (!inputs || inputs.unavailable || !knobs) return [];
+      return [{ inputs, ext: knobs.ext, angle: knobs.angle, focus: key === band }];
+    });
+  }, [plan, manual, band]);
+
   /** What the knobs measure as right now, before any engine is asked. */
   const manualReadout = useMemo(() => {
     const inputs = plan?.[band];
@@ -1216,6 +1254,7 @@ export function Fitter() {
               {plan[band] && !plan[band].unavailable && manual[band] && (() => {
                 const inputs = plan[band];
                 const knobs = manual[band]!;
+                const other: BandKey = band === "h" ? "v" : "h";
                 const angleLo = Math.min(inputs.windowLo ?? -180, knobs.angle) - 25;
                 const angleHi = Math.max(inputs.windowHi ?? 180, knobs.angle) + 25;
                 const armName = (p: number) => {
@@ -1257,7 +1296,7 @@ export function Fitter() {
                     <div className="body">
                       <div className="mgrid">
                       <div>
-                        <ManualFigure inputs={inputs} knobs={knobs}
+                        <ManualFigure bands={figureBands}
                           stage={before?.stage ?? null} bounds={bounds}
                           caption={read ? `Δ ${read.delta.toFixed(2)} px` : ""} />
                         <div className="mlegend">
@@ -1268,7 +1307,11 @@ export function Fitter() {
                             </span>
                           ))}
                           <span><u className="dashline" /> gap to target</span>
-                          <span>the rest of the ring is drawn as the engine wove it</span>
+                          <span>
+                            {touched[other] && manual[other]
+                              ? `the ${BAND_NAME[other]} band is drawn where you left it`
+                              : "the rest of the ring is drawn as the engine wove it"}
+                          </span>
                         </div>
                       </div>
                       <div>
@@ -1365,7 +1408,10 @@ export function Fitter() {
                       lights up and solves every other pair from the one you fixed —
                       holding that pair exactly, and moving the heading the smallest
                       amount that lets the flush ring pass the geometric tests when the
-                      answer at the current heading would collide. The diagram is the real ring — the same renderer as
+                      answer at the current heading would collide. Switching bands changes
+                      which knobs are on screen, not what you have already moved: the
+                      diagram places <em>both</em> bands from their own knobs, so the band
+                      you are not editing stays where you left it. The diagram is the real ring — the same renderer as
                       every card on this page, with this band's arms moved to the knobs — but
                       what the page cannot decide alone is whether the ring still closes,
                       which is what <em>weave and audit</em> asks the engine. An untouched

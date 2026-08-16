@@ -312,6 +312,46 @@ const labelled = await page.evaluate(() =>
 ok('and names Cloudflare once a worker url is set', /cloudflare/i.test(labelled),
   labelled.trim());
 
+// Switching bands changes which knobs are shown, not what has been moved. The
+// V band was dragged above; on the H band, the diagram has to still be drawing
+// that moved V band. Proven by difference: hash the H-band diagram with the V
+// band moved, then reset V to the engine and hash it again. If the other band
+// were redrawn from the engine's weave either way, the two would be identical.
+const hashFigure = () => page.evaluate(() => {
+  const canvas = document.querySelector('.mfig canvas');
+  if (!canvas) return '';
+  const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+  let acc = 0;
+  for (let i = 0; i < data.length; i += 4 * 61) acc = (acc * 31 + data[i]) >>> 0;
+  return String(acc);
+});
+const bandTab = name => page.locator('.tabs button', { hasText: new RegExp(`^${name} band`) });
+// This runs after the reload above, so the earlier drags are gone: move the V
+// band again here, and the check owns its own setup.
+await bandTab('V').click();
+await page.waitForTimeout(300);
+await page.locator('.mrow .mnum').nth(1).fill('120');
+await page.waitForTimeout(400);
+await bandTab('H').click();
+await page.waitForTimeout(400);
+const hWithMovedV = await hashFigure();
+const legend = await page.evaluate(() =>
+  document.querySelector('.mlegend')?.textContent ?? '');
+ok('the legend says the other band is held where it was left',
+  /vertical band is drawn where you left it/i.test(legend),
+  legend.replace(/\s+/g, ' ').slice(-60));
+
+await bandTab('V').click();
+await page.waitForTimeout(300);
+await page.locator('.mbtns button', { hasText: 'reset to engine' }).click();
+await page.waitForTimeout(300);
+await bandTab('H').click();
+await page.waitForTimeout(400);
+const hWithEngineV = await hashFigure();
+ok('the diagram keeps the other band where the hand left it',
+  hWithMovedV !== hWithEngineV && hWithMovedV !== '',
+  `H-band diagram: V moved ${hWithMovedV} vs V reset ${hWithEngineV}`);
+
 ok('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
 if (network.length) console.log(`  note  ${network.length} resource(s) blocked by the environment, not the page`);
 
