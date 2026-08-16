@@ -56,6 +56,10 @@ await page.addInitScript(({ size }) => {
   class StubWorker {
     constructor() { this.onmessage = null; }
     postMessage(data) {
+      // Counted so the preload checks at the end can assert the thing they are
+      // really about: that a ★ best on the shelf is drawn without the engine
+      // being asked anything at all.
+      window.__engineCalls = (window.__engineCalls ?? 0) + 1;
       const reply = (message) => setTimeout(() => {
         this.onmessage?.({ data: { id: data.id, ...message } });
       }, 0);
@@ -406,6 +410,131 @@ const hWithEngineV = await hashFigure();
 ok('the diagram keeps the other band where the hand left it',
   hWithMovedV !== hWithEngineV && hWithMovedV !== '',
   `H-band diagram: V moved ${hWithMovedV} vs V reset ${hWithEngineV}`);
+
+// ---------------------------------------------------------------------------
+// The preload: a judged ★ best drawn on load, with no engine and no Run.
+//
+// The whole point of storing the ring inside a judgement was that reading one
+// back should not cost a Pyodide boot — and until now it did anyway, because
+// the best-fit lookup lived behind `generate`. These checks assert the fix the
+// only way that means anything: the ring is on screen AND the worker was never
+// spoken to. The stub counts its own messages, so "zero" is checkable.
+// ---------------------------------------------------------------------------
+const preloadKey = ks => `picks/v3/lh-cw/${size.m}x${size.n}/${ks.join('_')}/s1-eauto-b400000`;
+const judgementFor = chooser => ({
+  id: `j-qa-${chooser}`, verdict: 'best', source: 'hand', chooser,
+  at: '2026-08-16T00:00:00.000Z',
+  levels: [{ level: topLevel, h: null, v: null }],
+  metrics: { neighbour_delta: 0.5, spread: 0.5, gap_margin: 1 },
+  audit: { crossings: size.before.row.across, expected: size.before.row.expected,
+           stray: 0, broken: 0 },
+  strands: size.before.strands,
+});
+const zeroKs = size.ks.map(() => 0);
+const strangeKs = size.ks.map(k => k + 3);
+
+await page.evaluate(({ own, spare, ownKey, spareKey }) => {
+  // No worker url: the shelf is unreachable from a sandbox, and the local
+  // store exercises exactly the same readPicks path.
+  localStorage.removeItem('mxn-lab-api');
+  localStorage.setItem('mxn-fit-judgements', JSON.stringify([
+    { key: ownKey, judgement: own }, { key: spareKey, judgement: spare },
+  ]));
+}, {
+  own: judgementFor('qa'), spare: judgementFor('qa-default'),
+  ownKey: preloadKey(size.ks), spareKey: preloadKey(zeroKs),
+});
+
+await page.reload({ waitUntil: 'domcontentloaded' });
+await page.waitForSelector('button.go');
+await page.fill('#fit-m', String(size.m));
+await page.fill('#fit-n', String(size.n));
+await page.fill('#fit-ks', size.ks.join(' '));
+// The lookup is debounced by 400ms, so this waits for it rather than racing it.
+await page.waitForTimeout(1400);
+const preloaded = await page.evaluate(() => {
+  const panel = document.querySelector('.results .panel.hero');
+  const canvas = panel?.querySelector('canvas');
+  const inked = () => {
+    if (!canvas) return 0;
+    const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    const seen = new Set();
+    for (let i = 0; i < data.length; i += 4 * 97) seen.add(`${data[i]},${data[i+1]},${data[i+2]}`);
+    return seen.size;
+  };
+  return {
+    title: panel?.querySelector('header strong')?.textContent ?? '',
+    header: panel?.querySelector('header')?.textContent ?? '',
+    line: document.querySelector('.hint.preloaded')?.textContent ?? '',
+    fallbackChip: !!panel && /not yours/.test(panel.querySelector('header')?.textContent ?? ''),
+    inked: inked(),
+    engineCalls: window.__engineCalls ?? 0,
+    prompt: document.body.textContent.includes('press Run and fit'),
+  };
+});
+ok('a judged ★ best is drawn on load, with no Run pressed',
+  /★ best/.test(preloaded.title) && preloaded.inked > 3,
+  `${preloaded.title.trim()} · ${preloaded.inked} colours`);
+ok('and the engine was never asked — no message reached the worker',
+  preloaded.engineCalls === 0, `${preloaded.engineCalls} worker message(s)`);
+ok('the sidebar says where the ring came from and who judged it',
+  /judged by qa\b/.test(preloaded.line) && /No engine was run/.test(preloaded.line),
+  preloaded.line.replace(/\s+/g, ' ').slice(0, 110));
+ok('it is the typed parameters, so it is not flagged as a substitute',
+  !preloaded.fallbackChip);
+ok('and the "press Run" prompt gives way to the ring', !preloaded.prompt);
+
+// Now parameters nobody judged: the k = 0 default stands in, says so, and does
+// not quietly rewrite the field it is standing in for.
+await page.fill('#fit-ks', strangeKs.join(' '));
+await page.waitForTimeout(1400);
+const fell = await page.evaluate(() => ({
+  header: document.querySelector('.results .panel.hero header')?.textContent ?? '',
+  line: document.querySelector('.hint.preloaded')?.textContent ?? '',
+  ks: document.querySelector('#fit-ks')?.value ?? '',
+  button: [...document.querySelectorAll('.results .panel.hero .minibtn')]
+    .map(b => b.textContent.trim())[0] ?? '',
+  engineCalls: window.__engineCalls ?? 0,
+}));
+ok('parameters with no best fall back to the k = 0 default',
+  /not yours/.test(fell.header) && /qa-default/.test(fell.line),
+  fell.line.replace(/\s+/g, ' ').slice(0, 110));
+ok('the fallback does not silently rewrite the k field',
+  fell.ks.replace(/[\s,]+/g, ' ').trim() === strangeKs.join(' '),
+  `k stayed ${fell.ks}`);
+ok('and it offers a button that does', /put k = /.test(fell.button), fell.button);
+ok('the fallback cost no engine either', fell.engineCalls === 0,
+  `${fell.engineCalls} worker message(s)`);
+
+if (fell.button) {
+  await page.locator('.results .panel.hero .minibtn').first().click();
+  await page.waitForTimeout(1400);
+  const adopted = await page.evaluate(() => ({
+    ks: document.querySelector('#fit-ks')?.value ?? '',
+    header: document.querySelector('.results .panel.hero header')?.textContent ?? '',
+  }));
+  ok('pressing it puts k = 0 in the form, and the card stops being a substitute',
+    /0/.test(adopted.ks) && !/not yours/.test(adopted.header),
+    `k = ${adopted.ks}`);
+}
+
+// A parameter set nobody has judged at all: the page must say so rather than
+// show a ring, and must still not reach for the engine on its own.
+await page.evaluate(() => localStorage.setItem('mxn-fit-judgements', '[]'));
+// A k sequence different from every one used above, so the lookup re-fires
+// however the button check above left the field.
+await page.fill('#fit-ks', strangeKs.map(k => k + 1).join(' '));
+await page.waitForTimeout(1400);
+const nothing = await page.evaluate(() => ({
+  panel: !!document.querySelector('.results .panel.hero'),
+  line: document.querySelector('.hint.preloaded')?.textContent ?? '',
+  engineCalls: window.__engineCalls ?? 0,
+}));
+ok('with nothing judged anywhere the page says so and draws no ring',
+  !nothing.panel && /Nothing judged/.test(nothing.line),
+  nothing.line.replace(/\s+/g, ' ').slice(0, 110));
+ok('and still runs no engine until Run is pressed', nothing.engineCalls === 0,
+  `${nothing.engineCalls} worker message(s)`);
 
 ok('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
 if (network.length) console.log(`  note  ${network.length} resource(s) blocked by the environment, not the page`);

@@ -67,6 +67,14 @@ input[type=text], input[type=number], select {
 .seg button[aria-pressed=true] { background: var(--ink); color: var(--paper); }
 .hint { font: 400 11px/1.45 Arial, sans-serif; color: var(--muted); margin: 6px 0 0; }
 .hint code { font: 700 10.5px/1 monospace; }
+/* What the shelf answered before the engine was asked. A rule down the side
+   rather than a colour, so it reads as a fact about the button above it and
+   not as the run status below it — which is a different thing and stays one. */
+.hint.preloaded {
+  margin-top: 9px; padding-left: 9px; border-left: 2px solid var(--line);
+}
+.hint.preloaded[data-state=shown] { border-left-color: var(--ink); color: var(--ink); }
+.hint.preloaded[data-state=looking] { font-style: italic; }
 .go {
   width: 100%; padding: 12px; margin-top: 6px;
   background: var(--ink); color: var(--paper); border: 1px solid var(--ink);

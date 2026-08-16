@@ -429,6 +429,46 @@ judgement names extensions the stub worker explicitly declines to weave, so
 the pick loading at all — status `ring read as stored` — can only mean the
 stored strands were used. A stub cannot fake a ring it refuses to build.
 
+**The preload — the best on screen before anything is pressed.** Both caches
+above sit inside `Run`, and the best-fit lookup sits inside `fitAt`, which is
+behind `generate`. So until this, storing the ring inside a judgement bought
+nothing at the moment it was most wanted: a parameter set whose ★ best was
+already decided still cost a Pyodide boot and a full exact walk before the
+decided ring appeared. On a 3×1 that is the whole wait, spent recomputing
+something a person had already settled.
+
+The fitter now asks the shelf on load, and again on every parameter change,
+*without speaking to the worker at all*:
+
+1. `GET /cache/picks/v3/<hand>-<direction>/<m>x<n>/<ks>/s1-eauto-b400000`,
+   folded with this browser's own judgements exactly as `Run` folds them.
+   Reads on that key are public (`CACHE_PUBLIC_READS`), so no token is
+   involved.
+2. A ★ best carrying `strands` is drawn immediately, by `drawExactStage` off
+   those strands — one GET, no engine.
+3. **On a miss, the `k = 0` default for the same size, hand and direction** is
+   asked for and drawn instead. It is marked as what it is — a `k = …, not
+   yours` chip on the card and a line in the sidebar naming the substitution —
+   and it is *never* written into the form by itself. A diagram captioned with
+   parameters it does not belong to is the one thing this page must not do, so
+   adopting the fallback is a button a person presses.
+4. With neither, the sidebar says so and `Run` is what computes one.
+
+A ★ best saved before rings were stored is a fourth answer and gets its own
+line: there is a decision, it just cannot be drawn without a weave.
+
+The lookup is debounced (the `k sequence` is a text field) and guarded by a
+token, because two answers can land out of order and a slow reply about
+parameters that have since been typed over must not overwrite a fast reply
+about the ones on screen. The card disappears the moment a run produces a
+plan: from then on the page has a live ring, and two rings captioned *best*
+would be one too many.
+
+`qa:fit` asserts this the only way that means anything — the stub worker counts
+its own `postMessage` calls, so "the ring is on screen **and** the worker
+received zero messages" is checkable, and it is checked for the exact match,
+for the `k = 0` fallback, and for the nothing-judged case.
+
 **Judged rings — the panel that shows the others.** The auto-load takes the ★
 best and stops, so every other judgement needs a way to be looked at: somebody
 else's, an older one, or a ✓ valid worth comparing against the best. The
@@ -717,7 +757,12 @@ knows this one.
 **Sidebar — the whole input.** Parameters, then **Run · load best from
 Cloudflare** (which reads **Run · load best fit** until a worker url is set,
 because with no shelf configured the button must not claim to read one), then
-**Export**, then the judgement fields and the three verdict buttons.
+**Export**, then the judgement fields and the three verdict buttons. Under the
+button, ruled off from the run status below it, one line saying what the shelf
+already holds for the parameters as typed — a ★ best drawn without the engine,
+the `k = 0` default standing in for one, or nothing judged either way. It
+updates as the parameters are typed, and it is about the *button*, not about a
+run; the status line stays what it always was.
 
 There is no fit-policy dropdown and no sort dropdown. The policy went because a
 person's ★ best is the policy and the default covers the rest; the sort key
