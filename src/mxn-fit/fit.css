@@ -185,9 +185,16 @@ tbody tr.engine td { color: var(--muted); }
 .mbtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .mbtns button { padding: 7px 12px; background: var(--card); border: 1px solid var(--ink); font: 700 10.5px/1 monospace; letter-spacing: .04em; text-transform: uppercase; }
 .mbtns .mgo { background: var(--ink); color: var(--paper); }
+.mbtns .mfix:not(:disabled) { background: var(--acid); }
 
-.follow { padding: 5px 10px; background: var(--card); border: 1px solid var(--line); font: 700 10px/1.2 monospace; }
+/* The coupling switch. A real switch with a real knob, so on and off read at a
+ * glance: coupled (acid, knob right) or independent (paper, knob left). */
+.follow { display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px; background: var(--card); border: 1px solid var(--line); font: 700 10px/1.2 monospace; }
+.follow i { flex: none; width: 26px; height: 13px; border: 1px solid var(--ink); border-radius: 8px; position: relative; background: var(--card); }
+.follow i::after { content: ""; position: absolute; top: 1px; left: 1px; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); transition: left .12s; }
 .follow[aria-pressed=true] { border-color: var(--ink); background: var(--acid); }
+.follow[aria-pressed=true] i { background: var(--paper); }
+.follow[aria-pressed=true] i::after { left: 14px; background: var(--ink); }
 
 /* The verdict buttons. A person's word, so they read as three distinct acts
  * rather than one button with three labels. */

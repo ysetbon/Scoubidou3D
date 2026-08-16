@@ -267,10 +267,25 @@ with it. Move one extension and the angle that keeps the band flush moves back.
 The middle panel makes that the interaction rather than a caveat. On the built
 page this is the **Manual fit** panel: a slider and a number field for the
 heading and for each pair's extension, every number beside them measured live
-by the page's own arithmetic, and a *follow* toggle — on by default — that
-re-solves the other pairs to the arm length the moved pair names (`followPair`
-in `src/mxn-fit/solve.ts`). A pair that cannot reach the named length inside
-0…200 px is clamped and said so, never silently landed somewhere flush-looking.
+by the page's own arithmetic, and a live diagram that is the **real ring** —
+the same `drawExactStage` renderer every card on the page uses, with the band's
+arms moved to where the knobs place them (masks are intersections of their two
+strands, so the crossings follow the moved arms by construction), the band
+tinted one colour per pair, targets ringed and any shortfall drawn dashed red.
+
+The pairs move in one of two modes, picked by a switch in the panel's header:
+
+- **Coupled** (the default): moving one pair re-solves the others live to the
+  arm length it names (`followPair` in `src/mxn-fit/solve.ts`), and moving the
+  angle re-solves them around the anchored pair.
+- **Independent**: each pair moves alone and the others hold still. Once the
+  neighbouring arms disagree, a **fix others from pair N** button lights up:
+  one press solves every other pair's extension from the pair the hand fixed —
+  the same `e = (A − L*) / B`, applied once, one division per pair, O(N) in the
+  number of pairs.
+
+Either way, a pair that cannot reach the named length inside 0…200 px is
+clamped and said so, never silently landed somewhere flush-looking.
 *Weave and audit* puts the hand's configuration through `bridge.fit_weave`, and
 an accepted ring can be adopted as the fitted one, so the stats, the export and
 a judgement all read it. **Pin one, the other two follow:**

@@ -28,8 +28,8 @@ import {
   type Judgement, type PickBand, type RunDescriptor, type Verdict,
 } from "../mxn-lab/cache";
 import {
-  EXT_MAX, bySortKey, fitCandidates, followPair, isFlush, neighbourDelta,
-  readAt, spread,
+  EXT_MAX, FLUSH_EPS, bySortKey, fitCandidates, followPair, isFlush,
+  neighbourDelta, readAt, spread,
   type Candidate, type FitBand, type SortKey, type Tie,
 } from "./solve";
 
@@ -128,35 +128,61 @@ type ManualBand = { ext: number[]; angle: number };
 /** One colour per pair, so a slider and the arms it moves read as one thing. */
 const PAIR_COLOURS = ["#276b72", "#924ab0", "#e28a1c", "#3474c4", "#c63c28", "#3a9c58"];
 
+/** A pair's hex colour, in the RGBA shape the exact renderer speaks. */
+const rgbaOf = (hex: string) => ({
+  r: parseInt(hex.slice(1, 3), 16),
+  g: parseInt(hex.slice(3, 5), 16),
+  b: parseInt(hex.slice(5, 7), 16),
+  a: 255,
+});
+
 /**
- * The manual panel's own diagram: the band as the knobs place it, live.
+ * The manual panel's own diagram: the REAL ring, with the band's arms moved to
+ * where the knobs place them.
  *
- * Drawn from the same `placeStarts`/`sweepAngle` arithmetic the readouts are
- * measured by — so the picture and the numbers cannot disagree — over a faded
- * copy of the ring as the engine left it, which is what the hand is departing
- * from. Every drag redraws it; no engine is involved until a weave is asked
- * for, which is exactly the readouts' own bargain.
+ * This is `drawExactStage` — the renderer every ring card and `/mxn/` itself
+ * draw with — handed the engine's own strands, except that the manual band's
+ * arms are repositioned by the same `placeStarts`/`sweepAngle` arithmetic the
+ * readouts are measured by. Bodies, outlines, end caps and the crossing masks
+ * are all the real thing (a mask is an intersection of its two strands, so it
+ * follows the moved arms by construction); the manual band is tinted one colour
+ * per pair so a slider and the arms it moves read as one thing. On top: each
+ * arm's target ringed, and any shortfall drawn as a dashed red line — the REACH
+ * verdict drawn rather than only named.
  */
-function drawManualBand(canvas: HTMLCanvasElement, inputs: FitBand,
-                        ext: number[], angleDeg: number, backdrop: Strand[],
-                        bounds: Bounds, anchorPair: number, follow: boolean) {
-  const rect = canvas.getBoundingClientRect();
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const width = Math.max(1, rect.width);
-  const height = Math.max(1, rect.height);
-  const pixelWidth = Math.round(width * dpr);
-  const pixelHeight = Math.round(height * dpr);
-  if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
-  if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+function drawManualRing(canvas: HTMLCanvasElement, inputs: FitBand,
+                        ext: number[], angleDeg: number, stage: Stage,
+                        bounds: Bounds) {
+  const starts = placeStarts(inputs, ext);
+  const swept = sweepAngle(inputs, starts, angleDeg);
+  const moved = new Map<string, { start: { x: number; y: number };
+                                  end: { x: number; y: number };
+                                  colour: ReturnType<typeof rgbaOf> }>();
+  inputs.pairIndices.forEach(([li, ri], p) => {
+    const colour = rgbaOf(PAIR_COLOURS[p % PAIR_COLOURS.length]);
+    for (const arm of [li, ri]) {
+      if (arm === null || arm === undefined) continue;
+      moved.set(inputs.names[arm], {
+        start: { x: starts[arm][0], y: starts[arm][1] },
+        end: { x: swept.ends[arm][0], y: swept.ends[arm][1] },
+        colour,
+      });
+    }
+  });
+  const strands = stage.strands.map(strand => {
+    const to = moved.get(strand.layer_name);
+    return to ? { ...strand, start: to.start, end: to.end, color: to.colour } : strand;
+  });
+  drawExactStage(canvas, { ...stage, label: "manual", strands }, bounds, false);
+
+  // The overlay shares drawExactStage's own transform (same pad, same fit), so
+  // the rings and shortfall lines land exactly on the strands it just drew.
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = "#f2f2f7";
-  ctx.fillRect(0, 0, width, height);
-
-  // The same frame the ring figures share, so the diagram is comparable with
-  // the cards beside it rather than rescaling itself under the cursor.
-  const pad = 10;
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(1, rect.width);
+  const height = Math.max(1, rect.height);
+  const pad = 8;
   const sourceWidth = Math.max(1, bounds.maxX - bounds.minX);
   const sourceHeight = Math.max(1, bounds.maxY - bounds.minY);
   const scale = Math.max(0.001, Math.min(
@@ -166,48 +192,24 @@ function drawManualBand(canvas: HTMLCanvasElement, inputs: FitBand,
   const offsetY = (height - sourceHeight * scale) / 2 - bounds.minY * scale;
   const at = (x: number, y: number) => [x * scale + offsetX, y * scale + offsetY] as const;
 
-  const line = (x1: number, y1: number, x2: number, y2: number,
-                colour: string, lineWidth: number, dash: number[] = []) => {
-    ctx.beginPath();
-    ctx.moveTo(...at(x1, y1));
-    ctx.lineTo(...at(x2, y2));
-    ctx.strokeStyle = colour;
-    ctx.lineWidth = Math.max(1, lineWidth);
-    ctx.lineCap = "round";
-    ctx.setLineDash(dash);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  };
-
-  // The ring as the engine left it — context, so it is grey and behind. The
-  // band's own arms are faded further: their replacements are the subject.
-  const bandNames = new Set(inputs.names);
-  const widthOf = new Map(backdrop.map(s => [s.layer_name, s.width]));
-  for (const strand of backdrop) {
-    if (strand.type === "MaskedStrand" || strand.is_hidden) continue;
-    line(strand.start.x, strand.start.y, strand.end.x, strand.end.y,
-      bandNames.has(strand.layer_name) ? "rgba(23, 23, 19, .07)" : "rgba(23, 23, 19, .18)",
-      strand.width * scale);
-  }
-
-  // The band as the knobs place it.
-  const starts = placeStarts(inputs, ext);
-  const swept = sweepAngle(inputs, starts, angleDeg);
-  const bodyWidth = (widthOf.get(inputs.names[0]) ?? 40) * scale;
+  const widthOf = new Map(stage.strands.map(s => [s.layer_name, s.width]));
   inputs.pairIndices.forEach(([li, ri], p) => {
     const colour = PAIR_COLOURS[p % PAIR_COLOURS.length];
-    const emphasised = follow && p === anchorPair;
     for (const arm of [li, ri]) {
       if (arm === null || arm === undefined) continue;
-      const [sx, sy] = starts[arm];
       const [ex, ey] = swept.ends[arm];
       const [tx, ty] = inputs.targets[arm];
-      // How far the arm's end sits from the target it is meant to reach —
-      // the REACH verdict, drawn rather than only named.
+      const bodyWidth = (widthOf.get(inputs.names[arm]) ?? 40) * scale;
       if (Math.hypot(ex - tx, ey - ty) > 2) {
-        line(ex, ey, tx, ty, "rgba(228, 81, 63, .8)", 1.5, [4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(...at(ex, ey));
+        ctx.lineTo(...at(tx, ty));
+        ctx.strokeStyle = "rgba(228, 81, 63, .85)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
-      line(sx, sy, ex, ey, colour, Math.max(3, bodyWidth * (emphasised ? 1 : 0.72)));
       ctx.beginPath();
       const [cx, cy] = at(tx, ty);
       ctx.arc(cx, cy, Math.max(3, bodyWidth * 0.35), 0, Math.PI * 2);
@@ -218,25 +220,25 @@ function drawManualBand(canvas: HTMLCanvasElement, inputs: FitBand,
   });
 }
 
-function ManualFigure({ inputs, knobs, backdrop, bounds, anchorPair, follow, caption }: {
-  inputs: FitBand; knobs: ManualBand; backdrop: Strand[]; bounds: Bounds | null;
-  anchorPair: number; follow: boolean; caption: string;
+function ManualFigure({ inputs, knobs, stage, bounds, caption }: {
+  inputs: FitBand; knobs: ManualBand; stage: Stage | null; bounds: Bounds | null;
+  caption: string;
 }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
   useEffect(() => {
     const canvas = ref.current;
-    if (!canvas || !bounds) return;
-    const draw = () => drawManualBand(canvas, inputs, knobs.ext, knobs.angle,
-      backdrop, bounds, anchorPair, follow);
+    if (!canvas || !stage || !bounds) return;
+    const draw = () => drawManualRing(canvas, inputs, knobs.ext, knobs.angle,
+      stage, bounds);
     draw();
     const observer = new ResizeObserver(draw);
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [inputs, knobs, backdrop, bounds, anchorPair, follow]);
+  }, [inputs, knobs, stage, bounds]);
   return (
     <figure className="ring mfig">
-      <figcaption><span>the band, as the knobs place it</span><var>{caption}</var></figcaption>
-      <canvas ref={ref} role="img" aria-label="manual band diagram" />
+      <figcaption><span>the ring, as the knobs place it</span><var>{caption}</var></figcaption>
+      <canvas ref={ref} role="img" aria-label="manual ring diagram" />
     </figure>
   );
 }
@@ -636,6 +638,37 @@ export function Fitter() {
     setManual(current => ({ ...current, [key]: { ext: [...target.ext], angle: target.angle } }));
     setTouched(current => ({ ...current, [key]: source === "fitted" }));
     setFollowNote("");
+    setManualWoven(null);
+  };
+
+  /**
+   * The one-shot equaliser — the "static fix". With the coupling off, a hand
+   * fixes one pair where it wants it and the other pairs stay put; when the
+   * neighbour lengths disagree, this solves every OTHER pair's extension to
+   * the arm length the fixed pair names. Same `e = (A − L*) / B` the live
+   * coupling uses, applied once on demand: one `coefficients` read and one
+   * division per pair — O(N) in the number of pairs, no search, no engine.
+   */
+  const fixFromAnchor = (key: BandKey) => {
+    const inputs = plan?.[key];
+    const knobs = manual[key];
+    if (!inputs || inputs.unavailable || !knobs || inputs.P < 2) return;
+    const fixed = anchor[key];
+    const solved = followPair(inputs, knobs.ext, knobs.angle, fixed);
+    setManual(current => ({ ...current, [key]: { ext: solved.ext, angle: knobs.angle } }));
+    setTouched(current => ({ ...current, [key]: true }));
+    setFollowNote(solved.short.length
+      ? `pair${solved.short.length > 1 ? "s" : ""} `
+        + solved.short.map(p => p + 1).join(", ")
+        + ` cannot reach ${solved.star.toFixed(1)} px inside 0…${EXT_MAX} px`
+        + " at this heading — clamped, so the band is not flush"
+      : "");
+    setStatus(solved.short.length
+      ? `Solved from pair ${fixed + 1}, but ${solved.short.length} pair${
+          solved.short.length > 1 ? "s" : ""} clamped — see the panel.`
+      : `Every other pair solved to pair ${fixed + 1}'s ${solved.star.toFixed(1)} px `
+        + "— one division per pair. Weave and audit to ask the engine.");
+    setFailed(false);
     setManualWoven(null);
   };
 
@@ -1128,18 +1161,20 @@ export function Fitter() {
                       <span className="spacer" />
                       <button type="button" className="follow" aria-pressed={follow}
                         onClick={() => setFollow(value => !value)}
-                        title="Re-solve the other pairs to the moved pair's arm length">
+                        title={follow
+                          ? "Coupled: moving one pair re-solves the others to its arm length. Press to move pairs one at a time instead."
+                          : "Independent: each pair moves alone. Press to couple them again."}>
+                        <i aria-hidden="true" />
                         {follow
-                          ? `follow: others match pair ${anchor[band] + 1}`
-                          : "follow: off — pairs move alone"}
+                          ? `coupled — pairs follow pair ${anchor[band] + 1}`
+                          : "independent — each pair moves alone"}
                       </button>
                     </header>
                     <div className="body">
                       <div className="mgrid">
                       <div>
                         <ManualFigure inputs={inputs} knobs={knobs}
-                          backdrop={before?.stage.strands ?? []} bounds={bounds}
-                          anchorPair={anchor[band]} follow={follow}
+                          stage={before?.stage ?? null} bounds={bounds}
                           caption={read ? `Δ ${read.delta.toFixed(2)} px` : ""} />
                         <div className="mlegend">
                           {knobs.ext.map((_, p) => (
@@ -1148,8 +1183,8 @@ export function Fitter() {
                               pair {p + 1}
                             </span>
                           ))}
-                          <span><u style={{ background: "rgba(23, 23, 19, .25)" }} /> engine's ring</span>
                           <span><u className="dashline" /> gap to target</span>
+                          <span>the rest of the ring is drawn as the engine wove it</span>
                         </div>
                       </div>
                       <div>
@@ -1201,6 +1236,14 @@ export function Fitter() {
                           onClick={() => resetManual(band, "engine")}>reset to engine</button>
                         <button type="button" disabled={busy || !after || after === manualWoven}
                           onClick={() => resetManual(band, "fitted")}>load fitted</button>
+                        <button type="button" className="mfix"
+                          disabled={busy || inputs.P < 2 || !read || read.delta <= FLUSH_EPS}
+                          title={read && read.delta > FLUSH_EPS
+                            ? `Solve every other pair's extension to pair ${anchor[band] + 1}'s arm length — one division per pair`
+                            : "Lights up when neighbouring arms disagree"}
+                          onClick={() => fixFromAnchor(band)}>
+                          fix others from pair {anchor[band] + 1}
+                        </button>
                         <button type="button" className="mgo"
                           disabled={busy || !(touched.h || touched.v)}
                           onClick={weaveManual}>Weave and audit</button>
@@ -1228,14 +1271,18 @@ export function Fitter() {
                       )}
                     </div>
                     <p className="note">
-                      The two knobs are coupled — <code>L = A(a) − B(a)·e</code>, and the angle
-                      sets both coefficients — so with <em>follow</em> on, moving one pair
-                      re-solves the others to the arm length it names, and moving the angle
-                      re-solves them around the anchored pair. The lengths beside the sliders
-                      are computed in the page by the same arithmetic the candidate walk uses;
-                      what the page cannot decide alone is whether the ring still closes, which
-                      is what <em>weave and audit</em> asks the engine. An untouched band is
-                      woven where the engine left it.
+                      The switch in the header picks how the pairs move. <em>Coupled</em>:
+                      moving one pair re-solves the others live to the arm length it names
+                      (<code>L = A(a) − B(a)·e</code>, so each answer is one division), and
+                      moving the angle re-solves them around the anchored pair.{" "}
+                      <em>Independent</em>: each pair moves alone and the others hold still —
+                      and once the neighbouring arms disagree, <em>fix others from pair N</em>{" "}
+                      lights up and solves every other pair from the one you fixed, one
+                      division per pair. The diagram is the real ring — the same renderer as
+                      every card on this page, with this band's arms moved to the knobs — but
+                      what the page cannot decide alone is whether the ring still closes,
+                      which is what <em>weave and audit</em> asks the engine. An untouched
+                      band is woven where the engine left it.
                     </p>
                   </div>
                 );
