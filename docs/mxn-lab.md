@@ -212,19 +212,63 @@ would both answer a question nobody asked and make ticking the box appear to do
 nothing, since the uncapped run is always sitting there to be adopted instead.
 Tick it with nothing capped on the shelf and the page computes, and says so.
 
-#### What it does not do
+#### It does nothing for level 1
 
-**The first level is still searched.** A cap is learned from the levels below,
-and level 1 has none — so `3×1 [-1,-1]` goes from 115s to 63s, and the
-52 seconds that remain are level 1 being computed again. Its answer is very
-likely already on the shelf, and reusing it would mean replaying a stored combo
-instead of searching for it: cheap (`_pinned_search` costs seconds where the
-escalating search costs a minute) but it hands the level a candidate list of one,
-which is the solution browser gone. That trade is not made here.
+A cap is learned from the levels below, and level 1 has none. That is what the
+next section is for.
 
-The way to not pay for level 1 at all is the one the whole shelf exists for:
-sweep the sequence at [`/mxn/gpu/`](mxn-farm.md) with **depth 2**, and
-`[-1, -1]` arrives in one fetch like any other stored run.
+### Level 1, replayed off the shelf instead of searched
+
+The shelf is keyed by the **whole sequence**: `run/v3/lh-cw/3x1/-1` and
+`run/v3/lh-cw/3x1/-1_-1_-1` are unrelated artifacts, and the farm's *skip what
+is already stored* asks about the whole key. So every sequence beginning with
+`-1` used to re-search the identical level 1, from scratch, every time — the
+largest single waste in a deep run.
+
+It need not. **Level 1 depends on nothing but `m`, `n`, `ks[0]`, the hand, the
+direction and the search flags** — the same fact `bridge.generate`'s own
+`level1_for_k` already relies on within a single run. So the L1 of `[-1,-1,-1]`
+*is* the L1 of the stored `[-1]`, and it can be replayed rather than searched
+for again.
+
+Both pages do it automatically when the single-k run is on the shelf. Verified
+strand-for-strand rather than argued:
+
+| 3×1 `[-1,-1,-1]` | seconds | L1 ring | every level | L1 browser |
+| --- | --- | --- | --- | --- |
+| searched | 170.5 | `bd033df7…` | `(80,70,20)`, `(190,190,70)`, `(160,110,10)` | full |
+| **replayed** | **134.7** | `bd033df7…` **same** | **identical** | none |
+
+`2×1 [-1,-1,-1]` is 8.7s → 6.7s and `2×2` 1.8s → 1.0s, both bit-for-bit
+identical. `npm run check:l1` asserts it: the strand hash of every level, every
+audit number, and the two things that are *allowed* to move.
+
+#### The two things that move
+
+**`enumerated` goes to `none` on L1.** A pinned attempt evaluates the one combo
+it was told to use, so there is no candidate list — that level's solution
+browser and exact count are gone *from this artifact*. They are not gone from
+the shelf: the single-k run it was replayed from has them in full, and the
+sidebar says so and links to it. Duplicating the enumeration into every deeper
+sequence was what the seconds were being spent on.
+
+**`applied` reads `seeded` on L1.** That is the audit trail recording how the
+ring was found, which is the one thing that genuinely changed. Every audit
+*number* is identical.
+
+#### Where it deliberately does not happen
+
+- **A warm.** After a cache hit the lab warms a session so the browser, the ⚑
+  sweeps and an uncached census work. Warming into a replayed L1 would be
+  warming into exactly the thing the reader pressed an arrow to get, so a warm
+  always searches.
+- **A single-level run.** There is no earlier run to replay from.
+- **The farm, if you untick it.** *Replay level 1 off a stored single-k run* is
+  on by default and next to *skip what is already stored*.
+
+No new cache key: the artifact holds the same geometry it always did, so a
+replayed run and a searched one are the same answer and belong at the same
+address. `level1Replayed` in the artifact says which it was.
 
 ### Browsing every solution
 
@@ -671,7 +715,7 @@ standing in. See `mocks/README.md`.
 There are two of them, and they are bumped for the same reason and never
 together.
 
-**`trace-plan-v22`**, the engine-file key, appears in six places: the worker URL
+**`trace-plan-v23`**, the engine-file key, appears in six places: the worker URL
 (`weave-studio.tsx`), the Python fetch URL and the counting-hand URL
 (`exact-worker.js`), the counting hand's own fetch (`count-worker.js`), the farm
 hand's fetch (`farm-worker.js`) and the URL the farm page spawns it with

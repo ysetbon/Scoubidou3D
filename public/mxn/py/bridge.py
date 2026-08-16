@@ -319,6 +319,12 @@ def _register_level(level, k, checkpoint, result, search):
     }
 
 
+def _l1_seed(given):
+    """`[h_ext, v_ext]` as the engine wants it: a pair of integer tuples."""
+    h, v = given
+    return (tuple(int(value) for value in h), tuple(int(value) for value in v))
+
+
 def _learned_reach(rows):
     """
     The longest arm any level so far actually used.
@@ -341,7 +347,7 @@ def _learned_reach(rows):
 
 def generate(m, n, ks, hand="lh", direction="cw",
              prefer_short_arms=True, ext_step=None, combo_budget=None,
-             reach_from_previous=False):
+             reach_from_previous=False, level1_pin=None):
     m, n = int(m), int(n)
     ks = [int(k) for k in ks]
     if not ks:
@@ -378,12 +384,30 @@ def generate(m, n, ks, hand="lh", direction="cw",
         _send_stage_frame(strands, 1, ks[0], "ring built")
         NX._progress_frame_callback = _candidate_frame_emitter(
             strands, 1, ks[0])
+        # Level 1 replayed rather than searched, when the caller has the combo.
+        #
+        # L1 depends on nothing but (m, n, ks[0], hand, direction) and the
+        # search flags -- the same fact `level1_for_k` below relies on within a
+        # single run -- so the L1 of `[-1, -1, -1]` IS the L1 of the stored
+        # `[-1]` run. Searching for it again is the largest single waste in a
+        # deep sequence: measured on 3x1 k=-1, 52 of the run's seconds.
+        #
+        # What it costs is this level's candidate lists, and so its solution
+        # browser and its exact count: a pinned attempt only ever evaluates the
+        # one combo it was told to use. That enumeration is not lost from the
+        # shelf, only from this artifact -- the single-k run it was replayed
+        # from has it in full -- and _register_level says which it is.
         try:
             result = NX.align_continuation_level(
                 strands, m, n, ks[0], direction, hand, 1,
-                level1_info, mirror_sides=m == n, verbose=False, **search)
+                level1_info, mirror_sides=m == n, verbose=False,
+                seed_extensions=[_l1_seed(level1_pin)] if level1_pin else None,
+                pin_seed=bool(level1_pin),
+                **search)
         finally:
             NX._progress_frame_callback = None
+        if level1_pin and not (result.get("candidates") or {}).get("h"):
+            _SESSION["level1_replayed"] = True
         _send_stage_frame(strands, 1, ks[0], "candidate accepted", 1, 1)
         snapshot = [dict(s) for s in strands]
         stages.append({"level": 1, "k": ks[0], "label": "1st twist",
@@ -442,6 +466,9 @@ def generate(m, n, ks, hand="lh", direction="cw",
         "expected": expected, "seconds": round(time.time() - started, 1),
         "rows": rows, "stages": stages,
         "reachFromPrevious": reach_from_previous,
+        # Whether L1 was replayed off a stored run rather than searched, so a
+        # reader is told why that level has no solution browser.
+        "level1Replayed": bool(_SESSION.get("level1_replayed")),
         "solutions": [_solution_meta(_SESSION["levels"][lv])
                       for lv in sorted(_SESSION["levels"])],
     }, separators=(",", ":"))
