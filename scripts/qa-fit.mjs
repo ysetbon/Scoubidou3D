@@ -677,6 +677,11 @@ const edited = await page.evaluate(() => ({
       .find(x => /weave and audit/i.test(x.textContent));
     return b ? { text: b.textContent.trim(), disabled: b.disabled } : null;
   })(),
+  apply: (() => {
+    const b = [...document.querySelectorAll('.mbtns button')]
+      .find(x => /apply/i.test(x.textContent));
+    return b ? { text: b.textContent.trim(), disabled: b.disabled } : null;
+  })(),
   rows: document.querySelectorAll('.panel table tbody tr').length,
   engineCalls: window.__engineCalls ?? 0,
 }));
@@ -692,9 +697,12 @@ ok('the runbar says the ring came off the shelf', edited.shelfChip);
 ok('the baseline card says "as judged", not "engine"',
   /as judged/.test(edited.baseline) && !/· engine/.test(edited.baseline),
   edited.baseline);
-ok('weave and audit says it needs a run, rather than failing on the press',
-  !!edited.weave && edited.weave.disabled && /needs Run/i.test(edited.weave.text),
-  edited.weave ? `${edited.weave.text} · disabled ${edited.weave.disabled}` : '(absent)');
+// Weave-and-audit is gone: one press applies the knobs, and the engine is asked
+// for the crossings only when a session already exists. What survives from the
+// old claim is the part that mattered — the editor never offers a dead control.
+ok('the editor offers apply, and does not offer a weave it cannot do',
+  !!edited.apply && !edited.weave,
+  `${edited.apply?.text?.trim() ?? '(no apply)'}${edited.weave ? ' · weave still present' : ''}`);
 
 // Moving a knob has to move the numbers and the diagram, with no engine.
 if (edited.knobs >= 3) {
@@ -904,6 +912,74 @@ if (edited.knobs >= 3) {
   ok('and the fitter asks for a versioned worker, so a cached one cannot answer',
     /exact-worker\.js\?v=/.test(fitter),
     (fitter.match(/exact-worker\.js\?v=[\w.-]+/) ?? ['(unversioned)'])[0]);
+}
+
+// Apply. The hand finishes placing the arms and one press puts that exact ring
+// in the after card — no weave, no adopt, and in the no-search mode no session
+// to weave with. What it must NOT do is claim an audit nobody ran.
+{
+  const ap = await browser.newPage({ viewport: { width: 1440, height: 1300 } });
+  const apErrors = [];
+  ap.on('pageerror', e => apErrors.push(String(e)));
+  await ap.addInitScript(STUB, { size: STUB_SIZE, delay: 0 });
+  await ap.goto(URL_BASE, { waitUntil: 'domcontentloaded' });
+  await ap.waitForSelector('button.go');
+  await ap.fill('#fit-m', String(size.m));
+  await ap.fill('#fit-n', String(size.n));
+  await ap.fill('#fit-ks', size.ks.join(' '));
+  await ap.locator('button.go', { hasText: /no search/i }).click();
+  await ap.waitForTimeout(1200);
+  const gone = await ap.evaluate(() => ({
+    weave: [...document.querySelectorAll('.mbtns button')]
+      .some(b => /weave and audit/i.test(b.textContent)),
+    adopt: [...document.querySelectorAll('.mbtns button')]
+      .some(b => /adopt as fitted/i.test(b.textContent)),
+    apply: [...document.querySelectorAll('.mbtns button')]
+      .find(b => /apply/i.test(b.textContent))?.disabled,
+  }));
+  ok('weave and audit is gone from the knobs', !gone.weave);
+  ok('and so is adopt as fitted', !gone.adopt);
+  ok('apply waits until a knob has been moved', gone.apply === true);
+  // Move an arm, apply, and the after card has to hold that exact ring.
+  await ap.locator('.mrow .mnum').nth(1).fill('120');
+  await ap.waitForTimeout(300);
+  const armed = await ap.evaluate(() => [...document.querySelectorAll('.mbtns button')]
+    .find(b => /apply/i.test(b.textContent))?.disabled);
+  ok('and lights up once one has', armed === false);
+  await ap.locator('.mbtns button', { hasText: /apply/i }).click();
+  await ap.waitForTimeout(800);
+  const applied = await ap.evaluate(() => {
+    const cards = [...document.querySelectorAll('.rings figure')];
+    const after = cards[1];
+    const canvas = after?.querySelector('canvas');
+    const inked = () => {
+      if (!canvas) return 0;
+      const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+      const seen = new Set();
+      for (let i = 0; i < data.length; i += 4 * 97) seen.add(`${data[i]},${data[i+1]},${data[i+2]}`);
+      return seen.size;
+    };
+    return {
+      title: after?.querySelector('figcaption span')?.textContent ?? '',
+      inked: inked(),
+      generates: window.__stubGenerates ?? 0,
+      audit: [...document.querySelectorAll('.stat')]
+        .find(s => /ring audit/i.test(s.textContent))?.textContent ?? '',
+      status: document.querySelector('.status')?.textContent ?? '',
+    };
+  });
+  ok('apply fills the after card with a drawn ring',
+    applied.inked > 3 && /adopted by hand|hand/i.test(applied.title),
+    `${applied.title.trim()} · ${applied.inked} colours`);
+  ok('and it did so with no engine at all', applied.generates === 0,
+    `${applied.generates} generate(s)`);
+  ok('and claims no audit, because nothing audited it', /—/.test(applied.audit),
+    applied.audit.replace(/\s+/g, ' ').slice(0, 60));
+  ok('the status says the ring stands but is ungraded',
+    /audited|crossings|Run/i.test(applied.status), applied.status.slice(0, 90));
+  ok('no page errors on the apply path', apErrors.length === 0,
+    apErrors.slice(0, 2).join(' | '));
+  await ap.close();
 }
 
 ok('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));

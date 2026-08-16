@@ -111,6 +111,15 @@ type Attempt = {
   woven: Woven;
   lengths: Record<BandKey, number[]>;
   accepted: boolean;
+  /**
+   * Whether an engine graded this ring, as opposed to the page placing it.
+   *
+   * A ring applied from the knobs is real geometry — the same arithmetic the
+   * diagram draws — but nothing has counted its crossings, and `woven.row`
+   * is zeroed. Quoting that as an audit would be the page asserting a check it
+   * never made, so the readouts ask this first.
+   */
+  audited: boolean;
 };
 
 /** The judgements for one parameter set, and which stores answered for them. */
@@ -440,8 +449,17 @@ type FigureBand = { inputs: FitBand; ext: number[]; angle: number; focus: boolea
  * distinguishes them: the focused band takes the per-pair colours and the
  * target rings, the other keeps the strand colours it was drawn in.
  */
-function drawManualRing(canvas: HTMLCanvasElement, bands: FigureBand[],
-                        stage: Stage, bounds: Bounds) {
+/**
+ * The ring with every manually-placed band's arms moved to its knobs.
+ *
+ * Lifted out of the drawing code so that the diagram and the ring that gets
+ * APPLIED are produced by one function. Two spellings of "where the knobs put
+ * the arms" would drift, and the first symptom would be a preview of a ring
+ * that is not the one adopted — which is the failure this page exists to not
+ * have. `tint` is the only thing the diagram wants and the applied ring does
+ * not: colouring is a reading aid, not geometry.
+ */
+function movedStrands(bands: FigureBand[], stage: Stage, tint: boolean) {
   const moved = new Map<string, { start: { x: number; y: number };
                                   end: { x: number; y: number };
                                   colour: ReturnType<typeof rgbaOf> | null }>();
@@ -451,7 +469,7 @@ function drawManualRing(canvas: HTMLCanvasElement, bands: FigureBand[],
     const swept = sweepAngle(band.inputs, starts, band.angle);
     if (band.focus) focus = { inputs: band.inputs, swept };
     band.inputs.pairIndices.forEach(([li, ri], p) => {
-      const colour = band.focus
+      const colour = tint && band.focus
         ? rgbaOf(PAIR_COLOURS[p % PAIR_COLOURS.length]) : null;
       for (const arm of [li, ri]) {
         if (arm === null || arm === undefined) continue;
@@ -469,6 +487,12 @@ function drawManualRing(canvas: HTMLCanvasElement, bands: FigureBand[],
     return { ...strand, start: to.start, end: to.end,
              ...(to.colour ? { color: to.colour } : {}) };
   });
+  return { strands, focus };
+}
+
+function drawManualRing(canvas: HTMLCanvasElement, bands: FigureBand[],
+                        stage: Stage, bounds: Bounds) {
+  const { strands, focus } = movedStrands(bands, stage, true);
   drawExactStage(canvas, { ...stage, label: "manual", strands }, bounds, false);
 
   // The overlay shares drawExactStage's own transform (same pad, same fit), so
@@ -730,7 +754,6 @@ export function Fitter() {
   const [follow, setFollow] = useState(true);
   const [anchor, setAnchor] = useState<Record<BandKey, number>>({ h: 0, v: 0 });
   const [followNote, setFollowNote] = useState("");
-  const [manualWoven, setManualWoven] = useState<Attempt | null>(null);
 
   // Everything the run drew, L0 included: the solutions row a judgement writes
   // stores the parent ring beside the judged one, and L1's parent is L0.
@@ -860,7 +883,8 @@ export function Fitter() {
       h: { ext: heldNow.h?.ext ?? [], angle: heldNow.h?.angle ?? null },
       v: { ext: heldNow.v?.ext ?? [], angle: heldNow.v?.angle ?? null },
     };
-    const attempt: Attempt = { h: null, v: null, woven, lengths, accepted: row.healthy };
+    const attempt: Attempt = { h: null, v: null, woven, lengths,
+                               accepted: row.healthy, audited: !!a };
     const lists: Record<BandKey, Candidate[]> = { h: [], v: [] };
     for (const key of BANDS) {
       const inputs = got[key];
@@ -888,7 +912,7 @@ export function Fitter() {
     });
     setTouched({ h: false, v: false });
     setAnchor({ h: 0, v: 0 });
-    setFollowNote(""); setManualWoven(null); setMismatch("");
+    setFollowNote(""); setMismatch("");
     setPicks({ judgements: f.judgements, from: f.from, reached: true });
     setEditor({ from: "preload", key: picksKey(f.descriptor), descriptor: f.descriptor,
                 source: f.judgement.source });
@@ -969,7 +993,7 @@ export function Fitter() {
         v: heldNow.v ? { ext: [...heldNow.v.ext], angle: heldNow.v.angle } : null,
       });
       setTouched({ h: false, v: false }); setAnchor({ h: 0, v: 0 });
-      setFollowNote(""); setManualWoven(null); setMismatch("");
+      setFollowNote(""); setMismatch("");
       setEditor({ from: "fast", key: picksKey(d), descriptor: d, source: "hand" });
       setStatus(`Knobs open in ${secs.toFixed(2)}s — the search never ran. `
         + "Move the arms; press Run when you want the engine's own ring, its "
@@ -1100,8 +1124,7 @@ export function Fitter() {
     setOrigin(null);
     setHeld({ h: null, v: null }); setManual({ h: null, v: null });
     setTouched({ h: false, v: false }); setAnchor({ h: 0, v: 0 });
-    setFollowNote(""); setManualWoven(null);
-    try {
+    setFollowNote("");    try {
       const level = target;
       // Everything below asks the engine about a session `generate` opened. A
       // run served from the cache drew its diagrams without one, so the wait
@@ -1255,6 +1278,7 @@ export function Fitter() {
         };
         const attempt: Attempt = {
           h: asCandidate("h"), v: asCandidate("v"), woven, lengths, accepted: ok,
+          audited: true,
         };
         setAttempts([attempt]);
         if (ok) {
@@ -1316,7 +1340,7 @@ export function Fitter() {
           };
           const ok = !!woven.row?.healthy
             && woven.row.across >= (baseline.row?.across ?? 0);
-          const attempt: Attempt = { h, v, woven, lengths, accepted: ok };
+          const attempt: Attempt = { h, v, woven, lengths, accepted: ok, audited: true };
           tried.push(attempt);
           setAttempts([...tried]);
           if (ok) { accepted = attempt; break outer; }
@@ -1437,11 +1461,8 @@ export function Fitter() {
   const bounds = useMemo<Bounds | null>(() => {
     const all: Stage[] = [...stages];
     if (after) all.push({ level: fitLevel, k: null, label: "fitted", strands: after.woven.strands });
-    if (manualWoven && manualWoven !== after) {
-      all.push({ level: fitLevel, k: null, label: "manual", strands: manualWoven.woven.strands });
-    }
     return all.length ? allBounds(all) : null;
-  }, [stages, after, manualWoven, fitLevel]);
+  }, [stages, after, fitLevel]);
 
   const rows = useMemo<Row[]>(() => {
     const inputs = plan?.[band];
@@ -1498,7 +1519,6 @@ export function Fitter() {
     setFollowNote(note);
     // The last audit was about the numbers before this drag; keeping it on
     // screen would caption one ring with another ring's verdict.
-    setManualWoven(null);
   };
 
   const resetManual = (key: BandKey, source: "engine" | "fitted") => {
@@ -1509,7 +1529,6 @@ export function Fitter() {
     setManual(current => ({ ...current, [key]: { ext: [...target.ext], angle: target.angle } }));
     setTouched(current => ({ ...current, [key]: source === "fitted" }));
     setFollowNote("");
-    setManualWoven(null);
   };
 
   /**
@@ -1554,7 +1573,6 @@ export function Fitter() {
         : `Every other pair solved to pair ${fixed + 1}'s ${solved.star.toFixed(1)} px `
           + "— one division per pair. Weave and audit to ask the engine.");
     setFailed(false);
-    setManualWoven(null);
   };
 
   /**
@@ -1583,65 +1601,100 @@ export function Fitter() {
     return readAt(inputs, current.ext, current.angle);
   }, [plan, band, manual]);
 
-  /** Weave the manual configuration and let the engine's audit grade it. */
-  const weaveManual = async () => {
+  /**
+   * Apply the knobs: the ring you just made becomes the fitted ring.
+   *
+   * This used to be two presses behind the engine — *weave and audit*, then
+   * *adopt as fitted* — and in the no-search mode there is no session, so the
+   * first was permanently disabled and the second could never light. A hand
+   * that had finished placing the arms had nowhere to put them.
+   *
+   * It needs no engine, because the ring is not in doubt: `movedStrands` is the
+   * same arithmetic the diagram beside the knobs is already drawing, so what
+   * lands in the "after" card is exactly the picture that was on screen. What
+   * IS in doubt is whether the ring still closes, and that only `fit_weave` can
+   * say — so the attempt is marked unaudited, the audit reads `—` rather than a
+   * zeroed row, and when a session exists the engine is asked in the background
+   * and the real count replaces it when it arrives. No button for that: a
+   * verdict that can be fetched should not need to be requested.
+   */
+  const applyKnobs = async () => {
     if (!plan || !before) return;
-    const config: Record<BandKey, ManualBand | null> = {
-      h: touched.h && manual.h ? manual.h : held.h,
-      v: touched.v && manual.v ? manual.v : held.v,
+    const bands: FigureBand[] = BANDS.flatMap(key => {
+      const inputs = plan[key];
+      const knobs = (touched[key] && manual[key]) || held[key];
+      if (!inputs || inputs.unavailable || !knobs) return [];
+      return [{ inputs, ext: knobs.ext, angle: knobs.angle, focus: false }];
+    });
+    if (!bands.length) return;
+    const { strands } = movedStrands(bands, before.stage, false);
+    const lengths = {
+      h: plan.h?.unavailable ? [] : measure(strands, plan.h.names),
+      v: plan.v?.unavailable ? [] : measure(strands, plan.v.names),
     };
-    setBusy(true);
+    const asCandidate = (key: BandKey): Candidate | null => {
+      const inputs = plan[key];
+      const knobs = (touched[key] && manual[key]) || held[key];
+      if (!inputs || inputs.unavailable || !knobs) return null;
+      const r = readAt(inputs, knobs.ext, knobs.angle);
+      return {
+        ext: [...knobs.ext], angle: knobs.angle, star: r.lengths[0] ?? 0,
+        lengths: r.lengths, gaps: r.gaps, margin: r.margin, delta: r.delta,
+        totalExt: knobs.ext.reduce((a, b) => a + b, 0),
+      };
+    };
+    const blank: AuditRow = {
+      level: fitLevel, k: plan.k, expected: 0, across: 0, within: 0, masks: 0,
+      stray: 0, broken: 0, healthy: false, ext: [],
+    };
+    const applied: Attempt = {
+      h: asCandidate("h"), v: asCandidate("v"),
+      woven: {
+        level: fitLevel, crossings: 0, row: blank, strands,
+        h: { ext: asCandidate("h")?.ext ?? [], angle: asCandidate("h")?.angle ?? null },
+        v: { ext: asCandidate("v")?.ext ?? [], angle: asCandidate("v")?.angle ?? null },
+      },
+      lengths, accepted: true, audited: false,
+    };
+    setAfter(applied);
+    setOrigin({ kind: "manual" });
     setFailed(false);
-    setStatus("Weaving the manual configuration…");
+    note("Knobs applied — the ring on screen is the fitted ring");
+    const engine = session.current;
+    if (!engine) {
+      setStatus("Applied. This is your ring — measured off the strands the "
+        + "diagram drew. Nothing has audited it; press Run if you want the "
+        + "engine to count its crossings.");
+      return;
+    }
+    // A session exists, so the count is free to ask for. The ring is already on
+    // screen; this only fills in the one number the page cannot work out.
+    setStatus("Applied. Asking the engine to count its crossings…");
     try {
+      await engine.ready;
       const woven = await ask({
         type: "fit-weave", level: fitLevel,
-        hExt: config.h?.ext ?? null, hAngle: config.h?.angle ?? null,
-        vExt: config.v?.ext ?? null, vAngle: config.v?.angle ?? null,
+        hExt: applied.h?.ext ?? null, hAngle: applied.h?.angle ?? null,
+        vExt: applied.v?.ext ?? null, vAngle: applied.v?.angle ?? null,
       }, "fit-weave-ready") as Woven;
-      const lengths = {
-        h: plan.h?.unavailable ? [] : measure(woven.strands, plan.h.names),
-        v: plan.v?.unavailable ? [] : measure(woven.strands, plan.v.names),
-      };
-      const ok = !!woven.row?.healthy
-        && woven.row.across >= (before.woven.row?.across ?? 0);
-      // The manual pick, in the candidate's own shape, so the audit log and
-      // the export read it exactly as they read a walked candidate.
-      const asCandidate = (key: BandKey): Candidate | null => {
-        const inputs = plan[key];
-        if (!inputs || inputs.unavailable || !(touched[key] && manual[key])) return null;
-        const m = manual[key]!;
-        const r = readAt(inputs, m.ext, m.angle);
-        return {
-          ext: [...m.ext], angle: m.angle, star: r.lengths[0] ?? 0,
-          lengths: r.lengths, gaps: r.gaps, margin: r.margin, delta: r.delta,
-          totalExt: m.ext.reduce((a, b) => a + b, 0),
-        };
-      };
-      setManualWoven({ h: asCandidate("h"), v: asCandidate("v"), woven, lengths, accepted: ok });
-      setStatus(ok
-        ? `The manual ring closes — ${woven.row.across}/${woven.row.expected} crossings. `
-          + "Adopt it and the stats, the export and a judgement all read it."
-        : `The audit refused the manual ring — ${woven.row.across}/${woven.row.expected} `
-          + `crossings against the engine's ${before.woven.row?.across ?? "?"}. `
-          + "The knobs and the numbers are unchanged; move them and weave again.");
+      const ok = !!woven.row?.healthy;
+      setAfter(current => current === applied
+        ? { ...applied, woven, audited: true, accepted: ok,
+            lengths: {
+              h: plan.h?.unavailable ? [] : measure(woven.strands, plan.h.names),
+              v: plan.v?.unavailable ? [] : measure(woven.strands, plan.v.names),
+            } }
+        : current);
+      note(`Audited: ${woven.row.across}/${woven.row.expected} crossings`);
+      setStatus(`Applied — and the engine counts ${woven.row.across}/`
+        + `${woven.row.expected} crossings${ok ? ", so the ring closes" : ", so it does not close"}.`);
       setFailed(!ok);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error));
-      setFailed(true);
-    } finally {
-      setBusy(false);
+    } catch {
+      // The ring stays; only its verdict is missing, and that is what it says.
+      note("The engine refused to weave it; the ring stands, unaudited");
+      setStatus("Applied. The engine would not weave this configuration, so it "
+        + "stays unaudited — the ring on screen is still exactly your knobs.");
     }
-  };
-
-  /** Make the manual ring the fitted one, so everything downstream reads it. */
-  const adoptManual = () => {
-    if (!manualWoven?.accepted) return;
-    setAfter(manualWoven);
-    setOrigin({ kind: "manual" });
-    setAttempts(current => [...current, manualWoven]);
-    setStatus("Manual ring adopted as the fitted ring.");
-    setFailed(false);
   };
 
   // -------------------------------------------------------------------------
@@ -1733,7 +1786,7 @@ export function Fitter() {
       };
       const attempt: Attempt = {
         h: asCandidate("h"), v: asCandidate("v"), woven, lengths,
-        accepted: !!woven.row?.healthy,
+        accepted: !!woven.row?.healthy, audited: true,
       };
       setAfter(attempt);
       setOrigin({ kind: "judged", verdict: j.verdict, chooser: j.chooser,
@@ -1752,7 +1805,7 @@ export function Fitter() {
   };
 
   /** The ring a verdict would be about: manual if woven, else fitted, else engine's. */
-  const judgedSource: JudgementSource = manualWoven ? "hand"
+  const judgedSource: JudgementSource = origin?.kind === "manual" ? "hand"
     // Untouched off the shelf, the geometry is the one that was already judged,
     // so it keeps the source it was judged under rather than claiming this
     // page's fitter produced it.
@@ -1767,7 +1820,7 @@ export function Fitter() {
       setFailed(true);
       return;
     }
-    const attempt = manualWoven ?? after;
+    const attempt = after;
     const pickOf = (key: BandKey): PickBand => {
       const inputs = plan[key];
       if (!inputs || inputs.unavailable) return null;
@@ -1923,13 +1976,18 @@ export function Fitter() {
       },
       // The hand's own configuration, whether or not it was adopted: a manual
       // weave a person walked away from is still the record of what they tried.
-      manual: manualWoven ? {
-        adopted: after === manualWoven,
-        accepted: manualWoven.accepted,
-        h: manualWoven.h ? { ext: manualWoven.h.ext, angle: manualWoven.h.angle } : "held",
-        v: manualWoven.v ? { ext: manualWoven.v.ext, angle: manualWoven.v.angle } : "held",
-        lengths: manualWoven.lengths,
-        audit: manualWoven.woven.row,
+      // The hand's own configuration, when a hand is what placed the ring.
+      // `audited` says whether an engine ever counted its crossings — an
+      // applied ring is real geometry either way, but only one of the two has
+      // a verdict, and an export that blurred them would be worse than one
+      // that omitted it.
+      manual: origin?.kind === "manual" && after ? {
+        applied: true,
+        audited: after.audited,
+        h: after.h ? { ext: after.h.ext, angle: after.h.angle } : "held",
+        v: after.v ? { ext: after.v.ext, angle: after.v.angle } : "held",
+        lengths: after.lengths,
+        audit: after.audited ? after.woven.row : null,
       } : null,
     });
   };
@@ -1938,8 +1996,11 @@ export function Fitter() {
   // the baseline is a ring the engine never graded — and quoting its zeroed row
   // would read as "0 of 0 crossings, 0 stray", which is the page asserting a
   // check it never made. Weaving fills this in for real.
-  const health = after?.woven.row
-    ?? (editor?.from === "fast" ? null : before?.woven.row)
+  // An applied ring carries a zeroed row until an engine counts it, so the
+  // audit follows `audited` rather than the row's mere existence. Same rule as
+  // the no-search baseline: no check made, nothing quoted.
+  const health = (after?.audited ? after.woven.row : null)
+    ?? (after ? null : editor?.from === "fast" ? null : before?.woven.row)
     ?? null;
 
   /** One parameter set, as a person reads it. */
@@ -2518,7 +2579,7 @@ export function Fitter() {
                       <div className="mbtns">
                         <button type="button" disabled={busy}
                           onClick={() => resetManual(band, "engine")}>reset to engine</button>
-                        <button type="button" disabled={busy || !after || after === manualWoven}
+                        <button type="button" disabled={busy || !after}
                           onClick={() => resetManual(band, "fitted")}>load fitted</button>
                         <button type="button" className="mfix"
                           disabled={busy || inputs.P < 2 || !read || read.delta <= FLUSH_EPS}
@@ -2529,43 +2590,25 @@ export function Fitter() {
                           onClick={() => fixFromAnchor(band)}>
                           fix others from pair {anchor[band] + 1}
                         </button>
-                        {/* The one thing the page cannot do for itself. The
-                            knobs, the readouts and this diagram are arithmetic;
-                            rebuilding a ring and counting its crossings is the
-                            engine's alone, and only a run opens the session it
-                            needs. Said on the button rather than failing on the
-                            press. */}
+                        {/* One press, and it needs no engine. movedStrands is
+                            the same arithmetic the diagram beside these knobs is
+                            already drawing, so what lands in the "after" card is
+                            exactly the picture on screen. Whether the ring still
+                            CLOSES is the engine's to say, and when a session
+                            exists it is asked in the background — a verdict that
+                            can be fetched should not need to be requested. */}
                         <button type="button" className="mgo"
-                          disabled={busy || !canWeave || !(touched.h || touched.v)}
-                          title={canWeave ? "Ask the engine to weave this ring and audit it"
-                            : "Only the engine can weave a ring, and only Run opens the "
-                              + "session it needs. The numbers and the diagram are live "
-                              + "without it."}
-                          onClick={weaveManual}>
-                          {canWeave ? "Weave and audit" : "Weave and audit · needs Run"}
-                        </button>
-                        <button type="button"
-                          disabled={busy || !manualWoven?.accepted || after === manualWoven}
-                          onClick={adoptManual}>
-                          {after === manualWoven ? "adopted" : "adopt as fitted"}
+                          disabled={busy || !(touched.h || touched.v)}
+                          title={canWeave
+                            ? "Put this ring in the after card, and ask the engine to count its crossings"
+                            : "Put this ring in the after card. Nothing has audited it — "
+                              + "only Run opens the session that can."}
+                          onClick={applyKnobs}>
+                          Apply — this is the ring
                         </button>
                       </div>
                       </div>
                       </div>
-                      {manualWoven && (
-                        <div className="rings" style={{ marginTop: 14 }}>
-                          <RingFigure title="manual · woven"
-                            stage={{ level: fitLevel, k: plan.k, label: "manual",
-                                     strands: manualWoven.woven.strands }}
-                            bounds={bounds}
-                            caption={`${manualWoven.woven.row.across}/${manualWoven.woven.row.expected}`
-                              + ` crossings · ${manualWoven.accepted ? "accepted" : "refused"}`} />
-                          <div>
-                            <LengthBars before={beforeLengths}
-                              after={manualWoven.lengths[band]} />
-                          </div>
-                        </div>
-                      )}
                     </div>
                     <p className="note">
                       The switch in the header picks how the pairs move. <em>Coupled</em>:
