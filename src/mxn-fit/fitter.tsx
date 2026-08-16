@@ -1072,30 +1072,24 @@ export function Fitter() {
           </section>
 
           <section>
-            <h2 className="kicker">Sort</h2>
-            <div className="field">
-              <label className="f" htmlFor="fit-sort">rank the table by</label>
-              <select id="fit-sort" value={sortKey}
-                onChange={e => setSortKey(e.target.value as SortKey)}>
-                <option value="delta">neighbour length Δ</option>
-                <option value="spread">length spread (max − min)</option>
-                <option value="margin">gap margin</option>
-                <option value="ext">total pair extension</option>
-                <option value="engine">the order they were offered</option>
-              </select>
-            </div>
+            <h2 className="kicker">Run</h2>
             <button className="go" type="button" onClick={run} disabled={busy}>
-              {busy ? "Working…" : "Run and fit"}
+              {busy ? "Working…"
+                : apiUrl.trim() ? "Run · load best from Cloudflare"
+                : "Run · load best fit"}
             </button>
             <button className="go ghost" type="button" onClick={exportRing}
               disabled={!before}>Export</button>
             <p className="hint">
-              The fit loads the ring somebody judged <b>★ best</b> for these
-              parameters — from the shelf when a worker url is set below, and from
-              this browser's own judgements either way. Without one it fits fresh:
-              exactly-flush candidates offered to the engine's audit longest-arm
-              first, because the ring closes when one band's arms reach across the
-              other.
+              The ring somebody judged <b>★ best</b> for these parameters is what
+              loads: {apiUrl.trim()
+                ? <>from the Cloudflare shelf, and from this browser's own
+                   judgements, folded together.</>
+                : <>from this browser's own judgements — set a worker url below to
+                   read the Cloudflare shelf too.</>}{" "}
+              Without a best it fits fresh: exactly-flush candidates offered to the
+              engine's audit longest-arm first, because the ring closes when one
+              band's arms reach across the other.
             </p>
             {(status || progress) && (
               <p className={`status${failed ? " bad" : ""}`}>{status || progress}</p>
@@ -1462,14 +1456,13 @@ export function Fitter() {
                       <tr>
                         <th className="l">#</th><th className="l">source</th>
                         <th>ext</th><th>angle</th><th>arm lengths</th>
-                        <th className={sortKey === "delta" ? "sorted" : ""}
-                          onClick={() => setSortKey("delta")}>Δ neigh</th>
-                        <th className={sortKey === "spread" ? "sorted" : ""}
-                          onClick={() => setSortKey("spread")}>spread</th>
-                        <th className={sortKey === "margin" ? "sorted" : ""}
-                          onClick={() => setSortKey("margin")}>margin</th>
-                        <th className={sortKey === "ext" ? "sorted" : ""}
-                          onClick={() => setSortKey("ext")}>total ext</th>
+                        {([["delta", "Δ neigh"], ["spread", "spread"],
+                           ["margin", "margin"], ["ext", "total ext"]] as const).map(
+                          ([key, label]) => (
+                            <th key={key} title={`sort by ${label}`}
+                              className={`sortable${sortKey === key ? " sorted" : ""}`}
+                              onClick={() => setSortKey(key)}>{label}</th>
+                          ))}
                       </tr>
                     </thead>
                     <tbody>
@@ -1507,9 +1500,10 @@ export function Fitter() {
                 </div>
                 <p className="note">
                   Every <em>flush</em> row makes this band's arms exactly the same length; they
-                  differ in which length, and at what heading. The sort reads the geometry on
-                  screen, so it means the same before a fit and after one. A band that is
-                  already flush has no candidates and is left where the engine put it.
+                  differ in which length, and at what heading. Click a numeric heading to rank
+                  by it; the sort reads the geometry on screen, so it means the same before a
+                  fit and after one. A band that is already flush has no candidates and is
+                  left where the engine put it.
                 </p>
               </div>
 

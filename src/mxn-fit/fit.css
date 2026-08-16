@@ -70,7 +70,7 @@ input[type=text], input[type=number], select {
 .go {
   width: 100%; padding: 12px; margin-top: 6px;
   background: var(--ink); color: var(--paper); border: 1px solid var(--ink);
-  font: 800 13px/1 monospace; letter-spacing: .08em; text-transform: uppercase;
+  font: 800 13px/1.35 monospace; letter-spacing: .08em; text-transform: uppercase;
 }
 .go.ghost { background: none; color: var(--ink); }
 .status { font: 700 11px/1.5 monospace; color: var(--blue); margin: 12px 0 0; word-break: break-word; }
@@ -121,7 +121,11 @@ input[type=text], input[type=number], select {
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
 th:first-child, td:first-child, th.l, td.l { text-align: left; }
-th { font: 800 10px/1 monospace; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--ink); cursor: pointer; }
+th { font: 800 10px/1 monospace; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--ink); }
+/* Only the columns that actually sort offer to be clicked — the pointer was on
+   every header, which promised four columns a behaviour they do not have. */
+th.sortable { cursor: pointer; }
+th.sortable:hover { color: var(--ink); }
 th.sorted { color: var(--ink); }
 th.sorted::after { content: " ▾"; }
 td.num { font-family: monospace; }

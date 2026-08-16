@@ -661,10 +661,17 @@ labels, no dark counterpart. Verdict colours are lifted from
 `src/mxn-lab/trace-census.ts` so a reader who knows the trace panel already
 knows this one.
 
-**Sidebar — the whole input.** Parameters, then batch ranges, then the fit
-policy, then the sort key, then two buttons: **Export best** and **Fit only —
-do not write files**. The second exists because the first is destructive of a
-reader's download folder and the fit is worth looking at on its own.
+**Sidebar — the whole input.** Parameters, then **Run · load best from
+Cloudflare** (which reads **Run · load best fit** until a worker url is set,
+because with no shelf configured the button must not claim to read one), then
+**Export**, then the judgement fields and the three verdict buttons.
+
+There is no fit-policy dropdown and no sort dropdown. The policy went because a
+person's ★ best is the policy and the default covers the rest; the sort key
+went because the table's own numeric headings were already clickable and said
+so with a ▾ — one control, on the thing it sorts, rather than two spellings of
+it in two places. The pointer cursor now sits only on the four headings that
+actually sort, which is the affordance the other five were borrowing.
 
 **Header strip.** `2×1 · k=1 · LH · CW`, then the state of the thing —
 `fitted exactly`, `cache hit`, `L1 of 1` — and the band switch on the right.
