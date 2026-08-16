@@ -31,5 +31,12 @@ jobs:
       - name: The k board's ladder
         run: npm run check:board
 
+      # public/ files are served verbatim under stable URLs, so the ?v= key is
+      # the only thing stopping a browser running last month's engine against
+      # this month's workers. Changing the Python without bumping it is how
+      # "module 'bridge' has no attribute fit_plan_now" reached a reader.
+      - name: The engine-file key is in step with the Python
+        run: npm run check:enginekey
+
       - name: Type-check and build
         run: npm run build

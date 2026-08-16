@@ -121,7 +121,7 @@ Rules that are easy to break from one side:
   the Worker's source and runs the client's keys through them — run it after
   touching either file.
 - **`CACHE_VERSION`** (`cache.ts`) must be bumped when the engine changes what
-  it answers; the `trace-plan-v20` engine-file key (five places — grep for it)
+  it answers; the `trace-plan-v21` engine-file key (six places — `npm run check:enginekey`)
   is bumped when the engine *files* change. `docs/mxn-lab.md` § *Cache keys*
   explains the difference.
 - The bridge calls in `farm-worker.js` must stay the ones `exact-worker.js`
