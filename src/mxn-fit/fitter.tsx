@@ -23,7 +23,8 @@ import {
   VALID, VERDICT_NAMES, placeStarts, sweepAngle,
 } from "../mxn-lab/trace-census";
 import {
-  CACHE_TOKEN_KEY, CACHE_URL_KEY, CACHE_VERSION, createCache, mergeJudgement, picksKey,
+  CACHE_TOKEN_KEY, CACHE_URL_KEY, CACHE_VERSION, createCache, mergeJudgement,
+  parsePicksKey, picksKey,
   readSetting, writeSetting,
   type Judgement, type PickBand, type PicksArtifact, type RunDescriptor,
   type Verdict,
@@ -145,9 +146,10 @@ const CHOOSER_KEY = "mxn-fit-chooser";
 /**
  * Every judgement anyone has made about ONE parameter set, from both stores.
  *
- * Module-level rather than a closure over the form fields, because two callers
- * ask it about two different parameter sets: the fit asks about the one that
- * was run, and the preload below also asks about the k = 0 default.
+ * Module-level rather than a closure over the form fields, because the callers
+ * ask it about different parameter sets: the fit asks about the one that was
+ * run, and the preload below asks about the k = 0 default and then about every
+ * set on the shelf.
  *
  * Read from the Cloudflare shelf when a Worker is configured, and either way
  * folded together with this browser's own local judgements — the local copy is
@@ -214,6 +216,103 @@ function stageOfJudgement(j: Judgement): Stage | null {
 }
 
 /**
+ * How far another parameter set is from the one in the form. Lower is nearer.
+ *
+ * Only used to ORDER the shelf-wide search, so the substitute a reader is
+ * offered is the most like what they asked for rather than whatever the
+ * catalogue happened to list first. Size dominates hand, and hand dominates
+ * depth, because that is the order in which a different value makes the ring a
+ * different object.
+ */
+function nearness(want: RunDescriptor, got: RunDescriptor) {
+  return (want.m === got.m && want.n === got.n ? 0 : 4)
+    + (want.hand === got.hand && want.direction === got.direction ? 0 : 2)
+    + (want.ks.length === got.ks.length ? 0 : 1);
+}
+
+/** One drawable ★ best, and which parameter set it belongs to. */
+type Found = { stage: Stage; judgement: Judgement; from: string;
+               descriptor: RunDescriptor };
+
+/** The most artifacts the shelf-wide search will fetch before giving up. */
+const ANYWHERE_LIMIT = 16;
+
+/**
+ * The first judged ★ best anywhere — any size, any hand, any k.
+ *
+ * The last rung of the fallback, and the one that means a reader is never
+ * handed a half-hour of engine as the only way to see a ring. A 4×1 is 194,502
+ * extension combinations against a 2×2's 2,646; on a machine that is tens of
+ * minutes of Pyodide, and pressing Run for it should be a decision rather than
+ * the only option. So when neither the typed parameters nor the k = 0 default
+ * has a best, this walks the catalogue and draws the first one it finds.
+ *
+ * Local judgements are searched first because they cost nothing and a ring
+ * this browser judged is the one its reader most likely means. Each candidate
+ * is read through readPicks rather than off the raw row, so mergeJudgement's
+ * invariants apply and a locally-superseded best cannot come back as one.
+ *
+ * Bounded at ANYWHERE_LIMIT fetches and reported: an artifact carries a whole
+ * ring, so an unbounded walk over a full shelf would be megabytes for a card
+ * that is already a substitute. `alive` stops the walk when the parameters have
+ * moved on under it.
+ */
+async function bestFromAnywhere(
+  want: RunDescriptor, base: string, token: string,
+  skip: string[], alive: () => boolean,
+): Promise<{ found: Found | null; searched: number; skipped: number }> {
+  const seen = new Set(skip);
+  const tryOne = async (d: RunDescriptor, localOnly: boolean): Promise<Found | null> => {
+    const picks = await readPicks(d, localOnly ? "" : base, token);
+    const best = picks.judgements.find(j => j.verdict === "best");
+    const stage = best ? stageOfJudgement(best) : null;
+    return best && stage
+      ? { stage, judgement: best, from: picks.from, descriptor: d } : null;
+  };
+
+  let searched = 0;
+  try {
+    const rows = JSON.parse(readSetting(JUDGEMENTS_KEY) || "[]") as
+      { key: string }[];
+    const local = [...new Set(rows.map(r => r.key))]
+      .map(key => parsePicksKey(key))
+      .filter((p): p is NonNullable<typeof p> =>
+        !!p && p.cacheVersion === CACHE_VERSION && !seen.has(picksKey(p.descriptor)))
+      .sort((a, b) => nearness(want, a.descriptor) - nearness(want, b.descriptor));
+    for (const { descriptor } of local) {
+      if (!alive()) return { found: null, searched, skipped: 0 };
+      seen.add(picksKey(descriptor));
+      const found = await tryOne(descriptor, true);
+      if (found) return { found, searched, skipped: 0 };
+    }
+  } catch { /* a torn local store is no judgements, not an error */ }
+
+  if (!base) return { found: null, searched, skipped: 0 };
+  let ordered: RunDescriptor[] = [];
+  try {
+    const entries = await createCache({ base, token }).catalogue("picks/", 200);
+    ordered = entries
+      .map(e => parsePicksKey(e.key))
+      .filter((p): p is NonNullable<typeof p> =>
+        !!p && p.cacheVersion === CACHE_VERSION && !seen.has(picksKey(p.descriptor)))
+      .sort((a, b) => nearness(want, a.descriptor) - nearness(want, b.descriptor))
+      .map(p => p.descriptor);
+  } catch {
+    return { found: null, searched, skipped: 0 };
+  }
+  const skipped = Math.max(0, ordered.length - ANYWHERE_LIMIT);
+  for (const d of ordered.slice(0, ANYWHERE_LIMIT)) {
+    if (!alive()) break;
+    searched += 1;
+    try {
+      const found = await tryOne(d, false);
+      if (found) return { found, searched, skipped };
+    } catch { /* one unreadable artifact must not end the search */ }
+  }
+  return { found: null, searched, skipped };
+}
+
+/**
  * What the shelf has for the parameters in the form, found WITHOUT the engine.
  *
  * The fit's own best-fit lookup happens inside fitAt, which is behind
@@ -222,19 +321,20 @@ function stageOfJudgement(j: Judgement): Stage | null {
  * parameter change, reads `picks/v3/…` (a public GET; no token needed), and
  * draws the stored ring straight away.
  *
- * `fallback` marks a ring belonging to a DIFFERENT parameter set — the k = 0
- * default, shown when the typed one has no best. It is never silently adopted
- * into the form: a diagram captioned with parameters it does not belong to is
- * the one thing this page must not do, so the card names the set it came from
- * and offers a button that puts those k into the field.
+ * `substitute` marks a ring belonging to a DIFFERENT parameter set — the k = 0
+ * default, or the nearest set anywhere on the shelf. It is never silently
+ * adopted into the form: a diagram captioned with parameters it does not belong
+ * to is the one thing this page must not do, so the card names the set it came
+ * from and offers a button that puts those parameters in the fields.
  */
+type Substitute = "default" | "anywhere";
 type Preload =
   | { state: "off" }
-  | { state: "looking" }
+  | { state: "looking"; where: string }
   | { state: "shown"; stage: Stage; judgement: Judgement; from: string;
-      descriptor: RunDescriptor; fallback: boolean }
+      descriptor: RunDescriptor; substitute: Substitute | null }
   | { state: "ringless"; chooser: string }
-  | { state: "absent"; reached: boolean; triedDefault: boolean };
+  | { state: "absent"; reached: boolean; searched: number; skipped: number };
 
 /** One band's manual configuration: the knobs, as the hand left them. */
 type ManualBand = { ext: number[]; angle: number };
@@ -575,13 +675,21 @@ export function Fitter() {
    *
    * Deliberately the ONLY place on this page that reads the shelf without the
    * worker having been spoken to: no `postMessage` is sent, so Pyodide never
-   * boots. The typed parameters are asked for first; on a miss the k = 0
-   * default is asked for, and whichever answers is drawn.
+   * boots. Three rungs, nearest first, and the first that answers is drawn:
+   *
+   *   1. the typed parameters
+   *   2. the k = 0 default for the same size and hand
+   *   3. the nearest judged ★ best ANYWHERE on the shelf
+   *
+   * Rung 3 is what keeps a full run from ever being the only way to see a ring.
+   * A 4×1 is 194,502 extension combinations against a 2×2's 2,646 — tens of
+   * minutes of Pyodide — so pressing Run for one has to be a choice, and a page
+   * that offered nothing else was not really offering one.
    *
    * The lookup is debounced because `k sequence` is a text field, and it is
    * guarded by a token because the answers can land out of order — a slow reply
    * about parameters that have since been typed over must not overwrite a fast
-   * reply about the ones on screen.
+   * reply about the ones on screen. The same token stops rung 3's walk.
    */
   const preloadRun = useRef(0);
   useEffect(() => {
@@ -593,39 +701,50 @@ export function Fitter() {
     const token = apiToken.trim();
     const timer = setTimeout(async () => {
       const current = () => mine === preloadRun.current;
-      const look = async (d: RunDescriptor, fallback: boolean) => {
+      const look = async (d: RunDescriptor) => {
         const found = await readPicks(d, base, token);
         const best = found.judgements.find(j => j.verdict === "best") ?? null;
-        return { picks: found, best, stage: best ? stageOfJudgement(best) : null,
-                 descriptor: d, fallback };
+        return { picks: found, best, stage: best ? stageOfJudgement(best) : null };
       };
-      setPreload({ state: "looking" });
+      const show = (f: Found, substitute: Substitute | null) => setPreload({
+        state: "shown", stage: f.stage, judgement: f.judgement, from: f.from,
+        descriptor: f.descriptor, substitute,
+      });
+      setPreload({ state: "looking", where: "for a judged ★ best" });
       try {
-        const asked = await look(wanted, false);
+        const asked = await look(wanted);
         if (!current()) return;
         if (asked.best && asked.stage) {
-          setPreload({ state: "shown", stage: asked.stage, judgement: asked.best,
-                       from: asked.picks.from, descriptor: wanted, fallback: false });
+          show({ stage: asked.stage, judgement: asked.best, from: asked.picks.from,
+                 descriptor: wanted }, null);
           return;
         }
         const spare = defaultOf(wanted);
-        const triedDefault = picksKey(spare) !== picksKey(wanted);
-        if (triedDefault) {
-          const other = await look(spare, true);
+        const tried = [picksKey(wanted)];
+        if (picksKey(spare) !== picksKey(wanted)) {
+          const other = await look(spare);
           if (!current()) return;
           if (other.best && other.stage) {
-            setPreload({ state: "shown", stage: other.stage, judgement: other.best,
-                         from: other.picks.from, descriptor: spare, fallback: true });
+            show({ stage: other.stage, judgement: other.best, from: other.picks.from,
+                   descriptor: spare }, "default");
             return;
           }
+          tried.push(picksKey(spare));
         }
+        setPreload({ state: "looking", where: "for any judged ★ best on the shelf" });
+        const anywhere = await bestFromAnywhere(wanted, base, token, tried, current);
+        if (!current()) return;
+        if (anywhere.found) { show(anywhere.found, "anywhere"); return; }
         // A best that carries no ring is a different answer from no best at
         // all: one of them means "press Run and it will load", the other means
         // "press Run and it will search".
         if (asked.best) { setPreload({ state: "ringless", chooser: asked.best.chooser }); return; }
-        setPreload({ state: "absent", reached: asked.picks.reached, triedDefault });
+        setPreload({ state: "absent", reached: asked.picks.reached,
+                     searched: anywhere.searched, skipped: anywhere.skipped });
       } catch {
-        if (current()) setPreload({ state: "absent", reached: false, triedDefault: false });
+        if (current()) {
+          setPreload({ state: "absent", reached: false, searched: 0, skipped: 0 });
+        }
       }
     }, 400);
     return () => clearTimeout(timer);
@@ -1438,26 +1557,36 @@ export function Fitter() {
 
   const health = after?.woven.row ?? before?.woven.row ?? null;
 
+  /** One parameter set, as a person reads it. */
+  const nameOf = (d: RunDescriptor) => `${d.m}×${d.n} · k=${d.ks.join(", ")}`
+    + ` · ${d.hand.toUpperCase()} · ${d.direction.toUpperCase()}`;
+
   /** What the shelf lookup found, in one line, beside the button it is about. */
   const preloadLine = (() => {
     switch (preload.state) {
       case "looking":
-        return "Looking on the shelf for a judged ★ best…";
+        return `Looking ${preload.where}…`;
       case "shown":
-        return preload.fallback
-          ? `No ★ best for these parameters. Showing the k = ${
-              preload.descriptor.ks.join(", ")} default instead — judged by ${
-              preload.judgement.chooser}, drawn without the engine.`
-          : `★ best loaded from ${preload.from} — judged by ${
-              preload.judgement.chooser}, drawn from the ring stored with the `
+        if (preload.substitute === null) {
+          return `★ best loaded from ${preload.from} — judged by ${
+            preload.judgement.chooser}, drawn from the ring stored with the `
             + "judgement. No engine was run.";
+        }
+        return `No ★ best for these parameters. Showing ${
+          preload.substitute === "default" ? "the k = 0 default"
+            : "the nearest judged ring on the shelf"}, ${
+          nameOf(preload.descriptor)} — judged by ${
+          preload.judgement.chooser}, drawn without the engine.`;
       case "ringless":
         return `${preload.chooser} marked a ★ best for these parameters, but it was `
           + "saved before rings were stored with judgements — Run will weave it.";
       case "absent":
         return preload.reached
-          ? `Nothing judged ★ best for these parameters${
-              preload.triedDefault ? ", nor for the k = 0 default" : ""} — Run computes one.`
+          ? "Nothing has been judged ★ best anywhere on the shelf"
+            + `${preload.searched ? ` — ${preload.searched} parameter set${
+              preload.searched === 1 ? "" : "s"} read${
+              preload.skipped ? `, ${preload.skipped} more not read` : ""}` : ""}`
+            + ". Run computes one."
           : "The shelf did not answer — Run computes in this browser.";
       default:
         return "";
@@ -1600,8 +1729,13 @@ export function Fitter() {
             const audit = j.audit;
             const closes = !!audit && audit.crossings >= audit.expected
               && audit.stray === 0 && audit.broken === 0;
-            const name = `${d.m}×${d.n} · k=${d.ks.join(", ")}`
-              + ` · ${d.hand.toUpperCase()} · ${d.direction.toUpperCase()}`;
+            const name = nameOf(d);
+            /** Put the substitute's whole parameter set in the form. */
+            const adopt = () => {
+              setM(d.m); setN(d.n); setKsText(d.ks.join(", "));
+              setHand(d.hand as "lh" | "rh");
+              setDirection(d.direction as "cw" | "ccw");
+            };
             return (
               <div className="panel hero">
                 <header>
@@ -1616,8 +1750,8 @@ export function Fitter() {
                       {audit.crossings}/{audit.expected} crossings
                     </span>
                   )}
-                  {preload.fallback && (
-                    <span className="chip warn">k = {d.ks.join(", ")}, not yours</span>
+                  {preload.substitute && (
+                    <span className="chip warn">not your parameters</span>
                   )}
                 </header>
                 <div className="body">
@@ -1627,14 +1761,17 @@ export function Fitter() {
                         ? `Δ ${j.metrics.neighbour_delta.toFixed(2)} px` : ""} />
                     <div>
                       <p className="note" style={{ padding: 0 }}>
-                        {preload.fallback ? (
+                        {preload.substitute ? (
                           <>
                             Nothing has been judged <b>★ best</b> for{" "}
-                            <code>{m}×{n} · k={ks.join(", ")}</code>, so this is the{" "}
-                            <code>k = {d.ks.join(", ")}</code> default for the same size and
-                            hand — <em>a different parameter set</em>, shown so there is a
-                            ring on screen rather than a wait. It is not put in the form by
-                            itself; the button below does that.
+                            <code>{m}×{n} · k={ks.join(", ")}</code>, so this is{" "}
+                            {preload.substitute === "default"
+                              ? <>the <code>k = {d.ks.join(", ")}</code> default for the same
+                                 size and hand</>
+                              : <>the nearest judged ring on the shelf</>}{" "}
+                            — <em>a different parameter set</em>, shown so there is a ring on
+                            screen rather than a wait. It is not put in the form by itself;
+                            the button below does that.
                           </>
                         ) : (
                           <>
@@ -1651,11 +1788,10 @@ export function Fitter() {
                         candidate table and the verdict buttons. That is the part that needs
                         the engine.
                       </p>
-                      {preload.fallback && (
+                      {preload.substitute && (
                         <button type="button" className="minibtn"
-                          style={{ marginTop: 10 }}
-                          onClick={() => setKsText(d.ks.join(", "))}>
-                          put k = {d.ks.join(", ")} in the form
+                          style={{ marginTop: 10 }} onClick={adopt}>
+                          put {name} in the form
                         </button>
                       )}
                     </div>

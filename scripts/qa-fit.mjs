@@ -486,7 +486,7 @@ const preloaded = await page.evaluate(() => {
     title: panel?.querySelector('header strong')?.textContent ?? '',
     header: panel?.querySelector('header')?.textContent ?? '',
     line: document.querySelector('.hint.preloaded')?.textContent ?? '',
-    fallbackChip: !!panel && /not yours/.test(panel.querySelector('header')?.textContent ?? ''),
+    fallbackChip: !!panel && /not your parameters/.test(panel.querySelector('header')?.textContent ?? ''),
     inked: inked(),
     engineCalls: window.__engineCalls ?? 0,
     prompt: document.body.textContent.includes('press Run and fit'),
@@ -517,12 +517,12 @@ const fell = await page.evaluate(() => ({
   engineCalls: window.__engineCalls ?? 0,
 }));
 ok('parameters with no best fall back to the k = 0 default',
-  /not yours/.test(fell.header) && /qa-default/.test(fell.line),
+  /not your parameters/.test(fell.header) && /qa-default/.test(fell.line),
   fell.line.replace(/\s+/g, ' ').slice(0, 110));
 ok('the fallback does not silently rewrite the k field',
   fell.ks.replace(/[\s,]+/g, ' ').trim() === strangeKs.join(' '),
   `k stayed ${fell.ks}`);
-ok('and it offers a button that does', /put k = /.test(fell.button), fell.button);
+ok('and it offers a button that does', /put .+ in the form/.test(fell.button), fell.button);
 ok('the fallback cost no engine either', fell.engineCalls === 0,
   `${fell.engineCalls} worker message(s)`);
 
@@ -534,8 +534,52 @@ if (fell.button) {
     header: document.querySelector('.results .panel.hero header')?.textContent ?? '',
   }));
   ok('pressing it puts k = 0 in the form, and the card stops being a substitute',
-    /0/.test(adopted.ks) && !/not yours/.test(adopted.header),
+    /0/.test(adopted.ks) && !/not your parameters/.test(adopted.header),
     `k = ${adopted.ks}`);
+}
+
+// The third rung. Nothing judged for the typed parameters and nothing for the
+// k = 0 default either, but SOMETHING judged elsewhere — here a different size
+// and the other hand. That has to stand in rather than leaving a full run as
+// the only way to see a ring, which on a 4×1 is 194,502 combinations.
+await page.evaluate(({ key, judgement }) => {
+  localStorage.setItem('mxn-fit-judgements', JSON.stringify([{ key, judgement }]));
+}, {
+  key: `picks/v3/rh-ccw/${size.m + 1}x${size.n}/9/s1-eauto-b400000`,
+  judgement: judgementFor('qa-elsewhere'),
+});
+await page.fill('#fit-ks', strangeKs.map(k => k + 2).join(' '));
+await page.waitForTimeout(1600);
+const elsewhere = await page.evaluate(() => ({
+  header: document.querySelector('.results .panel.hero header')?.textContent ?? '',
+  figure: document.querySelector('.results .panel.hero figcaption span')?.textContent ?? '',
+  line: document.querySelector('.hint.preloaded')?.textContent ?? '',
+  button: document.querySelector('.results .panel.hero .minibtn')?.textContent.trim() ?? '',
+  m: document.querySelector('#fit-m')?.value ?? '',
+  engineCalls: window.__engineCalls ?? 0,
+}));
+ok('a best judged for OTHER parameters stands in rather than a full run',
+  /not your parameters/.test(elsewhere.header) && /qa-elsewhere/.test(elsewhere.line),
+  elsewhere.line.replace(/\s+/g, ' ').slice(0, 120));
+ok('and the card names the parameter set it actually belongs to',
+  new RegExp(`${size.m + 1}×${size.n}`).test(elsewhere.figure)
+  && /RH · CCW/.test(elsewhere.figure), elsewhere.figure);
+ok('the shelf-wide search cost no engine either', elsewhere.engineCalls === 0,
+  `${elsewhere.engineCalls} worker message(s)`);
+ok('and it did not touch the size in the form', elsewhere.m === String(size.m),
+  `m stayed ${elsewhere.m}`);
+if (elsewhere.button) {
+  await page.locator('.results .panel.hero .minibtn').first().click();
+  await page.waitForTimeout(1600);
+  const took = await page.evaluate(() => ({
+    m: document.querySelector('#fit-m')?.value ?? '',
+    hand: document.querySelector('.seg button[aria-pressed=true]')?.textContent ?? '',
+    header: document.querySelector('.results .panel.hero header')?.textContent ?? '',
+  }));
+  ok('its button adopts the whole parameter set, not just the k',
+    took.m === String(size.m + 1) && /RH/.test(took.hand)
+    && !/not your parameters/.test(took.header),
+    `m ${took.m} · hand ${took.hand.trim()}`);
 }
 
 // A parameter set nobody has judged at all: the page must say so rather than
@@ -551,7 +595,7 @@ const nothing = await page.evaluate(() => ({
   engineCalls: window.__engineCalls ?? 0,
 }));
 ok('with nothing judged anywhere the page says so and draws no ring',
-  !nothing.panel && /Nothing judged/.test(nothing.line),
+  !nothing.panel && /Nothing has been judged/.test(nothing.line),
   nothing.line.replace(/\s+/g, ' ').slice(0, 110));
 ok('and still runs no engine until Run is pressed', nothing.engineCalls === 0,
   `${nothing.engineCalls} worker message(s)`);

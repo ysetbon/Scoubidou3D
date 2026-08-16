@@ -466,19 +466,42 @@ The fitter now asks the shelf on load, and again on every parameter change,
 1. `GET /cache/picks/v3/<hand>-<direction>/<m>x<n>/<ks>/s1-eauto-b400000`,
    folded with this browser's own judgements exactly as `Run` folds them.
    Reads on that key are public (`CACHE_PUBLIC_READS`), so no token is
-   involved.
-2. A ★ best carrying `strands` is drawn immediately, by `drawExactStage` off
-   those strands — one GET, no engine.
-3. **On a miss, the `k = 0` default for the same size, hand and direction** is
-   asked for and drawn instead. It is marked as what it is — a `k = …, not
-   yours` chip on the card and a line in the sidebar naming the substitution —
-   and it is *never* written into the form by itself. A diagram captioned with
-   parameters it does not belong to is the one thing this page must not do, so
-   adopting the fallback is a button a person presses.
-4. With neither, the sidebar says so and `Run` is what computes one.
+   involved. A ★ best carrying `strands` is drawn immediately, by
+   `drawExactStage` off those strands — one GET, no engine.
+2. **On a miss, the `k = 0` default** for the same size, hand and direction.
+3. **On that miss too, the nearest judged ★ best ANYWHERE on the shelf** — any
+   size, any hand, any k. Local judgements are walked first because they cost
+   nothing; then `/catalogue?prefix=picks/` is listed, every key read back
+   through `parsePicksKey`, and the candidates ordered by `nearness()`: size
+   dominates hand, hand dominates depth, because that is the order in which a
+   different value makes the ring a different object.
+4. With none of the three, the sidebar says so and `Run` is what computes one.
 
-A ★ best saved before rings were stored is a fourth answer and gets its own
+Rungs 2 and 3 are marked as what they are — a `not your parameters` chip on
+the card, the substituted set named in the card's caption and in the sidebar —
+and are *never* written into the form by themselves. A diagram captioned with
+parameters it does not belong to is the one thing this page must not do, so
+adopting a substitute is a button a person presses, and it adopts the whole
+set: size, hand, direction and k together, not just the k.
+
+A ★ best saved before rings were stored is a fifth answer and gets its own
 line: there is a decision, it just cannot be drawn without a weave.
+
+**Why rung 3 exists at all.** The engine's cost is not linear in the size. A
+level walks an extension grid of `(200/step + 1)` choices per pair with the
+pairs independent, so `search-cost.ts` puts a one-level 4×1 at **194,502**
+combinations against a three-level `2×2 [1,2,2]`'s **2,646** — and that 2×2 is
+measured at 27 seconds of engine time. Tens of minutes, single-threaded, in a
+tab. A page whose only answer to that was *press Run and wait* was not offering
+a choice, it was offering a wall. Rung 3 means there is always a real ring on
+screen within a second, and pressing Run for a 4×1 becomes a decision.
+
+The walk is bounded at `ANYWHERE_LIMIT` (16) artifacts and says so when it
+truncates — an artifact carries a whole ring, so an unbounded walk over a full
+shelf would be megabytes for a card that is already a substitute. Each
+candidate is read through `readPicks` rather than off the raw local row, so
+`mergeJudgement`'s invariants apply and a locally-superseded best cannot come
+back as one.
 
 The lookup is debounced (the `k sequence` is a text field) and guarded by a
 token, because two answers can land out of order and a slow reply about
@@ -489,8 +512,10 @@ would be one too many.
 
 `qa:fit` asserts this the only way that means anything — the stub worker counts
 its own `postMessage` calls, so "the ring is on screen **and** the worker
-received zero messages" is checkable, and it is checked for the exact match,
-for the `k = 0` fallback, and for the nothing-judged case.
+received zero messages" is checkable, and it is checked on all four rungs: the
+exact match, the `k = 0` default, a best judged for a different size and hand
+standing in, and the nothing-judged case. It also checks that a substitute does
+not touch the form and that its button adopts the whole parameter set.
 
 **Judged rings — the panel that shows the others.** The auto-load takes the ★
 best and stops, so every other judgement needs a way to be looked at: somebody
@@ -783,9 +808,10 @@ because with no shelf configured the button must not claim to read one), then
 **Export**, then the judgement fields and the three verdict buttons. Under the
 button, ruled off from the run status below it, one line saying what the shelf
 already holds for the parameters as typed — a ★ best drawn without the engine,
-the `k = 0` default standing in for one, or nothing judged either way. It
-updates as the parameters are typed, and it is about the *button*, not about a
-run; the status line stays what it always was.
+a substitute standing in for one (named, so it is never mistaken for the ring
+that was asked for), or nothing judged anywhere. It updates as the parameters
+are typed, and it is about the *button*, not about a run; the status line stays
+what it always was.
 
 There is no fit-policy dropdown and no sort dropdown. The policy went because a
 person's ★ best is the policy and the default covers the rest; the sort key
