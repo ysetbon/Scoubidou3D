@@ -244,3 +244,15 @@ tr.applied .minibtn { border-color: var(--ink); background: var(--acid); }
   border: 1px solid var(--red); background: rgba(228, 81, 63, .08);
   color: var(--red); font: 700 12px/1.6 monospace;
 }
+
+/* The run timeline. Monospace and narrow-numbered on purpose: the two time
+   columns are read by scanning down them for the big gap, which only works if
+   the digits line up. */
+.tl { width: 100%; }
+.tl td { padding: 3px 8px 3px 0; vertical-align: top; font-size: 11px; }
+.tl td.num { font: 700 11px/1.5 monospace; white-space: nowrap; color: var(--muted); }
+.tl td.l { font: 400 11.5px/1.5 Arial, sans-serif; }
+.tl tr.slow td.num { color: var(--red); }
+.tl tr.slow td.l { font-weight: 700; }
+/* The engine's own line while it is working, under the page's status. */
+.status.engine { color: var(--muted); font-weight: 400; margin-top: 4px; }

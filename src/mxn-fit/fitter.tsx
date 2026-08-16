@@ -24,7 +24,7 @@ import {
 } from "../mxn-lab/trace-census";
 import {
   CACHE_TOKEN_KEY, CACHE_URL_KEY, CACHE_VERSION, createCache, mergeJudgement,
-  parsePicksKey, picksKey,
+  parsePicksKey, picksKey, runKey,
   readSetting, writeSetting,
   type Judgement, type JudgementSource, type PickBand, type PicksArtifact,
   type RunDescriptor,
@@ -539,20 +539,41 @@ function ManualFigure({ bands, stage, bounds, caption }: {
   );
 }
 
-function useWorker() {
+/**
+ * One line of the run timeline: what happened, and when.
+ *
+ * `at` is `performance.now()` rather than a wall clock, because the only
+ * question this answers is how long each step took relative to pressing Run.
+ */
+type Note = { at: number; message: string; kind: "page" | "engine" };
+
+function useWorker(onProgress: (message: string) => void) {
   const ref = useRef<Worker | null>(null);
   const waiting = useRef(new Map<number, {
     resolve: (value: any) => void; reject: (error: Error) => void; type: string;
   }>());
   const next = useRef(1);
   const [progress, setProgress] = useState("");
+  // Held in a ref so the message handler is installed once and still calls the
+  // caller's latest callback — re-installing it per render would drop replies.
+  const report = useRef(onProgress);
+  report.current = onProgress;
 
   useEffect(() => {
     const worker = new Worker(new URL(`${BASE}mxn/exact-worker.js`, window.location.href),
                               { type: "module" });
     worker.onmessage = (event) => {
       const data = event.data || {};
-      if (data.type === "progress") { setProgress(String(data.message ?? "")); return; }
+      if (data.type === "progress") {
+        const message = String(data.message ?? "");
+        setProgress(message);
+        // Every one of these, kept. The engine reports its boot and its search
+        // in detail and the page used to show only the latest, behind a status
+        // line that outranked it — so the longest wait on the page looked like
+        // a frozen string. The timeline is that stream, timestamped.
+        report.current(message);
+        return;
+      }
       const held = waiting.current.get(data.id);
       if (!held) return;
       if (data.type === "error") {
@@ -633,7 +654,35 @@ function LengthBars({ before, after }: { before: number[]; after: number[] }) {
 }
 
 export function Fitter() {
-  const { ask, progress } = useWorker();
+  /**
+   * The run timeline — what the page and the engine did, and when.
+   *
+   * Built because "it is still working" was the only thing a slow run could
+   * say. The engine reports its Pyodide boot, its numpy load and each level it
+   * calculates; the page knew all of it and drew none, because the status line
+   * outranked the progress line. On a 2×1 the search is a second and the BOOT
+   * is the wait, which is exactly the distinction a single frozen string
+   * cannot make.
+   */
+  const [timeline, setTimeline] = useState<Note[]>([]);
+  const clock = useRef(0);
+  /** Start the clock, and drop whatever the last run left. */
+  const restartClock = useCallback(() => {
+    clock.current = performance.now();
+    setTimeline([]);
+  }, []);
+  const note = useCallback((message: string, kind: Note["kind"] = "page") => {
+    setTimeline(rows => {
+      // The engine repeats a line while it works; a timeline of one message
+      // 200 times is a worse answer than one line with a count.
+      const last = rows[rows.length - 1];
+      if (last && last.message === message && last.kind === kind) return rows;
+      return [...rows, { at: performance.now() - clock.current, message, kind }];
+    });
+  }, []);
+  const fromEngine = useCallback((message: string) => note(message, "engine"), [note]);
+
+  const { ask, progress } = useWorker(fromEngine);
   // Read once, at the first render, so the preload below asks the shelf about
   // the parameters the URL named rather than about the defaults and then again
   // about the real ones a tick later.
@@ -890,6 +939,7 @@ export function Fitter() {
         openFromPreload(f);
       };
       setPreload({ state: "looking", where: "for a judged ★ best" });
+      const began = performance.now();
       try {
         const asked = await look(wanted);
         if (!current()) return;
@@ -913,7 +963,13 @@ export function Fitter() {
         setPreload({ state: "looking", where: "for any judged ★ best on the shelf" });
         const anywhere = await bestFromAnywhere(wanted, base, token, tried, current);
         if (!current()) return;
-        if (anywhere.found) { show(anywhere.found, "anywhere"); return; }
+        if (anywhere.found) {
+          note(`Preload: nearest best anywhere, in ${
+            ((performance.now() - began) / 1000).toFixed(2)}s — `
+            + `${nameOf(anywhere.found.descriptor)}`);
+          show(anywhere.found, "anywhere");
+          return;
+        }
         // A best that carries no ring is a different answer from no best at
         // all: one of them means "press Run and it will load", the other means
         // "press Run and it will search".
@@ -958,13 +1014,20 @@ export function Fitter() {
       // happens here — and says so, because on a cache hit it is the whole of
       // what the reader is waiting for.
       const engine = session.current;
+      const waitBegan = performance.now();
       if (engine && !engine.primed) {
+        note(`Blocked on the browsing session before L${level} can be fitted`);
         setStatus("The cached run is drawn; waiting for the engine to open the "
           + "browsing session that fitting reads…");
       }
       await engine?.ready;
+      if (engine && !engine.primed) {
+        note(`Session wait: ${((performance.now() - waitBegan) / 1000).toFixed(1)}s`);
+      }
       setStatus(`Reading L${level}'s two bands…`);
+      const planBegan = performance.now();
       const got: Plan = await ask({ type: "fit-plan", level }, "fit-plan-ready");
+      note(`fit-plan L${level} read in ${((performance.now() - planBegan) / 1000).toFixed(1)}s`);
       setPlan(got);
 
       // "Before" is the engine's own ring, drawn from the run, and its lengths
@@ -1034,7 +1097,11 @@ export function Fitter() {
       // survives the audit, which is a finding worth saying) does the page
       // fall back to the default walk below.
       setStatus("Looking for a judged best fit…");
+      const picksBegan = performance.now();
       const shelf = await loadPicks();
+      note(`Judgements read from ${shelf.from} in `
+        + `${((performance.now() - picksBegan) / 1000).toFixed(2)}s — `
+        + `${shelf.judgements.length} for these parameters`);
       setPicks(shelf);
       const best = shelf.judgements.find(j => j.verdict === "best");
       const bands = best?.levels.find(l => l.level === level);
@@ -1161,6 +1228,8 @@ export function Fitter() {
           if (ok) { accepted = attempt; break outer; }
         }
       }
+      note(`Candidate walk: ${tried.length} woven, `
+        + `${accepted ? "one accepted" : "none accepted"}`);
       setAfter(accepted);
       setOrigin(accepted ? { kind: "walk", woven: tried.length } : null);
       setStatus(pickNote + (accepted
@@ -1182,6 +1251,8 @@ export function Fitter() {
     setBusy(true);
     setFailed(false);
     setStages([]); setPlan(null); setBefore(null); setAfter(null); setAttempts([]);
+    restartClock();
+    note(`Run pressed · ${m}×${n} · k=${ks.join(", ")} · ${hand} · ${direction}`);
     try {
       // `generate` is the expensive half of a run — Pyodide boots and the exact
       // solver walks — and it is a pure function of the descriptor, so it is
@@ -1197,17 +1268,30 @@ export function Fitter() {
       const shelf = apiUrl.trim()
         ? createCache({ base: apiUrl.trim(), token: apiToken.trim() }) : null;
       let result: { stages?: Stage[]; rows?: AuditRow[] } | null = null;
+      if (!shelf) note("No worker url — the shelf is not consulted");
       if (shelf) {
         setStatus("Looking for a cached run…");
+        note(`Asking the shelf for run/${runKey(d)}`);
         try {
           const artifact = await shelf.getRun(d);
+          note(artifact?.result
+            ? `Cached run HIT — computed ${artifact.computedAt.slice(0, 10)}`
+              + `${artifact.seconds ? `, cost ${artifact.seconds.toFixed(1)}s then` : ""}`
+            : "Cached run MISS — the engine has to compute it");
           if (artifact?.result) {
             result = artifact.result as { stages?: Stage[]; rows?: AuditRow[] };
             // The diagrams come free; the FITTING does not. The artifact holds
             // what the run returned, and fit_plan/fit_weave read what it left
             // in the engine, so the session is opened here and waited for in
             // fitAt — the levels are on screen while it boots.
-            openSession(d);
+            // THE thing a reader needs to see: the drawing is free and the
+            // session is not. A cache hit still pays a whole generate here,
+            // because fit_plan reads engine state the artifact does not hold.
+            note("Levels drawn from the cache. Opening the browsing session — "
+              + "this runs generate again, and it is the wait");
+            openSession(d).then(
+              () => note("Browsing session open — fitting can read its plan"),
+              () => note("The session failed to open"));
             setStatus(`Cached run from ${artifact.computedAt.slice(0, 10)} — drawn without `
               + "the engine, which is now opening the session that fitting reads.");
           }
@@ -1215,12 +1299,15 @@ export function Fitter() {
       }
       if (result === null) {
         setStatus("Running the engine…");
+        note("Running generate in the browser — Pyodide boots first, then the "
+          + "exact search walks");
         const began = Date.now();
         // This generate IS the session — the run and the state fitting reads
         // are the same call — so it is registered rather than repeated.
         const computed = await openSession(d) as { stages?: Stage[]; rows?: AuditRow[] };
         result = computed;
         const seconds = (Date.now() - began) / 1000;
+        note(`generate finished in ${seconds.toFixed(1)}s`);
         // Writing needs the token; reading does not. A failed write costs the
         // next run its speed-up and nothing else, so it is never fatal.
         if (shelf && apiToken.trim()) {
@@ -1229,7 +1316,8 @@ export function Fitter() {
               kind: "run", cacheVersion: CACHE_VERSION, descriptor: d,
               computedAt: new Date().toISOString(), seconds, result: computed,
             });
-          } catch { /* the run is in hand; only the cache missed out */ }
+            note("Run written back to the shelf, so the next one reads it");
+          } catch { note("Writing the run to the shelf failed"); }
         }
       }
       const payload: { stages?: Stage[]; rows?: AuditRow[] } = result;
@@ -1896,9 +1984,12 @@ export function Fitter() {
             {preloadLine && (
               <p className="hint preloaded" data-state={preload.state}>{preloadLine}</p>
             )}
-            {(status || progress) && (
-              <p className={`status${failed ? " bad" : ""}`}>{status || progress}</p>
-            )}
+            {status && <p className={`status${failed ? " bad" : ""}`}>{status}</p>}
+            {/* The engine's own line, BESIDE the status rather than under it.
+                `status || progress` meant the page's summary silently outranked
+                every word the engine said, for the whole of the longest wait it
+                has — the Pyodide boot, the numpy load, each level calculated. */}
+            {busy && progress && <p className="status engine">⟳ {progress}</p>}
           </section>
 
           <section>
@@ -2057,6 +2148,61 @@ export function Fitter() {
               </div>
             );
           })()}
+
+          {timeline.length > 0 && (
+            <div className="panel">
+              <header>
+                <strong>Timeline</strong>
+                <span>what happened, and how long each step took</span>
+                <span className="spacer" />
+                <span className="chip soft">
+                  {(timeline[timeline.length - 1].at / 1000).toFixed(1)}s total
+                </span>
+                <button type="button" className="minibtn"
+                  title="Copy the timeline, to paste somewhere it can be read"
+                  onClick={() => navigator.clipboard?.writeText(
+                    timeline.map(r => `${(r.at / 1000).toFixed(2).padStart(7)}s  `
+                      + `${r.kind === "engine" ? "engine" : "page  "}  ${r.message}`)
+                      .join("\n"))}>
+                  copy
+                </button>
+              </header>
+              <div className="body scroller" style={{ padding: "0 14px" }}>
+                <table className="tl">
+                  <tbody>
+                    {timeline.map((row, index) => {
+                      // The gap from the previous line is the number that
+                      // actually names the slow step; the absolute time only
+                      // says where in the run it happened.
+                      const took = row.at - (index ? timeline[index - 1].at : 0);
+                      return (
+                        <tr key={index} className={took > 2000 ? "slow" : ""}>
+                          <td className="num">{(row.at / 1000).toFixed(2)}s</td>
+                          <td className="num">
+                            {took >= 100 ? `+${(took / 1000).toFixed(2)}s` : ""}
+                          </td>
+                          <td className="l">
+                            <span className={`tag ${row.kind === "engine" ? "eng" : "fit"}`}>
+                              {row.kind}
+                            </span>
+                          </td>
+                          <td className="l">{row.message}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="note">
+                Every line the page and the engine produced, timestamped from the moment{" "}
+                <em>Run</em> was pressed. The <b>+</b> column is the gap from the line above,
+                which is the one that names the slow step; rows costing more than two seconds
+                are marked. <em>engine</em> rows come from the worker itself — the Pyodide
+                boot, the numpy load, each level calculated — and they used to be invisible,
+                because the status line outranked them.
+              </p>
+            </div>
+          )}
 
           {!plan && !busy && preload.state !== "shown" && (
             <p className="note" style={{ padding: 0 }}>
