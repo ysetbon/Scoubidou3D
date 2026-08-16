@@ -273,6 +273,16 @@ arms moved to where the knobs place them (masks are intersections of their two
 strands, so the crossings follow the moved arms by construction), the band
 tinted one colour per pair, targets ringed and any shortfall drawn dashed red.
 
+**Both bands are placed, not just the one on screen.** The band switch changes
+which knobs are showing, not which work exists: `drawManualRing` takes every
+band that has knobs and moves each from its own, so a V band a hand has already
+fitted stays fitted while the H band is being edited, and the reverse. Only the
+tinting distinguishes them — the focused band takes the per-pair colours and
+the target rings, the other keeps the colours it was drawn in, and the legend
+says which of the two it is showing. Drawing the unfocused band from the
+engine's weave instead would make switching bands look like it had undone the
+previous band's fit, in the one picture that is supposed to be the real ring.
+
 The pairs move in one of two modes, picked by a switch in the panel's header:
 
 - **Coupled** (the default): moving one pair re-solves the others live to the
