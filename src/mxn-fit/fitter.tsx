@@ -533,6 +533,44 @@ export function Fitter() {
     apiUrl.trim(), apiToken.trim());
 
   /**
+   * The engine's browsing session for the run on screen.
+   *
+   * `generate` leaves each level's checkpoint, candidate lists and band inputs
+   * in the worker's Python, and every fit call reads them: without that state
+   * `bridge.fit_plan` raises "level N has no browsing session; run generate
+   * first". A cached run artifact restores what a run RETURNED — the stages and
+   * the audit rows, JSON — and not what it LEFT BEHIND, so a cache hit has to
+   * open a session of its own before anything can be fitted.
+   *
+   * Held as a promise rather than awaited on the spot so the cached levels are
+   * drawn straight away and the engine boots behind them; `fitAt` is the one
+   * that waits, because it is the one that needs it.
+   */
+  const session = useRef<{ ready: Promise<unknown>; primed: boolean } | null>(null);
+
+  /**
+   * Open a session for `d`, or adopt the one a generate already in flight is
+   * opening. Returns the same promise either way, so the caller that ran the
+   * generate can still read its result.
+   */
+  const openSession = (d: RunDescriptor, running?: Promise<unknown>) => {
+    const ready = running ?? ask(
+      { type: "generate", m: d.m, n: d.n, ks: d.ks, hand: d.hand, direction: d.direction },
+      "result");
+    const entry = { ready, primed: false };
+    session.current = entry;
+    // A failed generate leaves no session, so it must not be remembered as one:
+    // the next run gets to try again rather than inheriting the wreck. The
+    // handler is also what keeps a background failure from surfacing as an
+    // unhandled rejection — whoever awaits `ready` reports it.
+    ready.then(
+      () => { entry.primed = true; },
+      () => { if (session.current === entry) session.current = null; },
+    );
+    return ready;
+  };
+
+  /**
    * Look for a drawable ★ best on load, and on every parameter change.
    *
    * Deliberately the ONLY place on this page that reads the shelf without the
@@ -617,6 +655,16 @@ export function Fitter() {
     setFollowNote(""); setManualWoven(null);
     try {
       const level = target;
+      // Everything below asks the engine about a session `generate` opened. A
+      // run served from the cache drew its diagrams without one, so the wait
+      // happens here — and says so, because on a cache hit it is the whole of
+      // what the reader is waiting for.
+      const engine = session.current;
+      if (engine && !engine.primed) {
+        setStatus("The cached run is drawn; waiting for the engine to open the "
+          + "browsing session that fitting reads…");
+      }
+      await engine?.ready;
       setStatus(`Reading L${level}'s two bands…`);
       const got: Plan = await ask({ type: "fit-plan", level }, "fit-plan-ready");
       setPlan(got);
@@ -854,16 +902,22 @@ export function Fitter() {
           const artifact = await shelf.getRun(d);
           if (artifact?.result) {
             result = artifact.result as { stages?: Stage[]; rows?: AuditRow[] };
-            setStatus(`Cached run from ${artifact.computedAt.slice(0, 10)} — no engine needed.`);
+            // The diagrams come free; the FITTING does not. The artifact holds
+            // what the run returned, and fit_plan/fit_weave read what it left
+            // in the engine, so the session is opened here and waited for in
+            // fitAt — the levels are on screen while it boots.
+            openSession(d);
+            setStatus(`Cached run from ${artifact.computedAt.slice(0, 10)} — drawn without `
+              + "the engine, which is now opening the session that fitting reads.");
           }
         } catch { /* a miss and an absent shelf are the same thing here */ }
       }
       if (result === null) {
         setStatus("Running the engine…");
         const began = Date.now();
-        const computed = await ask(
-          { type: "generate", m, n, ks, hand, direction }, "result",
-        ) as { stages?: Stage[]; rows?: AuditRow[] };
+        // This generate IS the session — the run and the state fitting reads
+        // are the same call — so it is registered rather than repeated.
+        const computed = await openSession(d) as { stages?: Stage[]; rows?: AuditRow[] };
         result = computed;
         const seconds = (Date.now() - began) / 1000;
         // Writing needs the token; reading does not. A failed write costs the
@@ -1904,7 +1958,15 @@ export function Fitter() {
                   not context.
                 </p>
               </div>
+            </>
+          )}
 
+          {/* The run's own diagrams do not wait on the fit, and must not: a
+              cached run has its stages the moment the shelf answers, while the
+              engine is still opening the browsing session every fit call reads.
+              Gated on the plan, the stitch appeared only after that wait — and
+              the cache bought the reader nothing. */}
+          {stages.length > 0 && (
               <div className="panel">
                 <header>
                   <strong>Every level</strong>
@@ -1946,7 +2008,10 @@ export function Fitter() {
                   that is applied right now, so it agrees with the card above it.
                 </p>
               </div>
+          )}
 
+          {plan && (
+            <>
               <div className="panel">
                 <header>
                   <strong>Judged rings</strong>
