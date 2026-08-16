@@ -20,6 +20,7 @@
     "check:atlas": "esbuild scripts/check-atlas.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-atlas.mjs --log-level=warning && node node_modules/.cache/check-atlas.mjs",
     "check:fit": "esbuild scripts/check-fit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-fit.mjs --log-level=warning && node node_modules/.cache/check-fit.mjs",
     "check:board": "esbuild scripts/check-board.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-board.mjs --log-level=warning && node node_modules/.cache/check-board.mjs",
+    "check:enginekey": "node scripts/engine-key.mjs --check",
     "pages:board": "node scripts/ks-board-pages.mjs",
     "dump:ks": "esbuild scripts/ks-dump.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/ks-dump.mjs --log-level=warning && node node_modules/.cache/ks-dump.mjs",
     "art": "esbuild scripts/sample-art.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/sample-art.mjs --log-level=warning && node node_modules/.cache/sample-art.mjs",
