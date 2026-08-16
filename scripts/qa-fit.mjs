@@ -212,6 +212,39 @@ if (knobs.rows >= 3) {
   });
   ok('and the diagram redraws under the drag', redrawn !== hero.hash,
     `${hero.hash} → ${redrawn}`);
+
+  // The other half of the switch: independent mode. Toggled off, a pair moves
+  // alone — and once the arms disagree, the static fix lights up and solves
+  // every other pair from the fixed one, one division per pair.
+  await page.click('.follow');
+  const toggled = await page.evaluate(() =>
+    document.querySelector('.follow')?.getAttribute('aria-pressed') ?? '');
+  ok('the switch turns the coupling off', toggled === 'false');
+  const still = await page.evaluate(() =>
+    document.querySelectorAll('.mrow .mnum')[2].value);
+  await page.locator('.mrow .mnum').nth(1).fill('100');
+  await page.waitForTimeout(300);
+  const alone = await page.evaluate(() => ({
+    other: document.querySelectorAll('.mrow .mnum')[2].value,
+    fixEnabled: (() => {
+      const b = document.querySelector('.mfix');
+      return !!b && !b.disabled;
+    })(),
+  }));
+  ok('independent: moving pair 1 leaves pair 2 alone', alone.other === still,
+    `pair 2 stays ${still}`);
+  ok('the fix button lights when the arms disagree', alone.fixEnabled);
+  await page.click('.mfix');
+  await page.waitForTimeout(300);
+  const fixed = await page.evaluate(() => ({
+    other: document.querySelectorAll('.mrow .mnum')[2].value,
+    read: document.querySelector('.mread')?.textContent ?? '',
+    warn: document.querySelector('.mwarn')?.textContent ?? '',
+  }));
+  const fixedDelta = Number.parseFloat((fixed.read.match(/Δ neigh (\d+\.\d+)/) ?? [])[1] ?? 'NaN');
+  ok('fixing solves the others from the fixed pair — or reports the clamp',
+    (fixed.other !== alone.other && fixedDelta < 0.01) || fixed.warn.length > 0,
+    `pair 2: ${alone.other} → ${fixed.other} · Δ ${fixedDelta}${fixed.warn ? ' · clamped' : ''}`);
 }
 
 ok('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
