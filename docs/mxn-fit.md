@@ -397,6 +397,10 @@ kind beside `run` and `trace` and mirrors the verdict onto the `solutions` row
 buttons — local copy first, then the shelf and the D1 row, with the status line
 naming which of the three happened.
 
+To read those judgements back from a terminal — to check a ★ best reached the
+shelf, or to recover the knobs that reproduce a ring — see
+[docs/picks-shelf.md](picks-shelf.md).
+
 And the fitter reads it back. **Run and fit** looks for a judged **★ best**
 before any policy is consulted — the shelf when a Worker URL is configured,
 folded with the browser's own local judgements either way — and a found best is
