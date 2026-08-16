@@ -268,9 +268,18 @@ await page.evaluate(({ key, judgement }) => {
     at: '2026-08-16T00:00:00.000Z',
     levels: [{
       level: topLevel,
-      h: size.held.h.ext ? { ext: size.held.h.ext, angle: null } : null,
-      v: size.held.v.ext ? { ext: size.held.v.ext, angle: null } : null,
+      // Extensions the stub will NOT weave — deliberately not the held ones.
+      h: size.held.h.ext ? { ext: size.held.h.ext.map(e => e + 7), angle: null } : null,
+      v: size.held.v.ext ? { ext: size.held.v.ext.map(e => e + 7), angle: null } : null,
     }],
+    // The ring itself, and an audit to caption it. Deliberately NOT the
+    // extensions the stub would agree to weave: the stub refuses every weave
+    // except the baseline, so if this loads at all it can only be because the
+    // stored strands were read rather than an engine asked. That refusal is
+    // the assertion — a stub cannot fake a ring it declines to build.
+    audit: { crossings: size.before.row.across, expected: size.before.row.expected,
+             stray: 0, broken: 0 },
+    strands: size.before.strands,
   },
 });
 await page.reload({ waitUntil: 'domcontentloaded' });
@@ -291,6 +300,11 @@ const judged = await page.evaluate(() => ({
 ok('a judged ★ best loads instead of the candidate walk',
   /Loaded the best fit/.test(judged.status) && /judged by qa/.test(judged.status),
   judged.status.slice(0, 110));
+// And it loaded WITHOUT an engine: the seeded pick names extensions the stub
+// refuses to weave, so reaching "ring read as stored" proves the strands
+// stored with the judgement were used instead of a weave being asked for.
+ok('a judgement carrying its ring is read, not re-woven',
+  /ring read as stored/.test(judged.status), judged.status.slice(0, 110));
 // The "after" card has to name where its ring came from. Captioning a person's
 // ★ best as plain "fitted" was the page calling three provenances one thing.
 const provenance = await page.evaluate(() => {

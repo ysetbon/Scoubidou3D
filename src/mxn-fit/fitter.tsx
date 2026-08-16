@@ -23,7 +23,7 @@ import {
   VALID, VERDICT_NAMES, placeStarts, sweepAngle,
 } from "../mxn-lab/trace-census";
 import {
-  CACHE_TOKEN_KEY, CACHE_URL_KEY, createCache, mergeJudgement, picksKey,
+  CACHE_TOKEN_KEY, CACHE_URL_KEY, CACHE_VERSION, createCache, mergeJudgement, picksKey,
   readSetting, writeSetting,
   type Judgement, type PickBand, type PicksArtifact, type RunDescriptor,
   type Verdict,
@@ -563,11 +563,36 @@ export function Fitter() {
       const best = shelf.judgements.find(j => j.verdict === "best");
       const bands = best?.levels.find(l => l.level === level);
       const pick = best && bands && (bands.h || bands.v)
-        ? { h: bands.h, v: bands.v, chooser: best.chooser, from: shelf.from } : null;
+        ? { h: bands.h, v: bands.v, chooser: best.chooser, from: shelf.from,
+            strands: best.strands as Strand[] | undefined,
+            audit: best.audit } : null;
       let pickNote = "";
       if (pick) {
-        setStatus(`Weaving the best fit ${pick.chooser} judged…`);
-        const woven = await ask({
+        // The ring, if the judgement carried it. Re-weaving a ring somebody
+        // already built is work nobody needs — the strands ARE the answer, and
+        // the audit travelled with them. Judgements saved before this stored
+        // no strands, so those still ask the engine.
+        const stored: Woven | null = pick.strands && pick.audit
+          ? {
+              level,
+              h: { ext: pick.h?.ext ?? [], angle: pick.h?.angle ?? null },
+              v: { ext: pick.v?.ext ?? [], angle: pick.v?.angle ?? null },
+              crossings: pick.audit.crossings,
+              strands: pick.strands,
+              row: {
+                level, k: got.k, expected: pick.audit.expected,
+                across: pick.audit.crossings, within: 0, masks: 0,
+                stray: pick.audit.stray, broken: pick.audit.broken,
+                healthy: pick.audit.crossings >= pick.audit.expected
+                  && pick.audit.stray === 0 && pick.audit.broken === 0,
+                ext: [],
+              },
+            }
+          : null;
+        setStatus(stored
+          ? `Reading the ring ${pick.chooser} judged…`
+          : `Weaving the best fit ${pick.chooser} judged…`);
+        const woven = stored ?? await ask({
           type: "fit-weave", level,
           hExt: pick.h?.ext ?? held.h?.ext ?? null,
           hAngle: pick.h?.angle ?? held.h?.angle ?? null,
@@ -600,7 +625,8 @@ export function Fitter() {
           setOrigin({ kind: "judged", verdict: "best", chooser: pick.chooser,
                       from: pick.from });
           setStatus(`Loaded the best fit from ${pick.from} — judged by ${pick.chooser}, `
-            + `and the ring still closes (${woven.row.across}/${woven.row.expected}).`);
+            + `${stored ? "ring read as stored" : "re-woven"}`
+            + ` (${woven.row.across}/${woven.row.expected} crossings).`);
           setBusy(false);
           return;
         }
@@ -681,12 +707,51 @@ export function Fitter() {
     setFailed(false);
     setStages([]); setPlan(null); setBefore(null); setAfter(null); setAttempts([]);
     try {
-      setStatus("Running the engine…");
-      const result = await ask({ type: "generate", m, n, ks, hand, direction }, "result");
-      const drawn: Stage[] = (result.stages ?? []).filter((s: Stage) => s.level >= 1);
-      const audits: AuditRow[] = result.rows ?? [];
+      // `generate` is the expensive half of a run — Pyodide boots and the exact
+      // solver walks — and it is a pure function of the descriptor, so it is
+      // exactly what a cache is for. The fitter's own descriptor is asked for
+      // by key, and a MISS is written back, because the runs already on the
+      // shelf were computed under different flags (`s1-e5-b100000000`) and
+      // would never match the fitter's (`s1-eauto-b400000`). Without the write
+      // the read could never hit and the cache would be decoration.
+      const d: RunDescriptor = { m, n, ks, hand, direction, ...DESCRIPTOR_FLAGS };
+      const shelf = apiUrl.trim()
+        ? createCache({ base: apiUrl.trim(), token: apiToken.trim() }) : null;
+      let result: { stages?: Stage[]; rows?: AuditRow[] } | null = null;
+      if (shelf) {
+        setStatus("Looking for a cached run…");
+        try {
+          const artifact = await shelf.getRun(d);
+          if (artifact?.result) {
+            result = artifact.result as { stages?: Stage[]; rows?: AuditRow[] };
+            setStatus(`Cached run from ${artifact.computedAt.slice(0, 10)} — no engine needed.`);
+          }
+        } catch { /* a miss and an absent shelf are the same thing here */ }
+      }
+      if (result === null) {
+        setStatus("Running the engine…");
+        const began = Date.now();
+        const computed = await ask(
+          { type: "generate", m, n, ks, hand, direction }, "result",
+        ) as { stages?: Stage[]; rows?: AuditRow[] };
+        result = computed;
+        const seconds = (Date.now() - began) / 1000;
+        // Writing needs the token; reading does not. A failed write costs the
+        // next run its speed-up and nothing else, so it is never fatal.
+        if (shelf && apiToken.trim()) {
+          try {
+            await shelf.putRun({
+              kind: "run", cacheVersion: CACHE_VERSION, descriptor: d,
+              computedAt: new Date().toISOString(), seconds, result: computed,
+            });
+          } catch { /* the run is in hand; only the cache missed out */ }
+        }
+      }
+      const payload: { stages?: Stage[]; rows?: AuditRow[] } = result;
+      const drawn: Stage[] = (payload.stages ?? []).filter((s: Stage) => s.level >= 1);
+      const audits: AuditRow[] = payload.rows ?? [];
       setStages(drawn);
-      setAllStages(result.stages ?? []);
+      setAllStages(payload.stages ?? []);
       setRanAt(new Date().toISOString());
       setAuditRows(audits);
       setBusy(false);
@@ -956,9 +1021,28 @@ export function Fitter() {
     }
     setBusy(true);
     setFailed(false);
-    setStatus(`Weaving ${j.chooser}'s ${j.verdict} ring…`);
+    setStatus(j.strands
+      ? `Reading ${j.chooser}'s ${j.verdict} ring…`
+      : `Weaving ${j.chooser}'s ${j.verdict} ring…`);
     try {
-      const woven = await ask({
+      const stored: Woven | null = j.strands && j.audit
+        ? {
+            level: fitLevel,
+            h: { ext: bands.h?.ext ?? [], angle: bands.h?.angle ?? null },
+            v: { ext: bands.v?.ext ?? [], angle: bands.v?.angle ?? null },
+            crossings: j.audit.crossings,
+            strands: j.strands as Strand[],
+            row: {
+              level: fitLevel, k: plan.k, expected: j.audit.expected,
+              across: j.audit.crossings, within: 0, masks: 0,
+              stray: j.audit.stray, broken: j.audit.broken,
+              healthy: j.audit.crossings >= j.audit.expected
+                && j.audit.stray === 0 && j.audit.broken === 0,
+              ext: [],
+            },
+          }
+        : null;
+      const woven = stored ?? await ask({
         type: "fit-weave", level: fitLevel,
         hExt: bands.h?.ext ?? held.h?.ext ?? null,
         hAngle: bands.h?.angle ?? held.h?.angle ?? null,
@@ -1049,6 +1133,12 @@ export function Fitter() {
                  gap_margin: Number.isFinite(margin) ? margin : 0 },
       audit: { crossings: row.across, expected: row.expected,
                stray: row.stray, broken: row.broken },
+      // The ring itself, not just the knobs that make it. A judgement holding
+      // only extensions and an angle can be re-woven, but only by an engine —
+      // so reading one back cost a Pyodide boot for a ring somebody had
+      // already built. Stored, the diagram is drawable the moment the
+      // judgement is read. Costs a few KB per judgement; buys the wait.
+      strands: attempt ? attempt.woven.strands : before.stage.strands,
     };
 
     // Local first, always: a wrong URL or a bad token must lose the upload,
