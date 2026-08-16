@@ -108,6 +108,25 @@ type Attempt = {
   accepted: boolean;
 };
 
+/** The judgements for one parameter set, and which stores answered for them. */
+type Picks = { judgements: Judgement[]; from: string; reached: boolean };
+
+/**
+ * Where the ring in the "after" card came from.
+ *
+ * The card used to be captioned `fitted` whatever produced it, which stopped
+ * being true the moment a person's ★ best could be what loaded: three very
+ * different provenances were all being called the same thing.
+ */
+type Origin =
+  | { kind: "judged"; verdict: Verdict; chooser: string; from: string }
+  | { kind: "walk"; woven: number }
+  | { kind: "manual" };
+
+const VERDICT_GLYPH: Record<Verdict, string> = {
+  best: "★", valid: "✓", rejected: "✗",
+};
+
 const ksOf = (raw: string) => raw.replace(/[[\],]/g, " ").trim().split(/\s+/)
   .map(Number).filter(Number.isInteger);
 
@@ -380,6 +399,8 @@ export function Fitter() {
   const [before, setBefore] = useState<{ stage: Stage; lengths: Record<BandKey, number[]>;
                                          woven: Woven } | null>(null);
   const [after, setAfter] = useState<Attempt | null>(null);
+  const [origin, setOrigin] = useState<Origin | null>(null);
+  const [picks, setPicks] = useState<Picks>({ judgements: [], from: "", reached: true });
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [candidates, setCandidates] = useState<Record<BandKey, Candidate[]>>(
     { h: [], v: [] });
@@ -409,25 +430,27 @@ export function Fitter() {
   const ks = useMemo(() => ksOf(ksText), [ksText]);
 
   /**
-   * The best ring anyone has judged for this parameter set at this level.
+   * Every judgement anyone has made about this parameter set.
    *
-   * Read from the shelf when a Worker is configured, and either way folded
-   * together with this browser's own local judgements — the local copy is
-   * written first on every save, so it can hold a decision the shelf never
-   * received. mergeJudgement holds the invariants while folding, so at most
-   * one `best` survives and a rejected best never comes back. Returns null
-   * when nobody has marked a best for this level, or when neither store is
-   * reachable — a fit must never be blocked by the database being away.
+   * Read from the Cloudflare shelf when a Worker is configured, and either way
+   * folded together with this browser's own local judgements — the local copy
+   * is written first on every save, so it can hold a decision the shelf never
+   * received. mergeJudgement holds the invariants while folding, so at most one
+   * `best` survives and a rejected best never comes back. Neither store being
+   * reachable is not an error: a fit must never be blocked by the database
+   * being away, so an unreachable shelf reads as "no judgements there".
    */
-  const loadBestPick = async (level: number) => {
+  const loadPicks = async (): Promise<Picks> => {
     const d: RunDescriptor = { m, n, ks, hand, direction, ...DESCRIPTOR_FLAGS };
     let artifact: PicksArtifact | null = null;
-    let from = "this browser's judgements";
+    let from = "this browser";
+    let reached = !apiUrl.trim();
     if (apiUrl.trim()) {
       try {
         artifact = await createCache({ base: apiUrl.trim(), token: apiToken.trim() })
           .getPicks(d);
-        if (artifact) from = "the shelf";
+        reached = true;
+        if (artifact) from = "Cloudflare";
       } catch { /* the shelf being away must not block the fit */ }
     }
     try {
@@ -437,12 +460,11 @@ export function Fitter() {
       for (const row of rows) {
         if (row.key !== key) continue;
         artifact = mergeJudgement(artifact, row.judgement, d);
+        if (from !== "Cloudflare") from = "this browser";
+        else from = "Cloudflare and this browser";
       }
     } catch { /* a torn local store reads as no judgements, not as an error */ }
-    const best = artifact?.judgements.find(j => j.verdict === "best");
-    const bands = best?.levels.find(l => l.level === level);
-    if (!best || !bands || (!bands.h && !bands.v)) return null;
-    return { h: bands.h, v: bands.v, chooser: best.chooser, from };
+    return { judgements: artifact?.judgements ?? [], from, reached };
   };
 
   /**
@@ -459,6 +481,7 @@ export function Fitter() {
     setFailed(false);
     setFitLevel(target);
     setPlan(null); setBefore(null); setAfter(null); setAttempts([]); setMismatch("");
+    setOrigin(null);
     setHeld({ h: null, v: null }); setManual({ h: null, v: null });
     setTouched({ h: false, v: false }); setAnchor({ h: 0, v: 0 });
     setFollowNote(""); setManualWoven(null);
@@ -535,7 +558,12 @@ export function Fitter() {
       // survives the audit, which is a finding worth saying) does the page
       // fall back to the default walk below.
       setStatus("Looking for a judged best fit…");
-      const pick = await loadBestPick(level);
+      const shelf = await loadPicks();
+      setPicks(shelf);
+      const best = shelf.judgements.find(j => j.verdict === "best");
+      const bands = best?.levels.find(l => l.level === level);
+      const pick = best && bands && (bands.h || bands.v)
+        ? { h: bands.h, v: bands.v, chooser: best.chooser, from: shelf.from } : null;
       let pickNote = "";
       if (pick) {
         setStatus(`Weaving the best fit ${pick.chooser} judged…`);
@@ -569,6 +597,8 @@ export function Fitter() {
         setAttempts([attempt]);
         if (ok) {
           setAfter(attempt);
+          setOrigin({ kind: "judged", verdict: "best", chooser: pick.chooser,
+                      from: pick.from });
           setStatus(`Loaded the best fit from ${pick.from} — judged by ${pick.chooser}, `
             + `and the ring still closes (${woven.row.across}/${woven.row.expected}).`);
           setBusy(false);
@@ -630,6 +660,7 @@ export function Fitter() {
         }
       }
       setAfter(accepted);
+      setOrigin(accepted ? { kind: "walk", woven: tried.length } : null);
       setStatus(pickNote + (accepted
         ? `Fitted, and the ring still closes — ${tried.length} candidate${
             tried.length === 1 ? "" : "s"} woven.`
@@ -875,6 +906,7 @@ export function Fitter() {
   const adoptManual = () => {
     if (!manualWoven?.accepted) return;
     setAfter(manualWoven);
+    setOrigin({ kind: "manual" });
     setAttempts(current => [...current, manualWoven]);
     setStatus("Manual ring adopted as the fitted ring.");
     setFailed(false);
@@ -889,6 +921,84 @@ export function Fitter() {
   const descriptor = useMemo<RunDescriptor>(() => (
     { m, n, ks, hand, direction, ...DESCRIPTOR_FLAGS }
   ), [m, n, ks, hand, direction]);
+
+  /** Re-read the shelf without re-running the engine — after setting a url. */
+  const refreshPicks = async () => {
+    setBusy(true);
+    setStatus("Reading the judgements…");
+    const shelf = await loadPicks();
+    setPicks(shelf);
+    setFailed(!shelf.reached);
+    setStatus(shelf.judgements.length
+      ? `${shelf.judgements.length} judgement${shelf.judgements.length === 1 ? "" : "s"}`
+        + ` from ${shelf.from}.`
+      : shelf.reached ? "No judgements for these parameters yet."
+        : "The worker url did not answer — showing this browser's judgements only.");
+    setBusy(false);
+  };
+
+  /**
+   * Weave one judgement's pick and show it as the fitted ring.
+   *
+   * The auto-load on Run takes the ★ best and stops; this is how any OTHER
+   * judgement gets looked at — somebody else's, an older one, or a ✓ valid you
+   * want to compare against the best. It re-weaves rather than trusting the
+   * stored metrics, so what the card shows is a ring the engine just built, and
+   * the audit line under it is this weave's own.
+   */
+  const loadJudgement = async (j: Judgement) => {
+    if (!plan || !before) return;
+    const bands = j.levels.find(l => l.level === fitLevel);
+    if (!bands || (!bands.h && !bands.v)) {
+      setStatus(`${j.chooser}'s ${j.verdict} judgement does not cover L${fitLevel}.`);
+      setFailed(true);
+      return;
+    }
+    setBusy(true);
+    setFailed(false);
+    setStatus(`Weaving ${j.chooser}'s ${j.verdict} ring…`);
+    try {
+      const woven = await ask({
+        type: "fit-weave", level: fitLevel,
+        hExt: bands.h?.ext ?? held.h?.ext ?? null,
+        hAngle: bands.h?.angle ?? held.h?.angle ?? null,
+        vExt: bands.v?.ext ?? held.v?.ext ?? null,
+        vAngle: bands.v?.angle ?? held.v?.angle ?? null,
+      }, "fit-weave-ready") as Woven;
+      const lengths = {
+        h: plan.h?.unavailable ? [] : measure(woven.strands, plan.h.names),
+        v: plan.v?.unavailable ? [] : measure(woven.strands, plan.v.names),
+      };
+      const asCandidate = (key: BandKey): Candidate | null => {
+        const inputs = plan[key];
+        const p = key === "h" ? bands.h : bands.v;
+        if (!inputs || inputs.unavailable || !p || p.angle === null) return null;
+        const r = readAt(inputs, p.ext, p.angle);
+        return {
+          ext: [...p.ext], angle: p.angle, star: r.lengths[0] ?? 0,
+          lengths: r.lengths, gaps: r.gaps, margin: r.margin, delta: r.delta,
+          totalExt: p.ext.reduce((a, b) => a + b, 0),
+        };
+      };
+      const attempt: Attempt = {
+        h: asCandidate("h"), v: asCandidate("v"), woven, lengths,
+        accepted: !!woven.row?.healthy,
+      };
+      setAfter(attempt);
+      setOrigin({ kind: "judged", verdict: j.verdict, chooser: j.chooser,
+                  from: picks.from });
+      setAttempts(current => [...current, attempt]);
+      setStatus(`${VERDICT_GLYPH[j.verdict]} ${j.chooser}'s ${j.verdict} ring, woven`
+        + ` — ${woven.row.across}/${woven.row.expected} crossings`
+        + `${woven.row.healthy ? "" : ", and it does not close"}.`);
+      setFailed(!woven.row?.healthy);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   /** The ring a verdict would be about: manual if woven, else fitted, else engine's. */
   const judgedSource = manualWoven ? "hand" as const
@@ -1433,7 +1543,12 @@ export function Fitter() {
                       caption={beforeLengths.length
                         ? `Δ ${neighbourDelta(beforeLengths).toFixed(2)} px` : ""} />
                     <RingFigure
-                      title={after ? `L${fitLevel} · fitted` : "fitted — none accepted"}
+                      title={!after ? "fitted — none accepted"
+                        : origin?.kind === "judged"
+                          ? `L${fitLevel} · ${VERDICT_GLYPH[origin.verdict]} ${origin.verdict}`
+                            + ` · ${origin.chooser}`
+                        : origin?.kind === "manual" ? `L${fitLevel} · adopted by hand`
+                        : `L${fitLevel} · fitted`}
                       stage={after
                         ? { level: fitLevel, k: plan.k, label: "fitted", strands: after.woven.strands }
                         : null}
@@ -1444,7 +1559,10 @@ export function Fitter() {
                   <LengthBars before={beforeLengths} after={afterLengths} />
                 </div>
                 <p className="note">
-                  Both are the engine's own output. The lengths beside them are measured off
+                  Both are the engine's own output, and the right-hand card names where its
+                  ring came from — a person's <b>★ best</b> with the chooser who judged it,
+                  a ring <em>adopted by hand</em>, or <em>fitted</em> from the candidate walk.
+                  The lengths beside them are measured off
                   those strands rather than recomputed from the extensions that were asked for,
                   so what is quoted is what is drawn. Fitting a level slides its arms along
                   their parents, which <em>lengthens the level below by the same amount</em> —
@@ -1457,30 +1575,126 @@ export function Fitter() {
                 <header>
                   <strong>Every level</strong>
                   <span>
-                    the run's own diagrams — press one to fit that level instead
+                    the run's own diagrams, the fitted level as it now stands —
+                    press one to fit that level instead
                   </span>
                   <span className="spacer" />
                   <span className="chip soft">{stages.length} level{stages.length === 1 ? "" : "s"}</span>
                 </header>
                 <div className="body">
                   <div className="levels">
-                    {stages.map(s => (
-                      <button key={s.level} type="button" className="level"
-                        aria-pressed={s.level === fitLevel} disabled={busy}
-                        onClick={() => { if (s.level !== fitLevel) fitAt(s.level, stages, auditRows); }}
-                        title={`Fit L${s.level}`}>
-                        <RingFigure title={`L${s.level}${s.k === null ? "" : ` · k=${s.k}`}`}
-                          stage={s} bounds={bounds}
-                          caption={s.level === fitLevel ? "fitting" : ""} />
-                      </button>
-                    ))}
+                    {stages.map(s => {
+                      // The fitted level shows the ring that is actually applied,
+                      // not the one the run first drew — otherwise the strip
+                      // contradicts the card above it about the same level.
+                      const isFitted = s.level === fitLevel && !!after;
+                      return (
+                        <button key={s.level} type="button" className="level"
+                          aria-pressed={s.level === fitLevel} disabled={busy}
+                          onClick={() => { if (s.level !== fitLevel) fitAt(s.level, stages, auditRows); }}
+                          title={isFitted ? `L${s.level}, as fitted` : `Fit L${s.level}`}>
+                          <RingFigure title={`L${s.level}${s.k === null ? "" : ` · k=${s.k}`}`}
+                            stage={isFitted
+                              ? { ...s, label: "fitted", strands: after!.woven.strands } : s}
+                            bounds={bounds}
+                            caption={isFitted ? "fitted"
+                              : s.level === fitLevel ? "fitting" : ""} />
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 <p className="note">
                   Each card is the stitch as it stood at that level, drawn by{" "}
                   <code>drawExactStage</code> — the same renderer <code>/mxn/</code> uses, off
                   the same strands. They share one frame, so a ring that grew is drawn bigger
-                  rather than rescaled to look the same.
+                  rather than rescaled to look the same. The level being fitted shows the ring
+                  that is applied right now, so it agrees with the card above it.
+                </p>
+              </div>
+
+              <div className="panel">
+                <header>
+                  <strong>Judged rings</strong>
+                  <span>
+                    what people decided about these parameters — press one to weave it
+                    and see it
+                  </span>
+                  <span className="spacer" />
+                  <span className={`chip ${picks.reached ? "soft" : "warn"}`}>
+                    {picks.judgements.length} from {picks.from || "nowhere yet"}
+                  </span>
+                  <button type="button" className="minibtn" disabled={busy}
+                    onClick={refreshPicks}
+                    title="Re-read the shelf without re-running the engine">
+                    reload
+                  </button>
+                </header>
+                <div className="body scroller" style={{ padding: "0 14px" }}>
+                  {picks.judgements.length === 0 ? (
+                    <p className="note" style={{ padding: "12px 0" }}>
+                      Nothing judged for these parameters yet.{" "}
+                      {apiUrl.trim()
+                        ? "Mark a ring ✓ valid or ★ best in the sidebar and it lands here."
+                        : "Set a worker url in the sidebar to read the Cloudflare shelf."}
+                    </p>
+                  ) : (
+                    <table>
+                      <thead>
+                        <tr>
+                          <th className="l">verdict</th><th className="l">chooser</th>
+                          <th className="l">when</th><th className="l">levels</th>
+                          <th>Δ neigh</th><th>margin</th><th>crossings</th><th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {picks.judgements.map(j => {
+                          const here = j.levels.some(l => l.level === fitLevel);
+                          const shown = origin?.kind === "judged"
+                            && origin.chooser === j.chooser && origin.verdict === j.verdict;
+                          return (
+                            <tr key={j.id} className={shown ? "applied" : ""}>
+                              <td className="l">
+                                <span className={`tag ${j.verdict === "best" ? "fit" : "eng"}`}>
+                                  {VERDICT_GLYPH[j.verdict]} {j.verdict}
+                                </span>
+                              </td>
+                              <td className="l">{j.chooser}</td>
+                              <td className="l">{j.at.slice(0, 10)}</td>
+                              <td className="l">{j.levels.map(l => `L${l.level}`).join(" ")}</td>
+                              <td className="num">
+                                {j.metrics ? j.metrics.neighbour_delta.toFixed(2) : "—"}
+                              </td>
+                              <td className="num">
+                                {j.metrics ? j.metrics.gap_margin.toFixed(2) : "—"}
+                              </td>
+                              <td className="num">
+                                {j.audit ? `${j.audit.crossings}/${j.audit.expected}` : "—"}
+                              </td>
+                              <td className="num">
+                                <button type="button" className="minibtn"
+                                  disabled={busy || !here || !before}
+                                  onClick={() => loadJudgement(j)}
+                                  title={here ? `Weave ${j.chooser}'s ring and show it`
+                                    : `This judgement does not cover L${fitLevel}`}>
+                                  {shown ? "shown" : "show"}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+                <p className="note">
+                  Read from the Cloudflare shelf when a worker url is set, folded with this
+                  browser's own judgements either way — the local copy is written first on
+                  every save, so a decision the shelf never received still shows here. Pressing
+                  <em> show</em> re-weaves the pick through the engine rather than trusting the
+                  numbers stored with it, so the ring on screen and the crossings under it are
+                  this weave's own. The <b>★ best</b> is what <em>Run</em> loads by itself; this
+                  is how the others get looked at.
                 </p>
               </div>
 
