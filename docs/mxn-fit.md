@@ -281,8 +281,13 @@ The pairs move in one of two modes, picked by a switch in the panel's header:
 - **Independent**: each pair moves alone and the others hold still. Once the
   neighbouring arms disagree, a **fix others from pair N** button lights up:
   one press solves every other pair's extension from the pair the hand fixed —
-  the same `e = (A − L*) / B`, applied once, one division per pair, O(N) in the
-  number of pairs.
+  the same `e = (A − L*) / B`, applied once, one division per pair. Unlike the
+  live coupling, the button also answers for the geometry (`fixOthers`): a
+  flush answer that fails `sweepAngle`'s own tests at the current heading is
+  not landed as-is — the fixed pair's extension is held exactly and the
+  heading walks the candidate walk's own widened window for the nearest
+  placement whose flush ring passes, in-window placements first. Only when no
+  heading works does the plain flush answer land, and the panel says so.
 
 Either way, a pair that cannot reach the named length inside 0…200 px is
 clamped and said so, never silently landed somewhere flush-looking.
