@@ -79,6 +79,13 @@ Readable rather than hashed, so a key is something you can look for by hand
 when a run and a lab disagree about whether something is cached. Two things
 about its contents are deliberate:
 
+- **Level 1's replay is not in the key at all.** *Replay level 1 off a stored
+  single-k run* produces the same geometry for fewer seconds — verified
+  strand-for-strand, see [docs/mxn-lab.md](mxn-lab.md) — so a replayed run and
+  a searched one are the same answer and belong at the same address. What
+  differs is that L1 carries no candidate list, which the artifact records as
+  `level1Replayed` and the lab reports on the card. A key segment would have
+  split one answer across two shelves.
 - **The reach cap appends `-r1`, and only when it is on.** `…-b400000-r1` is
   the sweep that caps each level past the first at the reach the levels below it
   used ([docs/mxn-lab.md](mxn-lab.md) has the numbers); it settles on a

@@ -1427,6 +1427,7 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
                              pair_extension_step=None, use_gpu=False,
                              angle_mode=ANGLE_MODE, escalate_extension=None,
                              mirror_sides=None, seed_extensions=None,
+                             pin_seed=False,
                              prefer_short_arms=True, combo_budget=None,
                              collect_candidates=False, verbose=True):
     """
@@ -1446,6 +1447,22 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
     and OFF for level 1: every ring past the first sits further out and needs
     longer arms than the sheet's 200px ceiling allows, while level 1 must keep
     reproducing the published twist exactly. Pass True/False to force it.
+
+    `pin_seed` changes what a seed IS. Ordinarily a seed is a guess -- taken
+    only when it produces a complete ring, so that seeding "can speed a level up
+    but never change what is reachable". With `pin_seed` the caller is not
+    guessing: it is replaying an answer this very search already produced and
+    stored, for a level whose inputs are identical. The first seed that is a
+    valid configuration at all is then taken, incomplete ring and all, because
+    an incomplete ring is exactly what the stored run found and refusing it
+    would be searching again for an answer already in hand.
+
+    Only a caller that KNOWS the combo may pass it. bridge.generate does, for
+    level 1 of a sequence whose first k already has a stored single-k run: level
+    1 depends on nothing but (m, n, ks[0], hand, direction) and the search
+    flags, which is the same fact that lets `level1_for_k` cache it within one
+    run. Passing a combo from anywhere else would pin a level to another level's
+    answer, which is the one thing this must not be used for.
 
     `seed_extensions` warm-starts the search from earlier levels: a list of
     `(h_combo, v_combo)` pairs, most promising first — in practice the combos
@@ -1687,6 +1704,13 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
                 "crossings": _ring_crossings(working, sizes=(2 * m, 2 * n))}
 
     chosen, plan_used = None, None
+    # Set when the answer came from a PINNED seed. Everything after the seed
+    # loop exists to improve on a search's own pick -- the family rescue, the
+    # short-arm re-run, the mirror -- and each is a full search. Against a
+    # replayed answer they are all wrong twice over: they cost the seconds the
+    # replay exists to save, and any one of them may return a DIFFERENT ring
+    # under a key whose whole promise is that it is the stored one.
+    pinned = False
     seen_seeds = set()
     for h_combo, v_combo in (seed_extensions or []):
         h_combo = tuple(int(v) for v in (h_combo or ()))
@@ -1702,10 +1726,17 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
         # largest value, so a long-armed optimum is simply out of reach.
         near = (int(-(-(max(h_combo + v_combo) + 30) // 10) * 10), 10)
         for plan in ((None, rescue) if rescue is not None else (None,)):
-            for how, kwargs in (("exactly", {"force": (h_combo, v_combo)}),
-                                ("nearby", {"bound": near})):
+            # A pinned replay never looks "nearby": the combo is not a guess to
+            # be improved on, it is the answer, and a nearby search would be
+            # free to return a different ring under the caller's own key.
+            tries = (("exactly", {"force": (h_combo, v_combo)}),)
+            if not pin_seed:
+                tries = tries + (("nearby", {"bound": near}),)
+            for how, kwargs in tries:
                 trial = attempt(plan, **kwargs)
-                if trial is None or trial["crossings"] < expected_crossings:
+                if trial is None:
+                    continue
+                if not pin_seed and trial["crossings"] < expected_crossings:
                     continue
                 # `_pinned_search` labels its settings for the mirror; relabel
                 # them so a seeded level does not read as a mirrored one.
@@ -1720,6 +1751,7 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
                           f"{'direction families' if plan is not None else 'k-based groups'}, "
                           f"skipping the full search")
                 chosen, plan_used = trial, plan
+                pinned = pin_seed
                 break
             if chosen is not None:
                 break
@@ -1728,7 +1760,7 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
 
     if chosen is None:
         chosen = attempt(None)
-    if rescue is not None and plan_used is None \
+    if not pinned and rescue is not None and plan_used is None \
             and chosen["crossings"] < expected_crossings:
         if verbose:
             print(f"    k-based groups (fan {rescue['k_fan']:.1f} deg) gave a ring with "
@@ -1752,7 +1784,7 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
     # measured on 1x2/2x1/1x3 k=1, which fell from complete rings to 6/8 and
     # 7/12 once the short-arm tie-break was on. Re-run without the preference
     # whenever it costs crossings and keep whichever ring is more complete.
-    if prefer_short_arms and chosen["crossings"] < expected_crossings:
+    if not pinned and prefer_short_arms and chosen["crossings"] < expected_crossings:
         if verbose:
             print(f"    short arms gave {chosen['crossings']}/{expected_crossings} "
                   f"crossings -- retrying on lowest variance")
@@ -1763,8 +1795,8 @@ def align_continuation_level(strands, m, n, k, direction, hand, level, level_inf
                       f"/{expected_crossings} -- taking it")
             chosen = steady
 
-    mirrored = _mirror_extensions(attempt, chosen, plan_used, expected_crossings,
-                                  mirror_sides, verbose)
+    mirrored = None if pinned else _mirror_extensions(
+        attempt, chosen, plan_used, expected_crossings, mirror_sides, verbose)
     if mirrored is not None:
         chosen = mirrored
 

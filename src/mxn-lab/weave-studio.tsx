@@ -565,6 +565,8 @@ export function ContinuationLab() {
   // cache configured, which is every page until someone configures one.
   const [cacheState, setCacheState] =
     useState<"off" | "looking" | "hit" | "miss">("off");
+  /** Whether this run's L1 was replayed off a stored single-k run. */
+  const [l1Replayed, setL1Replayed] = useState(false);
   const [cachedRun, setCachedRun] =
     useState<{ computedAt: string; seconds: number } | null>(null);
   const [publishing, setPublishing] = useState(false);
@@ -647,6 +649,33 @@ export function ContinuationLab() {
   });
 
   /**
+   * Level 1's extensions off a stored single-k run, when there is one.
+   *
+   * Level 1 depends on nothing but m, n, ks[0], the hand, the direction and the
+   * search flags — the same fact bridge.generate's own `level1_for_k` relies on
+   * within a single run — so the L1 of `[-1, -1, -1]` IS the L1 of the stored
+   * `[-1]`. Replaying it rather than searching for it again is verified
+   * bit-for-bit (ring hash and every audit number, on 3×1, 2×1 and 2×2) and
+   * took 3×1 `[-1,-1,-1]` from 170.5s to 134.7s.
+   *
+   * The one thing it costs is L1's own solution browser in this run: a pinned
+   * attempt evaluates the single combo it was told to use, so there is no list
+   * to page through. That enumeration is not lost — the single-k run it came
+   * from has it in full — and the card says where to find it.
+   */
+  const level1For = async (params: Params): Promise<number[][] | null> => {
+    if (params.ks.length < 2 || !cacheRef.current.readable) return null;
+    try {
+      const stored = await cacheRef.current.getRun(
+        { ...descriptorFor(params), ks: [params.ks[0]] });
+      const ext = (stored?.result as ExactResult | undefined)?.rows?.[0]?.ext;
+      return Array.isArray(ext) && ext.length === 2 ? ext : null;
+    } catch {
+      return null;   // a shelf that is away just means the level is searched
+    }
+  };
+
+  /**
    * Any stored variant of these m/n/ks, when the exact step and budget missed.
    *
    * The step and budget are part of a run's identity — a sweep at step 5 is a
@@ -720,7 +749,7 @@ export function ContinuationLab() {
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
     const worker = new Worker(
-      `${LAB_BASE}exact-worker.js?v=trace-plan-v22${FAST_ENGINE ? "&engine=fast" : ""}`,
+      `${LAB_BASE}exact-worker.js?v=trace-plan-v23${FAST_ENGINE ? "&engine=fast" : ""}`,
       { type: "module" },
     );
     worker.onmessage = (event) => {
@@ -1050,20 +1079,33 @@ export function ContinuationLab() {
       sessionRef.current = null;
       setSessionReady(false);
       setCachedRun(null);
+      setL1Replayed(false);
       clearJudgedAll();
       afterWarmRef.current = null;
       warmIdRef.current = null;
       const id = ++activeIdRef.current;
 
-      const toEngine = () => {
-        setStatus("Loading the exact MXN engine…");
+      const toEngine = (level1Extensions: number[][] | null = null) => {
+        setStatus(level1Extensions
+          ? "Loading the exact MXN engine — L1 comes off the shelf…"
+          : "Loading the exact MXN engine…");
         ensureWorker().postMessage({
           type: "generate", id, m: params.m, n: params.n, ks: params.ks,
           preferShortArms: params.preferShortArms,
           extStep: params.extStep,
           comboBudget: params.comboBudget,
           reachFromPrevious: params.reachFromPrevious,
+          level1Extensions,
         });
+      };
+
+      /** The engine, with L1 read off the shelf first when it is there. */
+      const toEngineWithL1 = () => {
+        level1For(params).then(ext => {
+          if (id !== activeIdRef.current) return;
+          if (ext) setL1Replayed(true);
+          toEngine(ext);
+        }).catch(() => { if (id === activeIdRef.current) toEngine(); });
       };
 
       // The shelf first. An entry is addressed by every parameter that decides
@@ -1114,7 +1156,7 @@ export function ContinuationLab() {
         if (id !== activeIdRef.current) return;
         if (!variant) {
           setCacheState("miss");
-          toEngine();
+          toEngineWithL1();
           return;
         }
         const adopted: Params = {
@@ -1131,7 +1173,7 @@ export function ContinuationLab() {
         if (id !== activeIdRef.current) return;
         if (!stored?.result) {
           setCacheState("miss");
-          toEngine();
+          toEngineWithL1();
           return;
         }
         // Make the fields say what is on screen: the level traces, the session
@@ -1337,6 +1379,10 @@ export function ContinuationLab() {
       extStep: params.extStep,
       comboBudget: params.comboBudget,
       reachFromPrevious: params.reachFromPrevious,
+      // Deliberately no level1Extensions. A warm exists to open the session the
+      // browser, the sweeps and an uncached census read, and a replayed level
+      // has no candidate list to browse — warming into one would be warming
+      // into exactly the thing the reader pressed an arrow to get.
     });
   };
 
@@ -1941,6 +1987,22 @@ export function ContinuationLab() {
                 this browser first, so a ★ best pressed two minutes ago with no
                 Worker set exists and should still be found. */}
             {picksNote && <div className="picks-chip"><b>the picks shelf</b><span>{picksNote}</span></div>}
+
+            {/* Why L1 has no solution browser in this run, and where the one it
+                does have lives. Saying only "one solution" there would read as
+                a fact about the geometry rather than about this artifact. */}
+            {l1Replayed && result && (
+              <div className="picks-chip">
+                <b>L1 came off the shelf</b>
+                <span>
+                  Replayed from the stored <code>ks {result.ks[0]}</code> run —
+                  the same ring, without searching for it again. Its solution
+                  browser is on that run: <a href={`?m=${result.m}&n=${result.n}`
+                    + `&ks=${encodeURIComponent(String(result.ks[0]))}`}>open
+                  {" "}{result.m}×{result.n} ks {result.ks[0]}</a>.
+                </span>
+              </div>
+            )}
 
             <details className="api-settings">
               <summary>dataset API {apiUrl && apiToken ? "· connected" : "· local only"}</summary>

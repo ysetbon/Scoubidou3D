@@ -206,6 +206,10 @@ export function ComputeFarm() {
   const [summary, setSummary] = useState<SummaryRow[]>([]);
   const [log, setLog] = useState<string[]>([]);
   const [skipExisting, setSkipExisting] = useState(true);
+  // On by default: it is the same geometry for fewer seconds. What it costs is
+  // level 1's solution browser IN THIS ARTIFACT, and that enumeration is not
+  // lost from the shelf — the single-k run it was replayed from has it in full.
+  const [replayL1, setReplayL1] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
 
   const runningRef = useRef(false);
@@ -217,6 +221,8 @@ export function ComputeFarm() {
   const doneAtStartRef = useRef(0);
   specRef.current = spec;
   skipRef.current = skipExisting;
+  const replayL1Ref = useRef(replayL1);
+  replayL1Ref.current = replayL1;
   batchRef.current = batch;
 
   const plan = useMemo(() => planSweep(spec), [spec]);
@@ -361,6 +367,32 @@ export function ComputeFarm() {
    * its *upload* is skipped; the bands already on the shelf are skipped whole,
    * which is where the hours are.
    */
+  /**
+   * Level 1's extensions off a stored single-k run, when there is one.
+   *
+   * Level 1 depends on nothing but (m, n, ks[0], hand, direction) and the
+   * search flags, so the L1 of `[-1, -1, -1]` IS the L1 of the stored `[-1]`
+   * run — verified bit-for-bit, ring hash and every audit number, on 3×1, 2×1
+   * and 2×2. Replaying it instead of searching for it again took 3×1
+   * `[-1,-1,-1]` from 170.5s to 134.7s.
+   *
+   * A miss is the ordinary state and costs one HEAD-shaped GET. Nothing here
+   * can fail a job: an unreachable shelf simply means the level is searched,
+   * which is what every run did before this existed.
+   */
+  const level1For = async (job: PlanJob): Promise<number[][] | null> => {
+    if (job.ks.length < 2 || !replayL1Ref.current) return null;
+    try {
+      const stored = await cacheRef.current.getRun(
+        { ...job.descriptor, ks: [job.ks[0]] });
+      const ext = (stored?.result as { rows?: { ext: number[][] }[] } | undefined)
+        ?.rows?.[0]?.ext;
+      return Array.isArray(ext) && ext.length === 2 ? ext : null;
+    } catch {
+      return null;
+    }
+  };
+
   const missingFor = async (job: PlanJob) => {
     const client = cacheRef.current;
     const traces: Record<string, string> = {};
@@ -380,7 +412,7 @@ export function ComputeFarm() {
 
   const spawnHand = () => {
     const worker = new Worker(
-      new URL(`${FARM_BASE}farm-worker.js?v=trace-plan-v22`, window.location.href),
+      new URL(`${FARM_BASE}farm-worker.js?v=trace-plan-v23`, window.location.href),
       { type: "module" });
     workersRef.current.push(worker);
     return worker;
@@ -471,9 +503,13 @@ export function ComputeFarm() {
         // "stored" is left out (the job-end line already sums the artifacts up)
         // but still advances the marker, so each census band logs its start.
         let loggedPhase: string | null = null;
+        const level1Extensions = await level1For(job);
+        if (level1Extensions) {
+          say(`${label} — L1 replayed off the stored ks ${job.ks[0]} run`);
+        }
         const summaryReply = await driveHand(worker, {
           type: "job", hand: id,
-          job: { ...job, descriptor: job.descriptor },
+          job: { ...job, descriptor: job.descriptor, level1Extensions },
           upload: {
             run: runUrl, traces,
             token: cacheRef.current.token,
@@ -862,6 +898,11 @@ export function ComputeFarm() {
               <input type="checkbox" checked={skipExisting}
                 onChange={e => setSkipExisting(e.target.checked)} />
               <span>skip what is already stored</span>
+            </label>
+            <label className="farm-check">
+              <input type="checkbox" checked={replayL1} disabled={running}
+                onChange={e => setReplayL1(e.target.checked)} />
+              <span>replay level 1 off a stored single-k run</span>
             </label>
             <div className="farm-pair">
               <label className="farm-field">

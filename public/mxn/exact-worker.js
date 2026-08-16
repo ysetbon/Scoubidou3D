@@ -49,7 +49,7 @@ async function prepare() {
       // Resolved against this worker's own URL rather than the site root: the
       // lab is published under a project-site sub-path, where "/py/..." would
       // miss. Keeps the cache key in step with the one in the Worker URL.
-      const url = new URL(`./py/${name}?v=trace-plan-v22`, import.meta.url);
+      const url = new URL(`./py/${name}?v=trace-plan-v23`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
@@ -84,7 +84,7 @@ function ensureCountPool() {
   const size = Math.min(3, cores);
   countPool = size < 2 ? [] : Array.from({ length: size }, () => {
     const worker = new Worker(
-      new URL("./count-worker.js?v=trace-plan-v22", import.meta.url),
+      new URL("./count-worker.js?v=trace-plan-v23", import.meta.url),
       { type: "module" });
     worker.postMessage({ type: "warm" });
     return worker;
@@ -111,7 +111,8 @@ function runSlice(worker, job, start, end, onProgress) {
 
 const HANDLERS = {
   generate: async (runtime, data, post) => {
-    const { m, n, ks, preferShortArms, extStep, comboBudget, reachFromPrevious } = data;
+    const { m, n, ks, preferShortArms, extStep, comboBudget, reachFromPrevious,
+            level1Extensions } = data;
     runtime.globals.set("mxn_m", m);
     runtime.globals.set("mxn_n", n);
     runtime.globals.set("mxn_ks", ks);
@@ -123,6 +124,9 @@ const HANDLERS = {
     // Same guard as mxn_short: absent from an older cached page means off, and
     // off is what the engine has always done.
     runtime.globals.set("mxn_reach", reachFromPrevious === true);
+    // `[h_ext, v_ext]` from a stored single-k run, or null. The page reads it
+    // off the shelf; the engine only replays it. See bridge.generate.
+    runtime.globals.set("mxn_l1", level1Extensions ?? null);
     // The lab and the farm have only ever asked for lh/cw and send neither, so
     // the defaults keep them identical; /mxn/fit/ sends both, because "for any
     // k, m, n, lh, rh" is the thing it is for.
@@ -131,7 +135,8 @@ const HANDLERS = {
     const parsed = JSON.parse(await runtime.runPythonAsync(
       "bridge.generate(mxn_m, mxn_n, mxn_ks.to_py(), mxn_hand, mxn_direction,"
       + " prefer_short_arms=mxn_short, ext_step=mxn_step, combo_budget=mxn_budget,"
-      + " reach_from_previous=mxn_reach)"
+      + " reach_from_previous=mxn_reach,"
+      + " level1_pin=mxn_l1.to_py() if mxn_l1 is not None else None)"
     ));
     // Count every level's solutions BEFORE the result posts, so the cards land
     // with `1 / total` already exact — the counting is part of the thinking,
