@@ -142,6 +142,100 @@ const DESCRIPTOR_FLAGS = { shortArms: true, step: "auto" as const, budget: 400_0
 const JUDGEMENTS_KEY = "mxn-fit-judgements";
 const CHOOSER_KEY = "mxn-fit-chooser";
 
+/**
+ * Every judgement anyone has made about ONE parameter set, from both stores.
+ *
+ * Module-level rather than a closure over the form fields, because two callers
+ * ask it about two different parameter sets: the fit asks about the one that
+ * was run, and the preload below also asks about the k = 0 default.
+ *
+ * Read from the Cloudflare shelf when a Worker is configured, and either way
+ * folded together with this browser's own local judgements — the local copy is
+ * written first on every save, so it can hold a decision the shelf never
+ * received. mergeJudgement holds the invariants while folding, so at most one
+ * `best` survives and a rejected best never comes back. Neither store being
+ * reachable is not an error: a fit must never be blocked by the database being
+ * away, so an unreachable shelf reads as "no judgements there".
+ */
+async function readPicks(d: RunDescriptor, base: string, token: string): Promise<Picks> {
+  let artifact: PicksArtifact | null = null;
+  let from = "this browser";
+  let reached = !base;
+  if (base) {
+    try {
+      artifact = await createCache({ base, token }).getPicks(d);
+      reached = true;
+      if (artifact) from = "Cloudflare";
+    } catch { /* the shelf being away must not block the fit */ }
+  }
+  try {
+    const key = `picks/${picksKey(d)}`;
+    const rows = JSON.parse(readSetting(JUDGEMENTS_KEY) || "[]") as
+      { key: string; judgement: Judgement }[];
+    // Latched before the loop rather than recomputed off `from` inside it:
+    // reading the previous answer back made a SECOND local judgement drop
+    // "Cloudflare" from the credit, because "Cloudflare and this browser" is
+    // not "Cloudflare".
+    const fromShelf = from === "Cloudflare";
+    for (const row of rows) {
+      if (row.key !== key) continue;
+      artifact = mergeJudgement(artifact, row.judgement, d);
+      from = fromShelf ? "Cloudflare and this browser" : "this browser";
+    }
+  } catch { /* a torn local store reads as no judgements, not as an error */ }
+  return { judgements: artifact?.judgements ?? [], from, reached };
+}
+
+/**
+ * The parameter set a miss falls back to: the same size, hand and direction,
+ * every k zero.
+ *
+ * k = 0 is the continuation that turns nowhere, so it is the one set that
+ * plausibly exists for any size — and it is what a reader means by "just show
+ * me one". Nothing else about the descriptor moves: a fallback that also
+ * changed the hand would be answering a question nobody asked.
+ */
+function defaultOf(d: RunDescriptor): RunDescriptor {
+  return { ...d, ks: d.ks.map(() => 0) };
+}
+
+/**
+ * The ring a judgement carries, ready to draw.
+ *
+ * `Judgement.strands` is the whole ring as it was judged, so this is the entire
+ * cost of putting a person's ★ best on screen — no Pyodide, no `generate`, no
+ * `fit-weave`. Judgements saved before strands were stored return null here,
+ * and those genuinely do need the engine.
+ */
+function stageOfJudgement(j: Judgement): Stage | null {
+  const strands = j.strands as Strand[] | undefined;
+  if (!Array.isArray(strands) || !strands.length) return null;
+  return { level: j.levels[0]?.level ?? 1, k: null, label: "best", strands };
+}
+
+/**
+ * What the shelf has for the parameters in the form, found WITHOUT the engine.
+ *
+ * The fit's own best-fit lookup happens inside fitAt, which is behind
+ * `generate` — so before this, a ★ best could never save anybody the Pyodide
+ * boot it was stored to make unnecessary. This runs on load and on every
+ * parameter change, reads `picks/v3/…` (a public GET; no token needed), and
+ * draws the stored ring straight away.
+ *
+ * `fallback` marks a ring belonging to a DIFFERENT parameter set — the k = 0
+ * default, shown when the typed one has no best. It is never silently adopted
+ * into the form: a diagram captioned with parameters it does not belong to is
+ * the one thing this page must not do, so the card names the set it came from
+ * and offers a button that puts those k into the field.
+ */
+type Preload =
+  | { state: "off" }
+  | { state: "looking" }
+  | { state: "shown"; stage: Stage; judgement: Judgement; from: string;
+      descriptor: RunDescriptor; fallback: boolean }
+  | { state: "ringless"; chooser: string }
+  | { state: "absent"; reached: boolean; triedDefault: boolean };
+
 /** One band's manual configuration: the knobs, as the hand left them. */
 type ManualBand = { ext: number[]; angle: number };
 
@@ -429,6 +523,15 @@ export function Fitter() {
 
   const ks = useMemo(() => ksOf(ksText), [ksText]);
 
+  // What the shelf already holds for the parameters in the form, before any
+  // engine is asked. See the Preload type for why this exists.
+  const [preload, setPreload] = useState<Preload>({ state: "off" });
+
+  /** Every judgement anyone has made about the parameter set in the form. */
+  const loadPicks = (): Promise<Picks> => readPicks(
+    { m, n, ks, hand, direction, ...DESCRIPTOR_FLAGS },
+    apiUrl.trim(), apiToken.trim());
+
   /**
    * The engine's browsing session for the run on screen.
    *
@@ -468,42 +571,69 @@ export function Fitter() {
   };
 
   /**
-   * Every judgement anyone has made about this parameter set.
+   * Look for a drawable ★ best on load, and on every parameter change.
    *
-   * Read from the Cloudflare shelf when a Worker is configured, and either way
-   * folded together with this browser's own local judgements — the local copy
-   * is written first on every save, so it can hold a decision the shelf never
-   * received. mergeJudgement holds the invariants while folding, so at most one
-   * `best` survives and a rejected best never comes back. Neither store being
-   * reachable is not an error: a fit must never be blocked by the database
-   * being away, so an unreachable shelf reads as "no judgements there".
+   * Deliberately the ONLY place on this page that reads the shelf without the
+   * worker having been spoken to: no `postMessage` is sent, so Pyodide never
+   * boots. The typed parameters are asked for first; on a miss the k = 0
+   * default is asked for, and whichever answers is drawn.
+   *
+   * The lookup is debounced because `k sequence` is a text field, and it is
+   * guarded by a token because the answers can land out of order — a slow reply
+   * about parameters that have since been typed over must not overwrite a fast
+   * reply about the ones on screen.
    */
-  const loadPicks = async (): Promise<Picks> => {
-    const d: RunDescriptor = { m, n, ks, hand, direction, ...DESCRIPTOR_FLAGS };
-    let artifact: PicksArtifact | null = null;
-    let from = "this browser";
-    let reached = !apiUrl.trim();
-    if (apiUrl.trim()) {
+  const preloadRun = useRef(0);
+  useEffect(() => {
+    const mine = preloadRun.current + 1;
+    preloadRun.current = mine;
+    if (!ks.length) { setPreload({ state: "off" }); return; }
+    const wanted: RunDescriptor = { m, n, ks, hand, direction, ...DESCRIPTOR_FLAGS };
+    const base = apiUrl.trim();
+    const token = apiToken.trim();
+    const timer = setTimeout(async () => {
+      const current = () => mine === preloadRun.current;
+      const look = async (d: RunDescriptor, fallback: boolean) => {
+        const found = await readPicks(d, base, token);
+        const best = found.judgements.find(j => j.verdict === "best") ?? null;
+        return { picks: found, best, stage: best ? stageOfJudgement(best) : null,
+                 descriptor: d, fallback };
+      };
+      setPreload({ state: "looking" });
       try {
-        artifact = await createCache({ base: apiUrl.trim(), token: apiToken.trim() })
-          .getPicks(d);
-        reached = true;
-        if (artifact) from = "Cloudflare";
-      } catch { /* the shelf being away must not block the fit */ }
-    }
-    try {
-      const key = `picks/${picksKey(d)}`;
-      const rows = JSON.parse(readSetting(JUDGEMENTS_KEY) || "[]") as
-        { key: string; judgement: Judgement }[];
-      for (const row of rows) {
-        if (row.key !== key) continue;
-        artifact = mergeJudgement(artifact, row.judgement, d);
-        if (from !== "Cloudflare") from = "this browser";
-        else from = "Cloudflare and this browser";
+        const asked = await look(wanted, false);
+        if (!current()) return;
+        if (asked.best && asked.stage) {
+          setPreload({ state: "shown", stage: asked.stage, judgement: asked.best,
+                       from: asked.picks.from, descriptor: wanted, fallback: false });
+          return;
+        }
+        const spare = defaultOf(wanted);
+        const triedDefault = picksKey(spare) !== picksKey(wanted);
+        if (triedDefault) {
+          const other = await look(spare, true);
+          if (!current()) return;
+          if (other.best && other.stage) {
+            setPreload({ state: "shown", stage: other.stage, judgement: other.best,
+                         from: other.picks.from, descriptor: spare, fallback: true });
+            return;
+          }
+        }
+        // A best that carries no ring is a different answer from no best at
+        // all: one of them means "press Run and it will load", the other means
+        // "press Run and it will search".
+        if (asked.best) { setPreload({ state: "ringless", chooser: asked.best.chooser }); return; }
+        setPreload({ state: "absent", reached: asked.picks.reached, triedDefault });
+      } catch {
+        if (current()) setPreload({ state: "absent", reached: false, triedDefault: false });
       }
-    } catch { /* a torn local store reads as no judgements, not as an error */ }
-    return { judgements: artifact?.judgements ?? [], from, reached };
-  };
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [m, n, ks, hand, direction, apiUrl, apiToken]);
+
+  /** The preloaded ring's own frame — it has no run to share one with. */
+  const preloadBounds = useMemo<Bounds | null>(
+    () => preload.state === "shown" ? allBounds([preload.stage]) : null, [preload]);
 
   /**
    * Fit one level of the stitch that is already in the worker's session.
@@ -1308,6 +1438,32 @@ export function Fitter() {
 
   const health = after?.woven.row ?? before?.woven.row ?? null;
 
+  /** What the shelf lookup found, in one line, beside the button it is about. */
+  const preloadLine = (() => {
+    switch (preload.state) {
+      case "looking":
+        return "Looking on the shelf for a judged ★ best…";
+      case "shown":
+        return preload.fallback
+          ? `No ★ best for these parameters. Showing the k = ${
+              preload.descriptor.ks.join(", ")} default instead — judged by ${
+              preload.judgement.chooser}, drawn without the engine.`
+          : `★ best loaded from ${preload.from} — judged by ${
+              preload.judgement.chooser}, drawn from the ring stored with the `
+            + "judgement. No engine was run.";
+      case "ringless":
+        return `${preload.chooser} marked a ★ best for these parameters, but it was `
+          + "saved before rings were stored with judgements — Run will weave it.";
+      case "absent":
+        return preload.reached
+          ? `Nothing judged ★ best for these parameters${
+              preload.triedDefault ? ", nor for the k = 0 default" : ""} — Run computes one.`
+          : "The shelf did not answer — Run computes in this browser.";
+      default:
+        return "";
+    }
+  })();
+
   return (
     <div>
       <div className="masthead">
@@ -1383,6 +1539,9 @@ export function Fitter() {
               engine's audit longest-arm first, because the ring closes when one
               band's arms reach across the other.
             </p>
+            {preloadLine && (
+              <p className="hint preloaded" data-state={preload.state}>{preloadLine}</p>
+            )}
             {(status || progress) && (
               <p className={`status${failed ? " bad" : ""}`}>{status || progress}</p>
             )}
@@ -1430,7 +1589,92 @@ export function Fitter() {
         </div>
 
         <div className="results">
-          {!plan && !busy && (
+          {/*
+            The shelf's own answer, before any engine. Hidden the moment a run
+            produces a plan, because from then on the page has a live ring and
+            two rings captioned "best" would be one too many.
+          */}
+          {!plan && preload.state === "shown" && (() => {
+            const j = preload.judgement;
+            const d = preload.descriptor;
+            const audit = j.audit;
+            const closes = !!audit && audit.crossings >= audit.expected
+              && audit.stray === 0 && audit.broken === 0;
+            const name = `${d.m}×${d.n} · k=${d.ks.join(", ")}`
+              + ` · ${d.hand.toUpperCase()} · ${d.direction.toUpperCase()}`;
+            return (
+              <div className="panel hero">
+                <header>
+                  <strong>★ best · L{preload.stage.level} · no engine</strong>
+                  <span>
+                    read from {preload.from} and drawn from the strands stored with{" "}
+                    {j.chooser}'s judgement
+                  </span>
+                  <span className="spacer" />
+                  {audit && (
+                    <span className={`chip ${closes ? "soft" : "warn"}`}>
+                      {audit.crossings}/{audit.expected} crossings
+                    </span>
+                  )}
+                  {preload.fallback && (
+                    <span className="chip warn">k = {d.ks.join(", ")}, not yours</span>
+                  )}
+                </header>
+                <div className="body">
+                  <div className="rings">
+                    <RingFigure title={name} stage={preload.stage} bounds={preloadBounds}
+                      caption={j.metrics
+                        ? `Δ ${j.metrics.neighbour_delta.toFixed(2)} px` : ""} />
+                    <div>
+                      <p className="note" style={{ padding: 0 }}>
+                        {preload.fallback ? (
+                          <>
+                            Nothing has been judged <b>★ best</b> for{" "}
+                            <code>{m}×{n} · k={ks.join(", ")}</code>, so this is the{" "}
+                            <code>k = {d.ks.join(", ")}</code> default for the same size and
+                            hand — <em>a different parameter set</em>, shown so there is a
+                            ring on screen rather than a wait. It is not put in the form by
+                            itself; the button below does that.
+                          </>
+                        ) : (
+                          <>
+                            This is the ring <em>{j.chooser}</em> judged best for exactly the
+                            parameters in the form, on {j.at.slice(0, 10)}
+                            {j.note ? ` — “${j.note}”` : ""}. The judgement carried the whole
+                            ring, so drawing it cost one GET and no engine at all.
+                          </>
+                        )}
+                      </p>
+                      <p className="note" style={{ padding: "10px 0 0" }}>
+                        <em>Run</em> is still what fits: it computes the stitch, loads this
+                        same best into the fitted card, and opens the manual knobs, the
+                        candidate table and the verdict buttons. That is the part that needs
+                        the engine.
+                      </p>
+                      {preload.fallback && (
+                        <button type="button" className="minibtn"
+                          style={{ marginTop: 10 }}
+                          onClick={() => setKsText(d.ks.join(", "))}>
+                          put k = {d.ks.join(", ")} in the form
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <p className="note">
+                  Drawn by <code>drawExactStage</code> off <code>Judgement.strands</code> —
+                  the same renderer and the same strands every other card on this page uses,
+                  read from <code>picks/{picksKey(d)}</code>. Reads on that key are public, so
+                  no token is involved. The numbers beside it are the ones stored with the
+                  judgement rather than measured here, because there is no live weave to
+                  measure: press <em>Run</em> and everything on screen is measured again off a
+                  ring the engine just built.
+                </p>
+              </div>
+            );
+          })()}
+
+          {!plan && !busy && preload.state !== "shown" && (
             <p className="note" style={{ padding: 0 }}>
               Give a size, a k and a hand, and press <em>Run and fit</em>. The engine runs in
               this browser — the first run loads it, which takes a moment. Everything after
