@@ -601,6 +601,93 @@ ok('and still runs no engine until Run is pressed', nothing.engineCalls === 0,
   `${nothing.engineCalls} worker message(s)`);
 
 // ---------------------------------------------------------------------------
+// A judgement that carries its PLAN opens the editor, with no run at all.
+//
+// Drawing a judged ring needed only its strands; moving one needs the band
+// plan — origins, directions, pair indices, targets, the angle window — which
+// until now arrived only from bridge.fit_plan, behind a browsing session. With
+// the plan stored beside the strands the whole manual panel is reachable off
+// one GET, because every function under it (placeStarts, sweepAngle, readAt,
+// followPair, fixOthers, fitCandidates) takes a FitBand and nothing else.
+//
+// The stub's message counter is again what makes this checkable rather than
+// plausible: knobs on screen AND zero messages to the worker.
+// ---------------------------------------------------------------------------
+await page.evaluate(({ key, judgement }) => {
+  localStorage.setItem('mxn-fit-judgements', JSON.stringify([{ key, judgement }]));
+}, {
+  key: preloadKey(size.ks),
+  judgement: { ...judgementFor('qa-planned'), plan: size.plans[String(topLevel)] },
+});
+await page.fill('#fit-m', String(size.m));
+await page.fill('#fit-n', String(size.n));
+await page.fill('#fit-ks', size.ks.join(' '));
+await page.waitForTimeout(1600);
+const edited = await page.evaluate(() => ({
+  knobs: document.querySelectorAll('.mrow').length,
+  nums: [...document.querySelectorAll('.mrow .mnum')].map(i => i.value),
+  read: document.querySelector('.mread')?.textContent ?? '',
+  heading: document.querySelector('.runbar h1')?.textContent ?? '',
+  shelfChip: [...document.querySelectorAll('.runbar .chip')]
+    .some(c => /off the shelf/i.test(c.textContent)),
+  baseline: [...document.querySelectorAll('.rings figcaption span')]
+    .map(s => s.textContent).find(t => /as judged|engine/.test(t)) ?? '',
+  weave: (() => {
+    const b = [...document.querySelectorAll('.mbtns button')]
+      .find(x => /weave and audit/i.test(x.textContent));
+    return b ? { text: b.textContent.trim(), disabled: b.disabled } : null;
+  })(),
+  rows: document.querySelectorAll('.panel table tbody tr').length,
+  engineCalls: window.__engineCalls ?? 0,
+}));
+ok('a judgement carrying its plan opens the editor with no run',
+  edited.knobs >= 2, `${edited.knobs} knob rows`);
+ok('and the engine was still never asked', edited.engineCalls === 0,
+  `${edited.engineCalls} worker message(s)`);
+ok('the knobs open where the judged ring holds the bands',
+  edited.nums.length >= 2 && edited.nums.every(v => v !== ''), edited.nums.join(', '));
+ok('the live readout measures the judged configuration',
+  /Δ neigh/.test(edited.read), edited.read.replace(/\s+/g, ' ').slice(0, 60));
+ok('the runbar says the ring came off the shelf', edited.shelfChip);
+ok('the baseline card says "as judged", not "engine"',
+  /as judged/.test(edited.baseline) && !/· engine/.test(edited.baseline),
+  edited.baseline);
+ok('weave and audit says it needs a run, rather than failing on the press',
+  !!edited.weave && edited.weave.disabled && /needs Run/i.test(edited.weave.text),
+  edited.weave ? `${edited.weave.text} · disabled ${edited.weave.disabled}` : '(absent)');
+
+// Moving a knob has to move the numbers and the diagram, with no engine.
+if (edited.knobs >= 3) {
+  const before = await page.evaluate(() => ({
+    other: document.querySelectorAll('.mrow .mnum')[2].value,
+    read: document.querySelector('.mread')?.textContent ?? '',
+  }));
+  await page.locator('.mrow .mnum').nth(1).fill('130');
+  await page.waitForTimeout(400);
+  const after = await page.evaluate(() => ({
+    other: document.querySelectorAll('.mrow .mnum')[2].value,
+    read: document.querySelector('.mread')?.textContent ?? '',
+    engineCalls: window.__engineCalls ?? 0,
+    inked: (() => {
+      const c = document.querySelector('.mfig canvas');
+      if (!c) return 0;
+      const { data } = c.getContext('2d').getImageData(0, 0, c.width, c.height);
+      const seen = new Set();
+      for (let i = 0; i < data.length; i += 4 * 97) seen.add(`${data[i]},${data[i+1]},${data[i+2]}`);
+      return seen.size;
+    })(),
+  }));
+  ok('the coupling re-solves the other pair on a shelf-loaded ring',
+    after.other !== before.other, `pair 2: ${before.other} → ${after.other}`);
+  ok('and the readout follows it', after.read !== before.read,
+    after.read.replace(/\s+/g, ' ').slice(0, 60));
+  ok('the manual diagram is drawn from the judged strands, not blank',
+    after.inked > 3, `${after.inked} colours`);
+  ok('and none of that touched the engine either', after.engineCalls === 0,
+    `${after.engineCalls} worker message(s)`);
+}
+
+// ---------------------------------------------------------------------------
 // A run served from the cache still has to be fittable.
 //
 // The run artifact holds what `generate` RETURNED — stages and audit rows, all

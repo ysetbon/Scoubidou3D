@@ -487,6 +487,49 @@ set: size, hand, direction and k together, not just the k.
 A ★ best saved before rings were stored is a fifth answer and gets its own
 line: there is a decision, it just cannot be drawn without a weave.
 
+**Straight into the editor, with no run.** Drawing a judged ring needed only
+its `strands`. *Moving* one needs the band plan — origins, directions, pair
+indices, targets, the angle window, the gap bounds — and that arrived from
+`bridge.fit_plan`, which opens with `_level_session(level)`: the browsing
+session only `generate` opens, which is the whole run. So a reader who had a
+judged ring on screen could look at it and nothing else.
+
+The plan now rides in the judgement beside the strands (`Judgement.plan`), and
+a preload that finds one opens the **manual panel directly** — knobs, live
+readouts, the coupling, *fix others from pair N*, the diagram and the candidate
+table, all of it, with zero messages to the worker. That works because every
+function under the panel takes a `FitBand` and nothing else: `placeStarts`,
+`sweepAngle`, `readAt`, `followPair`, `fixOthers`, `fitCandidates`. The plan was
+never the hard part; getting hold of it was. It costs about 1.8 KB on a 2×1 —
+every field is O(arms), not O(the search grid).
+
+What stays behind the engine is **weave and audit**: only `bridge.fit_weave`
+rebuilds a ring and counts its crossings. The button says so — `weave and audit
+· needs Run` — rather than failing on the press.
+
+Four things change their wording in this mode, because no engine ran and the
+page must not imply one did:
+
+- the baseline card reads `L2 · as judged`, not `L2 · engine` — the judged ring
+  *is* the baseline here, and there is no separate engine ring to compare to
+- the manual legend says the rest of the ring is drawn *as it was judged*
+- **candidates woven** reads `0`, and the audit log stays closed: nothing was
+  woven to get here, it was read
+- an untouched shelf ring keeps the `source` it was judged under rather than
+  claiming this page's fitter produced it
+
+The runbar names the **ring's** parameters, not the form's, because in this mode
+the two can differ — and when they do, the verdict buttons are disabled with the
+reason spelled out. A judgement is addressed by the form's descriptor, so
+offering one about a ring belonging to another set would file a true statement
+under a false key. The runbar carries the button that resolves it, and it adopts
+the whole set. `exportRing` follows the same rule for its filename and `params`.
+
+Judgements saved before this carry no plan. Those still show the read-only card,
+and it says which of the two it is: *drawn* without an engine but not *moved*,
+Run opens the knobs, and re-judging afterwards stores the plan so next time it
+opens straight into the editor.
+
 **Why rung 3 exists at all.** The engine's cost is not linear in the size. A
 level walks an extension grid of `(200/step + 1)` choices per pair with the
 pairs independent, so `search-cost.ts` puts a one-level 4×1 at **194,502**
@@ -516,6 +559,12 @@ received zero messages" is checkable, and it is checked on all four rungs: the
 exact match, the `k = 0` default, a best judged for a different size and hand
 standing in, and the nothing-judged case. It also checks that a substitute does
 not touch the form and that its button adopts the whole parameter set.
+
+The editor gets the same treatment, and it is the check that matters most here:
+a judgement carrying its plan opens knobs, the knobs move, the coupling
+re-solves the other pair, the diagram redraws — and the worker's message count
+is `0` through all of it. Knobs on screen is easy to fake; knobs on screen with
+an engine that was never spoken to is not.
 
 **Judged rings — the panel that shows the others.** The auto-load takes the ★
 best and stops, so every other judgement needs a way to be looked at: somebody
