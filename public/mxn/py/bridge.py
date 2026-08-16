@@ -967,6 +967,119 @@ def fit_plan(level):
     return json.dumps(out, separators=(",", ":"))
 
 
+def fit_plan_now(m, n, ks, hand="lh", direction="cw"):
+    """L1's two bands, as inputs the page can solve against — WITHOUT searching.
+
+    The band plan is the geometry every configuration is affine in: the pair
+    origins and directions, the arms' targets, the extension grid, the angle
+    window, the gap bounds. None of it is a RESULT of the search. It is the
+    space the search walks, and it is complete the moment the search is handed
+    its arguments -- which is why _trace_band_inputs already announces it from
+    inside the hook rather than after the replay returns.
+
+    fit_plan waits for the whole thing anyway, because it also wants the
+    engine's own pick to measure against. That pick costs 194,481 combinations
+    on a 4x1 and about five minutes of CPU, and a reader who only wants to move
+    the arms by hand is paying all of it for something they are about to
+    replace. So this grabs the inputs at the hook and stops the level there.
+
+    Measured on this repo's engine: 0.13 s for a 4x1, against 280 s for the
+    full generate. Same plan, to the byte.
+
+    L1 only, and it says so rather than pretending. Level N's inputs hang off
+    level N-1's SOLVED ring, so anything above the first genuinely does need
+    the levels below it searched -- which is generate, and is what Run is for.
+    """
+    import mxn_lh_continuation as LH
+    import mxn_trace
+
+    m, n = int(m), int(n)
+    ks = [int(k) for k in ks]
+    if not ks:
+        raise ValueError("ks must contain at least one value")
+    random.seed(0)
+
+    class _Enough(Exception):
+        """Both bands' inputs are in hand; the walk is no longer wanted."""
+
+    grabbed = {}
+    real_search = LH._search_combo_space_cpu
+    was_fast = LH.FAST_ANGLE_SCAN
+
+    def hook(strands_list, pairs, pair_directions, pair_originals,
+             ext_range_values, angle_step_degrees, max_extension, strand_width,
+             custom_angle_min, custom_angle_max, angle_mode,
+             on_config_callback=None, direction_type="horizontal",
+             num_opposite_pairs=1):
+        if direction_type not in grabbed:
+            grabbed[direction_type] = {
+                "strands_list": copy.deepcopy(strands_list),
+                "pair_indices": LH._encode_pair_indices(strands_list, pairs),
+                "pair_directions": copy.deepcopy(pair_directions),
+                "pair_originals": copy.deepcopy(pair_originals),
+                "ext_range_values": list(ext_range_values),
+                "angle_step_degrees": angle_step_degrees,
+                "max_extension": max_extension,
+                "strand_width": strand_width,
+                "angle_mode": angle_mode,
+                "num_opposite_pairs": num_opposite_pairs,
+                "direction_type": direction_type,
+                "num_strands": len(strands_list),
+                "pairs_n": len(pairs),
+            }
+        # The band with more pairs is the expensive one and it is searched
+        # second, so stopping the moment BOTH are in hand costs only the cheap
+        # band's walk -- 21 combos on a 4x1, against the 194,481 skipped.
+        if len(grabbed) >= 2:
+            raise _Enough()
+        return real_search(strands_list, pairs, pair_directions, pair_originals,
+                           ext_range_values, angle_step_degrees, max_extension,
+                           strand_width, custom_angle_min, custom_angle_max,
+                           angle_mode, on_config_callback, direction_type,
+                           num_opposite_pairs)
+
+    emitProgress("Reading L₁'s two bands — no search…")
+    LH._search_combo_space_cpu = hook
+    LH.FAST_ANGLE_SCAN = True
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            starting_json, strands, info = NX.build_level_one(
+                m, n, ks[0], hand, direction, verbose=False)
+            try:
+                NX.align_continuation_level(
+                    strands, m, n, ks[0], direction, hand, 1, info,
+                    mirror_sides=m == n, verbose=False,
+                    prefer_short_arms=True, collect_candidates=False)
+            except _Enough:
+                pass
+            ring = _stage_strands(NX._snapshot_json(strands))
+    finally:
+        LH._search_combo_space_cpu = real_search
+        LH.FAST_ANGLE_SCAN = was_fast
+
+    out = {"level": 1, "k": ks[0], "m": m, "n": n, "hand": hand,
+           "direction": direction, "fast": True, "strands": ring}
+    for want, key in (("horizontal", "h"), ("vertical", "v")):
+        band = grabbed.get(want)
+        if band is None:
+            out[key] = {"band": want, "unavailable": True,
+                        "reason": f"L1 solved its {want} band without a search"}
+            continue
+        ahead = mxn_trace.plan(band)
+        ahead.update({
+            "band": want, "unavailable": False,
+            # No search ran, so there IS no engine pick to quote. The arms are
+            # where build_level_one left them, and the page recovers the
+            # heading off the ring it is drawing -- which is what it prefers
+            # anyway (docs/mxn-fit.md: every number measured off the ring).
+            "applied": [0.0] * band["pairs_n"],
+            "appliedAngle": None,
+            "names": [s["strand_4_5"]["layer_name"] for s in band["strands_list"]],
+        })
+        out[key] = ahead
+    return json.dumps(out, separators=(",", ":"))
+
+
 def fit_weave(level, h_ext, h_angle, v_ext, v_angle):
     """Weave a ring with BOTH bands placed by the caller, and audit it.
 

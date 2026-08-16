@@ -291,6 +291,20 @@ const HANDLERS = {
       "bridge.fit_plan(mxn_level)"
     )];
   },
+  // The knobs, without the search. fit-plan waits for a whole generate because
+  // it also wants the engine's own pick; a reader who is about to move the arms
+  // by hand is paying 194,481 combinations on a 4x1 for an answer they are
+  // replacing. The plan itself is ready in 0.13 s (docs/mxn-fit.md).
+  "fit-plan-now": async (runtime, data) => {
+    runtime.globals.set("mxn_m", data.m);
+    runtime.globals.set("mxn_n", data.n);
+    runtime.globals.set("mxn_ks", data.ks);
+    runtime.globals.set("mxn_hand", data.hand);
+    runtime.globals.set("mxn_direction", data.direction);
+    return ["fit-plan-now-ready", await runtime.runPythonAsync(
+      "bridge.fit_plan_now(mxn_m, mxn_n, mxn_ks.to_py(), mxn_hand, mxn_direction)"
+    )];
+  },
   "fit-weave": async (runtime, data) => {
     runtime.globals.set("mxn_level", data.level);
     // null for a band means "leave it where the engine left it", which is what

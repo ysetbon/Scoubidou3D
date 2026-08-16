@@ -85,9 +85,16 @@ const STUB = ({ size, delay }) => {
           this.onmessage?.({ data: { id: data.id, type: 'result',
             result: { stages: size.stages, rows: size.rows } } });
         }, delay);
-      } else if (!sessioned) {
+      } else if (!sessioned && data.type !== 'fit-plan-now') {
         reply({ type: 'error',
                 message: `level ${data.level} has no browsing session; run generate first` });
+      } else if (data.type === 'fit-plan-now') {
+        // The fast path takes no session — that is its whole point — so it is
+        // answered BEFORE the `!sessioned` guard above would refuse it. The
+        // fixture's own L1 plan, plus a ring to draw, is exactly the shape
+        // bridge.fit_plan_now returns.
+        reply({ type: 'fit-plan-now-ready', ...size.plans['1'],
+                level: 1, strands: size.stages.find(s => s.level === 1).strands });
       } else if (data.type === 'fit-plan') {
         reply({ type: 'fit-plan-ready', ...size.plans[String(data.level)] });
       } else if (data.type === 'fit-weave') {
@@ -789,6 +796,66 @@ if (edited.knobs >= 3) {
   ok('no page errors on the cached-run path', cachedErrors.length === 0,
     cachedErrors.slice(0, 2).join(' | '));
   await cachedPage.close();
+}
+
+// ---------------------------------------------------------------------------
+// The knobs without the search.
+//
+// The band plan is the space the search walks, not its result, so it exists
+// before a single combination is tried — measured at 0.13s for a 4×1 against
+// 280s for the generate Run waits on. This asserts the page uses that: knobs on
+// screen with NO generate, which is checkable because the stub counts them.
+// ---------------------------------------------------------------------------
+{
+  const fast = await browser.newPage({ viewport: { width: 1440, height: 1300 } });
+  const fastErrors = [];
+  fast.on('pageerror', e => fastErrors.push(String(e)));
+  await fast.addInitScript(STUB, { size: STUB_SIZE, delay: 4000 });
+  await fast.goto(URL_BASE, { waitUntil: 'domcontentloaded' });
+  await fast.waitForSelector('button.go');
+  await fast.fill('#fit-m', String(size.m));
+  await fast.fill('#fit-n', String(size.n));
+  await fast.fill('#fit-ks', size.ks.join(' '));
+  await fast.locator('button.go', { hasText: /no search/i }).click();
+  await fast.waitForTimeout(1200);
+  const opened = await fast.evaluate(() => ({
+    knobs: document.querySelectorAll('.mrow').length,
+    read: document.querySelector('.mread')?.textContent ?? '',
+    generates: window.__stubGenerates ?? 0,
+    status: document.querySelector('.status')?.textContent ?? '',
+    // A search that never ran has no audit, and inventing one would be the
+    // page asserting a ring closes when nothing checked it.
+    audit: [...document.querySelectorAll('.stat')]
+      .find(s => /ring audit/i.test(s.textContent))?.textContent ?? '',
+  }));
+  ok('the knobs open without the search running', opened.knobs >= 2,
+    `${opened.knobs} knob rows`);
+  ok('and no generate was asked for at all', opened.generates === 0,
+    `${opened.generates} generate(s)`);
+  ok('the readouts are live on the unsearched plan', /Δ neigh/.test(opened.read),
+    opened.read.replace(/\s+/g, ' ').slice(0, 60));
+  ok('the page says the search never ran', /never ran/.test(opened.status),
+    opened.status.slice(0, 100));
+  ok('and it claims no audit it did not do', /—/.test(opened.audit),
+    opened.audit.replace(/\s+/g, ' ').slice(0, 60));
+  // Dragging a knob has to move the numbers — the whole point is that this is
+  // a working editor, not a picture of one.
+  if (opened.knobs >= 3) {
+    const before = await fast.evaluate(() =>
+      document.querySelector('.mread')?.textContent ?? '');
+    await fast.locator('.mrow .mnum').nth(1).fill('150');
+    await fast.waitForTimeout(300);
+    const after = await fast.evaluate(() => ({
+      read: document.querySelector('.mread')?.textContent ?? '',
+      generates: window.__stubGenerates ?? 0,
+    }));
+    ok('dragging an arm re-measures, still with no engine',
+      after.read !== before && after.generates === 0,
+      after.read.replace(/\s+/g, ' ').slice(0, 60));
+  }
+  ok('no page errors on the no-search path', fastErrors.length === 0,
+    fastErrors.slice(0, 2).join(' | '));
+  await fast.close();
 }
 
 ok('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
