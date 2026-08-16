@@ -343,6 +343,69 @@ export function followPair(inputs: FitBand, ext: number[], angleDeg: number,
   return { ext: next, star, short };
 }
 
+export type Fix = Follow & {
+  /** The heading the fix landed on — the hand's own, unless it had to move. */
+  angle: number;
+  /** Whether the heading moved to keep the geometry legal. */
+  moved: boolean;
+  /** Whether any heading gave a flush ring that passes the geometric tests. */
+  valid: boolean;
+};
+
+/**
+ * The one-shot fix, geometry-aware.
+ *
+ * `followPair` makes the lengths agree and asks nothing else, which is right
+ * for a live drag — the hand is still moving, and the readout narrates what
+ * the geometry thinks of each position as it passes. Pressed as a button it
+ * would read differently: "fix others" asks for a ring that works, and a
+ * flush answer that overlaps itself is not a fix, however clean its Δ.
+ *
+ * So this holds the one thing the hand actually chose — the anchored pair's
+ * extension — and spends the remaining freedom, the heading. If the flush
+ * solve at the hand's own heading passes `sweepAngle`'s tests, that is the
+ * answer and nothing moves. Otherwise the heading walks the same widened
+ * window the candidate walk covers, on the engine's own grid, and takes the
+ * legal flush placement NEAREST the heading the hand had — in-window ones
+ * first — so the fix changes as little as a fix can. Only when no heading
+ * anywhere in the window gives a legal flush ring does it fall back to the
+ * plain solve at the hand's heading, `valid: false`, so the caller can say
+ * that out loud instead of presenting a collision as an answer.
+ */
+export function fixOthers(inputs: FitBand, ext: number[], angleDeg: number,
+                          anchor: number, extMax = EXT_MAX): Fix {
+  const at = (angle: number) => {
+    const f = followPair(inputs, ext, angle, anchor, extMax);
+    return { ...f, angle, read: readAt(inputs, f.ext, angle) };
+  };
+
+  const here = at(angleDeg);
+  if (!here.short.length && here.read.verdict === VALID) {
+    return { ext: here.ext, star: here.star, short: [], angle: angleDeg,
+             moved: false, valid: true };
+  }
+
+  const lo = (inputs.windowLo ?? angleDeg) - 25;
+  const hi = (inputs.windowHi ?? angleDeg) + 25;
+  let best: ReturnType<typeof at> | null = null;
+  let bestCost = Infinity;
+  for (let angle = lo; angle <= hi + 1e-9; angle += inputs.step) {
+    const m = at(angle);
+    if (m.short.length || m.read.verdict !== VALID) continue;
+    // Distance from the hand's heading, with off-window placements a whole
+    // tier behind: headings span well under 1000°, so the penalty can never
+    // beat a legal in-window answer, only order the ones that remain.
+    const cost = Math.abs(angle - angleDeg) + (m.read.inWindow ? 0 : 1000);
+    if (cost < bestCost) { bestCost = cost; best = m; }
+  }
+  if (best) {
+    return { ext: best.ext, star: best.star, short: [], angle: best.angle,
+             moved: true, valid: true };
+  }
+  return { ext: here.ext, star: here.star, short: here.short, angle: angleDeg,
+           moved: false, valid: false };
+}
+
 /**
  * Rank a set of rings by how well neighbouring arms agree — the sort.
  *

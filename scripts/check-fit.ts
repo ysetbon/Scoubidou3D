@@ -16,8 +16,8 @@
 import { readFileSync } from "node:fs";
 import { VALID, sweepAngle, placeStarts } from "../src/mxn-lab/trace-census";
 import {
-  EXT_MAX, fitCandidates, followPair, isFlush, neighbourDelta, readAt,
-  windowFor, type FitBand,
+  EXT_MAX, fitCandidates, fixOthers, followPair, isFlush, neighbourDelta,
+  readAt, windowFor, type FitBand,
 } from "../src/mxn-fit/solve";
 
 // Resolved against the working directory rather than import.meta.url: the
@@ -122,6 +122,56 @@ for (const [size, entry] of Object.entries(data.sizes)) {
         tried === 0 || worstFollow < 1e-9,
         `worst Δ ${worstFollow.toExponential(2)}px over ${tried} follows`
         + (clamped ? `, ${clamped} out of reach and reported` : ""));
+
+      // The one-shot fix is geometry-aware where follow is not: a valid fix
+      // has to hold the anchored pair to the digit, land exactly flush, pass
+      // sweepAngle's own tests — and where the flush answer at the hand's
+      // heading collides, the rescue is a MOVED heading, not a shrug.
+      let fixed = 0;
+      let rescued = 0;
+      let collided = 0;
+      let anchorSlipped = 0;
+      let notFlush = 0;
+      let stillIllegal = 0;
+      for (let anchorPair = 0; anchorPair < band.P; anchorPair += 1) {
+        for (const e of [0, 20, 35.5, 60, 90, 120, 160, 200]) {
+          for (const angle of [band.windowLo, (band.windowLo + band.windowHi) / 2,
+                               band.windowHi]) {
+            const ext = new Array(band.P).fill(60);
+            ext[anchorPair] = e;
+            const plain = followPair(band, ext, angle, anchorPair);
+            const plainBroken = !plain.short.length
+              && readAt(band, plain.ext, angle).verdict !== VALID;
+            if (plainBroken) collided += 1;
+            const fix = fixOthers(band, ext, angle, anchorPair);
+            if (!fix.valid) continue;
+            fixed += 1;
+            if (Math.abs(fix.ext[anchorPair] - e) > 1e-9) anchorSlipped += 1;
+            const read = readAt(band, fix.ext, fix.angle);
+            if (neighbourDelta(read.lengths) > 1e-9) notFlush += 1;
+            if (read.verdict !== VALID) stillIllegal += 1;
+            if (plainBroken && fix.moved) rescued += 1;
+          }
+        }
+      }
+      if (fixed) {
+        check("every valid fix holds the anchor, lands flush, and is legal",
+          anchorSlipped === 0 && notFlush === 0 && stillIllegal === 0,
+          `${fixed} fixes — ${anchorSlipped} slipped, ${notFlush} unflush,`
+          + ` ${stillIllegal} illegal`);
+      }
+      // A rescue can only be demanded of a band that admits a legal flush
+      // ring at all. Where none exists — the finding the candidate walk
+      // reports above — the honest fix is `valid: false`, and rescuing zero
+      // of the collisions is the correct answer rather than a failure.
+      if (collided && candidates.length) {
+        check("a flush answer that collides is rescued by moving the heading",
+          rescued > 0,
+          `${collided} collisions at the hand's heading, ${rescued} rescued`);
+      } else if (collided) {
+        check("a band with no legal flush ring reports the fix honestly",
+          true, `${collided} collisions, ${fixed} legal placement(s) found`);
+      }
     }
 
     // And the two sides agree about the one number they both compute.

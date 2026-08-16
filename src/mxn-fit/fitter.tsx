@@ -28,7 +28,7 @@ import {
   type Judgement, type PickBand, type RunDescriptor, type Verdict,
 } from "../mxn-lab/cache";
 import {
-  EXT_MAX, FLUSH_EPS, bySortKey, fitCandidates, followPair, isFlush,
+  EXT_MAX, FLUSH_EPS, bySortKey, fitCandidates, fixOthers, followPair, isFlush,
   neighbourDelta, readAt, spread,
   type Candidate, type FitBand, type SortKey, type Tie,
 } from "./solve";
@@ -645,29 +645,43 @@ export function Fitter() {
    * The one-shot equaliser — the "static fix". With the coupling off, a hand
    * fixes one pair where it wants it and the other pairs stay put; when the
    * neighbour lengths disagree, this solves every OTHER pair's extension to
-   * the arm length the fixed pair names. Same `e = (A − L*) / B` the live
-   * coupling uses, applied once on demand: one `coefficients` read and one
-   * division per pair — O(N) in the number of pairs, no search, no engine.
+   * the arm length the fixed pair names — and, unlike the live coupling, it
+   * answers for the geometry too. A flush solve that collides at the current
+   * heading is not applied as-is: the fixed pair's extension is held exactly
+   * and the heading moves the least it can to a placement where the flush
+   * ring passes the geometric tests (fixOthers). Only when no heading in the
+   * search window works does the plain flush answer land, said out loud.
    */
   const fixFromAnchor = (key: BandKey) => {
     const inputs = plan?.[key];
     const knobs = manual[key];
     if (!inputs || inputs.unavailable || !knobs || inputs.P < 2) return;
     const fixed = anchor[key];
-    const solved = followPair(inputs, knobs.ext, knobs.angle, fixed);
-    setManual(current => ({ ...current, [key]: { ext: solved.ext, angle: knobs.angle } }));
+    const solved = fixOthers(inputs, knobs.ext, knobs.angle, fixed);
+    setManual(current => ({ ...current, [key]: { ext: solved.ext, angle: solved.angle } }));
     setTouched(current => ({ ...current, [key]: true }));
-    setFollowNote(solved.short.length
-      ? `pair${solved.short.length > 1 ? "s" : ""} `
-        + solved.short.map(p => p + 1).join(", ")
-        + ` cannot reach ${solved.star.toFixed(1)} px inside 0…${EXT_MAX} px`
-        + " at this heading — clamped, so the band is not flush"
-      : "");
-    setStatus(solved.short.length
-      ? `Solved from pair ${fixed + 1}, but ${solved.short.length} pair${
-          solved.short.length > 1 ? "s" : ""} clamped — see the panel.`
-      : `Every other pair solved to pair ${fixed + 1}'s ${solved.star.toFixed(1)} px `
-        + "— one division per pair. Weave and audit to ask the engine.");
+    setFollowNote(solved.valid
+      ? ""
+      : solved.short.length
+        ? `pair${solved.short.length > 1 ? "s" : ""} `
+          + solved.short.map(p => p + 1).join(", ")
+          + ` cannot reach ${solved.star.toFixed(1)} px inside 0…${EXT_MAX} px`
+          + " at this heading — clamped, so the band is not flush"
+        : `no heading in the search window makes this flush ring legal with `
+          + `pair ${fixed + 1} held at ${knobs.ext[fixed].toFixed(2)} px — `
+          + "applied at the current heading; the readout shows what breaks");
+    setStatus(!solved.valid
+      ? (solved.short.length
+        ? `Solved from pair ${fixed + 1}, but ${solved.short.length} pair${
+            solved.short.length > 1 ? "s" : ""} clamped — see the panel.`
+        : `Solved from pair ${fixed + 1}, but no heading makes it legal — see the panel.`)
+      : solved.moved
+        ? `Every other pair solved to pair ${fixed + 1}'s ${solved.star.toFixed(1)} px, `
+          + `and the heading moved ${knobs.angle.toFixed(1)}° → ${solved.angle.toFixed(1)}° — `
+          + "the nearest heading where the flush ring passes the geometry tests. "
+          + "Weave and audit to ask the engine."
+        : `Every other pair solved to pair ${fixed + 1}'s ${solved.star.toFixed(1)} px `
+          + "— one division per pair. Weave and audit to ask the engine.");
     setFailed(false);
     setManualWoven(null);
   };
@@ -1239,7 +1253,8 @@ export function Fitter() {
                         <button type="button" className="mfix"
                           disabled={busy || inputs.P < 2 || !read || read.delta <= FLUSH_EPS}
                           title={read && read.delta > FLUSH_EPS
-                            ? `Solve every other pair's extension to pair ${anchor[band] + 1}'s arm length — one division per pair`
+                            ? `Solve every other pair's extension to pair ${anchor[band] + 1}'s arm length — `
+                              + "moving the heading the least it can if the flush answer collides"
                             : "Lights up when neighbouring arms disagree"}
                           onClick={() => fixFromAnchor(band)}>
                           fix others from pair {anchor[band] + 1}
@@ -1277,8 +1292,10 @@ export function Fitter() {
                       moving the angle re-solves them around the anchored pair.{" "}
                       <em>Independent</em>: each pair moves alone and the others hold still —
                       and once the neighbouring arms disagree, <em>fix others from pair N</em>{" "}
-                      lights up and solves every other pair from the one you fixed, one
-                      division per pair. The diagram is the real ring — the same renderer as
+                      lights up and solves every other pair from the one you fixed —
+                      holding that pair exactly, and moving the heading the smallest
+                      amount that lets the flush ring pass the geometric tests when the
+                      answer at the current heading would collide. The diagram is the real ring — the same renderer as
                       every card on this page, with this band's arms moved to the knobs — but
                       what the page cannot decide alone is whether the ring still closes,
                       which is what <em>weave and audit</em> asks the engine. An untouched

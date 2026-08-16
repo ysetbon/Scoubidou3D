@@ -245,6 +245,12 @@ if (knobs.rows >= 3) {
   ok('fixing solves the others from the fixed pair — or reports the clamp',
     (fixed.other !== alone.other && fixedDelta < 0.01) || fixed.warn.length > 0,
     `pair 2: ${alone.other} → ${fixed.other} · Δ ${fixedDelta}${fixed.warn ? ' · clamped' : ''}`);
+  // The fix answers for the geometry too: a flush ring that collides is not a
+  // fix, so the landed configuration has to read VALID — or the panel has to
+  // say out loud why no heading could make it so.
+  ok('and the fixed ring passes the geometry tests — or says why not',
+    /geometry\s*VALID/.test(fixed.read.replace(/\s+/g, ' ')) || fixed.warn.length > 0,
+    fixed.warn ? fixed.warn.slice(0, 80) : fixed.read.slice(0, 80));
 }
 
 ok('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
