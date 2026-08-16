@@ -15,6 +15,10 @@
   --card: #fbf8ef;
   --line: #d7d0c0;
   --red: #e4513f;
+  /* The darker red, for text on paper — the same value atlas.css and board.css
+     carry. --red is a border and a chip colour and is too light to read at
+     11px. Change them together. */
+  --red-ink: #8f2e22;
   --blue: #276b72;
   --acid: #dbea65;
   --green: #2f7a45;
@@ -75,6 +79,12 @@ input[type=text], input[type=number], select {
 }
 .hint.preloaded[data-state=shown] { border-left-color: var(--ink); color: var(--ink); }
 .hint.preloaded[data-state=looking] { font-style: italic; }
+/* A size past everything else in the suite. Red down the side, because it is a
+   caution and not a status: the run has not been asked for yet. */
+.hint.beyond {
+  margin-top: 9px; padding: 8px 10px; border-left: 2px solid var(--red);
+  background: rgba(228, 81, 63, .06); color: var(--red-ink);
+}
 .go {
   width: 100%; padding: 12px; margin-top: 6px;
   background: var(--ink); color: var(--paper); border: 1px solid var(--ink);
