@@ -123,6 +123,23 @@ export type Judgement = {
   supersedes?: string;
   /** Optionally the whole ring, so /app/ can open it with no engine anywhere. */
   strands?: unknown;
+  /**
+   * Optionally the band plan the ring was fitted against — `bridge.fit_plan`'s
+   * payload for its level, verbatim.
+   *
+   * `strands` makes a judgement *drawable* without an engine; this makes it
+   * *editable* without one. Everything the fitter's manual panel does is
+   * arithmetic over these inputs — origins, directions, pair indices, targets,
+   * the angle window and the gap bounds — so with them stored, a reader can
+   * open a judged ring and move it with no Pyodide anywhere. Without them the
+   * only way to get a FitBand is `bridge.fit_plan`, which needs the browsing
+   * session only `generate` opens, which is the whole run.
+   *
+   * A few KB: every field is O(arms), not O(the search grid). Judgements saved
+   * before this carry none, so a reader is told to Run rather than shown knobs
+   * that cannot exist.
+   */
+  plan?: unknown;
 };
 
 export type PicksArtifact = {

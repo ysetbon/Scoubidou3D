@@ -26,7 +26,8 @@ import {
   CACHE_TOKEN_KEY, CACHE_URL_KEY, CACHE_VERSION, createCache, mergeJudgement,
   parsePicksKey, picksKey,
   readSetting, writeSetting,
-  type Judgement, type PickBand, type PicksArtifact, type RunDescriptor,
+  type Judgement, type JudgementSource, type PickBand, type PicksArtifact,
+  type RunDescriptor,
   type Verdict,
 } from "../mxn-lab/cache";
 import {
@@ -232,7 +233,7 @@ function nearness(want: RunDescriptor, got: RunDescriptor) {
 
 /** One drawable ★ best, and which parameter set it belongs to. */
 type Found = { stage: Stage; judgement: Judgement; from: string;
-               descriptor: RunDescriptor };
+               descriptor: RunDescriptor; judgements: Judgement[] };
 
 /** The most artifacts the shelf-wide search will fetch before giving up. */
 const ANYWHERE_LIMIT = 16;
@@ -267,7 +268,8 @@ async function bestFromAnywhere(
     const best = picks.judgements.find(j => j.verdict === "best");
     const stage = best ? stageOfJudgement(best) : null;
     return best && stage
-      ? { stage, judgement: best, from: picks.from, descriptor: d } : null;
+      ? { stage, judgement: best, from: picks.from, descriptor: d,
+          judgements: picks.judgements } : null;
   };
 
   let searched = 0;
@@ -627,6 +629,24 @@ export function Fitter() {
   // engine is asked. See the Preload type for why this exists.
   const [preload, setPreload] = useState<Preload>({ state: "off" });
 
+  /**
+   * Where the ring in the editor came from, and which parameter set it is about.
+   *
+   * Two things depend on knowing: a run the reader started themselves is never
+   * replaced by a preload landing behind it, and a verdict is only offered when
+   * the ring on screen belongs to the parameters in the form — filing a
+   * judgement about one parameter set under another's key would be the page
+   * telling the shelf something untrue.
+   */
+  type Editor = { from: "run" | "preload"; key: string; descriptor: RunDescriptor;
+                  /** The source the loaded judgement carried, when off the shelf. */
+                  source?: JudgementSource };
+  const [editor, setEditor] = useState<Editor | null>(null);
+  // Mirrored so the preload effect can read it without listing it as a dep —
+  // depending on it would re-run the whole lookup every time the editor moved.
+  const editorRef = useRef<Editor | null>(editor);
+  editorRef.current = editor;
+
   /** Every judgement anyone has made about the parameter set in the form. */
   const loadPicks = (): Promise<Picks> => readPicks(
     { m, n, ks, hand, direction, ...DESCRIPTOR_FLAGS },
@@ -671,6 +691,92 @@ export function Fitter() {
   };
 
   /**
+   * Put a judged ring straight into the editor, with no engine anywhere.
+   *
+   * Every function behind the manual panel — placeStarts, sweepAngle, readAt,
+   * followPair, fixOthers, and fitCandidates too — takes a FitBand and nothing
+   * else. So the only reason editing a judged ring ever needed a run was that
+   * the FitBand itself came from `bridge.fit_plan`, behind the browsing session
+   * only `generate` opens. A judgement carrying its own plan needs none of it:
+   * this is fitAt's setup with every `ask()` deleted.
+   *
+   * There is no "engine's own ring" in this mode, because no engine ran. The
+   * judged ring IS the baseline — it is what the knobs reset to and what the
+   * before/after card measures against — and the card is titled to say so
+   * rather than claiming the engine drew it.
+   *
+   * What this cannot do is weave: only the engine rebuilds a ring and counts
+   * its crossings, so *weave and audit* stays disabled until a Run has opened a
+   * session. Everything else — the knobs, the live readouts, the diagram, the
+   * candidate table — is live either way.
+   */
+  const openFromPreload = (f: Found): boolean => {
+    const got = f.judgement.plan as Plan | undefined;
+    if (!got || (!got.h && !got.v)) return false;
+    const level = f.stage.level;
+    const stage: Stage = { ...f.stage, k: got.k, label: "judged" };
+    const lengths = {
+      h: got.h?.unavailable ? [] : measure(stage.strands, got.h.names),
+      v: got.v?.unavailable ? [] : measure(stage.strands, got.v.names),
+    };
+    // Where the judged ring holds each band, recovered off the ring itself —
+    // the same `heading` the run path uses, for the same reason.
+    const heldNow: Record<BandKey, ManualBand | null> = { h: null, v: null };
+    for (const key of BANDS) {
+      const inputs = got[key];
+      if (!inputs || inputs.unavailable) continue;
+      const angle = heading(stage.strands, inputs.names) ?? inputs.appliedAngle;
+      if (angle !== null) heldNow[key] = { ext: [...inputs.applied], angle };
+    }
+    const a = f.judgement.audit;
+    const row: AuditRow = {
+      level, k: got.k, expected: a?.expected ?? 0, across: a?.crossings ?? 0,
+      within: 0, masks: 0, stray: a?.stray ?? 0, broken: a?.broken ?? 0,
+      healthy: !!a && a.crossings >= a.expected && a.stray === 0 && a.broken === 0,
+      ext: [],
+    };
+    const woven: Woven = {
+      level, crossings: row.across, row, strands: stage.strands,
+      h: { ext: heldNow.h?.ext ?? [], angle: heldNow.h?.angle ?? null },
+      v: { ext: heldNow.v?.ext ?? [], angle: heldNow.v?.angle ?? null },
+    };
+    const attempt: Attempt = { h: null, v: null, woven, lengths, accepted: row.healthy };
+    const lists: Record<BandKey, Candidate[]> = { h: [], v: [] };
+    for (const key of BANDS) {
+      const inputs = got[key];
+      if (!inputs || inputs.unavailable || isFlush(lengths[key])) continue;
+      lists[key] = fitCandidates(inputs);
+    }
+    setFitLevel(level);
+    setPlan(got);
+    setStages([stage]);
+    setAllStages([stage]);
+    setAuditRows([row]);
+    setBefore({ stage, lengths, woven });
+    setAfter(attempt);
+    setOrigin({ kind: "judged", verdict: "best", chooser: f.judgement.chooser,
+                from: f.from });
+    // No candidate was woven to get here — the ring was read. An empty list is
+    // the true tally, and it also keeps the "what the audit said" panel closed,
+    // which would otherwise log a weave that never happened.
+    setAttempts([]);
+    setCandidates(lists);
+    setHeld(heldNow);
+    setManual({
+      h: heldNow.h ? { ext: [...heldNow.h.ext], angle: heldNow.h.angle } : null,
+      v: heldNow.v ? { ext: [...heldNow.v.ext], angle: heldNow.v.angle } : null,
+    });
+    setTouched({ h: false, v: false });
+    setAnchor({ h: 0, v: 0 });
+    setFollowNote(""); setManualWoven(null); setMismatch("");
+    setPicks({ judgements: f.judgements, from: f.from, reached: true });
+    setEditor({ from: "preload", key: picksKey(f.descriptor), descriptor: f.descriptor,
+                source: f.judgement.source });
+    setFailed(false);
+    return true;
+  };
+
+  /**
    * Look for a drawable ★ best on load, and on every parameter change.
    *
    * Deliberately the ONLY place on this page that reads the shelf without the
@@ -706,17 +812,26 @@ export function Fitter() {
         const best = found.judgements.find(j => j.verdict === "best") ?? null;
         return { picks: found, best, stage: best ? stageOfJudgement(best) : null };
       };
-      const show = (f: Found, substitute: Substitute | null) => setPreload({
-        state: "shown", stage: f.stage, judgement: f.judgement, from: f.from,
-        descriptor: f.descriptor, substitute,
-      });
+      const show = (f: Found, substitute: Substitute | null) => {
+        setPreload({
+          state: "shown", stage: f.stage, judgement: f.judgement, from: f.from,
+          descriptor: f.descriptor, substitute,
+        });
+        // And straight into the editor, when the judgement carries its plan.
+        // A run the reader started is never replaced, and a ring already open
+        // is never reloaded — that would throw away knobs somebody had moved.
+        const open = editorRef.current;
+        if (open?.from === "run") return;
+        if (open?.key === picksKey(f.descriptor)) return;
+        openFromPreload(f);
+      };
       setPreload({ state: "looking", where: "for a judged ★ best" });
       try {
         const asked = await look(wanted);
         if (!current()) return;
         if (asked.best && asked.stage) {
           show({ stage: asked.stage, judgement: asked.best, from: asked.picks.from,
-                 descriptor: wanted }, null);
+                 descriptor: wanted, judgements: asked.picks.judgements }, null);
           return;
         }
         const spare = defaultOf(wanted);
@@ -726,7 +841,7 @@ export function Fitter() {
           if (!current()) return;
           if (other.best && other.stage) {
             show({ stage: other.stage, judgement: other.best, from: other.picks.from,
-                   descriptor: spare }, "default");
+                   descriptor: spare, judgements: other.picks.judgements }, "default");
             return;
           }
           tried.push(picksKey(spare));
@@ -1012,6 +1127,9 @@ export function Fitter() {
       // would never match the fitter's (`s1-eauto-b400000`). Without the write
       // the read could never hit and the cache would be decoration.
       const d: RunDescriptor = { m, n, ks, hand, direction, ...DESCRIPTOR_FLAGS };
+      // From here the editor is the run's, and a preload landing behind it must
+      // not take it back.
+      setEditor({ from: "run", key: picksKey(d), descriptor: d });
       const shelf = apiUrl.trim()
         ? createCache({ base: apiUrl.trim(), token: apiToken.trim() }) : null;
       let result: { stages?: Stage[]; rows?: AuditRow[] } | null = null;
@@ -1388,8 +1506,12 @@ export function Fitter() {
   };
 
   /** The ring a verdict would be about: manual if woven, else fitted, else engine's. */
-  const judgedSource = manualWoven ? "hand" as const
-    : after ? "fitter" as const : "engine" as const;
+  const judgedSource: JudgementSource = manualWoven ? "hand"
+    // Untouched off the shelf, the geometry is the one that was already judged,
+    // so it keeps the source it was judged under rather than claiming this
+    // page's fitter produced it.
+    : editor?.from === "preload" && editor.source ? editor.source
+    : after ? "fitter" : "engine";
 
   const saveJudgement = async (verdict: Verdict) => {
     if (!plan || !before) return;
@@ -1442,6 +1564,12 @@ export function Fitter() {
       // already built. Stored, the diagram is drawable the moment the
       // judgement is read. Costs a few KB per judgement; buys the wait.
       strands: attempt ? attempt.woven.strands : before.stage.strands,
+      // And the band plan it was fitted against. Strands make the judgement
+      // drawable with no engine; this makes it EDITABLE with no engine — the
+      // manual panel is arithmetic over exactly these inputs, and the only
+      // reason moving a judged ring ever needed a run was that the inputs
+      // themselves came from bridge.fit_plan, behind a browsing session.
+      plan,
     };
 
     // Local first, always: a wrong URL or a bad token must lose the upload,
@@ -1512,10 +1640,15 @@ export function Fitter() {
   const exportRing = () => {
     if (!plan || !before) return;
     const source = after ?? null;
-    const name = `mxn-${m}x${n}-k${ks.join("_")}-${hand}-${direction}-L${fitLevel}`;
+    // The RING's parameters, not the form's: in preload mode the two can
+    // differ, and a file named for what was typed rather than what it holds is
+    // the same lie as a caption naming the wrong set.
+    const d = editor?.descriptor ?? descriptor;
+    const name = `mxn-${d.m}x${d.n}-k${d.ks.join("_")}-${d.hand}-${d.direction}-L${fitLevel}`;
     saveJson(`${name}-${today()}.json`, source ? source.woven.strands : before.stage.strands);
     saveJson(`${name}-${today()}.fit.json`, {
-      params: { m, n, ks, hand, direction },
+      params: { m: d.m, n: d.n, ks: d.ks, hand: d.hand, direction: d.direction },
+      source: editor?.from === "preload" ? "judged ring read from the shelf" : "run",
       engine: { level: fitLevel, k: plan.k },
       fitted: !!source,
       policy: { target: "flush", ext: "continuous", angle: "window", tie: "longest" },
@@ -1560,6 +1693,20 @@ export function Fitter() {
   /** One parameter set, as a person reads it. */
   const nameOf = (d: RunDescriptor) => `${d.m}×${d.n} · k=${d.ks.join(", ")}`
     + ` · ${d.hand.toUpperCase()} · ${d.direction.toUpperCase()}`;
+
+  /** The ring in the editor came off the shelf, not out of a run. */
+  const fromShelf = editor?.from === "preload";
+  /**
+   * Whether a verdict may be written about what is on screen.
+   *
+   * A judgement is addressed by the parameters in the form, so offering one
+   * about a ring belonging to a DIFFERENT set would file a true statement under
+   * a false key. Adopting the substitute's parameters is what unlocks it, and
+   * the runbar carries the button that does.
+   */
+  const judgeable = !fromShelf || editor?.key === picksKey(descriptor);
+  /** Only the engine can weave, and only a run opens the session it needs. */
+  const canWeave = !!session.current;
 
   /** What the shelf lookup found, in one line, beside the button it is about. */
   const preloadLine = (() => {
@@ -1699,20 +1846,36 @@ export function Fitter() {
                 onChange={e => setJudgeNote(e.target.value)} />
             </div>
             <div className="verdicts">
-              <button type="button" className="verdict good" disabled={!before || busy}
-                onClick={() => saveJudgement("valid")}>✓ valid</button>
-              <button type="button" className="verdict star" disabled={!before || busy}
-                onClick={() => saveJudgement("best")}>★ best</button>
-              <button type="button" className="verdict no" disabled={!before || busy}
-                onClick={() => saveJudgement("rejected")}>✗ rejected</button>
+              {/* A judgement is addressed by the parameters in the FORM. About a
+                  ring belonging to another set that would be a true statement
+                  filed under a false key, so the buttons wait for the two to
+                  agree — which the runbar's adopt button is there to arrange. */}
+              {(["valid", "best", "rejected"] as const).map(verdict => (
+                <button key={verdict} type="button"
+                  className={`verdict ${verdict === "valid" ? "good"
+                    : verdict === "best" ? "star" : "no"}`}
+                  disabled={!before || busy || !judgeable}
+                  title={judgeable ? undefined
+                    : "The ring on screen belongs to another parameter set — put its "
+                      + "parameters in the form, or Run these, before judging it"}
+                  onClick={() => saveJudgement(verdict)}>
+                  {VERDICT_GLYPH[verdict]} {verdict}
+                </button>
+              ))}
             </div>
             <p className="hint">
               A verdict is about the ring on screen — right now the{" "}
-              <em>{judgedSource === "hand" ? "manual" : judgedSource === "fitter" ? "fitted" : "engine's own"}</em>{" "}
+              <em>{judgedSource === "hand" ? "manual" : fromShelf ? "judged"
+                : judgedSource === "fitter" ? "fitted" : "engine's own"}</em>{" "}
               ring. It is held in this browser first, and with a Worker configured it is
               also written to <code>picks/{picksKey(descriptor)}</code> on the shelf and as
               a row in the D1 solutions table, so <code>/mxn/rate/</code> and a{" "}
               <code>?verdict=</code> query can find it. Only a person writes one.
+              {!judgeable && editor && (
+                <> <b>Not right now:</b> the ring on screen is{" "}
+                <code>{nameOf(editor.descriptor)}</code> and the form says{" "}
+                <code>{nameOf(descriptor)}</code>. One key, one ring.</>
+              )}
             </p>
           </section>
         </div>
@@ -1782,11 +1945,18 @@ export function Fitter() {
                           </>
                         )}
                       </p>
+                      {/* Reaching this card at all means the judgement carried
+                          no plan — one that does opens the editor instead of
+                          being drawn here. Saying which of the two it is beats
+                          leaving a reader to wonder where the knobs went. */}
                       <p className="note" style={{ padding: "10px 0 0" }}>
-                        <em>Run</em> is still what fits: it computes the stitch, loads this
-                        same best into the fitted card, and opens the manual knobs, the
-                        candidate table and the verdict buttons. That is the part that needs
-                        the engine.
+                        This judgement was saved before plans were stored with them, so it
+                        can be <em>drawn</em> without an engine but not <em>moved</em>: the
+                        knobs are arithmetic over the band plan, and only{" "}
+                        <code>bridge.fit_plan</code> can produce one, behind a run.{" "}
+                        <em>Run</em> opens the knobs, the candidate table and the audit — and
+                        judging the ring again afterwards stores the plan, so next time it
+                        opens straight into the editor.
                       </p>
                       {preload.substitute && (
                         <button type="button" className="minibtn"
@@ -1821,10 +1991,31 @@ export function Fitter() {
           {plan && (
             <>
               <div className="runbar">
-                <h1>{m}×{n} · k={ks.join(", ")} · {hand.toUpperCase()} · {direction.toUpperCase()}</h1>
-                {after
-                  ? <span className="chip ok">fitted · proposed</span>
-                  : <span className="chip warn">not fitted</span>}
+                {/* The ring's OWN parameters, not the form's. In preload mode
+                    the two can differ, and the heading over a diagram has to
+                    name the diagram. */}
+                <h1>{nameOf(editor?.descriptor ?? descriptor)}</h1>
+                {fromShelf
+                  ? <span className="chip ok">off the shelf · no engine</span>
+                  : after
+                    ? <span className="chip ok">fitted · proposed</span>
+                    : <span className="chip warn">not fitted</span>}
+                {!judgeable && editor && (
+                  <>
+                    <span className="chip warn">not your parameters</span>
+                    <button type="button" className="minibtn"
+                      title={"Put this ring's parameters in the form, so a verdict and a "
+                        + "Run are about what is on screen"}
+                      onClick={() => {
+                        const d = editor.descriptor;
+                        setM(d.m); setN(d.n); setKsText(d.ks.join(", "));
+                        setHand(d.hand as "lh" | "rh");
+                        setDirection(d.direction as "cw" | "ccw");
+                      }}>
+                      put {nameOf(editor.descriptor)} in the form
+                    </button>
+                  </>
+                )}
                 <span className="chip soft">fitting L{fitLevel} of {stages.length}</span>
                 {health && (
                   <span className={`chip ${health.healthy ? "soft" : "warn"}`}>
@@ -1944,7 +2135,9 @@ export function Fitter() {
                           <span>
                             {touched[other] && manual[other]
                               ? `the ${BAND_NAME[other]} band is drawn where you left it`
-                              : "the rest of the ring is drawn as the engine wove it"}
+                              : fromShelf
+                                ? "the rest of the ring is drawn as it was judged"
+                                : "the rest of the ring is drawn as the engine wove it"}
                           </span>
                         </div>
                       </div>
@@ -2006,9 +2199,21 @@ export function Fitter() {
                           onClick={() => fixFromAnchor(band)}>
                           fix others from pair {anchor[band] + 1}
                         </button>
+                        {/* The one thing the page cannot do for itself. The
+                            knobs, the readouts and this diagram are arithmetic;
+                            rebuilding a ring and counting its crossings is the
+                            engine's alone, and only a run opens the session it
+                            needs. Said on the button rather than failing on the
+                            press. */}
                         <button type="button" className="mgo"
-                          disabled={busy || !(touched.h || touched.v)}
-                          onClick={weaveManual}>Weave and audit</button>
+                          disabled={busy || !canWeave || !(touched.h || touched.v)}
+                          title={canWeave ? "Ask the engine to weave this ring and audit it"
+                            : "Only the engine can weave a ring, and only Run opens the "
+                              + "session it needs. The numbers and the diagram are live "
+                              + "without it."}
+                          onClick={weaveManual}>
+                          {canWeave ? "Weave and audit" : "Weave and audit · needs Run"}
+                        </button>
                         <button type="button"
                           disabled={busy || !manualWoven?.accepted || after === manualWoven}
                           onClick={adoptManual}>
@@ -2062,7 +2267,12 @@ export function Fitter() {
                 </header>
                 <div className="body">
                   <div className="rings">
-                    <RingFigure title={`L${fitLevel} · engine`} stage={before?.stage ?? null}
+                    {/* No engine ran in preload mode, so the baseline is the
+                        judged ring itself and the card must not claim
+                        otherwise. */}
+                    <RingFigure
+                      title={`L${fitLevel} · ${fromShelf ? "as judged" : "engine"}`}
+                      stage={before?.stage ?? null}
                       bounds={bounds}
                       caption={beforeLengths.length
                         ? `Δ ${neighbourDelta(beforeLengths).toFixed(2)} px` : ""} />
@@ -2083,9 +2293,15 @@ export function Fitter() {
                   <LengthBars before={beforeLengths} after={afterLengths} />
                 </div>
                 <p className="note">
-                  Both are the engine's own output, and the right-hand card names where its
-                  ring came from — a person's <b>★ best</b> with the chooser who judged it,
-                  a ring <em>adopted by hand</em>, or <em>fitted</em> from the candidate walk.
+                  {fromShelf
+                    ? <>Both are the ring <em>{origin?.kind === "judged" ? origin.chooser
+                        : "somebody"}</em> judged, read off the shelf — no engine has run, so
+                       there is no separate engine baseline to show and the left-hand card
+                       says <em>as judged</em> rather than pretending to one. </>
+                    : <>Both are the engine's own output, and the right-hand card names where
+                       its ring came from — a person's <b>★ best</b> with the chooser who
+                       judged it, a ring <em>adopted by hand</em>, or <em>fitted</em> from the
+                       candidate walk. </>}
                   The lengths beside them are measured off
                   those strands rather than recomputed from the extensions that were asked for,
                   so what is quoted is what is drawn. Fitting a level slides its arms along
@@ -2208,10 +2424,14 @@ export function Fitter() {
                               </td>
                               <td className="num">
                                 <button type="button" className="minibtn"
-                                  disabled={busy || !here || !before}
+                                  disabled={busy || !here || !before
+                                    || (!j.strands && !canWeave)}
                                   onClick={() => loadJudgement(j)}
-                                  title={here ? `Weave ${j.chooser}'s ring and show it`
-                                    : `This judgement does not cover L${fitLevel}`}>
+                                  title={!here ? `This judgement does not cover L${fitLevel}`
+                                    : j.strands ? `Show ${j.chooser}'s ring, as stored`
+                                    : canWeave ? `Weave ${j.chooser}'s ring and show it`
+                                    : "This judgement stored no ring, so showing it needs "
+                                      + "a weave — press Run first"}>
                                   {shown ? "shown" : "show"}
                                 </button>
                               </td>
