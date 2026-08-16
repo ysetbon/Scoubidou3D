@@ -641,6 +641,27 @@ L1 only, and it says so. Level *N*'s inputs hang off level *N−1*'s **solved**
 ring, so anything above the first genuinely does need the levels below it
 searched — which is `generate`, and is what `Run` is for.
 
+**Why the worker URL carries a version.** `public/mxn/exact-worker.js` is
+served verbatim under a stable URL — Vite hashes bundle assets, not `public/`
+files — so a browser keeps its copy and answers today's page with yesterday's
+worker. The dispatcher's `if (!handler) return;` then dropped any message type
+added since on the floor: the page's promise never settled, and the tab sat on
+*Working…* forever with nothing said. That is exactly what happened the first
+time **Open the knobs · no search** shipped — the cached worker had no
+`fit-plan-now`.
+
+Two changes, because either alone leaves half the trap:
+
+- The worker **answers** an unknown type with an error naming it and saying a
+  cached copy is the likely cause. A permanent hang becomes one actionable line.
+- The fitter asks for `exact-worker.js?v=…`, the way
+  `src/mxn-lab/weave-studio.tsx` already did. **Bump it whenever the worker's
+  message vocabulary changes.**
+
+`qa:fit` holds both: one check reads the shipped worker and fails if
+`if (!handler) return;` comes back, another fails if the fitter's URL loses its
+version.
+
 **Judged rings — the panel that shows the others.** The auto-load takes the ★
 best and stops, so every other judgement needs a way to be looked at: somebody
 else's, an older one, or a ✓ valid worth comparing against the best. The

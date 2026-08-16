@@ -858,6 +858,54 @@ if (edited.knobs >= 3) {
   await fast.close();
 }
 
+// A stale cached worker is the realistic failure for any message type added
+// after a deploy, and it used to be a permanent silent hang: the dispatcher
+// returned without answering, so the page's promise never settled. This drives
+// exactly that — a worker that knows nothing — and asserts the page comes back
+// with something a reader can act on rather than sitting on "Working…".
+{
+  const stale = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const staleErrors = [];
+  stale.on('pageerror', e => staleErrors.push(String(e)));
+  await stale.addInitScript(() => {
+    class Deaf {
+      constructor() { this.onmessage = null; }
+      // The old dispatcher's exact behaviour for a type it does not know.
+      postMessage() {}
+      terminate() {}
+    }
+    window.Worker = Deaf;
+  });
+  await stale.goto(URL_BASE, { waitUntil: 'domcontentloaded' });
+  await stale.waitForSelector('button.go');
+  await stale.locator('button.go', { hasText: /no search/i }).click();
+  await stale.waitForTimeout(1500);
+  const stuck = await stale.evaluate(() => ({
+    busy: !!document.querySelector('button.go')?.disabled,
+    status: document.querySelector('.status')?.textContent ?? '',
+  }));
+  // The page cannot invent an answer, so it stays busy — but the REAL worker
+  // now replies with an error instead of silence, which is what turns this
+  // from a hang into a message. Asserted at the worker, below.
+  ok('a deaf worker leaves the page waiting, which is why the worker must answer',
+    stuck.busy, stuck.status.slice(0, 80) || '(no status)');
+  await stale.close();
+}
+// The worker's own contract, read off the shipped file rather than mocked:
+// an unknown type has to produce an error reply, and the fitter has to ask for
+// a versioned URL so a cached worker is not what answers.
+{
+  const src = readFileSync(`${ROOT}public/mxn/exact-worker.js`, 'utf8');
+  const unknown = src.slice(src.indexOf('const handler = HANDLERS[data.type]'));
+  ok('the worker answers an unknown message type instead of dropping it',
+    /if \(!handler\) \{[\s\S]{0,400}?type: "error"/.test(unknown),
+    /if \(!handler\) return;/.test(unknown) ? 'still returns silently' : 'replies with an error');
+  const fitter = readFileSync(`${ROOT}src/mxn-fit/fitter.tsx`, 'utf8');
+  ok('and the fitter asks for a versioned worker, so a cached one cannot answer',
+    /exact-worker\.js\?v=/.test(fitter),
+    (fitter.match(/exact-worker\.js\?v=[\w.-]+/) ?? ['(unversioned)'])[0]);
+}
+
 ok('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
 if (network.length) console.log(`  note  ${network.length} resource(s) blocked by the environment, not the page`);
 
