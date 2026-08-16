@@ -751,7 +751,7 @@ export function Fitter() {
    * judgement about one parameter set under another's key would be the page
    * telling the shelf something untrue.
    */
-  type Editor = { from: "run" | "preload"; key: string; descriptor: RunDescriptor;
+  type Editor = { from: "run" | "preload" | "fast"; key: string; descriptor: RunDescriptor;
                   /** The source the loaded judgement carried, when off the shelf. */
                   source?: JudgementSource };
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -887,6 +887,93 @@ export function Fitter() {
                 source: f.judgement.source });
     setFailed(false);
     return true;
+  };
+
+  /**
+   * Open the knobs on the typed parameters, without letting the search run.
+   *
+   * The band plan is the SPACE the search walks — pair origins and directions,
+   * the arms' targets, the extension grid, the angle window, the gap bounds —
+   * and none of it is a result of walking it. `bridge.fit_plan_now` grabs it at
+   * the hook and stops the level there.
+   *
+   * Measured on this repo's engine: 0.13 s for a 4×1, against 280 s for the
+   * generate `Run` waits on. Same plan, to the byte. What is given up is the
+   * engine's own pick and its audit — so this opens with the arms where
+   * `build_level_one` left them, no before/after comparison, and weaving still
+   * behind Run. Everything the hand actually touches is live.
+   */
+  const openWithoutSearching = async () => {
+    if (!ks.length) { setStatus("Give at least one k."); setFailed(true); return; }
+    setBusy(true); setFailed(false);
+    restartClock();
+    note(`Knobs requested without a search · ${m}×${n} · k=${ks.join(", ")}`);
+    setStatus("Reading the two bands — no search…");
+    try {
+      const began = performance.now();
+      const got = await ask(
+        { type: "fit-plan-now", m, n, ks, hand, direction }, "fit-plan-now-ready",
+      ) as Plan & { strands: Strand[] };
+      const secs = (performance.now() - began) / 1000;
+      note(`Bands read in ${secs.toFixed(2)}s — the search was never run`);
+      const level = got.level ?? 1;
+      const stage: Stage = { level, k: got.k, label: "unsearched",
+                             strands: got.strands };
+      const lengths = {
+        h: got.h?.unavailable ? [] : measure(stage.strands, got.h.names),
+        v: got.v?.unavailable ? [] : measure(stage.strands, got.v.names),
+      };
+      const heldNow: Record<BandKey, ManualBand | null> = { h: null, v: null };
+      for (const key of BANDS) {
+        const inputs = got[key];
+        if (!inputs || inputs.unavailable) continue;
+        // No engine pick to quote, so the heading comes off the ring being
+        // drawn — which is the page's preferred source anyway.
+        const angle = heading(stage.strands, inputs.names) ?? inputs.appliedAngle;
+        if (angle !== null) heldNow[key] = { ext: [...inputs.applied], angle };
+      }
+      const lists: Record<BandKey, Candidate[]> = { h: [], v: [] };
+      for (const key of BANDS) {
+        const inputs = got[key];
+        if (!inputs || inputs.unavailable || isFlush(lengths[key])) continue;
+        lists[key] = fitCandidates(inputs);
+      }
+      note(`${lists.h.length + lists.v.length} flush candidates solved in the page`);
+      const d: RunDescriptor = { m, n, ks, hand, direction, ...DESCRIPTOR_FLAGS };
+      setFitLevel(level);
+      setPlan(got);
+      setStages([stage]); setAllStages([stage]);
+      // No search means no audit — and an audit row invented here would be the
+      // page asserting a ring closes when nothing checked it.
+      setAuditRows([]);
+      setBefore({
+        stage, lengths,
+        woven: { level, crossings: 0, strands: stage.strands,
+                 row: { level, k: got.k, expected: 0, across: 0, within: 0,
+                        masks: 0, stray: 0, broken: 0, healthy: false, ext: [] },
+                 h: { ext: heldNow.h?.ext ?? [], angle: heldNow.h?.angle ?? null },
+                 v: { ext: heldNow.v?.ext ?? [], angle: heldNow.v?.angle ?? null } },
+      });
+      setAfter(null); setOrigin(null); setAttempts([]);
+      setCandidates(lists);
+      setHeld(heldNow);
+      setManual({
+        h: heldNow.h ? { ext: [...heldNow.h.ext], angle: heldNow.h.angle } : null,
+        v: heldNow.v ? { ext: [...heldNow.v.ext], angle: heldNow.v.angle } : null,
+      });
+      setTouched({ h: false, v: false }); setAnchor({ h: 0, v: 0 });
+      setFollowNote(""); setManualWoven(null); setMismatch("");
+      setEditor({ from: "fast", key: picksKey(d), descriptor: d, source: "hand" });
+      setStatus(`Knobs open in ${secs.toFixed(2)}s — the search never ran. `
+        + "Move the arms; press Run when you want the engine's own ring, its "
+        + "audit, and the ability to weave.");
+    } catch (error) {
+      note("Reading the bands failed");
+      setStatus(error instanceof Error ? error.message : String(error));
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
   };
 
   /**
@@ -1840,7 +1927,13 @@ export function Fitter() {
     });
   };
 
-  const health = after?.woven.row ?? before?.woven.row ?? null;
+  // The audit on screen, or nothing. In the no-search mode there IS no audit —
+  // the baseline is a ring the engine never graded — and quoting its zeroed row
+  // would read as "0 of 0 crossings, 0 stray", which is the page asserting a
+  // check it never made. Weaving fills this in for real.
+  const health = after?.woven.row
+    ?? (editor?.from === "fast" ? null : before?.woven.row)
+    ?? null;
 
   /** One parameter set, as a person reads it. */
   const nameOf = (d: RunDescriptor) => `${d.m}×${d.n} · k=${d.ks.join(", ")}`
@@ -1967,6 +2060,12 @@ export function Fitter() {
               {busy ? "Working…"
                 : apiUrl.trim() ? "Run · load best from Cloudflare"
                 : "Run · load best fit"}
+            </button>
+            <button className="go ghost" type="button" onClick={openWithoutSearching}
+              disabled={busy}
+              title={"The band plan is the space the search walks, not its result — "
+                + "so the knobs are ready long before the walk finishes"}>
+              Open the knobs · no search
             </button>
             <button className="go ghost" type="button" onClick={exportRing}
               disabled={!before}>Export</button>

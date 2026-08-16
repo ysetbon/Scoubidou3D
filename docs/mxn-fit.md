@@ -602,6 +602,45 @@ engine state the artifact does not hold — so the timeline says so in as many
 words: *Levels drawn from the cache. Opening the browsing session — this runs
 generate again, and it is the wait.*
 
+**The knobs without the search.** The band plan is the *space* the search walks
+— pair origins and directions, the arms' targets, the extension grid, the angle
+window, the gap bounds — and none of it is a *result* of walking it. It is
+complete the moment the search is handed its arguments, which is why
+`_trace_band_inputs` already announces it from inside the hook rather than after
+the replay returns.
+
+`fit_plan` waits for the whole generate anyway, because it also wants the
+engine's own pick to measure against. On a 4×1 that pick costs 194,481
+combinations and about five minutes of CPU — and a reader who is about to move
+the arms by hand is paying every second of it for an answer they are replacing.
+
+So `bridge.fit_plan_now` grabs the inputs at the hook and stops the level there.
+Measured against the full run on the same machine:
+
+| parameters | plan ready | `generate` | what the search would have walked |
+| --- | --- | --- | --- |
+| 2×1 `k=1` | 0.13 s | 1.0 s | 441 |
+| 3×1 `k=-1` | 0.12 s | 13.5 s | 9,261 |
+| 4×1 `k=-1` | **0.13 s** | **280.7 s** | **194,481** |
+
+Same plan, to the byte. The cheap band is searched first and the expensive one
+second, so stopping when both sets of inputs are in hand costs the cheap band's
+walk — 21 combos on a 4×1 — and skips the rest.
+
+**Open the knobs · no search** does that, and opens the manual panel on it: the
+sliders, the live readouts, the coupling, *fix others*, the diagram, and the
+flush-candidate table, which is `fitCandidates` over the plan and needs no
+engine either. What is given up is stated rather than faked — there is no
+engine pick, so the arms start where `build_level_one` left them and there is no
+before/after comparison; and **there is no audit**, so the ring-audit stat reads
+`—` rather than a zeroed row, because quoting `0/0 · 0 stray` would be the page
+asserting a check it never made. `Run` is still what weaves, audits, and gives
+the engine's own ring.
+
+L1 only, and it says so. Level *N*'s inputs hang off level *N−1*'s **solved**
+ring, so anything above the first genuinely does need the levels below it
+searched — which is `generate`, and is what `Run` is for.
+
 **Judged rings — the panel that shows the others.** The auto-load takes the ★
 best and stops, so every other judgement needs a way to be looked at: somebody
 else's, an older one, or a ✓ valid worth comparing against the best. The
