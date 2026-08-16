@@ -662,6 +662,28 @@ Two changes, because either alone leaves half the trap:
 `if (!handler) return;` comes back, another fails if the fitter's URL loses its
 version.
 
+**Apply, and the two buttons it replaced.** The manual panel used to end in
+*weave and audit* then *adopt as fitted*: two presses, both behind the engine.
+In the no-search mode there is no session, so the first was permanently
+disabled and the second could never light — a hand that had finished placing
+the arms had nowhere to put them.
+
+One button now: **Apply — this is the ring**. It needs no engine, because the
+ring is not in doubt. `movedStrands` is the same arithmetic the diagram beside
+the knobs is already drawing — lifted out of the drawing code so that one
+function produces both, since two spellings of *where the knobs put the arms*
+would drift and the first symptom would be a preview of a ring that is not the
+one adopted. What lands in the "after" card is exactly the picture that was on
+screen.
+
+What IS in doubt is whether the ring still closes, and only `fit_weave` can say.
+So an applied attempt carries `audited: false`, the ring-audit stat reads `—`
+rather than its zeroed row, and **when a session exists the engine is asked in
+the background** and the real count replaces it when it arrives. There is no
+button for that: a verdict that can be fetched should not need to be requested.
+An export says which it got — `audited` beside the configuration, and `audit:
+null` when nothing graded it.
+
 **Judged rings — the panel that shows the others.** The auto-load takes the ★
 best and stops, so every other judgement needs a way to be looked at: somebody
 else's, an older one, or a ✓ valid worth comparing against the best. The
