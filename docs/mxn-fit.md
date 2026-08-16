@@ -407,6 +407,27 @@ fall back to the default walk, exactly-flush candidates offered longest-arm
 first. There is no policy dropdown any more: a person's decision is the policy,
 and the default covers the rest.
 
+**Judged rings — the panel that shows the others.** The auto-load takes the ★
+best and stops, so every other judgement needs a way to be looked at: somebody
+else's, an older one, or a ✓ valid worth comparing against the best. The
+**Judged rings** panel lists every judgement for the parameter set — verdict,
+chooser, date, which levels it covers, its metrics and its audit — with a
+**reload** that re-reads the shelf without re-running the engine, and a
+**show** per row that weaves that pick and puts it in the fitted card.
+
+`show` re-weaves rather than trusting the metrics stored with the judgement, so
+the ring on screen and the crossings under it are that weave's own; a judgement
+whose stored numbers have drifted from what the engine now builds shows the
+engine's answer, not the stored claim.
+
+**The fitted card names its provenance.** It used to read `fitted` whatever
+produced it, which stopped being true once a person's ★ best could be what
+loaded — three different provenances all called one thing. It now reads
+`L2 · ★ best · <chooser>`, `L2 · adopted by hand`, or `L2 · fitted` for the
+candidate walk. The **Every level** strip draws the fitted level from the ring
+that is actually applied, for the same reason: two cards about one level
+disagreeing about what that level looks like is the page contradicting itself.
+
 ### Three different things are called "valid" here
 
 This has to be settled before anything else, because the word already means two

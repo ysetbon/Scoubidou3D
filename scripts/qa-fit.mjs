@@ -291,6 +291,47 @@ const judged = await page.evaluate(() => ({
 ok('a judged ★ best loads instead of the candidate walk',
   /Loaded the best fit/.test(judged.status) && /judged by qa/.test(judged.status),
   judged.status.slice(0, 110));
+// The "after" card has to name where its ring came from. Captioning a person's
+// ★ best as plain "fitted" was the page calling three provenances one thing.
+const provenance = await page.evaluate(() => {
+  const figures = [...document.querySelectorAll('.rings figure figcaption span')];
+  return {
+    after: figures.map(f => f.textContent).find(t => /best|fitted|adopted/i.test(t)) ?? '',
+    levelCaptions: [...document.querySelectorAll('.levels figcaption var')]
+      .map(v => v.textContent),
+    judged: document.querySelectorAll('.panel table tbody tr td .tag').length,
+    rowChooser: [...document.querySelectorAll('.panel table tbody tr')]
+      .map(tr => tr.textContent).find(t => /qa/.test(t)) ?? '',
+  };
+});
+ok('the after card names the ★ best and who judged it',
+  /★ best/.test(provenance.after) && /qa/.test(provenance.after),
+  provenance.after);
+// The level strip must agree with the card above it about the same level.
+ok('the fitted level in the strip says fitted, not fitting',
+  provenance.levelCaptions.includes('fitted'),
+  provenance.levelCaptions.join(' · ') || '(no captions)');
+// And the judged-rings panel lists the judgement, chooser and all.
+ok('the judged-rings panel lists the judgement',
+  provenance.judged >= 1 && /qa/.test(provenance.rowChooser),
+  provenance.rowChooser.replace(/\s+/g, ' ').slice(0, 80));
+
+// Pressing "show" re-weaves that judgement and reports the engine's own count.
+const showable = page.locator('tr', { has: page.locator('.tag') })
+  .locator('button.minibtn').first();
+if (await showable.count()) {
+  await showable.click();
+  await page.waitForTimeout(600);
+  const shown = await page.evaluate(() => ({
+    status: document.querySelector('.status')?.textContent ?? '',
+    label: document.querySelector('tr.applied .minibtn')?.textContent ?? '',
+  }));
+  ok('pressing show weaves that judgement and reports the crossings',
+    /crossings/.test(shown.status) && /qa/.test(shown.status),
+    shown.status.slice(0, 90));
+  ok('and the row it came from is marked as the one on screen',
+    /shown/i.test(shown.label), shown.label.trim() || '(unmarked)');
+}
 ok('the fit-policy and sort dropdowns are gone', judged.dropdownsGone);
 // The run button names what it does: with no worker url configured it must not
 // claim to read Cloudflare, because it cannot.

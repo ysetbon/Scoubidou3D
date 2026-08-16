@@ -131,6 +131,17 @@ th.sorted::after { content: " ▾"; }
 td.num { font-family: monospace; }
 tbody tr.applied { background: rgba(219, 234, 101, .28); }
 tbody tr.engine td { color: var(--muted); }
+/* Small inline buttons: the shelf reload in a panel header, and the per-row
+   "show" in the judged-rings table. Deliberately not `.panel header button` —
+   that selector would also catch the manual panel's coupling switch. */
+.minibtn {
+  padding: 4px 9px; background: var(--card); border: 1px solid var(--line);
+  font: 700 10px/1 monospace; letter-spacing: .06em; text-transform: uppercase;
+}
+.minibtn:hover:not(:disabled) { border-color: var(--ink); }
+.minibtn:disabled { opacity: .45; }
+tr.applied .minibtn { border-color: var(--ink); background: var(--acid); }
+
 .tag { font: 700 9.5px/1 monospace; border: 1px solid var(--ink); padding: 2px 5px; }
 .tag.fit { background: var(--acid); }
 .tag.eng { border-color: var(--line); color: var(--muted); }
