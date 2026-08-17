@@ -90,11 +90,24 @@ const STUB = ({ size, delay }) => {
                 message: `level ${data.level} has no browsing session; run generate first` });
       } else if (data.type === 'fit-plan-now') {
         // The fast path takes no session — that is its whole point — so it is
-        // answered BEFORE the `!sessioned` guard above would refuse it. The
-        // fixture's own L1 plan, plus a ring to draw, is exactly the shape
-        // bridge.fit_plan_now returns.
-        reply({ type: 'fit-plan-now-ready', ...size.plans['1'],
-                level: 1, strands: size.stages.find(s => s.level === 1).strands });
+        // answered BEFORE the `!sessioned` guard above would refuse it.
+        //
+        // ANY level, given the rings placed below it, exactly as the engine
+        // now answers: a gap in `rings` is refused rather than searched past,
+        // because solving that level is the wait this path exists to avoid.
+        const want = data.level ?? 1;
+        const gap = (data.rings ?? []).findIndex(r => !r);
+        if (gap >= 0) {
+          reply({ type: 'fit-plan-now-ready', level: want, unavailable: true,
+                  reason: `L${gap + 1} has no placed ring, so L${want}'s bands `
+                    + 'cannot be read without solving it first' });
+        } else {
+          const plan = size.plans[String(want)] ?? size.plans['1'];
+          const ring = size.stages.find(s => s.level === want)
+            ?? size.stages.find(s => s.level === 1);
+          reply({ type: 'fit-plan-now-ready', ...plan,
+                  level: want, k: ring.k, strands: ring.strands });
+        }
       } else if (data.type === 'fit-plan') {
         reply({ type: 'fit-plan-ready', ...size.plans[String(data.level)] });
       } else if (data.type === 'fit-weave') {
@@ -960,7 +973,8 @@ if (edited.knobs >= 3) {
       after.read !== before && after.generates === 0,
       after.read.replace(/\s+/g, ' ').slice(0, 60));
   }
-  ok('no page errors on the no-search path', fastErrors.length === 0,
+  
+ok('no page errors on the no-search path', fastErrors.length === 0,
     fastErrors.slice(0, 2).join(' | '));
   await fast.close();
 }
@@ -1083,6 +1097,72 @@ if (edited.knobs >= 3) {
 
 ok('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
 if (network.length) console.log(`  note  ${network.length} resource(s) blocked by the environment, not the page`);
+
+
+// ---------------------------------------------------------------------------
+// The ladder with NO run behind it, in its own context so that "no generate
+// has happened" is a fact and not an assumption.
+//
+// Both the ladder and the level strip used to move levels with fitAt, which
+// reads bridge.fit_plan, which reads the browsing session only generate opens.
+// So pressing a rung after placing a level by hand answered with a Python
+// traceback in the sidebar:
+//
+//     ValueError: level 1 has no browsing session; run generate first
+//
+// To a reader it is one move — "show me that level" — so one function decides
+// how to make it, and with no session it is fit_plan_now on the rings placed.
+const ladderPage = await browser.newPage({ viewport: { width: 1440, height: 1300 } });
+const ladderErrors = [];
+ladderPage.on('pageerror', e => ladderErrors.push(String(e)));
+await ladderPage.addInitScript(STUB, { size: STUB_SIZE, delay: 0 });
+await ladderPage.goto(URL_BASE, { waitUntil: 'domcontentloaded' });
+await ladderPage.waitForSelector('button.go');
+await ladderPage.fill('#fit-m', String(size.m));
+await ladderPage.fill('#fit-n', String(size.n));
+await ladderPage.fill('#fit-ks', size.ks.join(' '));
+await ladderPage.click('.go.ghost');                  // open the knobs, no search
+await ladderPage.waitForTimeout(900);
+
+const rung = () => ladderPage.evaluate(() => ({
+  current: document.querySelector('.ladder .rung[data-current] b')?.textContent ?? '',
+  states: [...document.querySelectorAll('.ladder .rung')].map(r => r.dataset.state),
+  status: (document.querySelector('.status')?.textContent ?? '').replace(/\s+/g, ' '),
+  knobs: document.querySelectorAll('.mrow').length,
+  generates: window.__stubGenerates ?? 0,
+}));
+
+let step = await rung();
+ok('with no run, the ladder opens on L1 and the rest are unbuilt',
+  step.current === 'L1' && step.states.slice(1).every(s => s === 'unbuilt'),
+  `${step.current} · ${step.states.join(' ')}`);
+ok('and no generate was involved', step.generates === 0);
+
+await ladderPage.click('.ladder-act .primary');       // Fix L1 · open L2
+await ladderPage.waitForTimeout(900);
+step = await rung();
+ok('fixing a level with no run opens the next one on the ring just placed',
+  step.current === 'L2' && step.states[0] === 'fixed',
+  `${step.current} · ${step.states.join(' ')}`);
+ok('and still no generate', step.generates === 0, `${step.generates} generate(s)`);
+
+const back = ladderPage.locator('.ladder .rungbtn:not([disabled])').first();
+ok('the level below is pressable again', await back.count() > 0);
+if (await back.count()) {
+  await back.click();
+  await ladderPage.waitForTimeout(900);
+  step = await rung();
+  ok('pressing it does not raise "no browsing session"',
+    !/browsing session|Traceback|ValueError/.test(step.status),
+    step.status.slice(0, 90));
+  ok('it reopens that level with its knobs',
+    step.current === 'L1' && step.knobs >= 2,
+    `${step.current} · ${step.knobs} knob rows`);
+}
+ok('and the no-run ladder threw nothing at all', ladderErrors.length === 0,
+  ladderErrors[0] ?? 'no page errors');
+await ladderPage.close();
+
 
 await page.screenshot({ path: `${SHOTS}/fit-page.png`, fullPage: true });
 console.log(`\n  shot: ${SHOTS}/fit-page.png`);

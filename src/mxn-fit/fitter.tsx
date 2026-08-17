@@ -1087,7 +1087,28 @@ export function Fitter() {
         h: heldNow.h ? { ext: [...heldNow.h.ext], angle: heldNow.h.angle } : null,
         v: heldNow.v ? { ext: [...heldNow.v.ext], angle: heldNow.v.angle } : null,
       });
-      setTouched({ h: false, v: false }); setAnchor({ h: 0, v: 0 });
+      // Going BACK to a level that was already placed opens on the ring that
+      // was placed there, not on the unaligned build. The plan is the same
+      // either way — it is the space, not the answer — so this is just the
+      // knobs put back where the hand left them, and the live diagram beside
+      // them draws that ring again.
+      const placedHere = below[level];
+      const restore: Record<BandKey, ManualBand | null> = { h: null, v: null };
+      const back: Record<BandKey, boolean> = { h: false, v: false };
+      for (const key of BANDS) {
+        const p = placedHere ? (key === "h" ? placedHere.h : placedHere.v) : null;
+        if (!p || p.angle === null) continue;
+        restore[key] = { ext: [...p.ext], angle: p.angle };
+        back[key] = true;
+      }
+      if (back.h || back.v) {
+        setManual({
+          h: restore.h ?? (heldNow.h ? { ...heldNow.h, ext: [...heldNow.h.ext] } : null),
+          v: restore.v ?? (heldNow.v ? { ...heldNow.v, ext: [...heldNow.v.ext] } : null),
+        });
+        note(`L${level} reopened on the ring it was placed at`);
+      }
+      setTouched(back); setAnchor({ h: 0, v: 0 });
       setFollowNote(""); setMismatch("");
       setEditor({ from: "fast", key: picksKey(d), descriptor: d, source: "hand" });
       setStatus(`L${level}'s knobs open in ${secs.toFixed(2)}s — the search never ran. `
@@ -1716,6 +1737,24 @@ export function Fitter() {
       setFailed(true);
       setBusy(false);
     }
+  };
+
+  /**
+   * Go to a level, by whichever route this page actually has.
+   *
+   * `fitAt` reads `bridge.fit_plan`, which reads the browsing session only
+   * `generate` opens — so on the no-search path it raises *"level 1 has no
+   * browsing session; run generate first"*, as a Python traceback, in the
+   * sidebar. Which is exactly what pressing a rung did after placing L1 by
+   * hand: the ladder offered a move the page could not make.
+   *
+   * Without a session the same move is `fit_plan_now` on the rings already
+   * placed — the way the level was opened in the first place.
+   */
+  const goToLevel = async (level: number) => {
+    if (level === fitLevel || busy) return;
+    if (canWeave) return fitAt(level, stages, auditRows);
+    return openWithoutSearching(level, fixed);
   };
 
   /**
@@ -3127,7 +3166,7 @@ export function Fitter() {
                           data-current={row.current ? "1" : undefined}>
                           <button type="button" className="rungbtn"
                             disabled={busy || row.current || row.state === "unbuilt"}
-                            onClick={() => fitAt(row.level, stages, auditRows)}
+                            onClick={() => goToLevel(row.level)}
                             title={row.current ? "the level being fitted now"
                               : row.state === "unbuilt"
                                 ? `Nothing has built L${row.level} yet — fix the level `
@@ -3485,7 +3524,7 @@ export function Fitter() {
                       return (
                         <button key={s.level} type="button" className="level"
                           aria-pressed={s.level === fitLevel} disabled={busy}
-                          onClick={() => { if (s.level !== fitLevel) fitAt(s.level, stages, auditRows); }}
+                          onClick={() => goToLevel(s.level)}
                           title={isFitted ? `L${s.level}, as fitted` : `Fit L${s.level}`}>
                           <RingFigure title={`L${s.level}${s.k === null ? "" : ` · k=${s.k}`}`}
                             stage={isFitted
