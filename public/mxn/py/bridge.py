@@ -375,7 +375,8 @@ def _learned_reach(rows):
 
 def generate(m, n, ks, hand="lh", direction="cw",
              prefer_short_arms=True, ext_step=None, combo_budget=None,
-             reach_from_previous=False, level1_pin=None):
+             reach_from_previous=False, level1_pin=None,
+             hand_step=0, hand_ceiling=0):
     m, n = int(m), int(n)
     ks = [int(k) for k in ks]
     if not ks:
@@ -392,6 +393,21 @@ def generate(m, n, ks, hand="lh", direction="cw",
         search["combo_budget"] = int(combo_budget)
     search["collect_candidates"] = True
     reach_from_previous = bool(reach_from_previous)
+    # The grid a judged best implies. Two plain numbers rather than a structure,
+    # and 0 for absent rather than None: a scalar crosses from JS as a scalar,
+    # and the one thing this boundary has already got wrong is a null that
+    # arrived as JsNull (see l1_from_json). There is nothing to be wrong about
+    # here -- 0 is falsy in both languages.
+    hand_step, hand_ceiling = int(hand_step or 0), int(hand_ceiling or 0)
+    if hand_ceiling:
+        # Every level, level 1 included. The pick's reach is a statement about
+        # where the answer lives for this m, n and k, and level 1 is the level
+        # it was judged on -- capping only the deeper ones would search widest
+        # exactly where the evidence is strongest.
+        search["max_pair_extension"] = hand_ceiling
+        search["escalate_extension"] = False
+        if hand_step:
+            search["pair_extension_step"] = hand_step
     _SESSION.clear()
     _SESSION.update({"m": m, "n": n, "ks": ks, "hand": hand,
                      "direction": direction, "levels": {}})
@@ -494,6 +510,8 @@ def generate(m, n, ks, hand="lh", direction="cw",
         "expected": expected, "seconds": round(time.time() - started, 1),
         "rows": rows, "stages": stages,
         "reachFromPrevious": reach_from_previous,
+        "handCeiling": hand_ceiling,
+        "handStep": hand_step,
         # Whether L1 was replayed off a stored run rather than searched, so a
         # reader is told why that level has no solution browser.
         "level1Replayed": bool(_SESSION.get("level1_replayed")),

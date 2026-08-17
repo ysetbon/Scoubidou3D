@@ -43,6 +43,8 @@ export type SweepSpec = {
   budget: number;
   /** Cap each level past the first at the reach the levels below it used. */
   reachFromPrevious: boolean;
+  /** Size every level's grid from the judged ★ best for that size and k. */
+  handFromPick: boolean;
   wantTraces: boolean;
   /** Product cells per level the counting may walk. 0 walks all of them. */
   countCeiling: number;
@@ -62,6 +64,9 @@ export type PlanJob = {
   step: number | "auto";
   budget: number;
   reachFromPrevious: boolean;
+  /** The grid a ★ best implied, 0 when none was used. Part of the job's id. */
+  handStep: number;
+  handCeiling: number;
   /** The run's worst-case combo count: what the queue sorts cheapest-first on. */
   weight: number;
   wantTraces: boolean;
@@ -287,6 +292,10 @@ export function planSweep(spec: SweepSpec): PlanResult {
           hand: spec.hand, direction: spec.direction,
           shortArms: spec.shortArms, step: spec.step, budget: spec.budget,
           reachFromPrevious: !!spec.reachFromPrevious,
+          // Zero here always: the ceiling comes off a ★ best, which is a fetch,
+          // and expandPlan is pure so that check:plan can hold it to counts.
+          // The queueing step resolves it and re-mints the id (farm.tsx).
+          handStep: 0, handCeiling: 0,
           weight: worstCase(m, n, ks.length, step).total,
           wantTraces: spec.wantTraces,
           countCeiling: Math.max(0, Math.trunc(spec.countCeiling)),

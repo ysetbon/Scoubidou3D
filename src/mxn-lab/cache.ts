@@ -27,7 +27,7 @@ import { bandKey, type Band } from "./trace-band";
 /**
  * Bumped when the engine changes what it answers.
  *
- * Same job as the `trace-plan-v24` key in the worker URL, for the same reason
+ * Same job as the `trace-plan-v25` key in the worker URL, for the same reason
  * and with the same discipline: a reader whose browser is holding last month's
  * geometry under this month's key is worse off than one who computed it.
  */
@@ -71,6 +71,18 @@ export type RunDescriptor = {
    * where it was: descriptorPath only appends a segment when it is on.
    */
   reachFromPrevious?: boolean;
+  /**
+   * Search every level on the grid a judged ★ best implies, rather than the
+   * engine's full-width one: ceiling at the pick's own reach, step the finest
+   * that fits the budget once the ceiling is that much smaller (`handGrid` in
+   * search-cost.ts). The number stored here IS that ceiling.
+   *
+   * In the descriptor, and carrying its value rather than a bare flag, because
+   * two picks imply two different grids and a re-judged pick implies a third.
+   * `-h63` says which one produced the answer; a bare `-h1` would let a later
+   * judgement quietly overwrite an earlier one's run.
+   */
+  handCeiling?: number;
 };
 
 export type RunArtifact = {
@@ -244,7 +256,8 @@ export function descriptorPath(d: RunDescriptor): string {
   // the fitter have ever written was written without it, and a flag that
   // spelled itself `-r0` on those would have moved every one of them.
   const flags = `s${d.shortArms ? 1 : 0}-e${d.step === "auto" ? "auto" : Math.trunc(d.step)}`
-    + `-b${Math.trunc(d.budget)}` + (d.reachFromPrevious ? "-r1" : "");
+    + `-b${Math.trunc(d.budget)}` + (d.reachFromPrevious ? "-r1" : "")
+    + (d.handCeiling ? `-h${Math.trunc(d.handCeiling)}` : "");
   return `${d.hand}-${d.direction}/${d.m}x${d.n}/${ks}/${flags}`;
 }
 
@@ -305,7 +318,7 @@ const KEY_VERSION = /^v(\d{1,3})$/;
 const KEY_HAND_DIRECTION = /^(lh|rh)-(cw|ccw)$/;
 const KEY_SIZE = /^([1-9][0-9]?)x([1-9][0-9]?)$/;
 const KEY_KS = /^-?\d{1,3}(_-?\d{1,3}){0,15}$/;
-const KEY_FLAGS = /^s([01])-e(auto|\d{1,4})-b(\d{1,10})(?:-r([01]))?$/;
+const KEY_FLAGS = /^s([01])-e(auto|\d{1,4})-b(\d{1,10})(?:-r([01]))?(?:-h(\d{1,4}))?$/;
 const KEY_LEVEL_BAND = /^L(\d{1,3})-([hv])$/;
 
 function parseSegments(segments: string[]): ParsedRunKey | null {
@@ -328,6 +341,7 @@ function parseSegments(segments: string[]): ParsedRunKey | null {
       budget: Number(fl[3]),
       // Absent reads as off, which is what every key without the segment is.
       reachFromPrevious: fl[4] === "1",
+      handCeiling: fl[5] ? Number(fl[5]) : undefined,
     },
   };
 }

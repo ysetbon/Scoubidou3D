@@ -83,7 +83,7 @@ async function prepare(fastEngine) {
       // exact-worker.js uses: the two load the identical engine and a farm that
       // silently ran an older copy would fill the shelf with answers the lab
       // then disagrees with.
-      const url = new URL(`./py/${name}?v=trace-plan-v24`, import.meta.url);
+      const url = new URL(`./py/${name}?v=trace-plan-v25`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
@@ -189,6 +189,10 @@ async function runJob(runtime, message, post) {
   // measured on 3x1 [-1,-1,-1]: 170.5s becomes 134.7s.
   // JSON text, never a JS null: a null arrives in Python as JsNull,
   // which is not None and has no .to_py(). See bridge.l1_from_json.
+  // The grid a judged best implies, 0 for absent. Scalars, not a
+  // structure: nothing here can arrive as JsNull.
+  runtime.globals.set("mxn_hstep", Number(job.handStep) || 0);
+  runtime.globals.set("mxn_hceil", Number(job.handCeiling) || 0);
   runtime.globals.set("mxn_l1", job.level1Extensions ? JSON.stringify(job.level1Extensions) : "");
 
   post({ message: `${job.m}×${job.n} ks ${job.ks.join(" ")} — searching`, phase: "generate" });
@@ -196,7 +200,8 @@ async function runJob(runtime, message, post) {
     "bridge.generate(mxn_m, mxn_n, mxn_ks.to_py(), mxn_hand, mxn_dir,"
     + " prefer_short_arms=mxn_short, ext_step=mxn_step, combo_budget=mxn_budget,"
     + " reach_from_previous=mxn_reach,"
-    + " level1_pin=bridge.l1_from_json(mxn_l1))"
+    + " level1_pin=bridge.l1_from_json(mxn_l1),"
+    + " hand_step=mxn_hstep, hand_ceiling=mxn_hceil)"
   ));
 
   // Counts, walked all the way. This is the difference between a cached card

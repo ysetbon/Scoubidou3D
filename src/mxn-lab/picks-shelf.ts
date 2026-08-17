@@ -180,6 +180,23 @@ export function auditOfPick(pick: JudgedPick): CardAudit {
   };
 }
 
+/**
+ * How far a judged ring reaches: its largest pair extension, either band.
+ *
+ * The one number a hand-fitted pick can hand a search. Its extensions cannot be
+ * searched FOR — 3×1 k=−1 was judged at `(62.55)` and `(55.75, 57.3, 27.5)`,
+ * and no grid contains those — but they say where the answer lives, and the
+ * 70→200 the engine walks past them is the expensive part of every level.
+ *
+ * Null when the pick carries no extensions at all, which is a judgement saved
+ * before the bands were stored: nothing to learn, so nothing is claimed.
+ */
+export function reachOfPick(pick: JudgedPick): number | null {
+  const values = [...pick.hExt, ...pick.vExt].filter(v => Number.isFinite(v));
+  const reach = Math.max(0, ...values);
+  return reach > 0 ? reach : null;
+}
+
 // ---------------------------------------------------------------------------
 // Finding the parameter set the judgements are actually under.
 // ---------------------------------------------------------------------------

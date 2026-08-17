@@ -364,6 +364,65 @@ No new cache key: the artifact holds the same geometry it always did, so a
 replayed run and a searched one are the same answer and belong at the same
 address. `level1Replayed` in the artifact says which it was.
 
+### Sizing the search from a judged ★ best
+
+A hand-fitted ring sits **off the grid entirely**. The ★ best for `3×1 k = −1`
+was judged at `(62.55)` and `(55.75, 57.3, 27.5)`, and no extension grid
+contains those numbers — so they cannot be searched *for*. What they can do is
+say **where to look**, and that turns out to be worth more than the pin.
+
+The engine walks its ceiling to 200px. The pick says the answer lives below 63.
+Everything above that is the expensive part of every level, and cutting it
+buys resolution instead of merely buying time — measured on that size, whose
+hand ring is 12/12 and whose engine ring is 8/12:
+
+| level 1's grid | seconds | crossings | landed on |
+| --- | --- | --- | --- |
+| `0…200` step 10 — what ships | 33.2 | 8/12 | `(80, 70, 20)` |
+| `0…70` step 10 | 2.1 | **6/12** | `(70, 0, 70)` |
+| **`0…70` step 5** | **13.3** | **10/12** | `(65, 35, 15)` |
+| `0…70` step 2 | 185.6 | 10/12 | `(62, 36, 16)` |
+
+Step 5 on the narrowed grid beats the full-width search **on its own terms** —
+more crossings, in less than half the time — because the search stopped looking
+where the hand had already shown the answer was not.
+
+**Which step is not "the finest the budget affords".** That rule picks step 1
+here, and step 2 above is already 14× the time for nothing. `handGrid` holds the
+combo count to what the **full-width search would have cost anyway**, so the
+narrow grid is never the slower option and the saving turns into resolution only
+up to the point it pays. On `3×1` that lands exactly on step 5.
+
+**It does not reach 12/12, and is not meant to.** The plateau at 10/12 is the
+honest limit: a hand ring is fitted off-grid in both extension *and* angle, and
+no grid search recovers it however fine. What this does is find a better level 1
+than the engine finds alone. Standing on the judged ring itself would be a
+different mechanism — substituting the pick's strands rather than searching near
+them — and is not built.
+
+The checkbox is **size the search from the judged ★ best**, in the lab's
+advanced search and on the farm. It is off by default, needs a ★ best to exist
+for that size and k, and rides in the cache key as `-h<ceiling>` — the ceiling
+itself, not a flag, because two picks imply two grids and a re-judged pick
+implies a third. `-h65` says which one produced the answer; a bare `-h1` would
+let a later judgement quietly overwrite an earlier one's run.
+
+On the farm the ceiling is resolved **when the plan is queued**, not when a job
+runs: a job's id *is* its cache key, so a runner that discovered the ceiling
+mid-job would upload to a key the queue never heard of. `expandPlan` stays pure
+and synchronous — which is what `check:plan` holds it to — and the queueing step
+re-mints the ids. Jobs whose size and k nobody has judged are queued untouched,
+and the log says how many of the plan actually got sized.
+
+### Trying it without Cloudflare
+
+`npm run mock:shelf` stands the whole thing up locally: the real Worker over
+`node:sqlite`, the real build out of `dist/`, and a seeded ★ best whose
+extensions are the real ones off the board. It prints the URL and the three
+steps. The pick's *ring* is a placeholder — what is under test is the search,
+not the picture — and the URL deliberately carries no `m`/`n`/`ks`, because
+those make the page run on load and Run is disabled while it does.
+
 ### Browsing every solution
 
 Each level's card carries `‹ index / count ›` and a ⭐. The engine already
@@ -809,7 +868,7 @@ standing in. See `mocks/README.md`.
 There are two of them, and they are bumped for the same reason and never
 together.
 
-**`trace-plan-v24`**, the engine-file key, appears in six places: the worker URL
+**`trace-plan-v25`**, the engine-file key, appears in six places: the worker URL
 (`weave-studio.tsx`), the Python fetch URL and the counting-hand URL
 (`exact-worker.js`), the counting hand's own fetch (`count-worker.js`), the farm
 hand's fetch (`farm-worker.js`) and the URL the farm page spawns it with

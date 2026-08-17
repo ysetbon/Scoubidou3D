@@ -89,6 +89,32 @@ for (const on of [false, true]) {
 }
 
 // ===========================================================================
+console.log("\n=========== the hand-sized grid carries its ceiling ===========");
+//
+// `-h<ceiling>` rather than a bare `-h1`, because two picks imply two grids and
+// a re-judged pick implies a third. A flag would let a later judgement's run
+// quietly overwrite an earlier one's; the number cannot.
+
+{
+  const sized = descriptorPath(at({ handCeiling: 65 }));
+  check("a hand-sized run says which ceiling sized it",
+    sized === "lh-cw/3x1/-1_-1/s1-eauto-b400000-h65", sized);
+  check("and two ceilings are two shelves",
+    sized !== descriptorPath(at({ handCeiling: 70 })));
+  check("no ceiling appends nothing, so every old key is where it was",
+    descriptorPath(at({ handCeiling: 0 })) === descriptorPath(at()));
+  check("it composes with the reach cap rather than replacing it",
+    descriptorPath(at({ reachFromPrevious: true, handCeiling: 65 }))
+      === "lh-cw/3x1/-1_-1/s1-eauto-b400000-r1-h65");
+  const back = parseRunKey(`run/${runKey(at({ handCeiling: 65 }))}`);
+  check("and it reads back as the number that wrote it",
+    back?.descriptor.handCeiling === 65, String(back?.descriptor.handCeiling));
+  check("a key with no -h reads as no ceiling",
+    parseRunKey("run/v3/lh-cw/2x2/1/s1-eauto-b400000")?.descriptor.handCeiling
+      === undefined);
+}
+
+// ===========================================================================
 console.log("\n=========== the Worker validates the same shape ===========");
 
 {
@@ -107,6 +133,10 @@ console.log("\n=========== the Worker validates the same shape ===========");
       ["s1-eauto-b400000", true],
       ["s1-eauto-b400000-r1", true],
       ["s0-e5-b100000000-r0", true],
+      ["s1-eauto-b400000-h65", true],
+      ["s1-eauto-b400000-r1-h65", true],
+      ["s1-eauto-b400000-h", false],
+      ["s1-eauto-b400000-h65-r1", false],
       ["s1-eauto-b400000-r2", false],
       ["s1-eauto-b400000-r", false],
       ["s1-eauto-b400000-x1", false],

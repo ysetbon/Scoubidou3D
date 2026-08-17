@@ -34,6 +34,7 @@
     "qa:fit": "node scripts/qa-fit.mjs",
     "qa:board": "node scripts/qa-board.mjs",
     "qa:cache": "node scripts/qa-cache.mjs",
+    "mock:shelf": "node scripts/mock-shelf.mjs",
     "shots": "node scripts/site-shots.mjs",
     "icon": "node scripts/icon-shot.mjs",
     "artifact": "node artifacts/build.mjs"

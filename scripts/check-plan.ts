@@ -123,7 +123,7 @@ const base: SweepSpec = {
   mFrom: 1, mTo: 1, nFrom: 1, nTo: 1,
   ksMode: "each", kFollowsSize: false, kFrom: 1, kTo: 1, depth: 1, ksText: "",
   hand: "lh", direction: "cw", shortArms: true, step: "auto",
-  budget: 400_000, reachFromPrevious: false,
+  budget: 400_000, reachFromPrevious: false, handFromPick: false,
   wantTraces: true, countCeiling: 0, fastEngine: true,
 };
 

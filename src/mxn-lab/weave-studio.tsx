@@ -12,12 +12,12 @@ import {
   type Bounds, type Stage, type Strand,
 } from "./exact-draw";
 import {
-  auditOfPick, findShelfBest,
+  auditOfPick, findShelfBest, reachOfPick,
   type CardAudit, type JudgedPick,
 } from "./picks-shelf";
 import {
   DEFAULT_COMBO_BUDGET, ENGINE_COMBO_LIMIT,
-  autoStep, comboCount, worstCase, worstPairs,
+  autoStep, comboCount, handGrid, worstCase, worstPairs,
 } from "./search-cost";
 import { bandKey, traceKey } from "./trace-band";
 import {
@@ -205,6 +205,9 @@ type Params = {
   preferShortArms: boolean; extStep: number | null; comboBudget: number;
   /** Cap each level past the first at the reach the levels below it used. */
   reachFromPrevious: boolean;
+  /** The grid a judged ★ best implies: 0 for "search the full width". */
+  handStep: number;
+  handCeiling: number;
 };
 
 function parseKs(raw: string) {
@@ -476,6 +479,11 @@ export function ContinuationLab() {
   // Off by default, and deliberately: it changes which ring a level settles on,
   // and what the engine ships is still what a reader gets unless they ask.
   const [reachFromPrevious, setReachFromPrevious] = useState(false);
+  // Search on the grid a judged ★ best implies rather than the engine's full
+  // width. Off by default: it is a different search, and it needs a pick.
+  const [handFromPick, setHandFromPick] = useState(false);
+  /** What the last resolve found, for the sidebar. */
+  const [handNote, setHandNote] = useState("");
   const [extStep, setExtStep] = useState<ExtStep>("auto");
   const [comboBudget, setComboBudget] = useState(DEFAULT_COMBO_BUDGET);
   const [ranKey, setRanKey] = useState<string | null>(null);
@@ -622,7 +630,7 @@ export function ContinuationLab() {
   const estimatedCombos = comboCount(resolvedStep, worstPairCount);
   const overEngineLimit = estimatedCombos > ENGINE_COMBO_LIMIT;
   const paramsKey = `${m}:${n}:${ks.join(",")}:${preferShortArms}:${extStep}:${comboBudget}`
-    + `:${reachFromPrevious}`;
+    + `:${reachFromPrevious}:${handFromPick}`;
   const staleParams = ranKey !== null && ranKey !== paramsKey && !busy;
   // Frozen at the end of a run: browsing changes a level's geometry, and a
   // viewport recomputed from the last stage would rescale every card per click.
@@ -649,6 +657,7 @@ export function ContinuationLab() {
     step: params.extStep ?? "auto",
     budget: params.comboBudget,
     reachFromPrevious: params.reachFromPrevious,
+    handCeiling: params.handCeiling || undefined,
   });
 
   /**
@@ -752,7 +761,7 @@ export function ContinuationLab() {
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
     const worker = new Worker(
-      `${LAB_BASE}exact-worker.js?v=trace-plan-v24${FAST_ENGINE ? "&engine=fast" : ""}`,
+      `${LAB_BASE}exact-worker.js?v=trace-plan-v25${FAST_ENGINE ? "&engine=fast" : ""}`,
       { type: "module" },
     );
     worker.onmessage = (event) => {
@@ -1100,6 +1109,8 @@ export function ContinuationLab() {
           comboBudget: params.comboBudget,
           reachFromPrevious: params.reachFromPrevious,
           level1Extensions,
+          handStep: params.handStep,
+          handCeiling: params.handCeiling,
         });
       };
 
@@ -1177,6 +1188,7 @@ export function ContinuationLab() {
           extStep: variant.step === "auto" ? null : Number(variant.step),
           comboBudget: variant.budget,
           reachFromPrevious: variant.reach,
+          handStep: params.handStep, handCeiling: params.handCeiling,
         };
         const stored = await cacheRef.current.getRun(descriptorFor(adopted));
         if (id !== activeIdRef.current) return;
@@ -1210,15 +1222,58 @@ export function ContinuationLab() {
 
   useEffect(() => () => workerRef.current?.terminate(), []);
 
-  const runNow = () => {
+  /**
+   * The grid a judged ★ best implies for these parameters, or none.
+   *
+   * Resolved BEFORE the run is dispatched, not during it, because the ceiling
+   * is part of the cache key: a run searched on a pick's grid is a different
+   * answer from one searched on the engine's full width, and the shelf has to
+   * be asked for the right one. The pick is looked up for `[ks[0]]` — the
+   * single-k set it was judged on — since that is where a hand ever fits a ring.
+   */
+  const resolveHandGrid = async (
+    base: Params,
+  ): Promise<{ step: number; ceiling: number; note: string }> => {
+    const none = { step: 0, ceiling: 0, note: "" };
+    const client = cacheRef.current;
+    try {
+      const found = await findShelfBest(
+        { ...descriptorFor(base), ks: [base.ks[0]] },
+        client.base, client.token, () => true);
+      const pick = found.pick;
+      const reach = pick && reachOfPick(pick);
+      if (!pick || !reach) {
+        return { ...none, note: `no ★ best for ${base.m}×${base.n} ks ${base.ks[0]}`
+          + " — searching the full width" };
+      }
+      const grid = handGrid(reach, worstPairs(base.m, base.n), base.comboBudget);
+      return { step: grid.step, ceiling: grid.ceiling,
+        note: `★ best by ${pick.judgement.chooser} reaches ${reach} —`
+          + ` searching 0…${grid.ceiling} at step ${grid.step}` };
+    } catch {
+      return { ...none, note: "the picks shelf is away — searching the full width" };
+    }
+  };
+
+  const runNow = async () => {
     if (inputError || !ks.length) return;
-    dispatchRef.current({
+    const base: Params = {
       m, n, ks: [...ks], key: paramsKey,
       preferShortArms,
       extStep: extStep === "auto" ? null : Number(extStep),
       comboBudget,
       reachFromPrevious,
-    });
+      handStep: 0, handCeiling: 0,
+    };
+    if (!handFromPick) {
+      setHandNote("");
+      dispatchRef.current(base);
+      return;
+    }
+    setStatus("Looking for a judged ★ best to size the search…");
+    const grid = await resolveHandGrid(base);
+    setHandNote(grid.note);
+    dispatchRef.current({ ...base, handStep: grid.step, handCeiling: grid.ceiling });
   };
 
   // Stop is a hard kill: the search is one synchronous runPythonAsync call, so
@@ -1335,6 +1390,9 @@ export function ContinuationLab() {
       extStep: nextStep === "auto" ? null : Number(nextStep),
       comboBudget: nextBudget,
       reachFromPrevious: nextReach,
+      // A deep link never resolves a pick: that is a fetch, and this effect
+      // runs on mount to put a picture up fast. Press Run to size from a ★.
+      handStep: 0, handCeiling: 0,
     });
   }, []);
 
@@ -1388,6 +1446,8 @@ export function ContinuationLab() {
       extStep: params.extStep,
       comboBudget: params.comboBudget,
       reachFromPrevious: params.reachFromPrevious,
+      handStep: params.handStep,
+      handCeiling: params.handCeiling,
       // Deliberately no level1Extensions. A warm exists to open the session the
       // browser, the sweeps and an uncached census read, and a replayed level
       // has no candidate list to browse — warming into one would be warming
@@ -1928,6 +1988,20 @@ export function ContinuationLab() {
                 />
                 <span>learn each level&rsquo;s reach from the ones below it</span>
               </label>
+              {/* The grid a hand fitted, rather than the one the engine walks.
+                  A judged ring sits off the grid entirely — 3×1 k=−1 was judged
+                  at (62.55) and (55.75, 57.3, 27.5) — so its numbers cannot be
+                  searched for. What they can do is say where to look, and the
+                  ceiling that buys pays for resolution: 0…70 at step 5 is 3,375
+                  combos where 0…200 at step 5 is 68,921. */}
+              <label className="toggle-line" htmlFor="hand-grid">
+                <input
+                  id="hand-grid" type="checkbox" checked={handFromPick}
+                  onChange={e => setHandFromPick(e.target.checked)}
+                />
+                <span>size the search from the judged &#9733; best</span>
+              </label>
+              {handNote && <p className="range-note">{handNote}</p>}
               {reachFromPrevious && (
                 <p className="range-note">
                   Levels past the first stop at the longest arm the levels below
