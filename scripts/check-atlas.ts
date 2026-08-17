@@ -104,6 +104,7 @@ const DESCRIPTORS: RunDescriptor[] = [
   { m: 1, n: 4, ks: [-3], hand: "rh", direction: "ccw", shortArms: false, step: 20, budget: 1000, reachFromPrevious: false },
   { m: 4, n: 4, ks: [0, -1, 4, 4, 4, 4, 4, 4], hand: "lh", direction: "ccw", shortArms: true, step: 5, budget: 10000000, reachFromPrevious: false },
   { m: 3, n: 1, ks: [-1, -1], hand: "lh", direction: "cw", shortArms: true, step: "auto", budget: 400000, reachFromPrevious: true },
+  { m: 3, n: 1, ks: [-1, -1, -1], hand: "lh", direction: "cw", shortArms: true, step: "auto", budget: 400000, reachFromPrevious: false },
 ];
 
 DESCRIPTORS.forEach(descriptor => {

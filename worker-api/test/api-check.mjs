@@ -256,6 +256,20 @@ for (const store of ["r2", "d1"]) {
     catalogue.entries.map(entry => entry.key), [`run/${RUN_KEY}`]);
   eq(`[${store}] a prefix with a path escape is refused`,
     (await call(env, "/catalogue?prefix=../etc")).status, 400);
+
+  // Three negative ks: the path segment is `-1_-1_-1`, and both the key
+  // validator and the catalogue prefix alphabet have to admit the leading
+  // minus — a 400 here looks exactly like "nothing was stored".
+  const NEG_KEY = "v3/lh-cw/3x1/-1_-1_-1/s1-eauto-b400000";
+  eq(`[${store}] a three-level negative ks stores`,
+    (await call(env, `/cache/run/${NEG_KEY}`, {
+      method: "PUT", body: gz, headers: { "X-Mxn-Codec": "gzip" },
+    })).status, 201);
+  eq(`[${store}] and reads back`,
+    (await call(env, `/cache/run/${NEG_KEY}`, { auth: false })).status, 200);
+  const negCat = await (await call(env, "/catalogue?prefix=run/v3/lh-cw/3x1/-1_-1_-1", { auth: false })).json();
+  eq(`[${store}] and the catalogue lists it under that prefix`,
+    negCat.entries.map(entry => entry.key), [`run/${NEG_KEY}`]);
 }
 
 // D1 without R2 has a ceiling, and it has to name the fix rather than surface

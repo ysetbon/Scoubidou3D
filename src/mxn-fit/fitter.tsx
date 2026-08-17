@@ -144,7 +144,9 @@ const VERDICT_GLYPH: Record<Verdict, string> = {
   best: "★", valid: "✓", rejected: "✗",
 };
 
-const ksOf = (raw: string) => raw.replace(/[[\],]/g, " ").trim().split(/\s+/)
+const ksOf = (raw: string) => raw
+  .replace(/[\u2212\u2013\u2014]/g, "-")
+  .replace(/[\[\],_]/g, " ").trim().split(/\s+/)
   .map(Number).filter(Number.isInteger);
 
 /**
