@@ -208,7 +208,10 @@ type Params = {
 };
 
 function parseKs(raw: string) {
-  const cleaned = raw.replace(/[\[\],]/g, " ").trim();
+  const cleaned = raw
+    .replace(/[\u2212\u2013\u2014]/g, "-")
+    .replace(/[\[\],_]/g, " ")
+    .trim();
   if (!cleaned) return { values: [] as number[], error: "Add at least one k value." };
   const tokens = cleaned.split(/\s+/);
   const values = tokens.map(Number);
