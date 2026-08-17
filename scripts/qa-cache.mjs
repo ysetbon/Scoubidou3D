@@ -57,8 +57,14 @@ const env = {
   CACHE_PUBLIC_READS: '1',
   DB: {
     prepare(sql) {
+      const order = [];
+      sql = sql.replace(/\?(\d+)/g, (_, num) => {
+        order.push(Number(num) - 1);
+        return '?';
+      });
+      const remap = args => order.length ? order.map(at => args[at]) : args;
       const make = args => ({
-        bind: (...next) => make(next.map(v => v === undefined ? null : v)),
+        bind: (...next) => make(remap(next.map(v => v === undefined ? null : v))),
         async first(column) {
           const row = db.prepare(sql).all(...args)[0] ?? null;
           return column && row ? row[column] : row;
