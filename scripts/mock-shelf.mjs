@@ -10,11 +10,10 @@
 // make [-1,-1,-1] fast?" is a question you answer by pressing Run, not by
 // reading a table somebody else measured.
 //
-// Nothing here talks to the network. The pick it seeds is SYNTHETIC: the
-// extensions are the real ones off the 3×1 k=−1 board — (62.55) and
-// (55.75, 57.3, 27.5) — because those are what sizes the grid, but the ring is
-// not yonatan's, so the card will draw a placeholder rather than his geometry.
-// It is a rig for measuring the search, not for looking at the answer.
+// The 3×1 pick is copied from the public Cloudflare shelf when it is reachable,
+// including the judged strands. Cache reads are public, so this needs no token.
+// Offline, it falls back to the committed 8/12 engine ring and labels it as a
+// mock fixture — never as Yonatan's 12/12 ring.
 //
 // Needs Node 22+ for node:sqlite.
 import { createServer } from 'node:http';
@@ -22,7 +21,7 @@ import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { execFileSync } from 'node:child_process';
-import { gzipSync } from 'node:zlib';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // fileURLToPath, not `.pathname`: on Windows a file URL's pathname is
@@ -40,19 +39,70 @@ if (!existsSync(join(ROOT, 'dist', 'mxn', 'index.html'))) {
   process.exit(2);
 }
 
-// What to seed. One entry per (size, k) you want a ★ best for; `ext` is
-// [h_extensions, v_extensions] exactly as the board shows them. `strands`
-// makes the pick's ring REAL, which is what lets /mxn/ adopt it as level 1
-// instead of searching: mocks/fixtures/judged-3x1-k-1.json is an actual
-// engine ring for this size (committed, like fit-l1.json beside it). The
-// 2×1 entry deliberately has only a placeholder ring, so it exercises the
-// other path — the engine refuses the adoption and searches, and says so.
+// What to seed. The real shelf is the source of truth for the judged 3×1 ring;
+// the committed fixture keeps the mock usable offline. The 2×1 entry
+// deliberately has only a placeholder ring, so it exercises the refusal path.
 const judged31 = JSON.parse(
   readFileSync(join(ROOT, 'mocks', 'fixtures', 'judged-3x1-k-1.json'), 'utf8'));
+const PUBLIC_SHELF = (process.env.MOCK_PICKS_URL
+  || 'https://mxn-solutions-api.ysetbon.workers.dev').replace(/\/+$/, '');
+const PICK31_KEY = 'v3/lh-cw/3x1/-1/s1-eauto-b400000';
+
+const fixtureJudgement = {
+  id: 'mock-3x1--1', verdict: 'best', source: 'mock',
+  chooser: 'mock fixture (not yonatan)', at: '2026-08-16T00:00:00Z',
+  levels: [{ level: 1, h: { ext: judged31.hExt, angle: null },
+             v: { ext: judged31.vExt, angle: null } }],
+  audit: {
+    crossings: judged31.across, expected: judged31.expected,
+    stray: 2, broken: 0,
+  },
+  strands: judged31.strands,
+};
+
+async function publicBest31() {
+  const response = await fetch(`${PUBLIC_SHELF}/cache/picks/${PICK31_KEY}`, {
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  let bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
+    bytes = gunzipSync(bytes);
+  }
+  const artifact = JSON.parse(bytes.toString('utf8'));
+  const judgement = artifact.judgements?.find(item => item.verdict === 'best');
+  const level = judgement?.levels?.find(item => item.level === 1);
+  if (!judgement || !level || !judgement.strands?.length) {
+    throw new Error('the ★ best is absent or carries no ring');
+  }
+  return judgement;
+}
+
+let judged31Best;
+try {
+  judged31Best = await publicBest31();
+  console.log(`  fetched public ★ best  3×1 k=-1  by ${judged31Best.chooser}`
+    + `  (${judged31Best.strands.length} strands)`);
+} catch (error) {
+  judged31Best = fixtureJudgement;
+  console.warn(`  public ★ best unavailable (${error instanceof Error ? error.message : error})`);
+  console.warn(`  using committed mock fixture ${judged31.across}/${judged31.expected}`
+    + ' — this is NOT Yonatan’s ring');
+}
+
 const PICKS = [
-  { m: 3, n: 1, k: -1, chooser: 'yonatan',
-    ext: [judged31.hExt, judged31.vExt], strands: judged31.strands },
-  { m: 2, n: 1, k: -1, chooser: 'yonatan', ext: [[0], [30, 80]] },
+  { m: 3, n: 1, k: -1, judgement: judged31Best },
+  { m: 2, n: 1, k: -1, judgement: {
+    id: 'mock-2x1--1', verdict: 'best', source: 'mock',
+    chooser: 'mock refusal fixture', at: '2026-08-16T00:00:00Z',
+    levels: [{ level: 1, h: { ext: [0], angle: null },
+               v: { ext: [30, 80], angle: null } }],
+    audit: { crossings: 8, expected: 8, stray: 0, broken: 0 },
+    strands: [{ type: 'Strand', layer_name: '1_4',
+      start: { x: 0, y: 0 }, end: { x: 100, y: 0 }, width: 46,
+      color: { r: 120, g: 120, b: 220 },
+      stroke_color: { r: 0, g: 0, b: 0 }, stroke_width: 4 }],
+  } },
 ];
 
 // ---- the Worker, with node:sqlite behind its D1 binding --------------------
@@ -118,25 +168,16 @@ const api = (path, init = {}) => worker.fetch(
 // ---- seed a ★ best per entry ----------------------------------------------
 // The fitter's own flags, because that is what /mxn/fit/ writes and therefore
 // where every real judgement lives: s1-eauto-b400000.
-for (const { m, n, k, chooser, ext, strands } of PICKS) {
+for (const { m, n, k, judgement } of PICKS) {
   const key = `v3/lh-cw/${m}x${n}/${k}/s1-eauto-b400000`;
+  const level = judgement.levels.find(item => item.level === 1);
+  const ext = [level.h.ext, level.v.ext];
+  const strands = judgement.strands;
   const artifact = {
     kind: 'picks', cacheVersion: 'v3',
     descriptor: { m, n, ks: [k], hand: 'lh', direction: 'cw',
                   shortArms: true, step: 'auto', budget: 400000 },
-    judgements: [{
-      id: `mock-${m}x${n}-${k}`, verdict: 'best', source: 'fitter', chooser,
-      at: '2026-08-16T00:00:00Z',
-      levels: [{ level: 1, h: { ext: ext[0], angle: null },
-                 v: { ext: ext[1], angle: null } }],
-      audit: { crossings: 4 * m * n, expected: 4 * m * n, stray: 0, broken: 0 },
-      // The real ring when the entry carries one; a placeholder otherwise —
-      // drawable, but not adoptable, which the engine detects and reports.
-      strands: strands ?? [{ type: 'Strand', layer_name: '1_4',
-                  start: { x: 0, y: 0 }, end: { x: 100, y: 0 }, width: 46,
-                  color: { r: 120, g: 120, b: 220 },
-                  stroke_color: { r: 0, g: 0, b: 0 }, stroke_width: 4 }],
-    }],
+    judgements: [judgement],
   };
   const reply = await api(`/cache/picks/${key}`, {
     method: 'PUT', body: gzipSync(Buffer.from(JSON.stringify(artifact))),
@@ -154,9 +195,8 @@ for (const { m, n, k, chooser, ext, strands } of PICKS) {
     console.error('  parameter, that is very likely the cause. Please paste it.\n');
     process.exit(1);
   }
-  console.log(`  seeded ★ best  ${m}×${n} k=${k}  reach ${Math.max(...ext.flat())}`
-    + (strands ? `  with its real ring (${strands.length} strands — L1 will be adopted)`
-               : '  placeholder ring only (L1 will be searched, and the run says why)'));
+  console.log(`  seeded ★ best  ${m}×${n} k=${k}  by ${judgement.chooser}`
+    + `  reach ${Math.max(...ext.flat())}  (${strands.length} strands)`);
 }
 
 // And read one back, because a 201 is the Worker saying it accepted the bytes,

@@ -441,11 +441,15 @@ and the log says how many of the plan actually got sized.
 ### Trying it without Cloudflare
 
 `npm run mock:shelf` stands the whole thing up locally: the real Worker over
-`node:sqlite`, the real build out of `dist/`, and a seeded ★ best whose
-extensions are the real ones off the board. It prints the URL and the three
-steps. The pick's *ring* is a placeholder — what is under test is the search,
-not the picture — and the URL deliberately carries no `m`/`n`/`ks`, because
-those make the page run on load and Run is disabled while it does.
+`node:sqlite`, the real build out of `dist/`, and the public 3×1 k=−1 ★ best
+copied from Cloudflare into that local shelf — strands included, with no token
+because cache reads are public. It prints a one-click URL with M 3, N 1,
+KS `-1 -1 -1`, judged-pick sizing and prior-level reach already selected.
+
+If the public read is unavailable, the mock says so loudly and falls back to
+`mocks/fixtures/judged-3x1-k-1.json`, an 8/12 engine ring. That fallback is
+credited to **mock fixture (not yonatan)**; it must never masquerade as the real
+12/12 judgement. Set `MOCK_PICKS_URL` to test against another Worker.
 
 ### Browsing every solution
 
