@@ -1003,6 +1003,7 @@ export function ContinuationLab() {
             // And what a PERSON has said about these parameters, which the
             // engine has no way to know. A warm gets none of this: its cards
             // are already on screen, judged ring and all.
+            setL1Replayed(!!(payload as { level1Replayed?: boolean }).level1Replayed);
             const ran = lastParamsRef.current;
             if (ran) loadJudgedRef.current(descriptorFor(ran), message.id);
           }
@@ -1106,7 +1107,11 @@ export function ContinuationLab() {
       const toEngineWithL1 = () => {
         level1For(params).then(ext => {
           if (id !== activeIdRef.current) return;
-          if (ext) setL1Replayed(true);
+          // Deliberately NOT setL1Replayed here. Having FETCHED a combo is not
+          // having replayed one: the engine takes a pinned seed only when that
+          // combo is a valid configuration for the level, and falls back to the
+          // full search when it is not. The run says which happened, in
+          // `level1Replayed`, and that is what the card is allowed to claim.
           toEngine(ext);
         }).catch(() => { if (id === activeIdRef.current) toEngine(); });
       };
@@ -1125,6 +1130,7 @@ export function ContinuationLab() {
       const adoptRun = (artifact: RunArtifact, note: string | null) => {
         const payload = artifact.result as ExactResult;
         setCacheState("hit");
+        setL1Replayed(!!(payload as { level1Replayed?: boolean }).level1Replayed);
         setCachedRun({ computedAt: artifact.computedAt, seconds: artifact.seconds });
         setFullSizeLevels(new Set());
         setResult(payload);

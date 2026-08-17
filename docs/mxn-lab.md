@@ -309,6 +309,23 @@ harmless because Python only ever tests it for truth. What is fatal is calling a
 method on one. Reintroducing the original line turns the check red on that
 assertion and nothing else.
 
+#### The card claims a replay only when the ENGINE says so
+
+Having *fetched* a combo is not having replayed one. The engine takes a pinned
+seed only when that combo is a valid configuration for the level, and falls back
+to the full search when it is not — so a page that lit its "L1 came off the
+shelf" note on a successful fetch was claiming something it could not know, and
+did, on a run whose L1 was plainly searched: the card showed `1 / 935`, and a
+pinned level has no solution browser at all.
+
+The run reports which happened, in `level1Replayed`, and that field is now the
+only thing the note reads. It is also the fastest way to tell by eye:
+
+| L1 shows | what happened |
+| --- | --- |
+| `1 / 935` and a working browser | searched |
+| `one solution` | replayed off the shelf |
+
 #### The flags have to match, and the miss is now said out loud
 
 L1 at step 5 is a **different ring** from L1 at step 10 — a finer grid is a
