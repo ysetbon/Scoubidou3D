@@ -149,7 +149,7 @@ const SEG_KS = /^-?\d{1,3}(_-?\d{1,3}){0,15}$/;
 // `-r1` is the reach cap (descriptorPath in src/mxn-lab/cache.ts). Optional,
 // because every key written before it exists carries no such segment and a
 // validator that required one would 400 the whole shelf.
-const SEG_FLAGS = /^s[01]-e(auto|\d{1,4})-b\d{1,10}(-r[01])?(-h\d{1,4})?$/;
+const SEG_FLAGS = /^s[01]-e(auto|\d{1,4})-b\d{1,10}(-r[01])?(-[hj]\d{1,4})?$/;
 const SEG_LEVEL_BAND = /^L\d{1,3}-[hv]$/;
 
 /** The storage key for a validated cache path, or null if it is not one. */

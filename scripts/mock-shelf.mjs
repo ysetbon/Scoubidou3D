@@ -41,9 +41,17 @@ if (!existsSync(join(ROOT, 'dist', 'mxn', 'index.html'))) {
 }
 
 // What to seed. One entry per (size, k) you want a ★ best for; `ext` is
-// [h_extensions, v_extensions] exactly as the board shows them.
+// [h_extensions, v_extensions] exactly as the board shows them. `strands`
+// makes the pick's ring REAL, which is what lets /mxn/ adopt it as level 1
+// instead of searching: mocks/fixtures/judged-3x1-k-1.json is an actual
+// engine ring for this size (committed, like fit-l1.json beside it). The
+// 2×1 entry deliberately has only a placeholder ring, so it exercises the
+// other path — the engine refuses the adoption and searches, and says so.
+const judged31 = JSON.parse(
+  readFileSync(join(ROOT, 'mocks', 'fixtures', 'judged-3x1-k-1.json'), 'utf8'));
 const PICKS = [
-  { m: 3, n: 1, k: -1, chooser: 'yonatan', ext: [[62.55], [55.75, 57.3, 27.5]] },
+  { m: 3, n: 1, k: -1, chooser: 'yonatan',
+    ext: [judged31.hExt, judged31.vExt], strands: judged31.strands },
   { m: 2, n: 1, k: -1, chooser: 'yonatan', ext: [[0], [30, 80]] },
 ];
 
@@ -110,7 +118,7 @@ const api = (path, init = {}) => worker.fetch(
 // ---- seed a ★ best per entry ----------------------------------------------
 // The fitter's own flags, because that is what /mxn/fit/ writes and therefore
 // where every real judgement lives: s1-eauto-b400000.
-for (const { m, n, k, chooser, ext } of PICKS) {
+for (const { m, n, k, chooser, ext, strands } of PICKS) {
   const key = `v3/lh-cw/${m}x${n}/${k}/s1-eauto-b400000`;
   const artifact = {
     kind: 'picks', cacheVersion: 'v3',
@@ -122,9 +130,9 @@ for (const { m, n, k, chooser, ext } of PICKS) {
       levels: [{ level: 1, h: { ext: ext[0], angle: null },
                  v: { ext: ext[1], angle: null } }],
       audit: { crossings: 4 * m * n, expected: 4 * m * n, stray: 0, broken: 0 },
-      // A placeholder ring: enough that the pick is drawable, honestly not the
-      // judged geometry. The grid comes off the extensions above, not this.
-      strands: [{ type: 'Strand', layer_name: '1_4',
+      // The real ring when the entry carries one; a placeholder otherwise —
+      // drawable, but not adoptable, which the engine detects and reports.
+      strands: strands ?? [{ type: 'Strand', layer_name: '1_4',
                   start: { x: 0, y: 0 }, end: { x: 100, y: 0 }, width: 46,
                   color: { r: 120, g: 120, b: 220 },
                   stroke_color: { r: 0, g: 0, b: 0 }, stroke_width: 4 }],
@@ -146,7 +154,9 @@ for (const { m, n, k, chooser, ext } of PICKS) {
     console.error('  parameter, that is very likely the cause. Please paste it.\n');
     process.exit(1);
   }
-  console.log(`  seeded ★ best  ${m}×${n} k=${k}  reach ${Math.max(...ext.flat())}`);
+  console.log(`  seeded ★ best  ${m}×${n} k=${k}  reach ${Math.max(...ext.flat())}`
+    + (strands ? `  with its real ring (${strands.length} strands — L1 will be adopted)`
+               : '  placeholder ring only (L1 will be searched, and the run says why)'));
 }
 
 // And read one back, because a 201 is the Worker saying it accepted the bytes,

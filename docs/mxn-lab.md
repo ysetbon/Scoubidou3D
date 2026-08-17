@@ -393,12 +393,28 @@ combo count to what the **full-width search would have cost anyway**, so the
 narrow grid is never the slower option and the saving turns into resolution only
 up to the point it pays. On `3×1` that lands exactly on step 5.
 
-**It does not reach 12/12, and is not meant to.** The plateau at 10/12 is the
-honest limit: a hand ring is fitted off-grid in both extension *and* angle, and
-no grid search recovers it however fine. What this does is find a better level 1
-than the engine finds alone. Standing on the judged ring itself would be a
-different mechanism — substituting the pick's strands rather than searching near
-them — and is not built.
+**When the pick carries its ring, level 1 is not searched at all — it is
+ADOPTED.** The identity is the one the whole shelf stands on: the L1 of
+`[k, k, k]` *is* the L1 of `[k]`, so a judged ring for `[k]` is not a hint for
+the search, it is the answer, and a hand-fitted ring that sits off every grid —
+in angle as well as extension — is stood on rather than approximated. The
+strands go in whole; `audit()` measures the crossings off the geometry itself,
+so the row is measured rather than trusted; the deeper levels then search on
+the pick-sized grid. Measured on `3×1 [-1,-1,-1]`:
+
+| | seconds | crossings per level |
+| --- | --- | --- |
+| shipped search | 148.9 | 8, 10, **2** /12 |
+| L1 adopted, deeper levels full width | 117.1 | 8, 10, 2 /12 — identical geometry |
+| **L1 adopted + pick-sized deeper levels** | **45.5** | 8, 10, **12** /12 |
+
+Level 3 *closes completely* where the shipped search left it at 2/12 — at a
+third of the time. The adopted run is keyed `-j<ceiling>` where a grid-only run
+is `-h<ceiling>`: same ceiling, different level 1, never the same key. A pick
+with no ring (judged before rings were stored) sizes the grid and the note says
+L1 was searched too; a ring that is not this level's — wrong size, a
+placeholder — is refused by the engine (layer names must match), searched
+instead, and reported as `level1AdoptFailed`.
 
 The checkbox is **size the search from the judged ★ best**, in the lab's
 advanced search and on the farm. It is off by default, needs a ★ best to exist
@@ -868,7 +884,7 @@ standing in. See `mocks/README.md`.
 There are two of them, and they are bumped for the same reason and never
 together.
 
-**`trace-plan-v25`**, the engine-file key, appears in six places: the worker URL
+**`trace-plan-v26`**, the engine-file key, appears in six places: the worker URL
 (`weave-studio.tsx`), the Python fetch URL and the counting-hand URL
 (`exact-worker.js`), the counting hand's own fetch (`count-worker.js`), the farm
 hand's fetch (`farm-worker.js`) and the URL the farm page spawns it with

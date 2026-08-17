@@ -77,6 +77,9 @@ def ring(out, level):
         json.dumps(stage["strands"], sort_keys=True).encode()).hexdigest()
 
 
+ring_hash_of = ring
+
+
 for m, n, k in CASES:
     print(f"\n=========== {m}x{n} · k = {k} ===========")
     stored = run(m, n, [k])
@@ -156,6 +159,40 @@ check("  a mixed-k sequence pins L1 without tripping over level1_extensions()",
 check("  and every level is still the ring the search found",
       all(ring(oracle, lv) == ring(pinned, lv) for lv in range(0, 4)),
       "L0…L3")
+
+# ---------------------------------------------------------------------------
+# Adoption: the judged ring AS level 1, no search at all.
+#
+# The identity is the same one the pin stands on -- the L1 of [k, k] IS the L1
+# of [k] -- but adoption goes further: the ring goes in whole, so a hand-fitted
+# ring that sits off every grid (62.55 was judged) is stood on rather than
+# approximated. Measured on 3x1 [-1,-1,-1]: the shipped search ends 2/12 at
+# level 3 in 149s; adopted + hand-grid ends 12/12 in 46s.
+print("\n=========== 2x1 · the judged ring adopted as L1 ===========")
+donor = run(2, 1, [-1])
+ring = {"strands": next(s for s in donor["stages"] if s["level"] == 1)["strands"],
+        "h_ext": donor["rows"][0]["ext"][0], "v_ext": donor["rows"][0]["ext"][1]}
+adopted = run(2, 1, [-1, -1], level1_ring=bridge.l1_ring_from_json(json.dumps(ring)))
+check("the adopted L1 is the donor ring, strand for strand",
+      ring_hash_of(adopted, 1) == hashlib.sha256(
+          json.dumps(ring["strands"], sort_keys=True).encode()).hexdigest(),
+      ring_hash_of(adopted, 1)[:16])
+check("  the run says it adopted", adopted["level1Adopted"] is True
+      and adopted["level1AdoptFailed"] is False)
+check("  the audit trail reads 'judged ring' on L1 and only L1",
+      adopted["rows"][0]["applied"] == ["judged ring"]
+      and all("judged ring" not in r["applied"] for r in adopted["rows"][1:]),
+      str([r["applied"] for r in adopted["rows"]]))
+check("  L1's crossings are measured off the adopted strands",
+      adopted["rows"][0]["across"] == donor["rows"][0]["across"])
+check("  and level 2 grew on top of it",
+      len(adopted["rows"]) == 2 and adopted["rows"][1]["across"] > 0)
+
+bad = {"strands": [{"layer_name": "9_9", "type": "Strand"}], "h_ext": [], "v_ext": []}
+refused = run(2, 1, [-1, -1], level1_ring=bridge.l1_ring_from_json(json.dumps(bad)))
+check("  a foreign ring is refused, searched instead, and says so",
+      refused["level1Adopted"] is False and refused["level1AdoptFailed"] is True
+      and refused["rows"][0]["across"] == donor["rows"][0]["across"])
 
 # ---------------------------------------------------------------------------
 # The JS -> Python boundary, statically.

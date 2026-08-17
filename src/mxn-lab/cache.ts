@@ -27,7 +27,7 @@ import { bandKey, type Band } from "./trace-band";
 /**
  * Bumped when the engine changes what it answers.
  *
- * Same job as the `trace-plan-v25` key in the worker URL, for the same reason
+ * Same job as the `trace-plan-v26` key in the worker URL, for the same reason
  * and with the same discipline: a reader whose browser is holding last month's
  * geometry under this month's key is worse off than one who computed it.
  */
@@ -83,6 +83,12 @@ export type RunDescriptor = {
    * judgement quietly overwrite an earlier one's run.
    */
   handCeiling?: number;
+  /**
+   * L1 was ADOPTED from the judged ring rather than searched on its grid.
+   * Spelled `-j<ceiling>` instead of `-h<ceiling>`: the two runs share a
+   * ceiling and differ in what level 1 IS, so they must not share a key.
+   */
+  handAdopted?: boolean;
 };
 
 export type RunArtifact = {
@@ -257,7 +263,8 @@ export function descriptorPath(d: RunDescriptor): string {
   // spelled itself `-r0` on those would have moved every one of them.
   const flags = `s${d.shortArms ? 1 : 0}-e${d.step === "auto" ? "auto" : Math.trunc(d.step)}`
     + `-b${Math.trunc(d.budget)}` + (d.reachFromPrevious ? "-r1" : "")
-    + (d.handCeiling ? `-h${Math.trunc(d.handCeiling)}` : "");
+    + (d.handCeiling
+       ? `-${d.handAdopted ? "j" : "h"}${Math.trunc(d.handCeiling)}` : "");
   return `${d.hand}-${d.direction}/${d.m}x${d.n}/${ks}/${flags}`;
 }
 
@@ -318,7 +325,7 @@ const KEY_VERSION = /^v(\d{1,3})$/;
 const KEY_HAND_DIRECTION = /^(lh|rh)-(cw|ccw)$/;
 const KEY_SIZE = /^([1-9][0-9]?)x([1-9][0-9]?)$/;
 const KEY_KS = /^-?\d{1,3}(_-?\d{1,3}){0,15}$/;
-const KEY_FLAGS = /^s([01])-e(auto|\d{1,4})-b(\d{1,10})(?:-r([01]))?(?:-h(\d{1,4}))?$/;
+const KEY_FLAGS = /^s([01])-e(auto|\d{1,4})-b(\d{1,10})(?:-r([01]))?(?:-([hj])(\d{1,4}))?$/;
 const KEY_LEVEL_BAND = /^L(\d{1,3})-([hv])$/;
 
 function parseSegments(segments: string[]): ParsedRunKey | null {
@@ -341,7 +348,8 @@ function parseSegments(segments: string[]): ParsedRunKey | null {
       budget: Number(fl[3]),
       // Absent reads as off, which is what every key without the segment is.
       reachFromPrevious: fl[4] === "1",
-      handCeiling: fl[5] ? Number(fl[5]) : undefined,
+      handCeiling: fl[6] ? Number(fl[6]) : undefined,
+      handAdopted: fl[5] === "j",
     },
   };
 }

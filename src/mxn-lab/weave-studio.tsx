@@ -208,6 +208,8 @@ type Params = {
   /** The grid a judged ★ best implies: 0 for "search the full width". */
   handStep: number;
   handCeiling: number;
+  /** The judged L1 ring itself, when the pick carries one: adopted, not searched. */
+  level1Ring: { strands: unknown[]; h_ext: number[]; v_ext: number[] } | null;
 };
 
 function parseKs(raw: string) {
@@ -658,6 +660,7 @@ export function ContinuationLab() {
     budget: params.comboBudget,
     reachFromPrevious: params.reachFromPrevious,
     handCeiling: params.handCeiling || undefined,
+    handAdopted: !!params.level1Ring,
   });
 
   /**
@@ -725,6 +728,11 @@ export function ContinuationLab() {
       // answer a question nobody asked and, worse, make ticking the box appear
       // to do nothing: the uncapped run is always there to be adopted instead.
       if (!!parsed.descriptor.reachFromPrevious !== params.reachFromPrevious) return [];
+      // Same rule for the hand-sized shelves: a run searched inside a pick's
+      // reach — or standing on its ring outright — answers a different
+      // question from a full-width run, in both directions.
+      if ((parsed.descriptor.handCeiling ?? 0) !== (params.handCeiling || 0)) return [];
+      if (!!parsed.descriptor.handAdopted !== !!params.level1Ring) return [];
       return [{
         shortArms: parsed.descriptor.shortArms,
         step: step as ExtStep,
@@ -761,7 +769,7 @@ export function ContinuationLab() {
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
     const worker = new Worker(
-      `${LAB_BASE}exact-worker.js?v=trace-plan-v25${FAST_ENGINE ? "&engine=fast" : ""}`,
+      `${LAB_BASE}exact-worker.js?v=trace-plan-v26${FAST_ENGINE ? "&engine=fast" : ""}`,
       { type: "module" },
     );
     worker.onmessage = (event) => {
@@ -1111,6 +1119,7 @@ export function ContinuationLab() {
           level1Extensions,
           handStep: params.handStep,
           handCeiling: params.handCeiling,
+          level1Ring: params.level1Ring,
         });
       };
 
@@ -1189,6 +1198,7 @@ export function ContinuationLab() {
           comboBudget: variant.budget,
           reachFromPrevious: variant.reach,
           handStep: params.handStep, handCeiling: params.handCeiling,
+          level1Ring: params.level1Ring,
         };
         const stored = await cacheRef.current.getRun(descriptorFor(adopted));
         if (id !== activeIdRef.current) return;
@@ -1233,8 +1243,9 @@ export function ContinuationLab() {
    */
   const resolveHandGrid = async (
     base: Params,
-  ): Promise<{ step: number; ceiling: number; note: string }> => {
-    const none = { step: 0, ceiling: 0, note: "" };
+  ): Promise<{ step: number; ceiling: number; note: string;
+               ring: Params["level1Ring"] }> => {
+    const none = { step: 0, ceiling: 0, note: "", ring: null };
     const client = cacheRef.current;
     try {
       const found = await findShelfBest(
@@ -1247,9 +1258,21 @@ export function ContinuationLab() {
           + " — searching the full width" };
       }
       const grid = handGrid(reach, worstPairs(base.m, base.n), base.comboBudget);
-      return { step: grid.step, ceiling: grid.ceiling,
-        note: `★ best by ${pick.judgement.chooser} reaches ${reach} —`
-          + ` searching 0…${grid.ceiling} at step ${grid.step}` };
+      // The ring itself, when the pick carries one and is about level 1: the
+      // L1 of [k, ...] IS the L1 of [k], so the judged ring is not a hint for
+      // the search, it is the answer, and level 1 is adopted rather than
+      // searched. The engine guards the adoption (layer names must match) and
+      // reports a fallback, so a stale or foreign ring degrades to the grid.
+      const ring = pick.level === 1 && pick.strands.length
+        ? { strands: pick.strands as unknown[], h_ext: pick.hExt, v_ext: pick.vExt }
+        : null;
+      return { step: grid.step, ceiling: grid.ceiling, ring,
+        note: ring
+          ? `★ best by ${pick.judgement.chooser} — L1 adopted from the judged`
+            + ` ring; deeper levels search 0…${grid.ceiling} at step ${grid.step}`
+          : `★ best by ${pick.judgement.chooser} reaches ${reach} —`
+            + ` searching 0…${grid.ceiling} at step ${grid.step} (the judgement`
+            + " carries no ring, so L1 is searched too)" };
     } catch {
       return { ...none, note: "the picks shelf is away — searching the full width" };
     }
@@ -1263,7 +1286,7 @@ export function ContinuationLab() {
       extStep: extStep === "auto" ? null : Number(extStep),
       comboBudget,
       reachFromPrevious,
-      handStep: 0, handCeiling: 0,
+      handStep: 0, handCeiling: 0, level1Ring: null,
     };
     if (!handFromPick) {
       setHandNote("");
@@ -1273,7 +1296,8 @@ export function ContinuationLab() {
     setStatus("Looking for a judged ★ best to size the search…");
     const grid = await resolveHandGrid(base);
     setHandNote(grid.note);
-    dispatchRef.current({ ...base, handStep: grid.step, handCeiling: grid.ceiling });
+    dispatchRef.current({ ...base, handStep: grid.step, handCeiling: grid.ceiling,
+                          level1Ring: grid.ring });
   };
 
   // Stop is a hard kill: the search is one synchronous runPythonAsync call, so
@@ -1392,7 +1416,7 @@ export function ContinuationLab() {
       reachFromPrevious: nextReach,
       // A deep link never resolves a pick: that is a fetch, and this effect
       // runs on mount to put a picture up fast. Press Run to size from a ★.
-      handStep: 0, handCeiling: 0,
+      handStep: 0, handCeiling: 0, level1Ring: null,
     });
   }, []);
 
@@ -1448,6 +1472,8 @@ export function ContinuationLab() {
       reachFromPrevious: params.reachFromPrevious,
       handStep: params.handStep,
       handCeiling: params.handCeiling,
+      // Deliberately no level1Ring and no level1Extensions: a warm exists to
+      // open a browsable session, and an adopted level has nothing to browse.
       // Deliberately no level1Extensions. A warm exists to open the session the
       // browser, the sweeps and an uncached census read, and a replayed level
       // has no candidate list to browse — warming into one would be warming
@@ -2016,7 +2042,9 @@ export function ContinuationLab() {
                 <span>browse healthy solutions only</span>
               </label>
               <div className={`range-note ${overEngineLimit ? "is-warning" : ""}`}>
-                {estimatedCombos.toLocaleString()} combos in the largest group
+                {handFromPick
+                  ? "combos are sized from the ★ best at Run — the count below is the full-width ceiling"
+                  : null}{handFromPick ? " · " : ""}{estimatedCombos.toLocaleString()} combos in the largest group
                 {" "}({worstPairCount} {worstPairCount === 1 ? "pair" : "pairs"} at step {resolvedStep})
                 {overEngineLimit && <><br /><strong>Over the engine&rsquo;s {ENGINE_COMBO_LIMIT.toLocaleString()} combo limit — the search will refuse. Raise the step.</strong></>}
               </div>

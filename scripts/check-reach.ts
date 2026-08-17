@@ -109,6 +109,16 @@ console.log("\n=========== the hand-sized grid carries its ceiling ===========")
   const back = parseRunKey(`run/${runKey(at({ handCeiling: 65 }))}`);
   check("and it reads back as the number that wrote it",
     back?.descriptor.handCeiling === 65, String(back?.descriptor.handCeiling));
+  // -j: level 1 ADOPTED from the judged ring rather than searched on its grid.
+  // Same ceiling, different level 1, so never the same key.
+  const adopted = descriptorPath(at({ handCeiling: 65, handAdopted: true }));
+  check("an adopted L1 spells -j, and never shares -h's key",
+    adopted === "lh-cw/3x1/-1_-1/s1-eauto-b400000-j65"
+    && adopted !== descriptorPath(at({ handCeiling: 65 })), adopted);
+  const jBack = parseRunKey(`run/v3/${adopted}`);
+  check("and -j reads back as adopted, -h as not",
+    jBack?.descriptor.handAdopted === true
+    && parseRunKey(`run/${runKey(at({ handCeiling: 65 }))}`)?.descriptor.handAdopted === false);
   check("a key with no -h reads as no ceiling",
     parseRunKey("run/v3/lh-cw/2x2/1/s1-eauto-b400000")?.descriptor.handCeiling
       === undefined);
@@ -135,6 +145,9 @@ console.log("\n=========== the Worker validates the same shape ===========");
       ["s0-e5-b100000000-r0", true],
       ["s1-eauto-b400000-h65", true],
       ["s1-eauto-b400000-r1-h65", true],
+      ["s1-eauto-b400000-j65", true],
+      ["s1-eauto-b400000-r1-j65", true],
+      ["s1-eauto-b400000-j", false],
       ["s1-eauto-b400000-h", false],
       ["s1-eauto-b400000-h65-r1", false],
       ["s1-eauto-b400000-r2", false],

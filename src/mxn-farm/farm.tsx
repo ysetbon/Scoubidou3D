@@ -449,7 +449,14 @@ export function ComputeFarm() {
         const reach = found.pick && reachOfPick(found.pick);
         if (reach) {
           const grid = handGrid(reach, worstPairs(job.m, job.n), job.budget);
-          const descriptor = { ...job.descriptor, handCeiling: grid.ceiling };
+          // `-j` when the pick carries its ring — level 1 will be ADOPTED, not
+          // searched, which is a different answer and so a different key. The
+          // ring itself is fetched again at run time rather than carried
+          // through the queue: a 240 kB strand list has no business in a job
+          // row, and the id already says which shelf the answer belongs on.
+          const adopted = found.pick!.level === 1 && found.pick!.strands.length > 0;
+          const descriptor = { ...job.descriptor,
+            handCeiling: grid.ceiling, handAdopted: adopted };
           next = { ...job, descriptor, id: runKey(descriptor),
                    handStep: grid.step, handCeiling: grid.ceiling };
           sized += 1;
@@ -481,7 +488,7 @@ export function ComputeFarm() {
 
   const spawnHand = () => {
     const worker = new Worker(
-      new URL(`${FARM_BASE}farm-worker.js?v=trace-plan-v25`, window.location.href),
+      new URL(`${FARM_BASE}farm-worker.js?v=trace-plan-v26`, window.location.href),
       { type: "module" });
     workersRef.current.push(worker);
     return worker;
@@ -572,6 +579,35 @@ export function ComputeFarm() {
         // "stored" is left out (the job-end line already sums the artifacts up)
         // but still advances the marker, so each census band logs its start.
         let loggedPhase: string | null = null;
+        // A `-j` job stands on the judged ring: fetch it now and refuse to run
+        // without it. Uploading a searched L1 under a key that promises the
+        // adopted one would be the exact lie the -j/-h split exists to prevent.
+        let level1Ring: { strands: unknown[]; h_ext: number[]; v_ext: number[] } | null = null;
+        if (parseRunKey(job.id)?.descriptor.handAdopted) {
+          try {
+            const best = await findShelfBest(
+              { ...job.descriptor, ks: [job.ks[0]], handCeiling: undefined,
+                handAdopted: undefined },
+              cacheRef.current.base, cacheRef.current.token, () => true);
+            if (best.pick && best.pick.level === 1 && best.pick.strands.length) {
+              level1Ring = { strands: best.pick.strands as unknown[],
+                             h_ext: best.pick.hExt, v_ext: best.pick.vExt };
+            }
+          } catch { /* reported below */ }
+          if (!level1Ring) {
+            await request("/farm/jobs", {
+              method: "PATCH",
+              body: JSON.stringify({ id: job.id, state: "failed",
+                error: "queued to adopt the judged L1 ring, but the pick no longer carries one" }),
+            });
+            say(`${label} — the ★ best lost its ring since queueing; job failed rather than`
+              + " storing a searched answer under an adopted key");
+            setHandState(current => current.map(hand =>
+              hand.id === id ? { ...hand, failed: hand.failed + 1 } : hand));
+            continue;
+          }
+          say(`${label} — L1 adopted from the judged ★ best`);
+        }
         const found = await level1For(job);
         const level1Extensions = found && "ext" in found ? found.ext : null;
         if (level1Extensions) {
@@ -583,7 +619,7 @@ export function ComputeFarm() {
         }
         const summaryReply = await driveHand(worker, {
           type: "job", hand: id,
-          job: { ...job, descriptor: job.descriptor, level1Extensions },
+          job: { ...job, descriptor: job.descriptor, level1Extensions, level1Ring },
           upload: {
             run: runUrl, traces,
             token: cacheRef.current.token,
