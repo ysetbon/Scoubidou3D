@@ -12,7 +12,7 @@ import {
   type Bounds, type Stage, type Strand,
 } from "./exact-draw";
 import {
-  auditOfPick, findShelfBest, reachOfPick,
+  auditOfPick, findPrefixBests, findShelfBest, reachOfPick,
   type CardAudit, type JudgedPick,
 } from "./picks-shelf";
 import {
@@ -276,6 +276,46 @@ function auditOfRow(row: AuditRow | null): CardAudit | null {
     within: row.within, masks: row.masks, stray: row.stray, broken: row.broken,
     applied: row.applied,
   } : null;
+}
+
+/**
+ * A judged ring as a one-card result, for the run=0 path that must not wake
+ * the engine. L2 and L3 are not invented: we only have what a person judged.
+ */
+function previewFromPicks(
+  picks: Record<number, JudgedPick>, d: RunDescriptor,
+): ExactResult | null {
+  const levels = Object.keys(picks).map(Number).sort((a, b) => a - b);
+  const stages: Stage[] = [];
+  const rows: AuditRow[] = [];
+  const solutions: SolutionMeta[] = [];
+  for (const level of levels) {
+    const pick = picks[level];
+    const k = d.ks[level - 1] ?? d.ks[0];
+    stages.push({
+      level, k, strands: pick.strands,
+      label: `★ best by ${pick.judgement.chooser}`,
+    });
+    const audit = pick.judgement.audit;
+    rows[level - 1] = {
+      level, k, state: "judged",
+      expected: audit?.expected ?? 4 * d.m * d.n,
+      gap: [0, 0], ext: [pick.hExt, pick.vExt],
+      across: audit?.crossings ?? 0, within: 0, masks: 0,
+      stray: audit?.stray ?? 0, broken: audit?.broken ?? 0,
+      applied: [], healthy: false,
+    };
+    solutions.push({
+      level, enumerated: "none", enumerable: false,
+      reason: "adopted ring · no engine list",
+      hCount: 0, vCount: 0, candidates: 0,
+      enginePick: 0, index: 0, truncated: false,
+    });
+  }
+  if (!stages.length) return null;
+  const expected = rows.find(Boolean)?.expected ?? 4 * d.m * d.n;
+  return { m: d.m, n: d.n, ks: [...d.ks], expected, seconds: 0,
+    rows, stages, solutions };
 }
 
 /** A number nobody measured is a dash, never a zero. */
@@ -650,6 +690,7 @@ export function ContinuationLab() {
   // hundred extra messages cost milliseconds against the replays they space.
   const COUNT_ROUND = 24;
   const dispatchRef = useRef<(params: Params) => void>(() => {});
+  const loadJudgedRef = useRef<(d: RunDescriptor, id: number, preview?: boolean) => void>(() => {});
 
   const parsed = useMemo(() => parseKs(rawKs), [rawKs]);
   const limits = kLimits(m, n);
@@ -1458,6 +1499,21 @@ export function ContinuationLab() {
     // exercised by the same button press as a normal user run.
     if (populateOnly) {
       setStatus("Settings loaded — press Run");
+      // The L1 of [k, k, k] IS the L1 of [k], and that ring is already on the
+      // picks shelf. Drawing it costs one GET and no engine, so the card a
+      // person judged is on screen before anyone presses Run — which is the
+      // whole point of this URL: to see whether Yonatan's ★ best actually
+      // loaded, not to stare at an empty results column until a search.
+      const id = ++activeIdRef.current;
+      const descriptor: RunDescriptor = {
+        m: nextM, n: nextN, ks: parsedQuery.values,
+        hand: "lh", direction: "cw",
+        shortArms: nextShort,
+        step: nextStep === "auto" ? "auto" : Number(nextStep),
+        budget: nextBudget,
+        reachFromPrevious: nextReach,
+      };
+      loadJudgedRef.current(descriptor, id, true);
       return;
     }
     dispatchRef.current({
@@ -1821,42 +1877,81 @@ export function ContinuationLab() {
   /**
    * Ask the shelf what a person has said about the run that just landed.
    *
-   * One public GET in the ordinary case, on the same Worker the run came off,
-   * and it is why a ★ best pressed at /mxn/fit/ or drawn on a k board now
-   * appears here without anybody loading a file: the judgement was always on
-   * the shelf, and this page was the one that never asked.
+   * Walks parent ks directories as well as the exact sequence: L1 of
+   * `[-1, -1, -1]` IS the L1 of `[-1]`, and that is where a hand actually
+   * presses ★ best. Asking only the deep key is how a page showing 3×1
+   * `[-1, -1, -1]` used to report no human pick for a size whose k board
+   * plainly showed Yonatan's.
    *
-   * A shelf that is away, misconfigured or serving nonsense leaves the engine's
-   * own answer exactly where it is. Nothing here can be the reason a run stops
-   * being shown.
+   * `allowPreview` is the run=0 path: there is no engine result yet, and the
+   * judged L1 ring is enough to put a card on screen. A shelf that is away
+   * leaves whatever was already showing exactly where it is.
    */
-  const loadJudged = async (d: RunDescriptor, id: number) => {
+  const loadJudged = async (d: RunDescriptor, id: number, allowPreview = false) => {
     try {
       const client = cacheRef.current;
-      const found = await findShelfBest(
+      const found = await findPrefixBests(
         d, client.base, client.token, () => id === activeIdRef.current);
       if (id !== activeIdRef.current) return;
-      if (found.ringless) {
-        // hasRing = False in docs/picks-shelf.md: judged before rings were
-        // stored in a pick. Said out loud rather than passed over, because the
-        // fix — re-press ★ best at /mxn/fit/ — is a thing a reader can do.
-        setPicksNote(`★ best by ${found.ringless.chooser} — saved without its`
-          + " ring, so only /mxn/fit/ can draw it");
+      const picks = found.byLevel;
+      const levels = Object.keys(picks).map(Number).sort((a, b) => a - b);
+      if (!levels.length) {
+        if (found.ringless) {
+          // hasRing = False in docs/picks-shelf.md: judged before rings were
+          // stored in a pick. Said out loud rather than passed over, because
+          // the fix — re-press ★ best at /mxn/fit/ — is a thing a reader can do.
+          setPicksNote(`★ best by ${found.ringless.chooser} — saved without its`
+            + " ring, so only /mxn/fit/ can draw it");
+        }
         return;
       }
-      const pick = found.pick;
-      if (!pick) return;
-      setShelfBest({ [pick.level]: pick });
-      showJudgedRef.current(pick.level, pick);
-      setPicksNote(`★ best on L${pick.level} by ${pick.judgement.chooser}`
-        + ` · from ${pick.from}`);
+      setShelfBest(picks);
+      const credit = levels
+        .map(level => `L${level} by ${picks[level].judgement.chooser}`)
+        .join(", ");
+      setPicksNote(`★ best on ${credit} · from ${picks[levels[0]].from}`);
+      setResult(current => {
+        if (!current) {
+          if (!allowPreview) return current;
+          const preview = previewFromPicks(picks, d);
+          if (!preview) return current;
+          boundsRef.current = allBounds(preview.stages);
+          const shown: Record<number, JudgedPick> = {};
+          const meta: Record<number, SolutionMeta> = {};
+          for (const stage of preview.stages) {
+            shown[stage.level] = picks[stage.level];
+          }
+          for (const entry of preview.solutions ?? []) meta[entry.level] = entry;
+          setJudgedShown(shown);
+          setSolutions(meta);
+          setStatus(`★ best on ${credit} — press Run for the rest of the sequence`);
+          return preview;
+        }
+        const rings: Record<number, Strand[]> = {};
+        let next = current;
+        for (const level of levels) {
+          const pick = picks[level];
+          const stage = next.stages.find(entry => entry.level === level);
+          if (!stage) continue;
+          rings[level] = stage.strands;
+          next = {
+            ...next,
+            stages: next.stages.map(entry => entry.level === level
+              ? { ...entry, strands: pick.strands } : entry),
+          };
+        }
+        if (Object.keys(rings).length) {
+          setJudgedRing(held => ({ ...held, ...rings }));
+          setJudgedShown(held => ({ ...held, ...picks }));
+        }
+        return next;
+      });
     } catch { /* the shelf being away must not cost anybody their run */ }
   };
   // Both callers are closures the worker and the dispatcher captured on an
   // earlier render, so these go through refs for the same reason cacheRef does.
   const showJudgedRef = useRef(showJudged);
   showJudgedRef.current = showJudged;
-  const loadJudgedRef = useRef(loadJudged);
   loadJudgedRef.current = loadJudged;
 
   const toggleWidget = (level: number) => {

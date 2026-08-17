@@ -450,8 +450,35 @@ const offSite = url =>
   await page.close();
 }
 
-// ---- D · a manual deep link can preload the mock without running ------------
+// ---- D · a manual deep link loads L1 from the [ks[0]] subdirectory ----------
+//
+// The mock:shelf URL is 3×1 ks=-1 -1 -1 with run=0. Yonatan's ★ best lives
+// under picks/…/3x1/-1/…, not under -1_-1_-1. Asking only the deep key is how
+// that page used to show an empty results column and no human pick.
 {
+  const judged31 = JSON.parse(readFileSync(
+    `${ROOT}mocks/fixtures/judged-3x1-k-1.json`, 'utf8'));
+  const l1Pick = {
+    kind: 'picks', cacheVersion: 'v3',
+    descriptor: { m: 3, n: 1, ks: [-1], hand: 'lh', direction: 'cw',
+                  shortArms: true, step: 'auto', budget: 400000 },
+    judgements: [{
+      id: 'qa-3x1--1', verdict: 'best', source: 'fitter', chooser: 'yonatan',
+      at: '2026-08-16T00:00:00Z',
+      levels: [{ level: 1, h: { ext: judged31.hExt, angle: null },
+                 v: { ext: judged31.vExt, angle: null } }],
+      audit: { crossings: judged31.across, expected: judged31.expected,
+               stray: 2, broken: 0 },
+      strands: judged31.strands,
+    }],
+  };
+  const seeding = await api('/cache/picks/v3/lh-cw/3x1/-1/s1-eauto-b400000', {
+    method: 'PUT', body: gzipSync(Buffer.from(JSON.stringify(l1Pick))),
+    headers: { Authorization: `Bearer ${TOKEN}`, 'X-Mxn-Codec': 'gzip' },
+  });
+  ok('the L1 subdirectory takes a 3×1 k=−1 ★ best',
+    seeding.status === 201, `HTTP ${seeding.status}`);
+
   const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
   const external = [];
   page.on('request', request => { if (offSite(request.url())) external.push(request.url()); });
@@ -467,7 +494,6 @@ const offSite = url =>
     reach: document.querySelector('#reach-cap').checked,
     advanced: document.querySelector('.advanced-settings').open,
     runEnabled: !document.querySelector('.run-button').disabled,
-    status: document.querySelector('.engine-status').textContent,
   }));
   ok('run=0 preloads the mock dimensions and sequence',
     controls.m === '3' && controls.n === '1' && controls.ks === '-1 -1 -1',
@@ -476,8 +502,30 @@ const offSite = url =>
     controls.pick && controls.reach, JSON.stringify(controls));
   ok('and opens Advanced with Run still enabled',
     controls.advanced && controls.runEnabled, JSON.stringify(controls));
+
+  await page.waitForSelector('.judged-chip', { timeout: 20000 });
+  const l1 = await page.$eval('.diagram-card', card => ({
+    title: card.querySelector('.level-title strong')?.textContent ?? null,
+    chip: card.querySelector('.judged-chip b')?.textContent ?? null,
+    who: card.querySelector('.judged-chip i')?.textContent ?? null,
+    corner: card.querySelector('.canvas-corner')?.textContent ?? null,
+    vExt: card.querySelector('.exact-metrics .metric:nth-child(4) strong')?.textContent
+      ?? null,
+    crossings: card.querySelector('.exact-metrics .metric:nth-child(2) strong')
+      ?.textContent ?? null,
+  }));
+  ok('L1 of [-1,-1,-1] is drawn from the [-1] subdirectory, with no engine',
+    l1.title === 'L1' && l1.chip === 'human pick' && /^yonatan/.test(l1.who ?? ''),
+    JSON.stringify(l1));
+  ok('and the card is captioned as Yonatan\'s judged ring',
+    /^JUDGED BY YONATAN/.test(l1.corner ?? ''), l1.corner);
+  ok('with the judgement\'s own extensions and crossings',
+    l1.vExt === '(80, 70, 20)' && l1.crossings === '8/12',
+    `${l1.vExt} · ${l1.crossings}`);
   ok('and does not wake the engine before Run',
-    external.length === 0 && /Settings loaded/.test(controls.status), external.join(', '));
+    external.length === 0, external.join(', '));
+  await page.locator('.diagram-card').first()
+    .screenshot({ path: `${CACHE_DIR}/qa-cache-l1-prefix.png` });
   await page.close();
 }
 

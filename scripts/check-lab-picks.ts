@@ -21,8 +21,8 @@
 import type { Judgement, RunDescriptor } from "../src/mxn-lab/cache";
 import { picksKey } from "../src/mxn-lab/cache";
 import {
-  FITTER_FLAGS, auditOfPick, bestOf, judgedDescriptor, levelOf, picksCandidates,
-  picksPrefix, pickOfJudgement,
+  FITTER_FLAGS, auditOfPick, bestOf, judgedDescriptor, ksPrefixDescriptors,
+  levelOf, picksCandidates, picksPrefix, pickOfJudgement,
 } from "../src/mxn-lab/picks-shelf";
 import type { Strand } from "../src/mxn-lab/exact-draw";
 
@@ -203,6 +203,34 @@ const FARM = { step: 5 as const, budget: 100_000_000 };
   const prefix = picksPrefix(descriptorAt(2, 2, [1, 2, 2], FARM));
   check("the catalogue prefix names the size and the sequence, not the flags",
     prefix === "picks/v3/lh-cw/2x2/1_2_2/", prefix);
+}
+
+// ===========================================================================
+console.log("\n=========== a deep sequence reads L1 from the [ks[0]] subdirectory ===========");
+
+{
+  const want = descriptorAt(3, 1, [-1, -1, -1]);
+  const prefixes = ksPrefixDescriptors(want);
+  const paths = prefixes.map(d => picksKey(d));
+  check("the exact sequence is asked about first",
+    paths[0] === "v3/lh-cw/3x1/-1_-1_-1/s1-eauto-b400000", paths[0]);
+  check("then the parent subdirectory",
+    paths[1] === "v3/lh-cw/3x1/-1_-1/s1-eauto-b400000", paths[1]);
+  check("then the L1 subdirectory a hand actually judges",
+    paths[2] === "v3/lh-cw/3x1/-1/s1-eauto-b400000", paths[2]);
+  check("and a single-k run is already the whole walk",
+    ksPrefixDescriptors(descriptorAt(3, 1, [-1])).length === 1);
+}
+
+{
+  // Flags on the deep run must not send the L1 lookup to a key nothing writes.
+  // judgedDescriptor strips them; the prefix walk has to keep doing that.
+  const searching = descriptorAt(3, 1, [-1, -1, -1], {
+    reachFromPrevious: true, handCeiling: 65, handAdopted: true,
+  });
+  const l1 = judgedDescriptor(ksPrefixDescriptors(searching).at(-1)!);
+  check("the L1 subdirectory is still the fitter's key, flags stripped",
+    picksKey(l1) === "v3/lh-cw/3x1/-1/s1-eauto-b400000", picksKey(l1));
 }
 
 // ===========================================================================
