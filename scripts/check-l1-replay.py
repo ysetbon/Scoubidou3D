@@ -187,6 +187,15 @@ check("  L1's crossings are measured off the adopted strands",
       adopted["rows"][0]["across"] == donor["rows"][0]["across"])
 check("  and level 2 grew on top of it",
       len(adopted["rows"]) == 2 and adopted["rows"][1]["across"] > 0)
+adopted_meta = next(x for x in adopted["solutions"] if x["level"] == 1)
+check("  and L1 exposes no engine solution browser",
+      adopted_meta["enumerated"] == "none"
+      and adopted_meta["enumerable"] is False,
+      str(adopted_meta))
+still_adopted = json.loads(bridge.enumerate_level(1))["meta"]
+check("  even an enumerate call cannot turn the adopted ring into a search",
+      still_adopted["enumerated"] == "none"
+      and still_adopted["enumerable"] is False)
 
 bad = {"strands": [{"layer_name": "9_9", "type": "Strand"}], "h_ext": [], "v_ext": []}
 refused = run(2, 1, [-1, -1], level1_ring=bridge.l1_ring_from_json(json.dumps(bad)))
@@ -232,6 +241,13 @@ for name in ("exact-worker.js", "farm-worker.js"):
     if name == "exact-worker.js":
         check("  and never enumerates an adopted L1 merely to count it",
               'if (meta.enumerated !== "full") continue;' in source)
+
+studio = open(os.path.join(ROOT, "src", "mxn-lab", "weave-studio.tsx")).read()
+check("the page only auto-counts levels the run already enumerated",
+      'entry.enumerated === "full"' in studio)
+check("  and an adopted ring is explicitly not browsable",
+      "meta.enumerable !== false" in studio
+      and "adopted ring · no engine list" in studio)
 
 print(f"\n{f'{failed} check(s) failed, {passed} passed' if failed else f'all {passed} checks passed'}")
 sys.exit(1 if failed else 0)

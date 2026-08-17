@@ -400,7 +400,9 @@ the search, it is the answer, and a hand-fitted ring that sits off every grid �
 in angle as well as extension — is stood on rather than approximated. The
 strands go in whole; `audit()` measures the crossings off the geometry itself,
 so the row is measured rather than trusted; the deeper levels then search on
-the pick-sized grid. Measured on `3×1 [-1,-1,-1]`:
+the pick-sized grid. The card says **adopted ring · no engine list** and exposes
+no arrows: manufacturing a list later would simply hide a second L1 search
+behind the finished result. Measured on `3×1 [-1,-1,-1]`:
 
 | | seconds | crossings per level |
 | --- | --- | --- |
@@ -890,7 +892,7 @@ standing in. See `mocks/README.md`.
 There are two of them, and they are bumped for the same reason and never
 together.
 
-**`trace-plan-v28`**, the engine-file key, appears in six places: the worker URL
+**`trace-plan-v29`**, the engine-file key, appears in six places: the worker URL
 (`weave-studio.tsx`), the Python fetch URL and the counting-hand URL
 (`exact-worker.js`), the counting hand's own fetch (`count-worker.js`), the farm
 hand's fetch (`farm-worker.js`) and the URL the farm page spawns it with

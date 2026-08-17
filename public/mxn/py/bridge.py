@@ -291,8 +291,12 @@ def _register_level(level, k, checkpoint, result, search):
     """Record what browsing this level needs, and where the engine landed."""
     cands = result.get("candidates") or {"h": [], "v": []}
     h_cands, v_cands = cands.get("h") or [], cands.get("v") or []
+    adopted = bool((result.get("search", {}).get("horizontal") or {}).get("judged")
+                   or (result.get("search", {}).get("vertical") or {}).get("judged"))
     if k == 0:
         enumerated, reason = "none", "k=0 preserves the continuation"
+    elif adopted:
+        enumerated, reason = "none", "this level was adopted from a judged ring"
     elif not h_cands or not v_cands:
         # A seeded, pinned or square-mirrored level only ever saw the one
         # combo it was told to use, so there is no list to page through.
@@ -313,6 +317,10 @@ def _register_level(level, k, checkpoint, result, search):
         "engine_ext": {"horizontal": list(engine_h), "vertical": list(engine_v)},
         "search": result.get("search") or {},
         "enumerated": enumerated, "reason": reason,
+        # A seeded engine answer may enumerate lazily when the reader presses
+        # an arrow. An adopted human ring must never do that: there is no engine
+        # candidate list behind it, and enumerating one would search L1 again.
+        "enumerable": not adopted,
         "engine_pick_hv": (pick_h, pick_v),
         "engine_pick": 0, "index": 0,
         "truncated": len(h_cands) >= NX.BAND_CANDIDATE_CAP
@@ -649,6 +657,7 @@ def _solution_meta(entry):
     return {
         "level": entry["level"],
         "enumerated": entry["enumerated"],
+        "enumerable": entry.get("enumerable", True),
         "reason": entry.get("reason"),
         "hCount": len(h), "vCount": len(v),
         "candidates": len(h) * len(v),
@@ -751,7 +760,8 @@ def enumerate_level(level):
     at is left exactly as generate() produced it until they actually step.
     """
     entry = _level_session(int(level))
-    if entry["enumerated"] == "full" or entry["k"] == 0:
+    if (entry["enumerated"] == "full" or entry["k"] == 0
+            or not entry.get("enumerable", True)):
         return json.dumps({"level": entry["level"], "meta": _solution_meta(entry)},
                           separators=(",", ":"))
     m, n = _SESSION["m"], _SESSION["n"]

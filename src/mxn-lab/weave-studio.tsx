@@ -78,10 +78,13 @@ const TILE_PIXELS = 144;
 const TRACE_WEAVE_CACHE = 40;
 
 // k=0 preserves the continuation and has exactly one solution by construction.
-// Anything else can be paged through, even if the level was solved from a seed
-// and has to enumerate on the first click.
-function browsable(meta: { enumerated: string; reason?: string | null }) {
-  return meta.enumerated === "full" || !(meta.reason ?? "").startsWith("k=0");
+// A seeded engine level can enumerate on the first click. An adopted human ring
+// cannot: it has no engine candidate list, and building one would search L1.
+function browsable(meta: {
+  enumerated: string; enumerable?: boolean; reason?: string | null;
+}) {
+  return meta.enumerable !== false
+    && (meta.enumerated === "full" || !(meta.reason ?? "").startsWith("k=0"));
 }
 
 // How a near-miss list can be ordered. Four named buttons rather than one
@@ -127,6 +130,7 @@ export type AuditRow = {
 type SolutionMeta = {
   level: number;
   enumerated: "none" | "full";
+  enumerable?: boolean;
   reason?: string | null;
   hCount: number; vCount: number; candidates: number;
   enginePick: number; index: number; truncated: boolean;
@@ -798,7 +802,7 @@ export function ContinuationLab() {
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
     const worker = new Worker(
-      `${LAB_BASE}exact-worker.js?v=trace-plan-v28${FAST_ENGINE ? "&engine=fast" : ""}`,
+      `${LAB_BASE}exact-worker.js?v=trace-plan-v29${FAST_ENGINE ? "&engine=fast" : ""}`,
       { type: "module" },
     );
     worker.onmessage = (event) => {
@@ -1059,7 +1063,11 @@ export function ContinuationLab() {
           // so each browsable level's count is walked to exact, level by
           // level, starting now rather than on the first arrow press.
           const toCount = (payload.solutions ?? [])
-            .filter(entry => entry.level > 0 && browsable(entry) && !entry.countExact)
+            // Never manufacture a candidate list merely to put an exact number
+            // on the card. Seeded levels enumerate only after an explicit
+            // browser click; adopted levels are not enumerable at all.
+            .filter(entry => entry.level > 0 && entry.enumerated === "full"
+              && !entry.countExact)
             .map(entry => entry.level);
           countQueueRef.current = toCount.slice(1);
           if (toCount.length) {
@@ -2399,7 +2407,9 @@ export function ContinuationLab() {
                             );
                           }
                           if (!canSemi) {
-                            return <span className="solution-note" title={meta.reason ?? ""}>one solution</span>;
+                            return <span className="solution-note" title={meta.reason ?? ""}>
+                              {meta.enumerable === false ? "adopted ring · no engine list" : "one solution"}
+                            </span>;
                           }
                           // The denominator is the list being paged: all
                           // closed rings, or the weaves among them when the
