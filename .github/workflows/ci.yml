@@ -37,6 +37,12 @@ jobs:
       - name: The lab's rules for a judged ★ best
         run: npm run check:picks
 
+      # Reading a k sequence out of a URL, and what "fixed" means for one level
+      # of a stack. `?ks=-1-1-1…` parsed to nothing once, so a ten-level stitch
+      # opened as a one-level one and said nothing about it.
+      - name: The fitter's ladder, and the ks a URL carries
+        run: npm run check:ladder
+
       # A flag joining a cache key must not move the keys already on the shelf,
       # and the page and the Worker must agree on the shape — a key one writes
       # and the other 400s reads exactly like a network fault.

@@ -256,3 +256,60 @@ tr.applied .minibtn { border-color: var(--ink); background: var(--acid); }
 .tl tr.slow td.l { font-weight: 700; }
 /* The engine's own line while it is working, under the page's status. */
 .status.engine { color: var(--muted); font-weight: 400; margin-top: 4px; }
+
+/* ---------------------------------------------------------------------------
+ * The ladder. A stitch is a stack of rings and this page fits one of them, so
+ * on a ten-level sequence the reader's real question is "how far up am I".
+ *
+ * Deliberately NOT diagrams: the level strip below already draws every ring,
+ * and drawing them twice would say the same thing louder. This is state — what
+ * is fixed, what is still the engine's, what is standing on a ring that moved —
+ * so it is a list, dense enough that ten levels fit on a screen at once.
+ * ------------------------------------------------------------------------ */
+.ladder { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.rung { display: block; }
+.rungbtn {
+  width: 100%; display: grid; align-items: center; gap: 10px;
+  grid-template-columns: 44px 62px minmax(0, 1fr) 74px 84px;
+  padding: 7px 9px; text-align: left; background: var(--card);
+  border: 1px solid var(--line); font: 700 11px/1.2 monospace;
+}
+.rungbtn:hover:not(:disabled) { border-color: var(--ink); }
+.rungbtn b { font-size: 12.5px; }
+.rungbtn i { font-style: normal; color: var(--muted); }
+.rungbtn .state { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rungbtn .num { text-align: right; color: var(--muted); }
+.rungbtn .num.bad { color: var(--red); }
+.rungbtn .num.good { color: var(--green); }
+/* A fixed level is the only state that means the levels above stand on it, so
+   it is the only one that gets the page's "this is settled" colour.
+   Matched on a data attribute, not a class: preflight.css carries Tailwind's
+   utility layer, and `.fixed` there is `position: fixed` — a rung wearing it
+   left the grid and painted itself over its neighbours. */
+.rung[data-state=fixed] .rungbtn,
+.rung[data-state=pinned] .rungbtn { border-color: var(--ink); background: rgba(219, 234, 101, .3); }
+.rung[data-state=proposed] .rungbtn { border-style: dashed; border-color: var(--ink); }
+.rung[data-state=stale] .rungbtn { border-color: var(--red); background: rgba(228, 81, 63, .07); color: var(--red-ink); }
+.rung[data-state=stale] .rungbtn .state { color: var(--red-ink); }
+.rung[data-current] .rungbtn { box-shadow: inset 3px 0 0 var(--blue); }
+.rungbtn:disabled { opacity: 1; }
+@media (max-width: 720px) {
+  .rungbtn { grid-template-columns: 38px 52px minmax(0, 1fr) 66px; }
+  .rungbtn .when { display: none; }
+}
+/* The one button that changes a level other than the one being fitted, so it
+   is the loudest thing in the panel and it says what it will cost. */
+.ladder-act { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.ladder-act button { padding: 9px 14px; background: var(--card); border: 1px solid var(--ink); font: 800 11px/1 monospace; letter-spacing: .04em; text-transform: uppercase; }
+.ladder-act .primary { background: var(--ink); color: var(--paper); }
+.ladder-act .primary:disabled { background: var(--card); color: var(--ink); }
+
+/* A checkbox under the run buttons, reading as one line rather than as a form
+   field: it is a modifier on the button above it, not a parameter. */
+.switchline {
+  display: flex; align-items: center; gap: 7px; margin-top: 9px;
+  font: 700 10.5px/1.3 monospace; letter-spacing: .04em; color: var(--muted);
+  cursor: pointer;
+}
+.switchline input { accent-color: var(--ink); margin: 0; }
+.switchline:hover { color: var(--ink); }

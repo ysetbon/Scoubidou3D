@@ -105,6 +105,26 @@ const STUB = ({ size, delay }) => {
                      && JSON.stringify(data.vExt ?? null) === JSON.stringify(size.held.v);
         if (holding) reply({ type: 'fit-weave-ready', ...size.baseline });
         else reply({ type: 'error', message: 'stubbed worker cannot weave a candidate' });
+      } else if (data.type === 'fit-adopt') {
+        // Adopting is a real search per level above, which a stub cannot do —
+        // so it answers with the run's own rows and diagrams for those levels,
+        // which is the SHAPE of the reply without any claim about the search.
+        // What that still proves is the bookkeeping: the page must not count a
+        // level as fixed until the engine has been asked, and must count it
+        // once it has. The rebuild itself is checked in Python, against the
+        // engine, by scripts/check-fit-stack.py.
+        window.__stubAdopts = (window.__stubAdopts ?? 0) + 1;
+        const from = data.level;
+        reply({
+          type: 'fit-adopt-ready', level: from, unavailable: false,
+          rebuilt: data.rebuild !== false, seconds: 0,
+          row: size.baseline.row,
+          rows: size.rows.filter(r => r.level >= from),
+          stages: size.stages.filter(s => s.level >= from),
+          stale: data.rebuild === false
+            ? size.stages.filter(s => s.level > from).map(s => s.level) : [],
+          adopted: [from],
+        });
       }
     }
     terminate() {}
@@ -244,6 +264,85 @@ ok('and measures the configuration live', /Δ neigh/.test(knobs.read),
   knobs.read.slice(0, 60));
 ok('follow is on by default', knobs.follow === 'true');
 ok('the three verdict buttons are on the page', knobs.verdicts === 3);
+
+// The ladder. A stitch is a stack of rings, and until fit_adopt existed this
+// page could only ever propose about one of them: every fit was woven against
+// the ring the RUN built underneath, so fitting L1 and moving to L2 left L2
+// standing on the engine's L1. What is asserted here is the bookkeeping that
+// makes "fix L1, then L2, then L3" mean something — that a level is only
+// counted as fixed once the engine has been asked to rebuild the levels above
+// it on that ring, and that the page says which levels those are.
+const topLevelOfRun = Math.max(...size.stages.map(s => s.level));
+const ladder = await page.evaluate(() => {
+  const rungs = [...document.querySelectorAll('.ladder .rung')];
+  return {
+    count: rungs.length,
+    states: rungs.map(r => r.dataset.state),
+    text: rungs.map(r => r.textContent.replace(/\s+/g, ' ').trim()),
+    current: rungs.findIndex(r => r.dataset.current) + 1,
+    // The rungs must be a column of separate boxes. `.fixed` in preflight.css
+    // is Tailwind's `position: fixed`, and a rung classed with its own state
+    // stacked three levels into one row — visible only in a screenshot.
+    overlapping: (() => {
+      const tops = rungs.map(r => Math.round(r.getBoundingClientRect().top));
+      return tops.length !== new Set(tops).size;
+    })(),
+    fixLabel: document.querySelector('.ladder-act .primary')?.textContent ?? '',
+    stackButton: [...document.querySelectorAll('.controls .go')]
+      .some(b => /save the stack/i.test(b.textContent)),
+  };
+});
+ok('the ladder has a rung per level', ladder.count === size.ks.length,
+  `${ladder.count} rungs for ks ${size.ks.join(',')}`);
+ok('every rung says what state its level is in',
+  ladder.states.every(s => s && s.length > 0), ladder.states.join(' · '));
+ok('and the rungs are a column, not a pile', !ladder.overlapping);
+ok('nothing is fixed before anything has been fixed',
+  !ladder.states.some(s => /\bfixed\b/.test(s)), ladder.states.join(' · '));
+ok('the level being fitted is the current rung',
+  ladder.current === Math.max(...size.stages.map(s => s.level)),
+  `rung ${ladder.current}`);
+ok('the fix button names what it will rebuild',
+  /^Fix L\d/.test(ladder.fixLabel), ladder.fixLabel);
+ok('and the stack cannot be saved before a level is fixed', !ladder.stackButton);
+
+if (ladder.count) {
+  await page.click('.ladder-act .primary');
+  await page.waitForTimeout(1200);
+  const fixedNow = await page.evaluate(() => {
+    const rungs = [...document.querySelectorAll('.ladder .rung')];
+    return {
+      states: rungs.map(r => r.dataset.state),
+      text: rungs.map(r => r.textContent.replace(/\s+/g, ' ').trim()),
+      overlapping: (() => {
+        const tops = rungs.map(r => Math.round(r.getBoundingClientRect().top));
+        return tops.length !== new Set(tops).size;
+      })(),
+      chip: [...document.querySelectorAll('.panel header .chip')]
+        .map(c => c.textContent).find(t => /of \d+ fixed/.test(t)) ?? '',
+      status: document.querySelector('.status')?.textContent ?? '',
+      stackButton: [...document.querySelectorAll('.controls .go')]
+        .map(b => b.textContent).find(t => /save the stack/i.test(t)) ?? '',
+      adopts: window.__stubAdopts ?? 0,
+    };
+  });
+  ok('fixing asks the engine to adopt the ring', fixedNow.adopts === 1,
+    `${fixedNow.adopts} adopt call(s)`);
+  ok('the fixed level reads as fixed on the ladder',
+    fixedNow.states.some(s => /\bfixed\b/.test(s)), fixedNow.states.join(' · '));
+  ok('and a fixed rung stays in the column', !fixedNow.overlapping);
+  ok('and the header counts it', /1 of \d+ fixed/.test(fixedNow.chip),
+    fixedNow.chip || '(no chip)');
+  ok('the status says what was fixed and what it cost',
+    /fixed/.test(fixedNow.status), fixedNow.status.slice(0, 110));
+  // Named for the levels it actually covers — L2 alone here, because L1 was
+  // never fixed. A button offering "L1–L2" would be claiming a level nobody
+  // touched, which is the same lie as filing the stack under the wrong key.
+  ok('and the stack can now be saved, named for the levels it covers',
+    fixedNow.stackButton.trim().endsWith(`L${topLevelOfRun}`)
+    && !/L1–/.test(fixedNow.stackButton),
+    fixedNow.stackButton || '(absent)');
+}
 
 if (knobs.rows >= 3) {
   const before = await page.evaluate(() => ({
