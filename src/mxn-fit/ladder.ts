@@ -108,8 +108,15 @@ export function isPrefixOfItself(d: RunDescriptor, level: number): boolean {
  * and no consequence yet. `stale` is the one nobody would guess and everybody
  * needs: a level BELOW this one was adopted without a rebuild, so the ring
  * drawn here hangs off a parent that has since moved.
+ *
+ * `unbuilt` is the honest answer to "why can't I see L2": nothing has computed
+ * it. The ladder used to simply leave those levels out, so a four-level
+ * sequence with one level on screen read as *L1 of 1* — the page quietly
+ * agreeing that the stitch was one level tall, which is not what was asked
+ * for and looks exactly like the k sequence having been ignored.
  */
-export type LevelState = "fixed" | "pinned" | "proposed" | "engine" | "stale";
+export type LevelState =
+  | "fixed" | "pinned" | "proposed" | "engine" | "stale" | "unbuilt";
 
 /** One level as it was fixed: the pick, and what the engine said about it. */
 export type FixedLevel = {
@@ -170,9 +177,13 @@ export type LadderInput = {
 export function ladderRows(input: LadderInput): LadderRow[] {
   const stale = new Set(input.stale);
   const audits = new Map(input.audits.map(row => [row.level, row]));
-  const levels = input.drawn.length
-    ? [...input.drawn].sort((a, b) => a - b)
-    : input.ks.map((_, index) => index + 1);
+  const drawn = new Set(input.drawn);
+  // Every level the k sequence asks for, always — the ladder is a picture of
+  // the stitch that was requested, not of the part of it that happens to be
+  // computed. What is missing is drawn as missing.
+  const levels = input.ks.length
+    ? input.ks.map((_, index) => index + 1)
+    : [...input.drawn].sort((a, b) => a - b);
   return levels.map(level => {
     const fixed = input.fixed[level];
     const audit = audits.get(level);
@@ -181,7 +192,8 @@ export function ladderRows(input: LadderInput): LadderRow[] {
       : fixed ? "fixed"
       : level === 1 && input.pinned ? "pinned"
       : level === input.fitLevel && input.proposed ? "proposed"
-      : "engine";
+      : drawn.has(level) ? "engine"
+      : "unbuilt";
     const across = fixed?.audit?.crossings ?? audit?.across ?? null;
     const expected = fixed?.audit?.expected ?? audit?.expected ?? null;
     return {

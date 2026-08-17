@@ -1206,8 +1206,36 @@ def fit_plan(level):
     return json.dumps(out, separators=(",", ":"))
 
 
-def fit_plan_now(m, n, ks, hand="lh", direction="cw"):
-    """L1's two bands, as inputs the page can solve against — WITHOUT searching.
+def rings_from_json(text):
+    """The placed rings for the levels below one, as JSON text.
+
+    `[{"strands": …}, …]`, lowest level first, one entry per level below the
+    one being asked for. `null` in a slot means "that level was not placed",
+    which fit_plan_now refuses rather than searching past.
+
+    Text, not a JS array, for the reason every other payload here is text: a
+    null crossing `globals.set` arrives as JsNull. See fit_bands_from_json.
+    """
+    if not text:
+        return []
+    got = json.loads(text)
+    if not isinstance(got, list):
+        raise ValueError("rings must be a list, lowest level first")
+    out = []
+    for ring in got:
+        if ring is None:
+            out.append(None)
+            continue
+        strands = ring.get("strands") if isinstance(ring, dict) else None
+        if (not isinstance(strands, list) or not strands
+                or not all(isinstance(s, dict) and s.get("layer_name") for s in strands)):
+            raise ValueError("each ring needs a strands list with layer names")
+        out.append({"strands": strands})
+    return out
+
+
+def fit_plan_now(m, n, ks, hand="lh", direction="cw", level=1, rings=None):
+    """One level's two bands, as inputs the page can solve against — WITHOUT searching.
 
     The band plan is the geometry every configuration is affine in: the pair
     origins and directions, the arms' targets, the extension grid, the angle
@@ -1225,9 +1253,23 @@ def fit_plan_now(m, n, ks, hand="lh", direction="cw"):
     Measured on this repo's engine: 0.13 s for a 4x1, against 280 s for the
     full generate. Same plan, to the byte.
 
-    L1 only, and it says so rather than pretending. Level N's inputs hang off
-    level N-1's SOLVED ring, so anything above the first genuinely does need
-    the levels below it searched -- which is generate, and is what Run is for.
+    ANY level, given the rings below it. Level N's inputs hang off level N-1's
+    SOLVED ring -- which is why this used to answer for L1 and nothing else.
+    But "solved" does not mean "searched": a judged ★ best IS a solved level 1,
+    and a level a hand has placed IS a solved level. So `rings` carries the
+    placed ring for every level below the one being asked for, each adopted
+    exactly as generate adopts a judged L1, and the level above is built on it
+    and stopped at its own hook.
+
+    That is the whole no-search ladder: L1 off the shelf, L2's knobs on top of
+    it in a tenth of a second, fix L2 by hand, L3's knobs on top of THAT. No
+    search runs at any level, which on a 4x1 is the difference between a
+    fraction of a second and five minutes per level.
+
+    A missing ring below is refused rather than searched past: without it this
+    would have to solve that level to build the next, which is the expensive
+    thing the caller came here to avoid, and doing it silently would be the
+    page taking a five-minute decision on their behalf.
     """
     import mxn_lh_continuation as LH
     import mxn_trace
@@ -1277,32 +1319,64 @@ def fit_plan_now(m, n, ks, hand="lh", direction="cw"):
                            angle_mode, on_config_callback, direction_type,
                            num_opposite_pairs)
 
-    emitProgress("Reading L₁'s two bands — no search…")
+    level = max(1, min(int(level), len(ks)))
+    rings = list(rings or [])
+    refused = None
+
+    emitProgress(f"Reading L{level}'s two bands — no search…")
     LH._search_combo_space_cpu = hook
     LH.FAST_ANGLE_SCAN = True
     try:
         with contextlib.redirect_stdout(io.StringIO()):
             starting_json, strands, info = NX.build_level_one(
                 m, n, ks[0], hand, direction, verbose=False)
-            try:
-                NX.align_continuation_level(
-                    strands, m, n, ks[0], direction, hand, 1, info,
-                    mirror_sides=m == n, verbose=False,
-                    prefer_short_arms=True, collect_candidates=False)
-            except _Enough:
-                pass
+            # Every level BELOW the one being asked for is adopted from the
+            # ring the caller placed there. Name-matched by _adopt_l1, which
+            # is per-level by construction: it compares the layer names the
+            # build just produced against the ones the ring carries, so a ring
+            # from another level or another size simply does not match.
+            for below in range(1, level):
+                placed = rings[below - 1] if below - 1 < len(rings) else None
+                adopted = _adopt_l1(strands, placed) if placed else None
+                if adopted is None:
+                    refused = (
+                        "L%d has no placed ring, so L%d's bands cannot be read "
+                        "without solving it first" % (below, level)
+                        if placed is None else
+                        "the ring given for L%d is not this size's L%d ring"
+                        % (below, below))
+                    break
+                strands = adopted
+                prev_v2r = info["virtual_to_real"]
+                strands, info = NX.add_continuation_level(
+                    strands, m, n, ks[below], direction, hand, below + 1,
+                    k_prev=ks[below - 1], prev_virtual_to_real=prev_v2r,
+                    verbose=False)
+            if refused is None:
+                try:
+                    NX.align_continuation_level(
+                        strands, m, n, ks[level - 1], direction, hand, level,
+                        info, mirror_sides=m == n and level == 1, verbose=False,
+                        prefer_short_arms=True, collect_candidates=False)
+                except _Enough:
+                    pass
             ring = _stage_strands(NX._snapshot_json(strands))
     finally:
         LH._search_combo_space_cpu = real_search
         LH.FAST_ANGLE_SCAN = was_fast
 
-    out = {"level": 1, "k": ks[0], "m": m, "n": n, "hand": hand,
+    if refused is not None:
+        return json.dumps({"level": level, "unavailable": True,
+                           "reason": refused}, separators=(",", ":"))
+
+    out = {"level": level, "k": ks[level - 1], "m": m, "n": n, "hand": hand,
            "direction": direction, "fast": True, "strands": ring}
     for want, key in (("horizontal", "h"), ("vertical", "v")):
         band = grabbed.get(want)
         if band is None:
             out[key] = {"band": want, "unavailable": True,
-                        "reason": f"L1 solved its {want} band without a search"}
+                        "reason": f"L{level} solved its {want} band"
+                                  " without a search"}
             continue
         ahead = mxn_trace.plan(band)
         ahead.update({

@@ -313,3 +313,9 @@ tr.applied .minibtn { border-color: var(--ink); background: var(--acid); }
 }
 .switchline input { accent-color: var(--ink); margin: 0; }
 .switchline:hover { color: var(--ink); }
+/* A level nothing has computed yet. Drawn as an outline rather than left out:
+   leaving it out let a four-level sequence read as "L1 of 1", which is the
+   page agreeing the stitch is one level tall. */
+.rung[data-state=unbuilt] .rungbtn {
+  border-style: dashed; background: none; color: var(--muted);
+}

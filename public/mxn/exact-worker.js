@@ -49,7 +49,7 @@ async function prepare() {
       // Resolved against this worker's own URL rather than the site root: the
       // lab is published under a project-site sub-path, where "/py/..." would
       // miss. Keeps the cache key in step with the one in the Worker URL.
-      const url = new URL(`./py/${name}?v=trace-plan-v27`, import.meta.url);
+      const url = new URL(`./py/${name}?v=trace-plan-v28`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
@@ -84,7 +84,7 @@ function ensureCountPool() {
   const size = Math.min(3, cores);
   countPool = size < 2 ? [] : Array.from({ length: size }, () => {
     const worker = new Worker(
-      new URL("./count-worker.js?v=trace-plan-v27", import.meta.url),
+      new URL("./count-worker.js?v=trace-plan-v28", import.meta.url),
       { type: "module" });
     worker.postMessage({ type: "warm" });
     return worker;
@@ -322,14 +322,22 @@ const HANDLERS = {
   // it also wants the engine's own pick; a reader who is about to move the arms
   // by hand is paying 194,481 combinations on a 4x1 for an answer they are
   // replacing. The plan itself is ready in 0.13 s (docs/mxn-fit.md).
+  // Any level, given the rings placed below it — that is the no-search ladder:
+  // L1 off the shelf, L2's knobs built on it in a fraction of a second, fix L2
+  // by hand, L3's knobs on top of THAT. `rings` is JSON text, lowest level
+  // first, one entry per level below; a JS array of nulls would arrive as
+  // JsNull. See bridge.rings_from_json.
   "fit-plan-now": async (runtime, data) => {
     runtime.globals.set("mxn_m", data.m);
     runtime.globals.set("mxn_n", data.n);
     runtime.globals.set("mxn_ks", data.ks);
     runtime.globals.set("mxn_hand", data.hand);
     runtime.globals.set("mxn_direction", data.direction);
+    runtime.globals.set("mxn_level", data.level ?? 1);
+    runtime.globals.set("mxn_rings", JSON.stringify(data.rings ?? []));
     return ["fit-plan-now-ready", await runtime.runPythonAsync(
-      "bridge.fit_plan_now(mxn_m, mxn_n, mxn_ks.to_py(), mxn_hand, mxn_direction)"
+      "bridge.fit_plan_now(mxn_m, mxn_n, mxn_ks.to_py(), mxn_hand, mxn_direction,"
+      + " level=mxn_level, rings=bridge.rings_from_json(mxn_rings))"
     )];
   },
   // The two bands a fit places, as JSON text — never as four globals that can

@@ -559,7 +559,7 @@ function useWorker(onProgress: (message: string) => void) {
     // cached worker had no fit-plan-now. BUMP THIS whenever the worker's
     // message vocabulary changes. src/mxn-lab/weave-studio.tsx does the same.
     const worker = new Worker(
-      new URL(`${BASE}mxn/exact-worker.js?v=trace-plan-v27`, window.location.href),
+      new URL(`${BASE}mxn/exact-worker.js?v=trace-plan-v28`, window.location.href),
       { type: "module" });
     worker.onmessage = (event) => {
       const data = event.data || {};
@@ -929,20 +929,38 @@ export function Fitter() {
    * `build_level_one` left them, no before/after comparison, and weaving still
    * behind Run. Everything the hand actually touches is live.
    */
-  const openWithoutSearching = async () => {
+  const openWithoutSearching = async (
+    want = 1, below: Record<number, FixedLevel> = fixed,
+  ) => {
     if (!ks.length) { setStatus("Give at least one k."); setFailed(true); return; }
     setBusy(true); setFailed(false);
-    restartClock();
-    note(`Knobs requested without a search · ${m}×${n} · k=${ks.join(", ")}`);
-    setStatus("Reading the two bands — no search…");
+    if (want === 1) restartClock();
+    note(`L${want} knobs requested without a search · ${m}×${n} · k=${ks.join(", ")}`);
+    setStatus(`Reading L${want}'s two bands — no search…`);
     try {
       const began = performance.now();
+      // Every level below, in order, as the rings they were placed at. This is
+      // what lets the engine build L2 on YOUR L1 rather than on a search for
+      // something like it — and a gap in the list is refused rather than
+      // solved past, because solving it is the wait this whole path avoids.
+      const rings: ({ strands: unknown } | null)[] = [];
+      for (let lv = 1; lv < want; lv += 1) {
+        const placed = below[lv];
+        rings.push(placed?.strands ? { strands: placed.strands } : null);
+      }
       const got = await ask(
-        { type: "fit-plan-now", m, n, ks, hand, direction }, "fit-plan-now-ready",
-      ) as Plan & { strands: Strand[] };
+        { type: "fit-plan-now", m, n, ks, hand, direction, level: want, rings },
+        "fit-plan-now-ready",
+      ) as Plan & { strands: Strand[]; unavailable?: boolean; reason?: string };
+      if (got.unavailable) {
+        note(`L${want}'s bands could not be read: ${got.reason}`);
+        setStatus(got.reason ?? `L${want}'s bands cannot be read yet.`);
+        setFailed(true);
+        return;
+      }
       const secs = (performance.now() - began) / 1000;
-      note(`Bands read in ${secs.toFixed(2)}s — the search was never run`);
-      const level = got.level ?? 1;
+      note(`L${want} bands read in ${secs.toFixed(2)}s — the search was never run`);
+      const level = got.level ?? want;
       const stage: Stage = { level, k: got.k, label: "unsearched",
                              strands: got.strands };
       const lengths = {
@@ -968,7 +986,17 @@ export function Fitter() {
       const d: RunDescriptor = { m, n, ks, hand, direction, ...DESCRIPTOR_FLAGS };
       setFitLevel(level);
       setPlan(got);
-      setStages([stage]); setAllStages([stage]);
+      // The levels already placed stay on screen: the stitch is a stack, and
+      // dropping the ones below would draw L3 as though it floated.
+      const under: Stage[] = [];
+      for (let lv = 1; lv < level; lv += 1) {
+        const placed = below[lv];
+        if (placed?.strands) {
+          under.push({ level: lv, k: ks[lv - 1] ?? null, label: "placed",
+                       strands: placed.strands as Strand[] });
+        }
+      }
+      setStages([...under, stage]); setAllStages([...under, stage]);
       // No search means no audit — and an audit row invented here would be the
       // page asserting a ring closes when nothing checked it.
       setAuditRows([]);
@@ -990,9 +1018,12 @@ export function Fitter() {
       setTouched({ h: false, v: false }); setAnchor({ h: 0, v: 0 });
       setFollowNote(""); setMismatch("");
       setEditor({ from: "fast", key: picksKey(d), descriptor: d, source: "hand" });
-      setStatus(`Knobs open in ${secs.toFixed(2)}s — the search never ran. `
-        + "Move the arms; press Run when you want the engine's own ring, its "
-        + "audit, and the ability to weave.");
+      setStatus(`L${level}'s knobs open in ${secs.toFixed(2)}s — the search never ran. `
+        + (level < ks.length
+           ? `Place the arms, then fix L${level} to open L${level + 1} on top of it. `
+           : "Place the arms. ")
+        + "Press Run when you want the engine's own ring, its audit, and the "
+        + "ability to weave.");
     } catch (error) {
       note("Reading the bands failed");
       setStatus(error instanceof Error ? error.message : String(error));
@@ -1593,6 +1624,65 @@ export function Fitter() {
       return c ?? held[key];
     };
     const above = stages.filter(s => s.level > level).length;
+
+    // The no-search path. There is no browsing session to adopt into, because
+    // no generate ever ran — and there is nothing above this level to rebuild,
+    // because nothing above it has been built. Fixing here means: keep this
+    // ring, and read the NEXT level's bands on top of it. bridge.fit_plan_now
+    // adopts each ring below exactly as generate adopts a judged L1, so L2's
+    // knobs open on your L1 rather than on a search for something like it —
+    // measured at 0.17s a level against minutes for the search.
+    if (!canWeave) {
+      const ring = (attempt ?? before).woven?.strands ?? before.stage.strands;
+      const at = new Date().toISOString();
+      let delta = 0, spr = 0, margin = Infinity;
+      for (const key of BANDS) {
+        const inputs = plan[key];
+        if (!inputs || inputs.unavailable) continue;
+        const lengths = attempt ? attempt.lengths[key] : before.lengths[key];
+        if (lengths.length) {
+          delta = Math.max(delta, neighbourDelta(lengths));
+          spr = Math.max(spr, spread(lengths));
+        }
+        const p = pick(key);
+        if (p && p.angle !== null) {
+          margin = Math.min(margin, readAt(inputs, p.ext, p.angle).margin);
+        }
+      }
+      const next: Record<number, FixedLevel> = {};
+      // Levels above were read on top of the ring this one used to hold, so a
+      // change here unmakes them — the same rule the rebuild path follows.
+      for (const [key, entry] of Object.entries(fixed)) {
+        if (entry.level <= level) next[Number(key)] = entry;
+      }
+      next[level] = {
+        level,
+        h: pick("h") ? { ext: [...pick("h")!.ext], angle: pick("h")!.angle } : null,
+        v: pick("v") ? { ext: [...pick("v")!.ext], angle: pick("v")!.angle } : null,
+        at, rebuilt: true,
+        origin: origin?.kind === "judged" ? "judged"
+          : origin?.kind === "manual" ? "hand" : "fitted",
+        chooser: origin?.kind === "judged" ? origin.chooser : undefined,
+        metrics: { neighbour_delta: delta, spread: spr,
+                   gap_margin: Number.isFinite(margin) ? margin : 0 },
+        // No audit: nothing has counted this ring's crossings, and a row
+        // invented here would be the page asserting a check it never made.
+        strands: ring,
+      };
+      setFixed(next);
+      setStale([]);
+      note(`L${level} placed — its ring is what L${level + 1} will be built on`);
+      if (level >= ks.length) {
+        setStatus(`L${level} placed. That is the top of the sequence — save the `
+          + "stack, or press Run when you want the engine to audit it.");
+        setBusy(false);
+        return;
+      }
+      setBusy(false);
+      await openWithoutSearching(level + 1, next);
+      return;
+    }
+
     setBusy(true);
     setFailed(false);
     setStatus(rebuild && above
@@ -2495,7 +2585,8 @@ export function Fitter() {
                 : apiUrl.trim() ? "Run · load best from Cloudflare"
                 : "Run · load best fit"}
             </button>
-            <button className="go ghost" type="button" onClick={openWithoutSearching}
+            <button className="go ghost" type="button"
+              onClick={() => openWithoutSearching(1)}
               disabled={busy}
               title={"The band plan is the space the search walks, not its result — "
                 + "so the knobs are ready long before the walk finishes"}>
@@ -2896,7 +2987,13 @@ export function Fitter() {
                         : row.state === "pinned" ? `pinned · ${pinned?.chooser ?? "judged"}'s ★ best`
                         : row.state === "proposed" ? "fitted — not fixed yet"
                         : row.state === "stale" ? "its parent moved — fit it again"
-                        : "as the run left it";
+                        : row.state === "unbuilt" ? "not built yet"
+                        // "as the run left it" is only true when a run left it.
+                        // On the no-search path nothing has been searched or
+                        // audited, and the arms are simply where the level was
+                        // built — which is what the knobs are for.
+                        : canWeave ? "as the run left it"
+                        : "knobs open · nothing searched";
                       return (
                         // The state rides on a data attribute rather than a
                         // class: preflight.css ships Tailwind's utility layer,
@@ -2909,9 +3006,12 @@ export function Fitter() {
                           data-state={row.state}
                           data-current={row.current ? "1" : undefined}>
                           <button type="button" className="rungbtn"
-                            disabled={busy || row.current}
+                            disabled={busy || row.current || row.state === "unbuilt"}
                             onClick={() => fitAt(row.level, stages, auditRows)}
                             title={row.current ? "the level being fitted now"
+                              : row.state === "unbuilt"
+                                ? `Nothing has built L${row.level} yet — fix the level `
+                                  + "below it, or press Run"
                               : `Fit L${row.level}`}>
                             <b>L{row.level}</b>
                             <i>k={row.k}</i>
@@ -2929,24 +3029,39 @@ export function Fitter() {
                     })}
                   </ol>
                   <div className="ladder-act">
+                    {/* Two different acts behind one button, because to a
+                        reader they are one act — "this level is done, give me
+                        the next". With a run open it adopts and rebuilds the
+                        levels above; without one it keeps the ring and reads
+                        the next level's bands on top of it, which needs no
+                        search and no session. */}
                     <button type="button" className="primary"
-                      disabled={!before || busy || !canWeave}
+                      disabled={!before || busy}
                       title={canWeave
                         ? "Make this the level's ring, and build the levels above it again"
-                        : "Adopting reads the engine's browsing session — press Run first"}
+                        : `Keep this ring and open L${fitLevel + 1}'s knobs on top of it`}
                       onClick={() => fixLevel(true)}>
-                      {levelsAbove
-                        ? `Fix L${fitLevel} · rebuild the ${levelsAbove} above`
-                        : `Fix L${fitLevel}`}
+                      {!canWeave
+                        ? (fitLevel < ks.length
+                           ? `Fix L${fitLevel} · open L${fitLevel + 1}`
+                           : `Fix L${fitLevel}`)
+                        : levelsAbove
+                          ? `Fix L${fitLevel} · rebuild the ${levelsAbove} above`
+                          : `Fix L${fitLevel}`}
                     </button>
-                    {levelsAbove > 0 && (
-                      <button type="button" disabled={!before || busy || !canWeave}
+                    {canWeave && levelsAbove > 0 && (
+                      <button type="button" disabled={!before || busy}
                         title={"Record the ring without rebuilding — the levels above "
                           + "then stand on a ring that has moved, and are left out of a "
                           + "saved stack"}
                         onClick={() => fixLevel(false)}>
                         fix only · leave the {levelsAbove} above
                       </button>
+                    )}
+                    {!canWeave && (
+                      <span className="chip soft" style={{ alignSelf: "center" }}>
+                        no search · no audit
+                      </span>
                     )}
                   </div>
                 </div>
