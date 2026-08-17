@@ -449,7 +449,9 @@ KS `-1 -1 -1`, judged-pick sizing and prior-level reach already selected.
 If the public read is unavailable, the mock says so loudly and falls back to
 `mocks/fixtures/judged-3x1-k-1.json`, an 8/12 engine ring. That fallback is
 credited to **mock fixture (not yonatan)**; it must never masquerade as the real
-12/12 judgement. Set `MOCK_PICKS_URL` to test against another Worker.
+12/12 judgement. Set `MOCK_PICKS_URL` to test against another Worker. Every
+start prints a fresh local `/api-…` path and serves it with `no-store`, so a
+browser cannot reuse a fixture cached before the real pick was fetched.
 
 ### Browsing every solution
 

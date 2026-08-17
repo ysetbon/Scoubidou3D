@@ -32,6 +32,10 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const CACHE_DIR = join(ROOT, 'node_modules', '.cache');
 const PORT = Number(process.env.MOCK_PORT || 5175);
 const TOKEN = 'mock-token-long-enough-to-be-a-token';
+// A judgement can change while retaining the same shelf key. Give every mock
+// process a fresh API origin-path so a browser that cached yesterday's local
+// pick cannot answer before this server sees the request.
+const API_PATH = `/api-${process.pid}-${Date.now().toString(36)}`;
 mkdirSync(CACHE_DIR, { recursive: true });
 
 if (!existsSync(join(ROOT, 'dist', 'mxn', 'index.html'))) {
@@ -221,13 +225,15 @@ const MIME = {
 };
 createServer(async (request, response) => {
   const url = new URL(request.url, `http://localhost:${PORT}`);
-  if (url.pathname.startsWith('/api')) {
+  if (url.pathname.startsWith(API_PATH)) {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const init = { method: request.method, headers: request.headers };
     if (chunks.length) init.body = Buffer.concat(chunks);
-    const reply = await api(`${url.pathname.slice(4) || '/'}${url.search}`, init);
-    response.writeHead(reply.status, Object.fromEntries(reply.headers));
+    const reply = await api(`${url.pathname.slice(API_PATH.length) || '/'}${url.search}`, init);
+    const headers = Object.fromEntries(reply.headers);
+    headers['cache-control'] = 'no-store';
+    response.writeHead(reply.status, headers);
     response.end(Buffer.from(await reply.arrayBuffer()));
     return;
   }
@@ -239,7 +245,7 @@ createServer(async (request, response) => {
 }).listen(PORT, () => {
   const base = `http://localhost:${PORT}/Scoubidou3D/mxn`;
   const query = new URLSearchParams({
-    cache: `http://localhost:${PORT}/api`,
+    cache: `http://localhost:${PORT}${API_PATH}`,
     m: '3',
     n: '1',
     ks: '-1 -1 -1',
