@@ -23,14 +23,19 @@ import { extname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { execFileSync } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const ROOT = new URL('..', import.meta.url).pathname;
-const CACHE_DIR = `${ROOT}node_modules/.cache`;
+// fileURLToPath, not `.pathname`: on Windows a file URL's pathname is
+// "/C:/Users/..." and joining that onto anything gives "C:\C:\Users\...",
+// which is what the first person to run this on Windows got. Every path below
+// goes through join() for the same reason.
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
+const CACHE_DIR = join(ROOT, 'node_modules', '.cache');
 const PORT = Number(process.env.MOCK_PORT || 5175);
 const TOKEN = 'mock-token-long-enough-to-be-a-token';
 mkdirSync(CACHE_DIR, { recursive: true });
 
-if (!existsSync(`${ROOT}dist/mxn/index.html`)) {
+if (!existsSync(join(ROOT, 'dist', 'mxn', 'index.html'))) {
   console.error('No build yet. Run:  npm run build');
   process.exit(2);
 }
@@ -43,13 +48,18 @@ const PICKS = [
 ];
 
 // ---- the Worker, with node:sqlite behind its D1 binding --------------------
+const BUNDLE = join(CACHE_DIR, 'mock-worker.mjs');
+// `npx` is npx.cmd on Windows and execFile does not find it without the
+// extension; shell:true lets the platform resolve it either way.
 execFileSync('npx', ['esbuild', 'worker-api/src/index.ts', '--bundle', '--format=esm',
-  '--platform=node', `--outfile=${CACHE_DIR}/mock-worker.mjs`, '--log-level=warning'],
-  { cwd: ROOT, stdio: 'inherit' });
-const worker = (await import(`${CACHE_DIR}/mock-worker.mjs`)).default;
+  '--platform=node', `--outfile=${BUNDLE}`, '--log-level=warning'],
+  { cwd: ROOT, stdio: 'inherit', shell: true });
+// pathToFileURL, because import() of a bare "C:\..." path is not a valid
+// specifier on Windows — it has to be a file:// URL.
+const worker = (await import(pathToFileURL(BUNDLE).href)).default;
 
 const db = new DatabaseSync(':memory:');
-db.exec(readFileSync(`${ROOT}worker-api/schema.sql`, 'utf8'));
+db.exec(readFileSync(join(ROOT, 'worker-api', 'schema.sql'), 'utf8'));
 const env = {
   ADMIN_TOKEN: TOKEN,
   ALLOWED_ORIGINS: `http://localhost:${PORT}`,
@@ -133,7 +143,7 @@ createServer(async (request, response) => {
     response.end(Buffer.from(await reply.arrayBuffer()));
     return;
   }
-  let path = join(`${ROOT}dist`, url.pathname.replace(/^\/Scoubidou3D/, ''));
+  let path = join(ROOT, 'dist', url.pathname.replace(/^\/Scoubidou3D/, ''));
   if (existsSync(path) && statSync(path).isDirectory()) path = join(path, 'index.html');
   if (!existsSync(path)) { response.writeHead(404); response.end('not built'); return; }
   response.writeHead(200, { 'Content-Type': MIME[extname(path)] ?? 'application/octet-stream' });
