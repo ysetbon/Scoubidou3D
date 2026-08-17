@@ -56,7 +56,9 @@ const FAST_ENGINE = document.getElementById("lab")?.dataset.engine === "fast";
 // `?cache=` with nothing after it turns the cache off, which is how you check
 // that the page still computes what it claims to be reading.
 const CACHE_ATTR = document.getElementById("lab")?.dataset.cache?.trim() ?? "";
-const CACHE_PARAM = new URLSearchParams(window.location.search).get("cache");
+const PAGE_QUERY = new URLSearchParams(window.location.search);
+const CACHE_PARAM = PAGE_QUERY.get("cache");
+const OPEN_ADVANCED_FROM_URL = PAGE_QUERY.get("advanced") === "1";
 
 const COMMIT = "984d9ed";
 const PRESETS = ["1", "1 1 -1", "1 1 -1 -1 -1 -1 -1", "1 1 1", "1 -1 1 -1", "-1 -1"];
@@ -484,6 +486,7 @@ export function ContinuationLab() {
   // Search on the grid a judged ★ best implies rather than the engine's full
   // width. Off by default: it is a different search, and it needs a pick.
   const [handFromPick, setHandFromPick] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(OPEN_ADVANCED_FROM_URL);
   /** What the last resolve found, for the sidebar. */
   const [handNote, setHandNote] = useState("");
   const [extStep, setExtStep] = useState<ExtStep>("auto");
@@ -1368,7 +1371,8 @@ export function ContinuationLab() {
   };
 
   /**
-   * A parameter set named in the URL, run on arrival.
+   * A parameter set named in the URL, run on arrival unless `run=0` asks only
+   * to populate the controls for a reproducible manual check.
    *
    * /mxn/gpu/ links every finished job here, and the point of the link is that
    * the thing it opens is instant. Ignored unless m, n and ks are all present
@@ -1398,6 +1402,8 @@ export function ContinuationLab() {
     // turns it on, so every link written before it exists still means the
     // search the engine ships.
     const nextReach = query.get("reach") === "1";
+    const populateOnly = query.get("run") === "0";
+    const nextHandFromPick = populateOnly && query.get("pick") === "1";
 
     setM(nextM);
     setN(nextN);
@@ -1406,6 +1412,14 @@ export function ContinuationLab() {
     setComboBudget(nextBudget);
     setPreferShortArms(nextShort);
     setReachFromPrevious(nextReach);
+    setHandFromPick(nextHandFromPick);
+    // A mock or a reproducible manual check can populate every control without
+    // starting Pyodide. This leaves Run enabled so the pick-sized path is still
+    // exercised by the same button press as a normal user run.
+    if (populateOnly) {
+      setStatus("Settings loaded — press Run");
+      return;
+    }
     dispatchRef.current({
       m: nextM, n: nextN, ks: parsedQuery.values,
       key: `${nextM}:${nextN}:${parsedQuery.values.join(",")}:${nextShort}:${nextStep}:${nextBudget}`
@@ -1957,7 +1971,8 @@ export function ContinuationLab() {
                 column and pushed Run below the fold on a laptop. Defaults cover
                 ordinary runs; open Advanced when the search needs a finer grid
                 or a higher combo ceiling. */}
-            <details className="advanced-settings">
+            <details className="advanced-settings" open={advancedOpen}
+              onToggle={event => setAdvancedOpen(event.currentTarget.open)}>
               <summary>
                 Advanced search
                 <em>

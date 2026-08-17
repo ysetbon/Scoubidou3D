@@ -450,7 +450,36 @@ const offSite = url =>
   await page.close();
 }
 
-// ---- D · with no cache configured, nothing changes -------------------------
+// ---- D · a manual deep link can preload the mock without running ------------
+{
+  const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+  const external = [];
+  page.on('request', request => { if (offSite(request.url())) external.push(request.url()); });
+  await page.goto(`${base}/mxn/?${cacheArg}`
+    + '&m=3&n=1&ks=-1%20-1%20-1&pick=1&run=0&advanced=1',
+  { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.run-button', { timeout: 20000 });
+  const controls = await page.evaluate(() => ({
+    m: document.querySelector('#m').value,
+    n: document.querySelector('#n').value,
+    ks: document.querySelector('#ks').value,
+    pick: document.querySelector('#hand-grid').checked,
+    advanced: document.querySelector('.advanced-settings').open,
+    runEnabled: !document.querySelector('.run-button').disabled,
+    status: document.querySelector('.engine-status').textContent,
+  }));
+  ok('run=0 preloads the mock dimensions and sequence',
+    controls.m === '3' && controls.n === '1' && controls.ks === '-1 -1 -1',
+    JSON.stringify(controls));
+  ok('and preselects the judged-pick grid', controls.pick);
+  ok('and opens Advanced with Run still enabled',
+    controls.advanced && controls.runEnabled, JSON.stringify(controls));
+  ok('and does not wake the engine before Run',
+    external.length === 0 && /Settings loaded/.test(controls.status), external.join(', '));
+  await page.close();
+}
+
+// ---- E · with no cache configured, nothing changes -------------------------
 {
   const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
   await page.goto(`${base}/mxn/?cache=`, { waitUntil: 'domcontentloaded' });

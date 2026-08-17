@@ -198,15 +198,20 @@ createServer(async (request, response) => {
   response.end(readFileSync(path));
 }).listen(PORT, () => {
   const base = `http://localhost:${PORT}/Scoubidou3D/mxn`;
-  const cache = `cache=http://localhost:${PORT}/api`;
+  const query = new URLSearchParams({
+    cache: `http://localhost:${PORT}/api`,
+    m: '3',
+    n: '1',
+    ks: '-1 -1 -1',
+    pick: '1',
+    run: '0',
+    advanced: '1',
+  });
   console.log(`\n  mock shelf up on :${PORT}\n`);
-  console.log(`    ${base}/?${cache}\n`);
-  console.log('  Deliberately WITHOUT m/n/ks in the URL: those make the page run');
-  console.log('  on load, which disables Run before you can tick anything. So:\n');
-  console.log('    1. type  M 3   N 1   KS  -1 -1 -1');
-  console.log('    2. open ADVANCED SEARCH, tick "size the search from the');
-  console.log('       judged ★ best"');
-  console.log('    3. press RUN — the sidebar says which grid it chose\n');
+  console.log(`    ${base}/?${query}\n`);
+  console.log('  The link loads M 3, N 1, KS -1 -1 -1, opens ADVANCED SEARCH,');
+  console.log('  and ticks "size the search from the judged ★ best".');
+  console.log('  Just press RUN — the sidebar says which grid it chose.\n');
   console.log('  Then untick and Run again to compare against the full width.\n');
   console.log('  Pyodide still comes from the CDN, so this needs internet the');
   console.log('  first time the engine runs. Ctrl-C to stop.\n');
