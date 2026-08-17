@@ -66,8 +66,22 @@ const env = {
   CACHE_PUBLIC_READS: '1',
   DB: {
     prepare(sql) {
+      // D1 numbers its placeholders — `?1, ?2, …` — and whether node:sqlite
+      // understands that depends on the Node minor: 22.14 throws "column index
+      // out of range" where 22.22 binds it fine. The shim owes the Worker
+      // whatever D1 accepts, so numbered placeholders are rewritten to the
+      // anonymous kind every version binds, and the args reordered to match
+      // their occurrence order (which also handles a repeated ?N by
+      // duplicating that arg).
+      const order = [];
+      const anon = sql.replace(/\?(\d+)/g, (_, num) => {
+        order.push(Number(num) - 1);
+        return '?';
+      });
+      const remap = args => order.length ? order.map(at => args[at]) : args;
+      sql = anon;
       const make = args => ({
-        bind: (...next) => make(next.map(v => v === undefined ? null : v)),
+        bind: (...next) => make(remap(next.map(v => v === undefined ? null : v))),
         async first(column) {
           const row = db.prepare(sql).all(...args)[0] ?? null;
           return column && row ? row[column] : row;
