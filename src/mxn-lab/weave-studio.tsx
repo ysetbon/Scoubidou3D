@@ -798,7 +798,7 @@ export function ContinuationLab() {
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
     const worker = new Worker(
-      `${LAB_BASE}exact-worker.js?v=trace-plan-v27${FAST_ENGINE ? "&engine=fast" : ""}`,
+      `${LAB_BASE}exact-worker.js?v=trace-plan-v28${FAST_ENGINE ? "&engine=fast" : ""}`,
       { type: "module" },
     );
     worker.onmessage = (event) => {
@@ -1299,7 +1299,7 @@ export function ContinuationLab() {
         : null;
       const deeper = base.reachFromPrevious
         ? `deeper levels start at 0…${grid.ceiling}, step ${grid.step}, then cap`
-          + " at the largest extension the finished levels below used"
+          + " at the largest extension the finished level immediately below used"
         : `deeper levels search 0…${grid.ceiling} at step ${grid.step}`;
       return { step: grid.step, ceiling: grid.ceiling, ring,
         note: ring

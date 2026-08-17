@@ -566,7 +566,16 @@ def generate(m, n, ks, hand="lh", direction="cw",
             # ring the level settles on, so it is part of the cache key and a
             # run stored under it is never confused with the ordinary search.
             level_search = dict(search)
-            learned = _learned_reach(rows) if reach_from_previous else 0
+            # A judged-pick run already has a hard outer ceiling. When its reach
+            # learning is also on, tighten each new level from the level
+            # immediately below: L2 learns from L1, then L3 learns from L2.
+            # Keeping every earlier maximum made L3 inherit the judged L1's
+            # 63px reach even after L2 had settled at 40px — 2,744 H combos
+            # instead of 729 at step 5. Plain `-r1` runs retain their original
+            # cumulative rule; the tighter rule is identified by the composed
+            # `-r1-h/-j` key introduced with judged-pick sizing.
+            reach_rows = rows[-1:] if hand_ceiling else rows
+            learned = _learned_reach(reach_rows) if reach_from_previous else 0
             if learned:
                 level_search["max_pair_extension"] = learned
                 level_search["escalate_extension"] = False
@@ -587,7 +596,7 @@ def generate(m, n, ks, hand="lh", direction="cw",
                            "label": f"twist {level}",
                            "strands": _stage_strands(NX._snapshot_json(strands))})
         rows.append(describe(result, snapshot, level, k_level, expected, sizes))
-        _register_level(level, k_level, checkpoint, result, search)
+        _register_level(level, k_level, checkpoint, result, level_search)
         seeds.append((rows[-1]["ext"][0], rows[-1]["ext"][1]))
 
     return json.dumps({

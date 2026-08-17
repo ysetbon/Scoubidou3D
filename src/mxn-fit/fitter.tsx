@@ -550,7 +550,7 @@ function useWorker(onProgress: (message: string) => void) {
     // cached worker had no fit-plan-now. BUMP THIS whenever the worker's
     // message vocabulary changes. src/mxn-lab/weave-studio.tsx does the same.
     const worker = new Worker(
-      new URL(`${BASE}mxn/exact-worker.js?v=trace-plan-v27`, window.location.href),
+      new URL(`${BASE}mxn/exact-worker.js?v=trace-plan-v28`, window.location.href),
       { type: "module" });
     worker.onmessage = (event) => {
       const data = event.data || {};

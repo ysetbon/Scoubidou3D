@@ -167,6 +167,17 @@ console.log("\n=========== the Worker validates the same shape ===========");
 }
 
 // ===========================================================================
+console.log("\n=========== composed reach learns one level at a time ===========");
+
+{
+  const bridge = readFileSync("public/mxn/py/bridge.py", "utf8");
+  check("pick-sized reach uses the finished level immediately below",
+    bridge.includes("reach_rows = rows[-1:] if hand_ceiling else rows"));
+  check("plain -r1 retains its cumulative lower-level reach",
+    bridge.includes("learned = _learned_reach(reach_rows) if reach_from_previous else 0"));
+}
+
+// ===========================================================================
 console.log(`\n${fail ? `${fail} check(s) failed, ${pass} passed`
                       : `all ${pass} checks passed`}`);
 process.exit(fail ? 1 : 0);

@@ -423,6 +423,12 @@ itself, not a flag, because two picks imply two grids and a re-judged pick
 implies a third. `-h65` says which one produced the answer; a bare `-h1` would
 let a later judgement quietly overwrite an earlier one's run.
 
+When judged-pick sizing and reach learning are composed, each deeper level
+tightens from the level immediately below it: L2 learns from L1, then L3 learns
+from L2. This is the `-r1-h<ceiling>` / `-r1-j<ceiling>` search introduced here;
+plain `-r1` keeps its older, cumulative “largest arm in any lower level” rule,
+so an existing capped key never changes meaning.
+
 On the farm the ceiling is resolved **when the plan is queued**, not when a job
 runs: a job's id *is* its cache key, so a runner that discovered the ceiling
 mid-job would upload to a key the queue never heard of. `expandPlan` stays pure
@@ -884,7 +890,7 @@ standing in. See `mocks/README.md`.
 There are two of them, and they are bumped for the same reason and never
 together.
 
-**`trace-plan-v27`**, the engine-file key, appears in six places: the worker URL
+**`trace-plan-v28`**, the engine-file key, appears in six places: the worker URL
 (`weave-studio.tsx`), the Python fetch URL and the counting-hand URL
 (`exact-worker.js`), the counting hand's own fetch (`count-worker.js`), the farm
 hand's fetch (`farm-worker.js`) and the URL the farm page spawns it with
