@@ -120,8 +120,32 @@ for (const { m, n, k, chooser, ext } of PICKS) {
     method: 'PUT', body: gzipSync(Buffer.from(JSON.stringify(artifact))),
     headers: { Authorization: `Bearer ${TOKEN}`, 'X-Mxn-Codec': 'gzip' },
   });
-  console.log(`  seeded ★ best  ${m}×${n} k=${k}  reach ${
-    Math.max(...ext.flat())}  (HTTP ${reply.status})`);
+  // Fatal, and loud. A mock that seeds nothing still serves a working page —
+  // it just reports "no ★ best" for every size, which reads as a finding about
+  // your shelf rather than as this script having failed. That happened.
+  if (reply.status !== 201) {
+    console.error(`\n  FAILED to seed ${m}×${n} k=${k}: HTTP ${reply.status}`);
+    console.error(`  ${(await reply.text()).slice(0, 600)}\n`);
+    console.error(`  node ${process.version}. This runs the real Worker over`);
+    console.error('  node:sqlite, which is experimental and has changed across');
+    console.error('  the 22.x line — if the message above is about SQL or a');
+    console.error('  parameter, that is very likely the cause. Please paste it.\n');
+    process.exit(1);
+  }
+  console.log(`  seeded ★ best  ${m}×${n} k=${k}  reach ${Math.max(...ext.flat())}`);
+}
+
+// And read one back, because a 201 is the Worker saying it accepted the bytes,
+// not the shelf saying it holds them.
+{
+  const listed = await (await api('/catalogue?prefix=picks/')).json();
+  const count = listed.entries?.length ?? 0;
+  if (count !== PICKS.length) {
+    console.error(`\n  Seeded ${PICKS.length} but the catalogue lists ${count}.`);
+    console.error(`  ${JSON.stringify(listed).slice(0, 400)}\n`);
+    process.exit(1);
+  }
+  console.log(`  catalogue lists all ${count} — the shelf is real\n`);
 }
 
 // ---- one server: /api is the Worker, everything else is dist/ --------------
