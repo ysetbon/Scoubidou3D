@@ -43,6 +43,12 @@ jobs:
       - name: The reach cap's key grammar
         run: npm run check:reach
 
+      # Planner + cache-key shapes. A sweep that drops a size, or a client that
+      # spells ks in a way the Worker 400s, is an overnight job that looks like
+      # it ran and stored nothing. Negative ks (`-1 -1 -1`) go through here.
+      - name: The farm planner and cache-key shapes
+        run: npm run check:plan
+
       # The JS -> Python seam, in a real Pyodide off npm. Nothing else in the
       # repo executes it: qa:cache drives the real page but asserts the engine
       # is never woken, and the path that does wake it needs a CDN. A JS null

@@ -21,7 +21,8 @@ import { resolve } from "node:path";
 
 import { descriptorPath, runKey, traceKeyPath, type RunDescriptor } from "../src/mxn-lab/cache";
 import {
-  kLimits, kValuesFor, planSweep, sequencesFor, type SweepSpec,
+  kLimits, kValuesFor, labSearch, parseSequence, planSweep, sequencesFor,
+  specFromSearch, type SweepSpec,
 } from "../src/mxn-farm/plan";
 
 let failures = 0;
@@ -97,6 +98,7 @@ ok("the Worker accepts a trace key",
 // deepest sequence the lab will run, and both bands spelled either way.
 const awkward: RunDescriptor[] = [
   { ...descriptor, ks: [-1, -1] },
+  { ...descriptor, ks: [-1, -1, -1], m: 3, n: 1 },
   { ...descriptor, ks: [-1], m: 1, n: 4, step: 5 },
   { ...descriptor, ks: [1, 1, -1, -1, -1, -1, -1, -1], step: 20, shortArms: false },
   { ...descriptor, hand: "rh", direction: "ccw", m: 4, n: 4, budget: 10_000_000 },
@@ -137,6 +139,63 @@ check("`words` makes every ordered sequence",
 check("`list` reads one sequence per line, brackets and commas allowed",
   sequencesFor({ ...base, ksMode: "list", ksText: "1 2\n[1, -1]\n\nnot a k\n-1" }, 2, 2),
   [[1, 2], [1, -1], [-1]]);
+
+// The sequence the farm's own comments measure: 3×1 [-1,-1,-1]. Spaces, the
+// cache-key spelling, a JSON array, and a typographic minus all have to be
+// the same three ks — a paste from any of those is how this lands in the box.
+check("parseSequence reads -1 -1 -1", parseSequence("-1 -1 -1"), [-1, -1, -1]);
+check("parseSequence reads the cache-key spelling",
+  parseSequence("-1_-1_-1"), [-1, -1, -1]);
+check("parseSequence reads a JSON array",
+  parseSequence("[-1, -1, -1]"), [-1, -1, -1]);
+check("parseSequence reads a typographic minus",
+  parseSequence("−1 −1 −1"), [-1, -1, -1]);
+check("parseSequence refuses a half-typed line", parseSequence("-1 -"), null);
+
+const listed = planSweep({
+  ...base, mFrom: 3, mTo: 3, nFrom: 1, nTo: 1,
+  ksMode: "list", ksText: "-1 -1 -1",
+});
+check("a typed -1 -1 -1 at 3×1 is one job",
+  listed.jobs.map(job => `${job.m}x${job.n}:${job.ks.join(" ")}`),
+  ["3x1:-1 -1 -1"]);
+ok("and its cache key is the one the Worker accepts",
+  listed.jobs.length === 1 && workerAccepts("run", listed.jobs[0].id));
+check("that key spells the three ks with underscores",
+  listed.jobs[0]?.id.includes("/-1_-1_-1/"), true);
+
+const tooSquare = planSweep({
+  ...base, mFrom: 1, mTo: 1, nFrom: 1, nTo: 1,
+  ksMode: "list", ksText: "-1 -1 -1",
+});
+check("the same sequence is not a job at 1×1", tooSquare.jobs.length, 0);
+check("and is counted as out of range rather than dropped quietly",
+  tooSquare.skipped, [{ reason: "k outside the size's valid range", count: 1 }]);
+
+// /mxn/gpu/?m=3&n=1&ks=-1+-1+-1 (and the %20 / underscore / comma spellings)
+// has to become a list plan, not sit on the default "each" sweep.
+check("the farm URL loads -1 -1 -1 as a typed list",
+  specFromSearch("?m=3&n=1&ks=-1+-1+-1"),
+  { mFrom: 3, mTo: 3, nFrom: 1, nTo: 1, ksMode: "list", ksText: "-1 -1 -1" });
+check("percent-encoded spaces are the same sequence",
+  specFromSearch("?m=3&n=1&ks=-1%20-1%20-1"),
+  { mFrom: 3, mTo: 3, nFrom: 1, nTo: 1, ksMode: "list", ksText: "-1 -1 -1" });
+check("a cache-key paste in the URL is the same sequence",
+  specFromSearch("?m=3&n=1&ks=-1_-1_-1"),
+  { mFrom: 3, mTo: 3, nFrom: 1, nTo: 1, ksMode: "list", ksText: "-1 -1 -1" });
+check("k is accepted as the one-level alias",
+  specFromSearch("?m=2&n=2&k=-1"),
+  { mFrom: 2, mTo: 2, nFrom: 2, nTo: 2, ksMode: "list", ksText: "-1" });
+check("a half-formed ks is ignored rather than coerced",
+  specFromSearch("?m=3&n=1&ks=not-a-k"), null);
+
+const labLink = labSearch({ m: 3, n: 1, ks: [-1, -1, -1] });
+check("the farm's lab link round-trips -1 -1 -1",
+  specFromSearch(`?${labLink}`),
+  { mFrom: 3, mTo: 3, nFrom: 1, nTo: 1, ksMode: "list", ksText: "-1 -1 -1" });
+const cappedLink = labSearch({ m: 3, n: 1, ks: [-1, -1, -1], reachFromPrevious: true });
+check("and carries the reach cap so the lab hits that shelf",
+  specFromSearch(`?${cappedLink}`)?.reachFromPrevious, true);
 
 // A typed range is one range for the whole sweep; following the size asks each
 // one its own band, which is a different set of ks at 2×1 than at 2×2.

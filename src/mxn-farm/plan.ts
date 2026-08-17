@@ -84,13 +84,75 @@ export function kLimits(m: number, n: number) {
   return m === n ? { min: -(m - 1), max: m } : { min: -(m + n - 1), max: m + n };
 }
 
-/** One k sequence, from a line of text. Returns null when the line is not one. */
+/**
+ * One k sequence, from a line of text. Returns null when the line is not one.
+ *
+ * Spaces, commas, brackets and underscores are all separators — the cache key
+ * spells `[-1,-1,-1]` as `-1_-1_-1`, and a paste of that has to be the same
+ * sequence as typing `-1 -1 -1`. Typographic minuses (the ones the band chips
+ * draw) are ASCII minuses, so copying a chip does not silently drop the k.
+ */
 export function parseSequence(line: string): number[] | null {
-  const cleaned = line.replace(/[[\],]/g, " ").trim();
+  const cleaned = line
+    .replace(/[\u2212\u2013\u2014]/g, "-")
+    .replace(/[\[\],_]/g, " ")
+    .trim();
   if (!cleaned) return null;
   const values = cleaned.split(/\s+/).map(Number);
   if (values.some(value => !Number.isInteger(value))) return null;
   return values;
+}
+
+/**
+ * A parameter set named in the URL, as a spec patch.
+ *
+ * `/mxn/` links here the way this page links back: `?m=3&n=1&ks=-1+-1+-1`
+ * should open a plan for that sequence, including a k that is negative. A
+ * half-formed query is ignored rather than coerced — same rule as the lab
+ * and the fitter. `k` is accepted as an alias for the one-level case.
+ */
+export function specFromSearch(search: string): Partial<SweepSpec> | null {
+  const query = new URLSearchParams(
+    search.startsWith("?") ? search.slice(1) : search);
+  const patch: Partial<SweepSpec> = {};
+  const side = (name: string): number | undefined => {
+    const raw = query.get(name);
+    if (raw === null || raw === "") return undefined;
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value < 1 || value > MAX_SIDE) return undefined;
+    return value;
+  };
+  const m = side("m");
+  const n = side("n");
+  if (m !== undefined) { patch.mFrom = m; patch.mTo = m; }
+  if (n !== undefined) { patch.nFrom = n; patch.nTo = n; }
+
+  const rawKs = query.get("ks") ?? query.get("k");
+  if (rawKs !== null && rawKs.trim() !== "") {
+    const ks = parseSequence(rawKs);
+    if (!ks?.length || ks.length > MAX_LEVELS) return null;
+    patch.ksMode = "list";
+    patch.ksText = ks.join(" ");
+  }
+  if (query.get("reach") === "1") patch.reachFromPrevious = true;
+
+  return Object.keys(patch).length ? patch : null;
+}
+
+/**
+ * The query `/mxn/gpu/` puts on "open in the lab", so a negative ks survives
+ * the URL. `reach=1` has to travel too: the lab will not adopt across that
+ * flag, and a link that dropped it would miss the shelf the farm just filled.
+ */
+export function labSearch(job: {
+  m: number; n: number; ks: number[]; reachFromPrevious?: boolean;
+}): string {
+  const query = new URLSearchParams();
+  query.set("m", String(job.m));
+  query.set("n", String(job.n));
+  query.set("ks", job.ks.join(" "));
+  if (job.reachFromPrevious) query.set("reach", "1");
+  return query.toString();
 }
 
 /** Two k sequences of the same length, compared level by level. */

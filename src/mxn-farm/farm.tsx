@@ -23,7 +23,7 @@ import {
 } from "../mxn-lab/cache";
 import { DEFAULT_COMBO_BUDGET } from "../mxn-lab/search-cost";
 import {
-  MAX_JOBS, MAX_LEVELS, MAX_SIDE, kLimits, planSweep,
+  MAX_JOBS, MAX_LEVELS, MAX_SIDE, kLimits, labSearch, planSweep, specFromSearch,
   type KsMode, type PlanJob, type SweepSpec,
 } from "./plan";
 
@@ -94,12 +94,15 @@ type SummaryRow = {
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 function readSpec(): SweepSpec {
+  let stored = DEFAULT_SPEC;
   try {
     const held = JSON.parse(readSetting(SPEC_KEY) || "null");
-    return held ? { ...DEFAULT_SPEC, ...held } : DEFAULT_SPEC;
+    if (held) stored = { ...DEFAULT_SPEC, ...held };
   } catch {
-    return DEFAULT_SPEC;
+    /* keep the default rather than crash the console on a bad save */
   }
+  const asked = specFromSearch(window.location.search);
+  return asked ? { ...stored, ...asked } : stored;
 }
 
 /** A k with a typographic minus, so a band reads as prose beside one. */
@@ -1053,7 +1056,9 @@ export function ComputeFarm() {
                 </thead>
                 <tbody>
                   {queue.map(row => {
-                    const ks = (JSON.parse(row.ks) as number[]).join(" ");
+                    const values = JSON.parse(row.ks) as number[];
+                    const ks = values.join(" ");
+                    const reach = !!parseRunKey(row.id)?.descriptor.reachFromPrevious;
                     return (
                       <tr key={row.id} className={`is-${row.state}`}>
                         <td>{row.m}×{row.n}</td>
@@ -1065,7 +1070,9 @@ export function ComputeFarm() {
                         <td>{bytesLabel(row.bytes ?? 0)}</td>
                         <td className="farm-note-cell">
                           {row.state === "done" ? (
-                            <a href={`../?m=${row.m}&n=${row.n}&ks=${encodeURIComponent(ks)}`}
+                            <a href={`../?${labSearch({
+                              m: row.m, n: row.n, ks: values, reachFromPrevious: reach,
+                            })}`}
                               title="Open this parameter set in the lab — it loads from the cache">
                               open in the lab →
                             </a>
