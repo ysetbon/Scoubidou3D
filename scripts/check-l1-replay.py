@@ -157,5 +157,41 @@ check("  and every level is still the ring the search found",
       all(ring(oracle, lv) == ring(pinned, lv) for lv in range(0, 4)),
       "L0…L3")
 
+# ---------------------------------------------------------------------------
+# The JS -> Python boundary, statically.
+#
+# Here because the bug it guards shipped: `mxn_l1.to_py() if mxn_l1 is not None
+# else None` is obviously correct and crashes EVERY run, because a JS null set
+# as a Pyodide global arrives as JsNull -- not None, and with no .to_py().
+#
+#     AttributeError: 'JsNull' object has no attribute 'to_py'
+#
+# Nothing in CI could catch it. qa:cache drives the real page but asserts the
+# engine is never woken, which is the whole point of a cache test, and the one
+# path that does wake it fetches Pyodide from a CDN the sandbox blocks. So the
+# boundary is pinned by reading the workers instead: text across, parsed by one
+# function, and no null in sight.
+print("\n=========== the JS to Python boundary ===========")
+check("bridge exposes the one parser both workers use",
+      callable(getattr(bridge, "l1_from_json", None)))
+check("  it reads absence as absence", bridge.l1_from_json("") is None)
+check("  and a pair as a pair", bridge.l1_from_json("[[0],[30,80]]") == [[0], [30, 80]])
+for bad in ("[[0]]", "[1,2]", "[]", '"x"'):
+    try:
+        bridge.l1_from_json(bad)
+        check(f"  it refuses {bad}", False, "accepted")
+    except (ValueError, TypeError):
+        check(f"  it refuses {bad}", True)
+
+for name in ("exact-worker.js", "farm-worker.js"):
+    source = open(os.path.join(ROOT, "public", "mxn", name)).read()
+    check(f"{name} sends TEXT, never a JS null",
+          'runtime.globals.set("mxn_l1", ' in source
+          and "JSON.stringify" in source
+          and 'set("mxn_l1", level1Extensions ?? null)' not in source
+          and 'set("mxn_l1", job.level1Extensions ?? null)' not in source)
+    check("  and parses it with the one function that knows about JsNull",
+          "bridge.l1_from_json(mxn_l1)" in source and ".to_py()" not in source.split("mxn_l1")[-1][:200])
+
 print(f"\n{f'{failed} check(s) failed, {passed} passed' if failed else f'all {passed} checks passed'}")
 sys.exit(1 if failed else 0)

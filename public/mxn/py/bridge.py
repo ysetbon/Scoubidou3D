@@ -319,6 +319,34 @@ def _register_level(level, k, checkpoint, result, search):
     }
 
 
+def l1_from_json(text):
+    """
+    `[h_ext, v_ext]` off the page, as JSON TEXT, or None for "search it".
+
+    A string on purpose, and this is the one interesting thing about it: a JS
+    `null` handed to `runtime.globals.set` does NOT arrive as Python `None`. It
+    arrives as `JsNull`, which is not None and has no `.to_py()` -- so
+    `x.to_py() if x is not None else None` reads as obviously correct and
+    crashes every single run with
+
+        AttributeError: 'JsNull' object has no attribute 'to_py'
+
+    which is how it reached a sweep. A string has no such ambiguity: "" is the
+    absence, json.loads is the only conversion, and neither depends on how a
+    given Pyodide maps the JS null.
+
+    Shape is checked here rather than trusted, because a malformed pin would
+    pin level 1 to nonsense: two bands of integers, or nothing at all.
+    """
+    if not text:
+        return None
+    pair = json.loads(text)
+    if (not isinstance(pair, list) or len(pair) != 2
+            or not all(isinstance(side, list) for side in pair)):
+        raise ValueError(f"level1_pin must be [h_ext, v_ext], got {pair!r}")
+    return [[int(value) for value in side] for side in pair]
+
+
 def _l1_seed(given):
     """`[h_ext, v_ext]` as the engine wants it: a pair of integer tuples."""
     h, v = given
