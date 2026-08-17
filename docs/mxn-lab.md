@@ -256,6 +256,28 @@ sequence was what the seconds were being spent on.
 ring was found, which is the one thing that genuinely changed. Every audit
 *number* is identical.
 
+#### The pin crosses into Python as text
+
+`[h_ext, v_ext]` goes over as a **JSON string**, `""` for absent, and
+`bridge.l1_from_json` is the only thing that converts it. That looks like
+ceremony and is not: a JS `null` handed to `runtime.globals.set` does **not**
+arrive as Python `None`. It arrives as `JsNull`, which is not `None` and has no
+`.to_py()` — so
+
+```python
+level1_pin=mxn_l1.to_py() if mxn_l1 is not None else None
+```
+
+reads as obviously correct and crashes **every run**, replayed or not, with
+`AttributeError: 'JsNull' object has no attribute 'to_py'`. It shipped, and the
+first sweep after it found it in about a second.
+
+Nothing in CI could have. `npm run qa:cache` drives the real page against a real
+Worker but asserts the engine is never woken — that is the whole point of a
+cache test — and the one path that does wake it fetches Pyodide from a CDN the
+sandbox blocks. So `npm run check:l1` pins the boundary by reading the workers
+instead: text across, one parser, and no `null` on the path at all.
+
 #### Where it deliberately does not happen
 
 - **A warm.** After a cache hit the lab warms a session so the browser, the ⚑
@@ -715,7 +737,7 @@ standing in. See `mocks/README.md`.
 There are two of them, and they are bumped for the same reason and never
 together.
 
-**`trace-plan-v23`**, the engine-file key, appears in six places: the worker URL
+**`trace-plan-v24`**, the engine-file key, appears in six places: the worker URL
 (`weave-studio.tsx`), the Python fetch URL and the counting-hand URL
 (`exact-worker.js`), the counting hand's own fetch (`count-worker.js`), the farm
 hand's fetch (`farm-worker.js`) and the URL the farm page spawns it with

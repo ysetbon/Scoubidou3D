@@ -412,7 +412,7 @@ export function ComputeFarm() {
 
   const spawnHand = () => {
     const worker = new Worker(
-      new URL(`${FARM_BASE}farm-worker.js?v=trace-plan-v23`, window.location.href),
+      new URL(`${FARM_BASE}farm-worker.js?v=trace-plan-v24`, window.location.href),
       { type: "module" });
     workersRef.current.push(worker);
     return worker;
