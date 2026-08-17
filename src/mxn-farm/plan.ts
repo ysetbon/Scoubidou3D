@@ -90,20 +90,46 @@ export function kLimits(m: number, n: number) {
 }
 
 /**
- * One k sequence, from a line of text. Returns null when the line is not one.
+ * A k sequence split into its terms, without deciding whether they are valid.
  *
  * Spaces, commas, brackets and underscores are all separators — the cache key
  * spells `[-1,-1,-1]` as `-1_-1_-1`, and a paste of that has to be the same
  * sequence as typing `-1 -1 -1`. Typographic minuses (the ones the band chips
  * draw) are ASCII minuses, so copying a chip does not silently drop the k.
+ *
+ * And one form that has no separators at all:
+ *
+ *     /mxn/fit/?m=2&n=1&ks=-1-1-1-1-1-1-1-1-1-1
+ *
+ * Ten levels of k = \u22121, written the way a hand writes them once a URL has
+ * eaten the spaces. `Number("-1-1-1\u2026")` is NaN, so the whole field was refused
+ * and the page opened on its default instead: a ten-level stitch silently
+ * became a one-level one, which is indistinguishable from being ignored.
+ *
+ * So a term that is not a number, and is nothing but digits and minus signs, is
+ * re-read as a run of signed integers. With no separators every `-` must begin
+ * a new term, so that is unambiguous \u2014 and it is deliberately not clever about
+ * positives: `111` stays one k of 111, because it genuinely is one, and reading
+ * three 1s out of it would be inventing a sequence nobody typed.
  */
-export function parseSequence(line: string): number[] | null {
+export function ksTokens(line: string): string[] {
   const cleaned = line
     .replace(/[\u2212\u2013\u2014]/g, "-")
     .replace(/[\[\],_]/g, " ")
     .trim();
-  if (!cleaned) return null;
-  const values = cleaned.split(/\s+/).map(Number);
+  if (!cleaned) return [];
+  return cleaned.split(/\s+/).flatMap(token => {
+    if (Number.isInteger(Number(token))) return [token];
+    if (/^-?\d+(-\d+)*$/.test(token)) return token.match(/-?\d+/g) ?? [token];
+    return [token];
+  });
+}
+
+/** One k sequence, from a line of text. Returns null when the line is not one. */
+export function parseSequence(line: string): number[] | null {
+  const tokens = ksTokens(line);
+  if (!tokens.length) return null;
+  const values = tokens.map(Number);
   if (values.some(value => !Number.isInteger(value))) return null;
   return values;
 }

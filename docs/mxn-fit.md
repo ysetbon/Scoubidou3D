@@ -1032,6 +1032,106 @@ before → after on each. A refusal is a red line that names what stopped it.
 
 ---
 
+## The ladder
+
+*Built. `src/mxn-fit/ladder.ts`, `bridge.fit_adopt`, and the panel of the same
+name. This is the answer to open question 3, and half the answer to 7.*
+
+A stitch is a stack of rings and this page fits **one** of them. That is the
+right unit for a two-level stitch and the wrong one for the sequences the k
+boards link to:
+
+```
+/mxn/fit/?m=2&n=1&ks=-1-1-1-1-1-1-1-1-1-1&hand=lh&direction=cw
+```
+
+Ten levels. Measured on this repository's own engine, only two of them close:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| crossings | 6/8 | 6/8 | 5/8 | 7/8 | 6/8 | 5/8 | 6/8 | 4/8 | 8/8 | 8/8 |
+
+So the work is level by level, and it has to compose. It did not.
+
+### Why a fit did not compose
+
+`bridge.fit_weave` always starts from the level's own **checkpoint** — the ring
+the RUN built underneath it — and hands back a ring. Nothing above the level
+ever hears about it. So:
+
+> Fit L1. Move to L2. L2 is still standing on the engine's L1.
+
+The two fits never coexisted in a ring. Saving a judgement over both would be
+describing a stitch nobody ever wove, which is the one thing this page must not
+do — and it is invisible on screen, because each level's card is perfectly
+truthful about the level it draws.
+
+### What fixing a level does
+
+`bridge.fit_adopt(level, …)` makes the fitted ring **the level's ring**, and
+then builds every level above it again from there — same search, same flags,
+same seeds, through the same `_grow_levels` that `generate` itself now uses. It
+is the ladder's only real operation, and it is the only sense in which a level
+is *done*.
+
+The cost is the honest one: **a real search per level above**, because that is
+what building those levels IS. Nothing can make that cheaper, so it is a button
+that says how many levels it is about to rebuild, and a reader decides.
+
+`rebuild=False` records the ring and leaves the levels above alone. They are
+then marked, on the ladder and in the reply, as standing on a ring that has
+moved — and they are refused from a saved stack, because they never stood on it.
+
+### Level 1 comes off the shelf
+
+`bridge.generate` already takes a whole judged L1 ring and adopts it instead of
+searching (`level1_ring`, added for the farm). The fitter now asks for one on
+every run, addressed by the **ks prefix**:
+
+> The ring at level L of a run depends on `ks[0…L−1]` and nothing above it — the
+> identity `generate` already relies on internally. So a ★ best judged on
+> `ks=-1` IS level 1 of a ten-level `-1` run, and it is found by asking the
+> shelf for `picks/v3/lh-cw/2x1/-1/…`, never for the ten-level key.
+
+Two things follow, and the second is the point:
+
+1. Level 1 is the ring somebody judged, not the engine's approximation of it. A
+   hand-fitted ring sits off every grid, in angle as well as extension, so no
+   amount of searching lands on it.
+2. **Every level above is built on that ring**, so fixing the stack from there
+   is fixing the right stack.
+
+A run whose L1 is adopted is not cached. The run key has no segment that says
+"this one's level 1 was a judged ring" — `-j…` belongs to the farm's hand grid —
+and two different answers must never share a key, so the shelf is left out of
+that run entirely rather than being handed both.
+
+### Saving a stack
+
+`Judgement.levels` has always been a list, and this page has always written one
+entry in it. After a fix it can hold the whole ladder: each level's own pick,
+under one verdict, and the picks genuinely coexisted in one geometry.
+
+It is filed under the ks prefix of the **top fixed level**, not the whole
+sequence. Six levels fixed out of ten is a judgement about a six-level stitch;
+under the ten-level key it would claim four levels nobody has looked at. That is
+also what makes the work reusable — the next run of the ten-level URL finds it
+by prefix and starts from there.
+
+### `?ks=-1-1-1` is ten levels, not none
+
+The URL above did not work. `ks` was split on spaces, commas, brackets and
+underscores, and `-1-1-1-1-1-1-1-1-1-1` has none of those: `Number()` returned
+NaN, the field was dropped, and the page opened on its `ks=1` default. A
+ten-level stitch silently became a one-level one.
+
+A term that is not a number and is nothing but digits and minus signs is now
+re-read as a run of signed integers. Unambiguous for negatives — with no
+separators every `-` must begin a new term — and deliberately not clever about
+positives: `111` stays one k of 111, because it genuinely is one.
+
+---
+
 ## Where it refuses
 
 The fit is exact or it is not claimed. Six ways it can fail to be exact, all of
@@ -1118,6 +1218,22 @@ When the page exists, two more: `npm run check:fit` for the solver against the
 same fixture, and a Playwright pass over the real page like `npm run qa:widgets`
 does for the lab's widgets.
 
+The ladder has three of its own, one per layer it lives in:
+
+```sh
+npm run check:ladder             # node: the URL, the prefixes, the states
+npm run check:stack              # python: fit_adopt against the real engine
+npm run qa:fit                   # playwright: the panel, on the real page
+```
+
+`check:stack` needs numpy and runs the engine, so it is not in CI — the same
+line `check:l1` sits on. It is the one that matters most, because it is the one
+that asserts a rebuilt level is the level the run would have built: adopt the
+engine's own configuration at L1 and every level above must come back
+byte-identical, hashed on the strands; adopt a *different* one and they must
+move. Either check alone is worthless — a rebuild that silently replayed the run
+would pass the first perfectly.
+
 ---
 
 ## Open questions
@@ -1132,9 +1248,10 @@ process writes a verdict — see
    `/mxn/ks/` and `/mxn/gpu/` in the masthead and in `docs/links.md`.
 2. **Which is the default tie-break** along the exact-fit curve — widest gap
    margin, as drawn, or nearest the engine's own pick, which changes the least?
-3. **Multi-level policy.** Is "flush the top level" the right default, given it
-   re-staggers the levels underneath it? The alternative is flushing every level
-   in least squares and none of them exactly.
+3. ~~**Multi-level policy.**~~ *Answered — see [§ The ladder](#the-ladder).*
+   Neither: every level is flushed **exactly**, one at a time, and each fixed
+   level becomes the ring the levels above are rebuilt on. The top level is no
+   longer special; the order of work is up the stack.
 4. **The export format.** OpenStrand strand-list JSON, as `/mxn/`'s *Copy JSON*
    produces and `/app/` reads — or something else you feed downstream?
 5. **How far should the sweep reach by default?** `m,n ≤ 4` is what the farm has
@@ -1144,6 +1261,10 @@ process writes a verdict — see
 7. **One judgement set per parameter set, or one per level?** The key is the
    whole descriptor — ks and all — so `[1, 1, −1]` and `[1, 1]` are different
    shelves and a judgement about the first says nothing about the second.
+   *Half-answered by [§ The ladder](#the-ladder):* they are different shelves,
+   and `[1, 1]` IS the first two levels of `[1, 1, −1]`, so the shallower key is
+   read as a **prefix** of the deeper one rather than as an unrelated set. A
+   stack is saved under the prefix it actually covers.
 8. **Is `rejected` wanted, or only `valid` and `best`?** It is in because
    without it the valid category cannot be loaded correctly — every load
    re-offers the rings you already turned down. But it is a third button, and

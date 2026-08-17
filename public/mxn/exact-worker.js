@@ -49,7 +49,7 @@ async function prepare() {
       // Resolved against this worker's own URL rather than the site root: the
       // lab is published under a project-site sub-path, where "/py/..." would
       // miss. Keeps the cache key in step with the one in the Worker URL.
-      const url = new URL(`./py/${name}?v=trace-plan-v26`, import.meta.url);
+      const url = new URL(`./py/${name}?v=trace-plan-v27`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
@@ -84,7 +84,7 @@ function ensureCountPool() {
   const size = Math.min(3, cores);
   countPool = size < 2 ? [] : Array.from({ length: size }, () => {
     const worker = new Worker(
-      new URL("./count-worker.js?v=trace-plan-v26", import.meta.url),
+      new URL("./count-worker.js?v=trace-plan-v27", import.meta.url),
       { type: "module" });
     worker.postMessage({ type: "warm" });
     return worker;
@@ -106,6 +106,14 @@ function runSlice(worker, job, start, end, onProgress) {
     };
     worker.addEventListener("message", listener);
     worker.postMessage({ type: "slice", token, job, start, end });
+  });
+}
+
+/** The four values a fit places its two bands with, as one JSON string. */
+function fitBands(data) {
+  return JSON.stringify({
+    hExt: data.hExt ?? null, hAngle: data.hAngle ?? null,
+    vExt: data.vExt ?? null, vAngle: data.vAngle ?? null,
   });
 }
 
@@ -324,18 +332,32 @@ const HANDLERS = {
       "bridge.fit_plan_now(mxn_m, mxn_n, mxn_ks.to_py(), mxn_hand, mxn_direction)"
     )];
   },
+  // The two bands a fit places, as JSON text — never as four globals that can
+  // each be a JS null. `null` for a band means "leave it where the engine left
+  // it", which is what a band that is already flush, or was never searched,
+  // asks for; set raw it arrives in Python as JsNull, and the `is None` guard
+  // that used to stand here was false for it and dereferenced it anyway. See
+  // bridge.fit_bands_from_json.
   "fit-weave": async (runtime, data) => {
     runtime.globals.set("mxn_level", data.level);
-    // null for a band means "leave it where the engine left it", which is what
-    // a band that is already flush asks for. to_py() on a null would throw.
-    runtime.globals.set("mxn_h_ext", data.hExt ?? null);
-    runtime.globals.set("mxn_h_angle", data.hAngle ?? null);
-    runtime.globals.set("mxn_v_ext", data.vExt ?? null);
-    runtime.globals.set("mxn_v_angle", data.vAngle ?? null);
+    runtime.globals.set("mxn_fit_bands", fitBands(data));
     return ["fit-weave-ready", await runtime.runPythonAsync(
-      "bridge.fit_weave(mxn_level,"
-      + " None if mxn_h_ext is None else mxn_h_ext.to_py(), mxn_h_angle,"
-      + " None if mxn_v_ext is None else mxn_v_ext.to_py(), mxn_v_angle)"
+      "bridge.fit_weave(mxn_level, *bridge.fit_bands_from_json(mxn_fit_bands))"
+    )];
+  },
+  // Adopting: the fitted ring becomes this level's ring, and every level above
+  // it is BUILT AGAIN from it. That is the difference between a proposal about
+  // one level and a stitch fixed one level at a time — without it, fitting L1
+  // and then moving to L2 leaves L2 standing on the engine's L1, and the two
+  // fits never coexist in a ring. Costs a real search per level above, which is
+  // why the page asks for it explicitly. See docs/mxn-fit.md § The ladder.
+  "fit-adopt": async (runtime, data) => {
+    runtime.globals.set("mxn_level", data.level);
+    runtime.globals.set("mxn_fit_bands", fitBands(data));
+    runtime.globals.set("mxn_rebuild", data.rebuild !== false);
+    return ["fit-adopt-ready", await runtime.runPythonAsync(
+      "bridge.fit_adopt(mxn_level, *bridge.fit_bands_from_json(mxn_fit_bands),"
+      + " rebuild=mxn_rebuild)"
     )];
   },
   "semi-select": async (runtime, data) => {

@@ -160,6 +160,66 @@ for (const file of ["exact-worker.js", "farm-worker.js"]) {
   }
 }
 
+// ---------------------------------------------------------------------------
+console.log("\n=========== the fitter's two bands, on the real seam ===========");
+//
+// The same bug, in the other direction, and this one shipped too: `fit-weave`
+// set four globals and guarded them with `None if mxn_h_ext is None else
+// mxn_h_ext.to_py()`. A band a fit does not move is sent as null — that is what
+// "hold it where the engine left it" IS — so the guard was false for exactly
+// the band it was written for, and the else branch dereferenced a JsNull.
+
+{
+  const start = bridgeSource.indexOf("def fit_bands_from_json(");
+  const end = bridgeSource.indexOf("\ndef ", start + 1);
+  check("fit_bands_from_json is findable in bridge.py", start !== -1 && end > start);
+  py.runPython(`import json\n${bridgeSource.slice(start, end)}`);
+
+  // The worker's own encoder, lifted the same way, so what is tested is what
+  // the page actually sends rather than a second spelling of it.
+  const workerSource = readFileSync("public/mxn/exact-worker.js", "utf8");
+  const encoder = /function fitBands\(data\) \{([\s\S]*?)\n\}/.exec(workerSource);
+  check("the worker's fitBands is findable", !!encoder);
+  const fitBands = new Function("data", encoder[1]);
+
+  for (const [label, data, want] of [
+    ["both bands held — the flush case that crashed",
+      { level: 2 }, [null, null, null, null]],
+    ["one band placed, one held",
+      { level: 2, vExt: [30, 80], vAngle: 60.62 },
+      [null, null, [30, 80], 60.62]],
+    ["both placed, off the grid as a fit leaves them",
+      { level: 1, hExt: [84.37], hAngle: 126.8, vExt: [34.22], vAngle: 12 },
+      [[84.37], 126.8, [34.22], 12]],
+  ]) {
+    py.globals.set("mxn_fit_bands", fitBands(data));
+    let got;
+    try {
+      const raw = py.runPython("fit_bands_from_json(mxn_fit_bands)");
+      got = raw?.toJs ? raw.toJs() : raw;
+      raw?.destroy?.();
+    } catch (error) {
+      got = `threw ${String(error).split("\n")[0]}`;
+    }
+    check(`  ${label}`, JSON.stringify(got) === JSON.stringify(want),
+      JSON.stringify(got));
+  }
+
+  // And the rule that keeps it fixed: the fit handlers must hand Python one
+  // string and dereference nothing else. A `mxn_x.to_py()` creeping back into
+  // one of them is the crash returning.
+  for (const name of ["fit-weave", "fit-adopt"]) {
+    const handler = new RegExp(`"${name}": async[\\s\\S]*?\\n  \\},`).exec(workerSource);
+    check(`  the ${name} handler is findable`, !!handler);
+    if (!handler) continue;
+    const call = /runPythonAsync\(([\s\S]*?)\n\s*\)\];/.exec(handler[0]);
+    const derefs = [...new Set([...(call?.[1] ?? "")
+      .matchAll(/\b(mxn_[a-z0-9_]+)\s*\./gi)].map(hit => hit[1]))];
+    check(`  ${name} dereferences no mxn_ global`, derefs.length === 0,
+      derefs.join(", ") || "none");
+  }
+}
+
 console.log(`\n${fail ? `${fail} check(s) failed, ${pass} passed`
                       : `all ${pass} checks passed`}`);
 process.exit(fail ? 1 : 0);

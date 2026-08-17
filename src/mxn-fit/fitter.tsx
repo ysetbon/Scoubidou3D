@@ -44,6 +44,13 @@ import {
   neighbourDelta, readAt, spread,
   type Candidate, type FitBand, type SortKey,
 } from "./solve";
+// The ladder: reading a k sequence, where each level belongs on the shelf, and
+// what "fixed" means for one. All of it pure, all of it checked in node —
+// `npm run check:ladder`.
+import {
+  askedFrom, ksOf, ladderRows, levelSpan, prefixDescriptor, stackAudit,
+  stackLevels, stackMetrics, stackSummary, type FixedLevel,
+} from "./ladder";
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -144,11 +151,6 @@ const VERDICT_GLYPH: Record<Verdict, string> = {
   best: "★", valid: "✓", rejected: "✗",
 };
 
-const ksOf = (raw: string) => raw
-  .replace(/[\u2212\u2013\u2014]/g, "-")
-  .replace(/[\[\],_]/g, " ").trim().split(/\s+/)
-  .map(Number).filter(Number.isInteger);
-
 /**
  * The flags the fitter's own generate runs under. It sends none, so these are
  * the engine's defaults — spelled out here because they are part of the cache
@@ -190,31 +192,12 @@ const MAX_FIT_SIDE = 8;
  *
  * `ks` is the sequence and `k` is accepted as an alias for the one-level case,
  * because a board cell IS the one-level case and writing `k=-1` by hand is what
- * anybody would try first.
+ * anybody would try first. `ks=-1-1-1` — the compact form a URL leaves once it
+ * has eaten the spaces — is three levels; see ksTokens in mxn-farm/plan.ts for
+ * why that needed saying, and check-ladder.ts for the URL it broke.
  */
-function askedFor() {
-  let query: URLSearchParams;
-  try {
-    query = new URLSearchParams(window.location.search);
-  } catch {
-    return {};
-  }
-  const side = (name: string) => {
-    const value = Number(query.get(name));
-    return Number.isInteger(value) && value >= 1 && value <= MAX_FIT_SIDE ? value : undefined;
-  };
-  const ks = ksOf(query.get("ks") ?? query.get("k") ?? "");
-  const hand = query.get("hand");
-  const direction = query.get("direction");
-  return {
-    m: side("m"),
-    n: side("n"),
-    ksText: ks.length ? ks.join(" ") : undefined,
-    hand: hand === "lh" || hand === "rh" ? (hand as "lh" | "rh") : undefined,
-    direction: direction === "cw" || direction === "ccw"
-      ? (direction as "cw" | "ccw") : undefined,
-  };
-}
+const askedFor = () => askedFrom(
+  typeof window === "undefined" ? "" : window.location.search, MAX_FIT_SIDE);
 
 
 /**
@@ -241,7 +224,12 @@ function defaultOf(d: RunDescriptor): RunDescriptor {
 function stageOfJudgement(j: Judgement): Stage | null {
   const strands = j.strands as Strand[] | undefined;
   if (!Array.isArray(strands) || !strands.length) return null;
-  return { level: j.levels[0]?.level ?? 1, k: null, label: "best", strands };
+  // The LAST level, not the first. A judgement covering one level is the same
+  // either way; a stack covers several and the ring stored with it is the one
+  // the stack ends at, so reading the first would caption the top ring with the
+  // bottom level's number — and hand its band names to the wrong geometry.
+  return { level: j.levels[j.levels.length - 1]?.level ?? 1, k: null,
+           label: "best", strands };
 }
 
 /**
@@ -265,6 +253,17 @@ type Found = { stage: Stage; judgement: Judgement; from: string;
 
 /** The most artifacts the shelf-wide search will fetch before giving up. */
 const ANYWHERE_LIMIT = 16;
+
+/**
+ * How many ks prefixes the preload will ask the shelf about.
+ *
+ * One GET each, and a deep sequence has one prefix per level, so a 40-level
+ * stitch would open with forty requests before it drew anything. Twelve is
+ * past any sequence the k boards produce and still a bounded page load; the
+ * levels dropped are the DEEPEST ones, because the shallow prefixes are where
+ * judgements actually live — L1 first of all.
+ */
+const PREFIX_LIMIT = 12;
 
 /**
  * The first judged ★ best anywhere — any size, any hand, any k.
@@ -357,7 +356,17 @@ async function bestFromAnywhere(
  * to is the one thing this page must not do, so the card names the set it came
  * from and offers a button that puts those parameters in the fields.
  */
-type Substitute = "default" | "anywhere";
+/**
+ * Why the ring on screen is not the one the parameters asked for.
+ *
+ * `prefix` is the interesting one and the only one that is not really a
+ * substitute: the ★ best judged on `ks=-1` IS level 1 of a `ks=-1 -1 -1 …` run,
+ * by the engine's own identity (bridge.generate: the L1 of `[k, …]` is the L1
+ * of `[k]`). So it is drawn as this run's L1 rather than as somebody else's
+ * ring — and it is what makes a ten-level URL open with a judged level 1
+ * already on it instead of an empty page and a half-hour of engine.
+ */
+type Substitute = "default" | "anywhere" | "prefix";
 type Preload =
   | { state: "off" }
   | { state: "looking"; where: string }
@@ -550,7 +559,7 @@ function useWorker(onProgress: (message: string) => void) {
     // cached worker had no fit-plan-now. BUMP THIS whenever the worker's
     // message vocabulary changes. src/mxn-lab/weave-studio.tsx does the same.
     const worker = new Worker(
-      new URL(`${BASE}mxn/exact-worker.js?v=trace-plan-v26`, window.location.href),
+      new URL(`${BASE}mxn/exact-worker.js?v=trace-plan-v27`, window.location.href),
       { type: "module" });
     worker.onmessage = (event) => {
       const data = event.data || {};
@@ -731,6 +740,30 @@ export function Fitter() {
   // engine is asked. See the Preload type for why this exists.
   const [preload, setPreload] = useState<Preload>({ state: "off" });
 
+  // ---------------------------------------------------------------------
+  // The ladder. A run is a stack of rings and this page fits ONE of them, so
+  // fixing a ten-level stitch is ten fits — and until fit_adopt existed, the
+  // ten never met: each was woven against the ring the RUN built underneath,
+  // so L2's fit stood on the engine's L1 however carefully L1 had been fitted.
+  // `fixed` is the levels that have been adopted INTO the run, which is the
+  // only sense in which a level is done. See ladder.ts and docs/mxn-fit.md.
+  // ---------------------------------------------------------------------
+  const [fixed, setFixed] = useState<Record<number, FixedLevel>>({});
+  /** Levels standing on a ring that has moved under them. */
+  const [stale, setStale] = useState<number[]>([]);
+  /** The judged L1 this run was built on, when the shelf had one. */
+  const [pinned, setPinned] = useState<{ chooser: string; from: string } | null>(null);
+  /**
+   * Whether a run adopts a judged level 1 rather than searching for one.
+   *
+   * On, because it is almost always what is wanted and because it is what makes
+   * the ladder start from work already done. Off is here so that "the engine's
+   * own answer, from scratch" stays reachable — comparing the two IS the
+   * question on a level that will not close, and a page that could only ever
+   * build on the last judgement would have quietly taken it away.
+   */
+  const [buildOnJudged, setBuildOnJudged] = useState(true);
+
   /**
    * Where the ring in the editor came from, and which parameter set it is about.
    *
@@ -775,9 +808,12 @@ export function Fitter() {
    * opening. Returns the same promise either way, so the caller that ran the
    * generate can still read its result.
    */
-  const openSession = (d: RunDescriptor, running?: Promise<unknown>) => {
+  const openSession = (
+    d: RunDescriptor, running?: Promise<unknown>, level1Ring?: unknown,
+  ) => {
     const ready = running ?? ask(
-      { type: "generate", m: d.m, n: d.n, ks: d.ks, hand: d.hand, direction: d.direction },
+      { type: "generate", m: d.m, n: d.n, ks: d.ks, hand: d.hand,
+        direction: d.direction, level1Ring },
       "result");
     const entry = { ready, primed: false };
     session.current = entry;
@@ -1025,8 +1061,32 @@ export function Fitter() {
                  descriptor: wanted, judgements: asked.picks.judgements }, null);
           return;
         }
-        const spare = defaultOf(wanted);
         const tried = [picksKey(wanted)];
+        // Rung 2: the ks PREFIX, longest first.
+        //
+        // The ring at level L of a run depends on ks[0…L−1] and nothing above
+        // it — the identity bridge.generate itself relies on — so a ★ best
+        // judged on `ks=-1` IS level 1 of a ten-level `-1` run. This is what
+        // opens a deep stitch with a judged level 1 already on screen rather
+        // than an empty page, and it is why the whole ladder can start
+        // anywhere: whatever anybody has fixed on the way up is addressed by
+        // the prefix that names it.
+        const floor = Math.max(1, wanted.ks.length - PREFIX_LIMIT);
+        for (let cut = wanted.ks.length - 1; cut >= floor; cut -= 1) {
+          const upto = prefixDescriptor(wanted, cut);
+          if (tried.includes(picksKey(upto))) continue;
+          tried.push(picksKey(upto));
+          const below = await look(upto);
+          if (!current()) return;
+          if (below.best && below.stage) {
+            note(`Preload: ★ best for the first ${cut} level${cut === 1 ? "" : "s"}`
+              + ` — ${nameOf(upto)}, judged by ${below.best.chooser}`);
+            show({ stage: below.stage, judgement: below.best, from: below.picks.from,
+                   descriptor: upto, judgements: below.picks.judgements }, "prefix");
+            return;
+          }
+        }
+        const spare = defaultOf(wanted);
         if (picksKey(spare) !== picksKey(wanted)) {
           const other = await look(spare);
           if (!current()) return;
@@ -1323,11 +1383,49 @@ export function Fitter() {
     }
   };
 
+  /**
+   * The judged ★ best for this run's LEVEL 1, ready for the engine to adopt.
+   *
+   * `bridge.generate` takes a whole L1 ring and uses it instead of searching
+   * for one, and this is the fitter asking for that. Two things follow, and
+   * the second is the point:
+   *
+   *   · Level 1 IS the ring somebody judged — not the engine's approximation
+   *     of it. A hand-fitted ring sits off every grid, in angle as well as in
+   *     extension, so a search cannot land on it however long it runs.
+   *   · EVERY LEVEL ABOVE IS BUILT ON THAT RING. Without this, a reader who
+   *     had already judged L1 got a stitch whose L2…L10 stood on a different
+   *     L1 from the one on their screen, and fixing the stack from there is
+   *     fixing the wrong stack.
+   *
+   * Addressed by the ks PREFIX (`ks=-1` for a `-1 -1 …` run) because that is
+   * where a single-k judgement lives. Judgements saved before rings were
+   * stored carry no strands and cannot be adopted; those still search.
+   */
+  const judgedLevelOne = async (d: RunDescriptor) => {
+    const upto = prefixDescriptor(d, 1);
+    const shelf = await readPicks(upto, apiUrl.trim(), apiToken.trim());
+    const best = shelf.judgements.find(j => j.verdict === "best");
+    const bands = best?.levels.find(l => l.level === 1);
+    const strands = best?.strands as Strand[] | undefined;
+    if (!best || !bands || !Array.isArray(strands) || !strands.length) return null;
+    return {
+      judgement: best, from: shelf.from, bands,
+      ring: {
+        strands,
+        h_ext: bands.h?.ext ?? [],
+        v_ext: bands.v?.ext ?? [],
+      },
+    };
+  };
+
   const run = async () => {
     if (!ks.length) { setStatus("Give at least one k."); setFailed(true); return; }
     setBusy(true);
     setFailed(false);
     setStages([]); setPlan(null); setBefore(null); setAfter(null); setAttempts([]);
+    // A run is a new stitch: nothing fixed on the last one survives into it.
+    setFixed({}); setStale([]); setPinned(null);
     restartClock();
     note(`Run pressed · ${m}×${n} · k=${ks.join(", ")} · ${hand} · ${direction}`);
     try {
@@ -1342,11 +1440,36 @@ export function Fitter() {
       // From here the editor is the run's, and a preload landing behind it must
       // not take it back.
       setEditor({ from: "run", key: picksKey(d), descriptor: d });
+      // Level 1 first: if somebody has judged one, the run is built ON it
+      // rather than around it. See judgedLevelOne.
+      let adopt: Awaited<ReturnType<typeof judgedLevelOne>> = null;
+      if (buildOnJudged) {
+        setStatus("Looking for a judged level 1 to build the run on…");
+        try { adopt = await judgedLevelOne(d); } catch { adopt = null; }
+      } else {
+        note("Level 1 will be searched — building on a judged L1 is switched off");
+      }
+      if (adopt) {
+        note(`Level 1 taken from ${adopt.from} — ${adopt.judgement.chooser}'s `
+          + "★ best. The engine adopts it instead of searching, and every level "
+          + "above is built on it");
+      }
       const shelf = apiUrl.trim()
         ? createCache({ base: apiUrl.trim(), token: apiToken.trim() }) : null;
-      let result: { stages?: Stage[]; rows?: AuditRow[] } | null = null;
+      // A run whose level 1 is a judged ring is a DIFFERENT run from the same
+      // parameters searched, and the run key does not say which it is: the
+      // `-j…` segment descriptorPath writes belongs to the farm's hand grid,
+      // not to this. So the cache is left out of it entirely rather than
+      // being handed two answers under one key.
+      const cacheable = !adopt;
+      let result: { stages?: Stage[]; rows?: AuditRow[];
+                    level1Adopted?: boolean; level1AdoptFailed?: boolean } | null = null;
       if (!shelf) note("No worker url — the shelf is not consulted");
-      if (shelf) {
+      else if (!cacheable) {
+        note("Cached runs skipped: this run's L1 is a judged ring, and the run "
+          + "key cannot tell that apart from a searched one");
+      }
+      if (shelf && cacheable) {
         setStatus("Looking for a cached run…");
         note(`Asking the shelf for run/${runKey(d)}`);
         try {
@@ -1381,13 +1504,13 @@ export function Fitter() {
         const began = Date.now();
         // This generate IS the session — the run and the state fitting reads
         // are the same call — so it is registered rather than repeated.
-        const computed = await openSession(d) as { stages?: Stage[]; rows?: AuditRow[] };
+        const computed = await openSession(d, undefined, adopt?.ring) as typeof result;
         result = computed;
         const seconds = (Date.now() - began) / 1000;
         note(`generate finished in ${seconds.toFixed(1)}s`);
         // Writing needs the token; reading does not. A failed write costs the
         // next run its speed-up and nothing else, so it is never fatal.
-        if (shelf && apiToken.trim()) {
+        if (shelf && cacheable && apiToken.trim()) {
           try {
             await shelf.putRun({
               kind: "run", cacheVersion: CACHE_VERSION, descriptor: d,
@@ -1397,20 +1520,182 @@ export function Fitter() {
           } catch { note("Writing the run to the shelf failed"); }
         }
       }
-      const payload: { stages?: Stage[]; rows?: AuditRow[] } = result;
+      const payload = result ?? {};
       const drawn: Stage[] = (payload.stages ?? []).filter((s: Stage) => s.level >= 1);
       const audits: AuditRow[] = payload.rows ?? [];
       setStages(drawn);
       setAllStages(payload.stages ?? []);
       setRanAt(new Date().toISOString());
       setAuditRows(audits);
+      // Whether the engine actually took the judged L1 — asked of the engine
+      // rather than assumed from having sent it. A ring whose layer names do
+      // not match this level's is not this level's ring, and bridge.generate
+      // searches instead and says so.
+      const l1 = audits.find(row => row.level === 1);
+      if (adopt && payload.level1Adopted) {
+        setPinned({ chooser: adopt.judgement.chooser, from: adopt.from });
+        setFixed({
+          1: {
+            level: 1, h: adopt.bands.h, v: adopt.bands.v,
+            at: new Date().toISOString(), rebuilt: true,
+            origin: "judged", chooser: adopt.judgement.chooser,
+            audit: l1
+              ? { crossings: l1.across, expected: l1.expected,
+                  stray: l1.stray, broken: l1.broken }
+              : adopt.judgement.audit,
+            metrics: adopt.judgement.metrics,
+            strands: adopt.judgement.strands,
+          },
+        });
+        note("L1 adopted: the whole run stands on the judged ring");
+      } else if (adopt && payload.level1AdoptFailed) {
+        note("The judged L1 is not this size's level-1 ring — the engine "
+          + "searched for one instead");
+      }
       setBusy(false);
-      // The top level is the one a reader means by "the ring", so it is the one
-      // fitted first; every other level is a click away.
-      await fitAt(drawn.length ? drawn[drawn.length - 1].level : 1, drawn, audits);
+      // Where the work starts. With a judged L1 in place the reader's next
+      // move is L2 — that is the whole ladder — so the run opens there rather
+      // than at the top, which would be ten levels past the question. Without
+      // one, the top level is what "the ring" means and it opens there.
+      const first = adopt && payload.level1Adopted && drawn.length > 1
+        ? 2 : (drawn.length ? drawn[drawn.length - 1].level : 1);
+      await fitAt(first, drawn, audits);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
       setFailed(true);
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Fix this level: the ring on screen becomes the level's ring, and every
+   * level above it is built again on top of it.
+   *
+   * The move the ladder is for, and the one thing on this page that changes a
+   * level other than the one being fitted. Until it existed, fitting was a
+   * proposal: `fit_weave` always starts from the level's own checkpoint — the
+   * ring the RUN built underneath — so a fit at L1 was invisible to L2 however
+   * carefully it had been made, and "fix L1, then L2, then L3" produced three
+   * rings that had never been in the same stitch.
+   *
+   * What it costs is a real search per level above, because that is what
+   * building those levels IS. Nothing here can make that cheaper, so the button
+   * says so and the reader decides. `rebuild: false` records the ring and
+   * leaves the levels above alone — they are then marked as standing on a ring
+   * that has moved, and they are not part of a saved stack.
+   */
+  const fixLevel = async (rebuild: boolean) => {
+    if (!plan || !before) return;
+    const attempt = after;
+    const level = fitLevel;
+    const pick = (key: BandKey) => {
+      const c = attempt ? (key === "h" ? attempt.h : attempt.v) : null;
+      return c ?? held[key];
+    };
+    const above = stages.filter(s => s.level > level).length;
+    setBusy(true);
+    setFailed(false);
+    setStatus(rebuild && above
+      ? `Adopting L${level} and rebuilding the ${above} level${
+          above === 1 ? "" : "s"} above it — a full search each…`
+      : `Adopting L${level}…`);
+    try {
+      await session.current?.ready;
+      const began = performance.now();
+      const reply = await ask({
+        type: "fit-adopt", level, rebuild,
+        hExt: pick("h")?.ext ?? null, hAngle: pick("h")?.angle ?? null,
+        vExt: pick("v")?.ext ?? null, vAngle: pick("v")?.angle ?? null,
+      }, "fit-adopt-ready") as {
+        unavailable?: boolean; reason?: string; rebuilt: boolean;
+        row: AuditRow; rows: AuditRow[]; stages: Stage[];
+        stale: number[]; seconds: number;
+      };
+      if (reply.unavailable) {
+        setStatus(reply.reason ?? `L${level} cannot be adopted.`);
+        setFailed(true);
+        return;
+      }
+      note(`L${level} adopted${reply.rebuilt && above
+        ? `, ${above} level${above === 1 ? "" : "s"} rebuilt on it` : ""} in `
+        + `${((performance.now() - began) / 1000).toFixed(1)}s`);
+
+      // The run's diagrams and audit rows, with everything the adopt returned
+      // put in place of what was there. Merged rather than replaced, because
+      // the levels BELOW are untouched by definition and re-drawing them from
+      // a partial reply would blank them.
+      const replace = <T extends { level: number }>(current: T[], fresh: T[]) => {
+        const next = new Map(current.map(item => [item.level, item]));
+        for (const item of fresh) next.set(item.level, item);
+        return [...next.values()].sort((a, b) => a.level - b.level);
+      };
+      const drawn = replace(stages, reply.stages.filter(s => s.level >= 1));
+      const audits = replace(auditRows, reply.rows);
+      setStages(drawn);
+      setAllStages(current => replace(current, reply.stages));
+      setAuditRows(audits);
+      setStale(reply.stale ?? []);
+      // Levels above a rebuild were built again from this ring, so whatever was
+      // fixed up there was fixed on a ring that no longer exists.
+      const at = new Date().toISOString();
+      // The ring's own numbers, measured the way the table measures them: the
+      // worst neighbour Δ and spread across the two bands, and the tightest
+      // gap margin either of them has.
+      let delta = 0, spr = 0, margin = Infinity;
+      for (const key of BANDS) {
+        const inputs = plan[key];
+        if (!inputs || inputs.unavailable) continue;
+        const lengths = attempt ? attempt.lengths[key] : before.lengths[key];
+        if (lengths.length) {
+          delta = Math.max(delta, neighbourDelta(lengths));
+          spr = Math.max(spr, spread(lengths));
+        }
+        const p = pick(key);
+        if (p && p.angle !== null) {
+          margin = Math.min(margin, readAt(inputs, p.ext, p.angle).margin);
+        }
+      }
+      setFixed(current => {
+        const next: Record<number, FixedLevel> = {};
+        for (const [key, entry] of Object.entries(current)) {
+          if (reply.rebuilt && entry.level > level) continue;
+          next[Number(key)] = entry;
+        }
+        next[level] = {
+          level, h: pick("h") ? { ext: [...pick("h")!.ext], angle: pick("h")!.angle } : null,
+          v: pick("v") ? { ext: [...pick("v")!.ext], angle: pick("v")!.angle } : null,
+          at, rebuilt: reply.rebuilt,
+          origin: origin?.kind === "judged" ? "judged"
+            : origin?.kind === "manual" ? "hand" : "fitted",
+          chooser: origin?.kind === "judged" ? origin.chooser : undefined,
+          audit: { crossings: reply.row.across, expected: reply.row.expected,
+                   stray: reply.row.stray, broken: reply.row.broken },
+          metrics: { neighbour_delta: delta, spread: spr,
+                     gap_margin: Number.isFinite(margin) ? margin : 0 },
+          strands: attempt ? attempt.woven.strands : before.stage.strands,
+        };
+        return next;
+      });
+      const closes = reply.row.healthy;
+      const next = drawn.find(s => s.level === level + 1);
+      setStatus(`L${level} fixed — ${reply.row.across}/${reply.row.expected} crossings`
+        + `${closes ? "" : ", and it does not close"}`
+        + `${reply.rebuilt && above
+          ? `. The ${above} level${above === 1 ? "" : "s"} above were rebuilt on it`
+          : reply.rebuilt ? "" : ". The levels above still stand on the old ring"}`
+        + `${next && reply.rebuilt ? ` — opening L${level + 1}.` : "."}`);
+      setFailed(!closes);
+      // Straight on to the next level, because that is the next move: the
+      // ladder is climbed, not browsed.
+      if (next && reply.rebuilt) {
+        setBusy(false);
+        await fitAt(next.level, drawn, audits);
+        return;
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+      setFailed(true);
+    } finally {
       setBusy(false);
     }
   };
@@ -1440,6 +1725,31 @@ export function Fitter() {
     }
     return list.sort(bySortKey<Row>(sortKey));
   }, [plan, band, candidates, before, sortKey]);
+
+  // The ladder as data, and how far up it the work has got. Everything the
+  // panel draws is decided in ladder.ts, where it can be checked in node.
+  const ladder = useMemo(() => ladderRows({
+    ks, fitLevel,
+    drawn: stages.map(s => s.level),
+    audits: auditRows.map(r => ({
+      level: r.level, across: r.across, expected: r.expected, healthy: r.healthy,
+    })),
+    fixed, stale,
+    // A ring on screen is a proposal until it is adopted — and once this level
+    // IS fixed, showing a proposal over the top of it would be the page
+    // contradicting itself about the same level.
+    proposed: !!after && !fixed[fitLevel],
+    pinned: !!pinned,
+  }), [ks, fitLevel, stages, auditRows, fixed, stale, after, pinned]);
+  const summary = useMemo(() => stackSummary(ladder), [ladder]);
+  /** How many levels a fix here would have to rebuild. The whole of its cost. */
+  const levelsAbove = stages.filter(s => s.level > fitLevel).length;
+  /** What a saved stack would cover: the levels themselves, and its top. */
+  const stack = useMemo(() => {
+    const levels = stackLevels(fixed).map(entry => entry.level);
+    return { levels, span: levelSpan(levels),
+             top: levels.length ? levels[levels.length - 1] : null };
+  }, [fixed]);
 
   const chosen = after ? (band === "h" ? after.h : after.v) : null;
   const beforeLengths = before?.lengths[band] ?? [];
@@ -1895,6 +2205,91 @@ export function Fitter() {
     setFailed(!heldLocally);
   };
 
+  /**
+   * Save the whole stack: one verdict, every level that has been fixed under it.
+   *
+   * `Judgement.levels` has always been a list and this page has always written
+   * one entry in it, because one level was all a fit could be about. With
+   * fit_adopt it can be about a stitch: each fixed level's ring was the ring
+   * the level above was built on, so the picks in this list genuinely coexisted
+   * in one geometry — which is the only thing that makes saving them together
+   * true rather than merely convenient.
+   *
+   * Filed under the ks PREFIX of the top fixed level, not under the whole
+   * sequence. Six levels fixed out of ten is a judgement about a six-level
+   * stitch, and saving it under the ten-level key would claim four levels
+   * nobody has looked at. It is also what makes the work reusable: the next
+   * run of the ten-level URL finds it by prefix and starts from there.
+   */
+  const saveStack = async (verdict: Verdict) => {
+    const name = chooser.trim();
+    if (!name) {
+      setStatus("A verdict has one author, and it is a person — put a name in the chooser field.");
+      setFailed(true);
+      return;
+    }
+    const levels = stackLevels(fixed);
+    if (!levels.length) {
+      setStatus("Nothing is fixed yet. Fit a level, press fix, and the stack "
+        + "starts there.");
+      setFailed(true);
+      return;
+    }
+    const top = levels[levels.length - 1].level;
+    const held = fixed[top];
+    const d = prefixDescriptor(descriptor, top);
+    const at = new Date().toISOString();
+    const judgement: Judgement = {
+      id: `j-${at.replace(/\D/g, "").slice(0, 14)}-${Math.random().toString(36).slice(2, 6)}`,
+      verdict, source: judgedSource, chooser: name, at,
+      ...(judgeNote.trim() ? { note: judgeNote.trim() } : {}),
+      levels,
+      metrics: stackMetrics(fixed),
+      audit: stackAudit(fixed),
+      // The ring the stack ENDS at. Every level below it is in `levels` as a
+      // pick, and the top ring is the one a reader means by "the stitch".
+      strands: held?.strands,
+      // Only when the knobs on screen belong to that same level, because the
+      // plan is what makes a judgement editable and one from another level
+      // would open the wrong knobs.
+      ...(plan && fitLevel === top ? { plan } : {}),
+    };
+
+    let heldLocally = true;
+    try {
+      const rows = JSON.parse(readSetting(JUDGEMENTS_KEY) || "[]");
+      rows.push({ key: `picks/${picksKey(d)}`, judgement });
+      writeSetting(JUDGEMENTS_KEY, JSON.stringify(rows));
+    } catch {
+      heldLocally = false;
+    }
+    const reports: string[] = [heldLocally
+      ? "held locally" : "local copy failed (storage full or blocked)"];
+    if (apiUrl.trim()) {
+      setBusy(true);
+      setStatus(`Writing the ${levels.length}-level stack to the shelf…`);
+      const cache = createCache({ base: apiUrl.trim(), token: apiToken.trim() });
+      try {
+        const existing = await cache.getPicks(d);
+        const merged = mergeJudgement(existing, judgement, d,
+          ranAt ? { runComputedAt: ranAt } : {});
+        await cache.putPicks(merged);
+        reports.push(`shelf: picks/${picksKey(d)} now holds `
+          + `${merged.judgements.length} judgement${merged.judgements.length === 1 ? "" : "s"}`);
+      } catch (error) {
+        reports.push(`shelf: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      setBusy(false);
+    } else {
+      reports.push("no Worker URL — the shelf was not written");
+    }
+    writeSetting(CHOOSER_KEY, name);
+    setStatus(`${VERDICT_GLYPH[verdict]} ${verdict} · ${
+      levelSpan(levels.map(entry => entry.level))} saved as one stack `
+      + `· ${reports.join(" · ")}`);
+    setFailed(!heldLocally);
+  };
+
   const exportRing = () => {
     if (!plan || !before) return;
     const source = after ?? null;
@@ -1990,6 +2385,18 @@ export function Fitter() {
           return `★ best loaded from ${preload.from} — judged by ${
             preload.judgement.chooser}, drawn from the ring stored with the `
             + "judgement. No engine was run.";
+        }
+        // A prefix is not a substitute, and saying it was would be the page
+        // apologising for the right answer: the ★ best for `ks=-1` IS level 1
+        // of a `-1 -1 …` run, so this is your stitch, as far up as anybody has
+        // judged it.
+        if (preload.substitute === "prefix") {
+          const upto = preload.descriptor.ks.length;
+          return `★ best for the first ${upto === 1 ? "level" : `${upto} levels`}`
+            + ` of this sequence — ${nameOf(preload.descriptor)}, judged by ${
+              preload.judgement.chooser}. That ring IS this run's L${
+              preload.stage.level}, so Run builds every level above it on top of`
+            + " it. No engine yet.";
         }
         return `No ★ best for these parameters. Showing ${
           preload.substitute === "default" ? "the k = 0 default"
@@ -2096,6 +2503,11 @@ export function Fitter() {
             </button>
             <button className="go ghost" type="button" onClick={exportRing}
               disabled={!before}>Export</button>
+            <label className="switchline">
+              <input type="checkbox" checked={buildOnJudged}
+                onChange={e => setBuildOnJudged(e.target.checked)} />
+              build on the judged L1
+            </label>
             <p className="hint">
               The ring somebody judged <b>★ best</b> for these parameters is what
               loads: {apiUrl.trim()
@@ -2105,7 +2517,14 @@ export function Fitter() {
                    read the Cloudflare shelf too.</>}{" "}
               Without a best it fits fresh: exactly-flush candidates offered to the
               engine's audit longest-arm first, because the ring closes when one
-              band's arms reach across the other.
+              band's arms reach across the other.{" "}
+              {buildOnJudged
+                ? <>And the ★ best judged for <em>k = {ks[0] ?? "?"}</em> alone is
+                   adopted as this run's <em>level 1</em>, so every level above is
+                   built on it rather than on a search for something like it. Turn
+                   that off to see the engine's own answer from scratch.</>
+                : <><em>Level 1 will be searched.</em> The engine's own answer, from
+                   scratch — nothing judged is adopted.</>}
             </p>
             {preloadLine && (
               <p className="hint preloaded" data-state={preload.state}>{preloadLine}</p>
@@ -2158,6 +2577,45 @@ export function Fitter() {
                 </button>
               ))}
             </div>
+            {/*
+              The stack. Three verdict buttons above are about ONE level; this
+              is about everything that has been fixed, as one judgement whose
+              `levels` list holds each level's own pick. It is a separate act
+              because it is a separate claim, and because it is only true after
+              fit_adopt has made the picks coexist in one stitch.
+            */}
+            {summary.fixed > 0 && (
+              <div className="field" style={{ marginTop: 14 }}>
+                <label className="f">the stack — {summary.fixed} level
+                  {summary.fixed === 1 ? "" : "s"} fixed</label>
+                <button type="button" className="go" disabled={busy || !stack.top}
+                  title={stack.top
+                    ? `Save ${stack.span} as one ★ best under ${
+                        picksKey(prefixDescriptor(descriptor, stack.top))}`
+                    : "Nothing is fixed yet"}
+                  onClick={() => saveStack("best")}>
+                  ★ save the stack · {stack.span}
+                </button>
+                <p className="hint">
+                  One judgement carrying every fixed level's own pick, saved
+                  against the k sequence it actually covers —{" "}
+                  <code>ks {ks.slice(0, stack.top ?? 1).join(" ")}</code> — because{" "}
+                  {summary.complete
+                    ? "that is the whole sequence you asked for."
+                    : <>{summary.fixed} of {summary.total} levels fixed is a judgement
+                       about the first {stack.top} levels, and filing it under all{" "}
+                       {summary.total} would claim {summary.total - (stack.top ?? 0)} nobody
+                       has looked at.</>}{" "}
+                  It is also how the next run finds this work: the preload reads the
+                  prefix keys, so a saved stack loads straight back in.
+                  {summary.open.length > 0 && (
+                    <> <b>Note:</b> L{summary.open.join(", L")}{" "}
+                    {summary.open.length === 1 ? "does" : "do"} not close by the engine's
+                    audit. Saving that as ★ best says you mean it.</>
+                  )}
+                </p>
+              </div>
+            )}
             <p className="hint">
               A verdict is about the ring on screen — right now the{" "}
               <em>{judgedSource === "hand" ? "manual" : fromShelf ? "judged"
@@ -2208,7 +2666,11 @@ export function Fitter() {
                       {audit.crossings}/{audit.expected} crossings
                     </span>
                   )}
-                  {preload.substitute && (
+                  {preload.substitute === "prefix" ? (
+                    <span className="chip soft">
+                      the first {d.ks.length} of your {ks.length} levels
+                    </span>
+                  ) : preload.substitute && (
                     <span className="chip warn">not your parameters</span>
                   )}
                 </header>
@@ -2219,7 +2681,19 @@ export function Fitter() {
                         ? `Δ ${j.metrics.neighbour_delta.toFixed(2)} px` : ""} />
                     <div>
                       <p className="note" style={{ padding: 0 }}>
-                        {preload.substitute ? (
+                        {preload.substitute === "prefix" ? (
+                          <>
+                            This is the ring <em>{j.chooser}</em> judged best for the first{" "}
+                            {d.ks.length === 1 ? "level" : `${d.ks.length} levels`} of your
+                            sequence, on {j.at.slice(0, 10)}
+                            {j.note ? ` — “${j.note}”` : ""} — and it is not a stand-in:
+                            a level's ring depends on the ks below it and nothing above,
+                            so this <em>is</em> L{preload.stage.level} of{" "}
+                            <code>{m}×{n} · k={ks.join(", ")}</code>. Pressing <em>Run</em>{" "}
+                            adopts it as level 1 and builds every level above it on top,
+                            which is where the ladder starts.
+                          </>
+                        ) : preload.substitute ? (
                           <>
                             Nothing has been judged <b>★ best</b> for{" "}
                             <code>{m}×{n} · k={ks.join(", ")}</code>, so this is{" "}
@@ -2253,7 +2727,10 @@ export function Fitter() {
                         judging the ring again afterwards stores the plan, so next time it
                         opens straight into the editor.
                       </p>
-                      {preload.substitute && (
+                      {/* A prefix needs no adopting: the form already holds the
+                          sequence this ring is the bottom of, and putting the
+                          prefix in it would THROW AWAY the levels above. */}
+                      {preload.substitute && preload.substitute !== "prefix" && (
                         <button type="button" className="minibtn"
                           style={{ marginTop: 10 }} onClick={adopt}>
                           put {name} in the form
@@ -2385,6 +2862,108 @@ export function Fitter() {
               </div>
 
               {mismatch && <p className="alarm">Baseline check failed — {mismatch}.</p>}
+
+              {/*
+                The ladder. On a one-level stitch this is a row and a button; on
+                the ten-level sequences the k boards link to, it is the page.
+              */}
+              <div className="panel">
+                <header>
+                  <strong>The ladder</strong>
+                  <span>fix a level, and the levels above are rebuilt on it</span>
+                  <span className="spacer" />
+                  <span className={`chip ${summary.complete ? "ok" : "soft"}`}>
+                    {summary.fixed} of {summary.total} fixed
+                  </span>
+                  {summary.next !== null && (
+                    <span className="chip soft">next · L{summary.next}</span>
+                  )}
+                  {summary.stale.length > 0 && (
+                    <span className="chip warn">
+                      {summary.stale.length} standing on a moved ring
+                    </span>
+                  )}
+                </header>
+                <div className="body">
+                  <ol className="ladder">
+                    {ladder.map(row => {
+                      const entry = fixed[row.level];
+                      const state =
+                        row.state === "fixed"
+                          ? entry?.chooser ? `fixed · ${entry.chooser}'s ★ best`
+                            : entry?.origin === "hand" ? "fixed · placed by hand"
+                            : "fixed · fitted here"
+                        : row.state === "pinned" ? `pinned · ${pinned?.chooser ?? "judged"}'s ★ best`
+                        : row.state === "proposed" ? "fitted — not fixed yet"
+                        : row.state === "stale" ? "its parent moved — fit it again"
+                        : "as the run left it";
+                      return (
+                        // The state rides on a data attribute rather than a
+                        // class: preflight.css ships Tailwind's utility layer,
+                        // where `.fixed` means `position: fixed`. A rung
+                        // classed `fixed` was taken out of the grid flow and
+                        // painted on top of its neighbours — three levels in
+                        // one row, which looked like a React bug and was a
+                        // name collision.
+                        <li key={row.level} className="rung"
+                          data-state={row.state}
+                          data-current={row.current ? "1" : undefined}>
+                          <button type="button" className="rungbtn"
+                            disabled={busy || row.current}
+                            onClick={() => fitAt(row.level, stages, auditRows)}
+                            title={row.current ? "the level being fitted now"
+                              : `Fit L${row.level}`}>
+                            <b>L{row.level}</b>
+                            <i>k={row.k}</i>
+                            <span className="state">{state}</span>
+                            <span className={`num ${row.across === null ? ""
+                              : row.closes ? "good" : "bad"}`}>
+                              {row.across === null ? "—" : `${row.across}/${row.expected}`}
+                            </span>
+                            <span className="num when">
+                              {row.current ? "fitting" : entry ? entry.at.slice(11, 16) : ""}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                  <div className="ladder-act">
+                    <button type="button" className="primary"
+                      disabled={!before || busy || !canWeave}
+                      title={canWeave
+                        ? "Make this the level's ring, and build the levels above it again"
+                        : "Adopting reads the engine's browsing session — press Run first"}
+                      onClick={() => fixLevel(true)}>
+                      {levelsAbove
+                        ? `Fix L${fitLevel} · rebuild the ${levelsAbove} above`
+                        : `Fix L${fitLevel}`}
+                    </button>
+                    {levelsAbove > 0 && (
+                      <button type="button" disabled={!before || busy || !canWeave}
+                        title={"Record the ring without rebuilding — the levels above "
+                          + "then stand on a ring that has moved, and are left out of a "
+                          + "saved stack"}
+                        onClick={() => fixLevel(false)}>
+                        fix only · leave the {levelsAbove} above
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <p className="note">
+                  A fit is a proposal about <em>one</em> level: <code>bridge.fit_weave</code>{" "}
+                  always starts from the ring the run built underneath, so fitting L1 and then
+                  moving to L2 leaves L2 standing on the engine's L1 — the two fits never meet,
+                  and a judgement saved over both would describe a stitch nobody wove.{" "}
+                  <em>Fix</em> is what makes them meet: the ring on screen becomes this level's
+                  ring and every level above it is <em>built again</em> from it, by the same
+                  search, the same flags and the same seeds the run itself used. That costs a
+                  real search per level above — the same work the run did for them — which is
+                  why it is a button and not something that happens quietly.
+                  {levelsAbove > 0 && <> Right now that is <em>{levelsAbove} level
+                    {levelsAbove === 1 ? "" : "s"}</em>.</>}
+                </p>
+              </div>
 
               <div className="stats">
                 <div className="stat">

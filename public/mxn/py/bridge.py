@@ -435,6 +435,86 @@ def _learned_reach(rows):
     return int(reach) + (1 if reach != int(reach) else 0)
 
 
+def _seed_of(row):
+    """One level's extensions as the next level's search seed.
+
+    Rounded, and that is the whole point: a seed is a GRID POINT the search is
+    told to try first, and a fitted level's extensions are continuous -- 84.37
+    is exactly the thing the grid steps over (docs/mxn-fit.md). Handed over raw
+    they would name a cell the search cannot visit, which is not an error and
+    not a seed either. Rounding keeps a fitted level's answer as the hint it
+    was meant to be.
+    """
+    return (tuple(int(round(value)) for value in row["ext"][0]),
+            tuple(int(round(value)) for value in row["ext"][1]))
+
+
+def _grow_levels(strands, prev_v2r, first, ctx):
+    """Build levels `first`…len(ks) onto `strands`, and register each one.
+
+    Lifted out of generate unchanged so that fit_adopt can continue a run from
+    a level a person fitted by hand. That sharing is the point: the levels above
+    an adopted ring have to be built by the same search, on the same flags, with
+    the same seeds as the run they belong to -- otherwise "I fixed L2 and kept
+    going" quietly produces a stitch whose upper levels were searched under
+    different rules from its lower ones.
+
+    `ctx` is the run context generate leaves on the session. `rows` and `stages`
+    are appended to in place, so the caller reads them back from ctx.
+    """
+    m, n, ks = ctx["m"], ctx["n"], ctx["ks"]
+    hand, direction, search = ctx["hand"], ctx["direction"], ctx["search"]
+    rows, stages, level1_for_k = ctx["rows"], ctx["stages"], ctx["level1_for_k"]
+    for level in range(first, len(ks) + 1):
+        k_level = ks[level - 1]
+        emitProgress(f"Calculating L{level} · k={k_level}…")
+        with contextlib.redirect_stdout(io.StringIO()):
+            if k_level not in level1_for_k:
+                level1_for_k[k_level] = level1_extensions(
+                    m, n, k_level, hand, direction, search)
+            k_seed = level1_for_k[k_level]
+            # Every level below this one, nearest first -- the same order
+            # generate has always assembled, rebuilt from the rows rather than
+            # carried alongside them so that a rebuilt tail cannot inherit a
+            # seed from the levels it replaced.
+            seeds = [_seed_of(row) for row in rows if row["level"] < level]
+            level_seeds = ([k_seed] if k_seed else []) + list(reversed(seeds))
+            strands, info = NX.add_continuation_level(
+                strands, m, n, k_level, direction, hand, level,
+                k_prev=ks[level - 2], prev_virtual_to_real=prev_v2r,
+                verbose=False)
+            prev_v2r = info["virtual_to_real"]
+            # What the levels below reached, when this run is asked to learn
+            # from them rather than escalate. Off by default: it changes which
+            # ring the level settles on, so it is part of the cache key and a
+            # run stored under it is never confused with the ordinary search.
+            level_search = dict(search)
+            learned = _learned_reach(rows) if ctx["reach_from_previous"] else 0
+            if learned:
+                level_search["max_pair_extension"] = learned
+                level_search["escalate_extension"] = False
+            checkpoint = copy.deepcopy((strands, info))
+            _send_stage_frame(strands, level, k_level, "ring built")
+            NX._progress_frame_callback = _candidate_frame_emitter(
+                strands, level, k_level)
+            try:
+                result = NX.align_continuation_level(
+                    strands, m, n, k_level, direction, hand, level, info,
+                    seed_extensions=level_seeds, verbose=False, **level_search)
+            finally:
+                NX._progress_frame_callback = None
+            _send_stage_frame(
+                strands, level, k_level, "candidate accepted", 1, 1)
+            snapshot = [dict(s) for s in strands]
+            stages.append({"level": level, "k": k_level,
+                           "label": f"twist {level}",
+                           "strands": _stage_strands(NX._snapshot_json(strands))})
+        rows.append(describe(result, snapshot, level, k_level,
+                             ctx["expected"], ctx["sizes"]))
+        _register_level(level, k_level, checkpoint, result, search)
+    return strands
+
+
 def generate(m, n, ks, hand="lh", direction="cw",
              prefer_short_arms=True, ext_step=None, combo_budget=None,
              reach_from_previous=False, level1_pin=None,
@@ -544,51 +624,18 @@ def generate(m, n, ks, hand="lh", direction="cw",
     rows.append(describe(result, snapshot, 1, ks[0], expected, sizes))
     _register_level(1, ks[0], checkpoint1, result, search)
 
-    seeds = [(rows[0]["ext"][0], rows[0]["ext"][1])]
-    level1_for_k = {ks[0]: (tuple(rows[0]["ext"][0]), tuple(rows[0]["ext"][1]))}
-    prev_v2r = virtual_to_real
-    for level in range(2, len(ks) + 1):
-        k_level = ks[level - 1]
-        emitProgress(f"Calculating L{level} · k={k_level}…")
-        with contextlib.redirect_stdout(io.StringIO()):
-            if k_level not in level1_for_k:
-                level1_for_k[k_level] = level1_extensions(
-                    m, n, k_level, hand, direction, search)
-            k_seed = level1_for_k[k_level]
-            level_seeds = ([k_seed] if k_seed else []) + list(reversed(seeds))
-            strands, info = NX.add_continuation_level(
-                strands, m, n, k_level, direction, hand, level,
-                k_prev=ks[level - 2], prev_virtual_to_real=prev_v2r,
-                verbose=False)
-            prev_v2r = info["virtual_to_real"]
-            # What the levels below reached, when this run is asked to learn
-            # from them rather than escalate. Off by default: it changes which
-            # ring the level settles on, so it is part of the cache key and a
-            # run stored under it is never confused with the ordinary search.
-            level_search = dict(search)
-            learned = _learned_reach(rows) if reach_from_previous else 0
-            if learned:
-                level_search["max_pair_extension"] = learned
-                level_search["escalate_extension"] = False
-            checkpoint = copy.deepcopy((strands, info))
-            _send_stage_frame(strands, level, k_level, "ring built")
-            NX._progress_frame_callback = _candidate_frame_emitter(
-                strands, level, k_level)
-            try:
-                result = NX.align_continuation_level(
-                    strands, m, n, k_level, direction, hand, level, info,
-                    seed_extensions=level_seeds, verbose=False, **level_search)
-            finally:
-                NX._progress_frame_callback = None
-            _send_stage_frame(
-                strands, level, k_level, "candidate accepted", 1, 1)
-            snapshot = [dict(s) for s in strands]
-            stages.append({"level": level, "k": k_level,
-                           "label": f"twist {level}",
-                           "strands": _stage_strands(NX._snapshot_json(strands))})
-        rows.append(describe(result, snapshot, level, k_level, expected, sizes))
-        _register_level(level, k_level, checkpoint, result, search)
-        seeds.append((rows[-1]["ext"][0], rows[-1]["ext"][1]))
+    # Everything another level would need, kept on the session rather than in
+    # this frame: fit_adopt builds levels with the SAME code after a fitted ring
+    # replaces one, and a rebuild that searched on different flags from the run
+    # it is continuing would be a different stitch wearing the run's name.
+    context = {"m": m, "n": n, "ks": ks, "hand": hand, "direction": direction,
+               "search": search, "reach_from_previous": reach_from_previous,
+               "expected": expected, "sizes": sizes,
+               "rows": rows, "stages": stages,
+               "level1_for_k": {ks[0]: (tuple(rows[0]["ext"][0]),
+                                        tuple(rows[0]["ext"][1]))}}
+    _SESSION["run"] = context
+    _grow_levels(strands, virtual_to_real, 2, context)
 
     return json.dumps({
         "m": m, "n": n, "ks": ks, "hand": hand, "direction": direction,
@@ -1272,6 +1319,90 @@ def fit_plan_now(m, n, ks, hand="lh", direction="cw"):
     return json.dumps(out, separators=(",", ":"))
 
 
+def fit_bands_from_json(text):
+    """`{"hExt":…,"hAngle":…,"vExt":…,"vAngle":…}` as the four values a fit takes.
+
+    JSON text for exactly the reason l1_from_json is text, and this one had
+    already gone wrong: a JS `null` handed to `globals.set` arrives as `JsNull`,
+    which is not `None` and has no `.to_py()`. The worker's guard read
+
+        None if mxn_h_ext is None else mxn_h_ext.to_py()
+
+    which is obviously correct and never true, so the else branch ran and raised
+    `AttributeError: 'JsNull' object has no attribute 'to_py'` -- on precisely
+    the band that asked to be LEFT ALONE, which is the one a fit sends null for
+    whenever a band needs no fitting or was never searched.
+
+    A null band comes back as None here, and None is what fit_weave means by
+    "hold it where the engine left it".
+    """
+    if not text:
+        return (None, None, None, None)
+    got = json.loads(text)
+    if not isinstance(got, dict):
+        raise ValueError("fit bands must be an object, got %r" % (got,))
+
+    def ext(key):
+        value = got.get(key)
+        return None if value is None else [float(v) for v in value]
+
+    def angle(key):
+        value = got.get(key)
+        return None if value is None else float(value)
+
+    return (ext("hExt"), angle("hAngle"), ext("vExt"), angle("vAngle"))
+
+
+def _fit_bands(entry, h_ext, h_angle, v_ext, v_angle):
+    """The two band candidates a fit names, or None when no plan was read.
+
+    `(h_cand, v_cand, lengths)`. A band whose extensions are None is held at the
+    engine's own pick, which is what a band that needs no fitting asks for --
+    two arms are a mirror pair, so they are always the same length.
+
+    Shared by fit_weave and fit_adopt so that the ring a person LOOKS at and the
+    ring the levels above are then built on are placed by one piece of code. Two
+    transcriptions of "put the bands here" is exactly the kind of drift that
+    ends with a stack whose upper levels stand on a ring nobody saw.
+    """
+    pick_h, pick_v = entry["engine_pick_hv"]
+    h_cands, v_cands = entry["h_cands"], entry["v_cands"]
+    cands = []
+    lengths = {}
+    for want, ext, angle, picked, pool in (
+            ("horizontal", h_ext, h_angle, pick_h, h_cands),
+            ("vertical", v_ext, v_angle, pick_v, v_cands)):
+        if ext is None:
+            cands.append(pool[picked] if picked < len(pool) else None)
+            continue
+        data = (entry.get("trace_bands") or {}).get(want)
+        if data is None:
+            return None
+        ext = [float(e) for e in ext]
+        moves, arms = _band_moves(data, ext, angle)
+        lengths["h" if want == "horizontal" else "v"] = [float(x) for x in arms]
+        cands.append({"ext": tuple(ext), "angle": float(angle),
+                      "gap": None, "moves": moves})
+    return cands[0], cands[1], lengths
+
+
+def _fit_apply(entry, h_cand, v_cand):
+    """That candidate pair, applied to a fresh clone of the level's checkpoint.
+
+    Returns the live `(strands, info, crossings, row)` -- live because fit_adopt
+    grows the next level onto these very strands, and a JSON snapshot cannot be
+    grown onto.
+    """
+    m, n = _SESSION["m"], _SESSION["n"]
+    strands, info = copy.deepcopy(entry["checkpoint"])
+    crossings = NX.apply_solution(strands, info, entry["level"], m, n,
+                                  _SESSION["hand"], h_cand, v_cand)
+    row = describe(_synth_result(entry, h_cand or {}, v_cand or {}),
+                   [dict(s) for s in strands], entry["level"], entry["k"],
+                   4 * m * n, (2 * m, 2 * n))
+    return strands, info, crossings, row
+
+
 def fit_weave(level, h_ext, h_angle, v_ext, v_angle):
     """Weave a ring with BOTH bands placed by the caller, and audit it.
 
@@ -1287,36 +1418,14 @@ def fit_weave(level, h_ext, h_angle, v_ext, v_angle):
     export is the number the applied geometry actually has.
     """
     entry = _level_session(int(level))
-    pick_h, pick_v = entry["engine_pick_hv"]
-    h_cands, v_cands = entry["h_cands"], entry["v_cands"]
-    cands = []
-    lengths = {}
-    for want, ext, angle, picked, pool in (
-            ("horizontal", h_ext, h_angle, pick_h, h_cands),
-            ("vertical", v_ext, v_angle, pick_v, v_cands)):
-        if ext is None:
-            cands.append(pool[picked] if picked < len(pool) else None)
-            continue
-        data = (entry.get("trace_bands") or {}).get(want)
-        if data is None:
-            return json.dumps({
-                "level": entry["level"], "unavailable": True,
-                "reason": "call fit_plan first; the weave reads its band inputs",
-            }, separators=(",", ":"))
-        ext = [float(e) for e in ext]
-        moves, arms = _band_moves(data, ext, angle)
-        lengths["h" if want == "horizontal" else "v"] = [float(x) for x in arms]
-        cands.append({"ext": tuple(ext), "angle": float(angle),
-                      "gap": None, "moves": moves})
-    h_cand, v_cand = cands
-
-    m, n = _SESSION["m"], _SESSION["n"]
-    strands, info = copy.deepcopy(entry["checkpoint"])
-    crossings = NX.apply_solution(strands, info, entry["level"], m, n,
-                                  _SESSION["hand"], h_cand, v_cand)
-    row = describe(_synth_result(entry, h_cand or {}, v_cand or {}),
-                   [dict(s) for s in strands], entry["level"], entry["k"],
-                   4 * m * n, (2 * m, 2 * n))
+    placed = _fit_bands(entry, h_ext, h_angle, v_ext, v_angle)
+    if placed is None:
+        return json.dumps({
+            "level": entry["level"], "unavailable": True,
+            "reason": "call fit_plan first; the weave reads its band inputs",
+        }, separators=(",", ":"))
+    h_cand, v_cand, lengths = placed
+    strands, info, crossings, row = _fit_apply(entry, h_cand, v_cand)
     return json.dumps({
         "level": entry["level"], "unavailable": False,
         "h": {"ext": list(h_cand["ext"]) if h_cand else [],
@@ -1325,6 +1434,105 @@ def fit_weave(level, h_ext, h_angle, v_ext, v_angle):
               "angle": v_cand["angle"] if v_cand else None},
         "lengths": lengths, "crossings": crossings, "row": row,
         "strands": _stage_strands(NX._snapshot_json(strands)),
+    }, separators=(",", ":"))
+
+
+def fit_adopt(level, h_ext, h_angle, v_ext, v_angle, rebuild=True):
+    """Make a fitted ring THIS level's ring, and rebuild every level above it.
+
+    This is what lets a stitch be fixed one level at a time. `fit_weave` weaves
+    a fit and audits it, but it always starts from the level's own checkpoint --
+    the ring the RUN built underneath -- so a fit is a proposal about one level
+    and nothing above it ever hears about it. Fit L1, move to L2, and L2 is
+    still sitting on the engine's L1: the two fits never coexisted in a ring,
+    and a judgement saved over both would be describing a stitch that was never
+    woven.
+
+    So the fitted ring is adopted: it replaces this level's row and diagram, and
+    every level above it is built again from it, by `_grow_levels` -- the same
+    search, the same flags and the same seeds the run itself used. What comes
+    back IS the stitch as it now stands, from `level` up.
+
+    The cost is honest and large: rebuilding is a real search per level, the
+    same work `generate` did for those levels. `rebuild=False` adopts the ring
+    and leaves the levels above alone, for the caller that wants the record
+    without the wait -- and it is then the caller's job to say that the levels
+    above stand on a ring that has moved.
+    """
+    level = int(level)
+    entry = _level_session(level)
+    context = _SESSION.get("run")
+    if context is None:
+        raise ValueError("level %s has no run to rebuild; run generate first"
+                         % level)
+    placed = _fit_bands(entry, h_ext, h_angle, v_ext, v_angle)
+    if placed is None:
+        return json.dumps({
+            "level": level, "unavailable": True,
+            "reason": "call fit_plan first; adopting reads its band inputs",
+        }, separators=(",", ":"))
+    h_cand, v_cand, lengths = placed
+    started = time.time()
+    strands, info, crossings, row = _fit_apply(entry, h_cand, v_cand)
+
+    # The run's own record, with this level's row and diagram replaced by the
+    # ring a person chose. When the levels above are being rebuilt they are
+    # dropped first, so a stale row cannot survive as a seed or as a diagram;
+    # when they are not, they are left exactly as they were and reported as
+    # standing on a ring that has moved.
+    stage = {"level": level, "k": entry["k"], "label": "fitted by hand",
+             "strands": _stage_strands(NX._snapshot_json(strands))}
+    keep = (lambda item: item["level"] < level) if rebuild \
+        else (lambda item: item["level"] != level)
+    rows = [r for r in context["rows"] if keep(r)]
+    stages = [s for s in context["stages"] if keep(s)]
+    rows.append(row)
+    stages.append(stage)
+    rows.sort(key=lambda r: r["level"])
+    stages.sort(key=lambda s: s["level"])
+    context["rows"], context["stages"] = rows, stages
+    # What was adopted, so the level can say where its ring came from after the
+    # page that adopted it has been reloaded.
+    entry["adopted"] = {
+        "h": {"ext": list(h_cand["ext"]) if h_cand else [],
+              "angle": h_cand["angle"] if h_cand else None},
+        "v": {"ext": list(v_cand["ext"]) if v_cand else [],
+              "angle": v_cand["angle"] if v_cand else None},
+    }
+    _SESSION["adopted"] = sorted(
+        {lv for lv, e in _SESSION["levels"].items() if e.get("adopted")})
+
+    if rebuild:
+        # Levels above are being rebuilt, so whatever they had adopted was
+        # adopted onto a ring that no longer exists.
+        for above in list(_SESSION["levels"]):
+            if above > level:
+                _SESSION["levels"][above].pop("adopted", None)
+        _grow_levels(strands, info["virtual_to_real"], level + 1, context)
+        _SESSION["adopted"] = sorted(
+            {lv for lv, e in _SESSION["levels"].items() if e.get("adopted")})
+
+    # What actually changed, and nothing that did not. Rebuilt, that is every
+    # level from the adopted one up; not rebuilt, it is the adopted level alone
+    # -- returning the levels above would be handing back rings that stand on a
+    # ring this call just moved out from under them.
+    def changed(item):
+        return item["level"] == level or (rebuild and item["level"] > level)
+    return json.dumps({
+        "level": level, "unavailable": False, "rebuilt": bool(rebuild),
+        "seconds": round(time.time() - started, 1),
+        "h": entry["adopted"]["h"], "v": entry["adopted"]["v"],
+        "lengths": lengths, "crossings": crossings, "row": row,
+        "adopted": _SESSION["adopted"],
+        # The levels this adopt left standing on a ring that has moved. Empty
+        # after a rebuild, by construction.
+        "stale": [] if rebuild else [lv for lv in sorted(_SESSION["levels"])
+                                     if lv > level],
+        "rows": [r for r in context["rows"] if changed(r)],
+        "stages": [s for s in context["stages"] if changed(s)],
+        "solutions": [_solution_meta(_SESSION["levels"][lv])
+                      for lv in sorted(_SESSION["levels"])
+                      if changed({"level": lv})],
     }, separators=(",", ":"))
 
 
