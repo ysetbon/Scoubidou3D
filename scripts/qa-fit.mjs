@@ -777,7 +777,19 @@ await page.evaluate(({ key, judgement }) => {
   localStorage.setItem('mxn-fit-judgements', JSON.stringify([{ key, judgement }]));
 }, {
   key: preloadKey(size.ks),
-  judgement: { ...judgementFor('qa-planned'), plan: size.plans[String(topLevel)] },
+  // Picks DELIBERATELY unlike the plan's own `applied`, because that is the
+  // distinction the knobs got wrong: they opened at the plan's extensions
+  // rather than at the ones a person judged. A plan captured without a search
+  // carries zeros, so a judged ring drew the person's strands while its knobs
+  // described a ring nobody chose — and the first drag replaced the one with
+  // the other.
+  judgement: {
+    ...judgementFor('qa-planned'),
+    plan: size.plans[String(topLevel)],
+    levels: [{ level: topLevel,
+               h: size.held.h.ext ? { ext: size.held.h.ext.map(e => e + 11), angle: 42 } : null,
+               v: size.held.v.ext ? { ext: size.held.v.ext.map(e => e + 11), angle: 42 } : null }],
+  },
 });
 await page.fill('#fit-m', String(size.m));
 await page.fill('#fit-n', String(size.n));
@@ -811,6 +823,19 @@ ok('and the engine was still never asked', edited.engineCalls === 0,
   `${edited.engineCalls} worker message(s)`);
 ok('the knobs open where the judged ring holds the bands',
   edited.nums.length >= 2 && edited.nums.every(v => v !== ''), edited.nums.join(', '));
+// The pick, not the plan. Every judged extension is 11px off the plan's own,
+// so a knob carrying the plan's value is visible as a number rather than as a
+// feeling about the diagram.
+{
+  const band = size.held.v.ext?.length ? size.held.v : size.held.h;
+  const want = (band.ext ?? []).map(e => e + 11);
+  const shown = edited.nums.slice(1).map(Number);
+  ok('and at the extensions the person JUDGED, not the plan\'s own',
+    want.length > 0 && want.every(e => shown.some(v => Math.abs(v - e) < 0.01)),
+    `judged ${want.join(', ')} · knobs ${shown.join(', ')}`);
+  ok('and at the heading they judged it at',
+    Math.abs(Number(edited.nums[0]) - 42) < 0.01, edited.nums[0]);
+}
 ok('the live readout measures the judged configuration',
   /Δ neigh/.test(edited.read), edited.read.replace(/\s+/g, ' ').slice(0, 60));
 ok('the runbar says the ring came off the shelf', edited.shelfChip);

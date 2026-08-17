@@ -941,8 +941,25 @@ export function Fitter() {
     for (const key of BANDS) {
       const inputs = got[key];
       if (!inputs || inputs.unavailable) continue;
-      const angle = heading(stage.strands, inputs.names) ?? inputs.appliedAngle;
-      if (angle !== null) heldNow[key] = { ext: [...inputs.applied], angle };
+      // The knobs open at the JUDGED PICK, not at the plan's `applied`.
+      //
+      // `applied` is what the plan was captured with, and a plan captured
+      // without a search carries zeros — so a judged ring opened its knobs at
+      // 0, 0 while drawing the person's ring beside them. Every number under
+      // the knobs then described a ring nobody chose (a −36 px gap margin on a
+      // pick judged at +3.7), and the first touch of a slider replaced the
+      // judged ring with that one.
+      //
+      // The pick is the judgement's own `levels[…].h/v`: the extensions and
+      // the heading a person settled on. The ring's own heading is the
+      // fallback, because it is measured off the strands being drawn, and the
+      // plan's `applied` is the last resort.
+      const judged = f.judgement.levels.find(l => l.level === level);
+      const pick = judged ? (key === "h" ? judged.h : judged.v) : null;
+      const angle = pick?.angle
+        ?? heading(stage.strands, inputs.names) ?? inputs.appliedAngle;
+      const ext = pick?.ext ?? inputs.applied;
+      if (angle !== null) heldNow[key] = { ext: [...ext], angle };
     }
     const a = f.judgement.audit;
     const row: AuditRow = {
