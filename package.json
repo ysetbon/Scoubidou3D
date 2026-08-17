@@ -20,6 +20,7 @@
     "check:atlas": "esbuild scripts/check-atlas.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-atlas.mjs --log-level=warning && node node_modules/.cache/check-atlas.mjs",
     "check:fit": "esbuild scripts/check-fit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-fit.mjs --log-level=warning && node node_modules/.cache/check-fit.mjs",
     "check:l1": "python3 scripts/check-l1-replay.py",
+    "check:boundary": "node scripts/check-boundary.mjs",
     "check:reach": "esbuild scripts/check-reach.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-reach.mjs --log-level=warning && node node_modules/.cache/check-reach.mjs",
     "check:picks": "esbuild scripts/check-lab-picks.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-lab-picks.mjs --log-level=warning && node node_modules/.cache/check-lab-picks.mjs",
     "check:board": "esbuild scripts/check-board.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-board.mjs --log-level=warning && node node_modules/.cache/check-board.mjs",
@@ -44,6 +45,7 @@
     "@types/three": "^0.169.0",
     "@vitejs/plugin-react": "^4.3.4",
     "esbuild": "^0.21.5",
+    "pyodide": "^0.28.3",
     "typescript": "^5.6.0",
     "vite": "^5.4.0"
   },

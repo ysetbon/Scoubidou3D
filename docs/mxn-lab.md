@@ -275,8 +275,21 @@ first sweep after it found it in about a second.
 Nothing in CI could have. `npm run qa:cache` drives the real page against a real
 Worker but asserts the engine is never woken — that is the whole point of a
 cache test — and the one path that does wake it fetches Pyodide from a CDN the
-sandbox blocks. So `npm run check:l1` pins the boundary by reading the workers
-instead: text across, one parser, and no `null` on the path at all.
+sandbox blocks. So **no test in this repository executed that seam at all**.
+
+One does now. `npm run check:boundary` boots a real Pyodide **off npm**, which
+needs no CDN and no browser and takes a couple of seconds, and pins three
+things: that a JS `null` really does arrive as `JsNull` rather than `None` (a
+fact about the runtime, so a future Pyodide changing it goes red on purpose);
+that `l1_from_json` — lifted out of `bridge.py` rather than restated — handles
+the real seam; and that **every global a worker's Python call string
+dereferences is non-null when every optional field is omitted**.
+
+That last rule is the exact one, and it is narrower than "no JsNull anywhere":
+`mxn_step` has been a `JsNull` since the step picker gained an `auto`, and it is
+harmless because Python only ever tests it for truth. What is fatal is calling a
+method on one. Reintroducing the original line turns the check red on that
+assertion and nothing else.
 
 #### Where it deliberately does not happen
 
