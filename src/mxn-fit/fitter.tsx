@@ -342,6 +342,74 @@ async function bestFromAnywhere(
 }
 
 /**
+ * Every key on the shelf that is about exactly these levels — WHATEVER SEARCH
+ * FLAGS produced it.
+ *
+ * This is the difference between finding a person's ★ best and not. A picks key
+ * is `…/lh-cw/2x1/-1/s1-eauto-b400000`, and that last segment is the search the
+ * run was computed under: the fitter's is `s1-eauto-b400000`, the farm's is
+ * `s1-e5-b100000000`, a reach-capped one carries `-r1`, a hand-gridded one
+ * `-h63`. Asking for one exact key therefore asks "what did somebody judge
+ * about a run searched exactly the way I search" — and a ★ best judged from the
+ * lab or the farm answers a different key and is invisible.
+ *
+ * For a JUDGED RING that distinction is not real. The flags say how a ring was
+ * FOUND; the judgement is about the geometry that was found, and level 1 is
+ * adopted by handing the engine the strands wholesale. So the match here is
+ * size, hand, direction and the ks prefix, and the flags are ignored.
+ *
+ * The exact key is still tried first and returned first, because it is one GET
+ * against a catalogue listing, and because a ring judged under this page's own
+ * flags is the nearest thing to what was asked for.
+ */
+async function shelfDescriptors(
+  base: string, token: string,
+): Promise<RunDescriptor[]> {
+  const out: RunDescriptor[] = [];
+  const seen = new Set<string>();
+  const add = (d: RunDescriptor) => {
+    const key = picksKey(d);
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(d);
+  };
+  // This browser's own judgements first: they cost nothing to list.
+  try {
+    const rows = JSON.parse(readSetting(JUDGEMENTS_KEY) || "[]") as { key: string }[];
+    for (const key of new Set(rows.map(r => r.key))) {
+      const parsed = parsePicksKey(key);
+      if (parsed?.cacheVersion === CACHE_VERSION) add(parsed.descriptor);
+    }
+  } catch { /* a torn local store is no judgements, not an error */ }
+  if (!base) return out;
+  try {
+    const entries = await createCache({ base, token }).catalogue("picks/", 200);
+    for (const entry of entries) {
+      const parsed = parsePicksKey(entry.key);
+      if (parsed?.cacheVersion === CACHE_VERSION) add(parsed.descriptor);
+    }
+  } catch { /* an unreachable catalogue leaves the exact key, which may hit */ }
+  return out;
+}
+
+/**
+ * Which of those keys are about exactly these levels. Pure, and exact-key
+ * first — the widening is a fallback, not the normal path.
+ */
+function keysForPrefix(
+  want: RunDescriptor, level: number, pool: RunDescriptor[],
+): RunDescriptor[] {
+  const prefix = prefixDescriptor(want, level);
+  const same = (d: RunDescriptor) =>
+    d.m === prefix.m && d.n === prefix.n && d.hand === prefix.hand
+    && d.direction === prefix.direction
+    && d.ks.length === prefix.ks.length
+    && d.ks.every((k, index) => k === prefix.ks[index]);
+  const exact = picksKey(prefix);
+  return [prefix, ...pool.filter(d => same(d) && picksKey(d) !== exact)];
+}
+
+/**
  * What the shelf has for the parameters in the form, found WITHOUT the engine.
  *
  * The fit's own best-fit lookup happens inside fitAt, which is behind
@@ -739,6 +807,10 @@ export function Fitter() {
   // What the shelf already holds for the parameters in the form, before any
   // engine is asked. See the Preload type for why this exists.
   const [preload, setPreload] = useState<Preload>({ state: "off" });
+  // Mirrored for run(), which reads what the preload found without wanting to
+  // re-render or re-run anything when it moves.
+  const preloadRef = useRef<Preload>(preload);
+  preloadRef.current = preload;
 
   // ---------------------------------------------------------------------
   // The ladder. A run is a stack of rings and this page fits ONE of them, so
@@ -1102,16 +1174,28 @@ export function Fitter() {
         // than an empty page, and it is why the whole ladder can start
         // anywhere: whatever anybody has fixed on the way up is addressed by
         // the prefix that names it.
+        // Under ANY search flags: see keysForPrefix. A ★ best judged from the
+        // lab or the farm is keyed by the search THEY ran, and asking only for
+        // this page's own flags made a person's pick invisible — which is
+        // exactly how "why didn't it pick yonatan's L1" happens.
         const floor = Math.max(1, wanted.ks.length - PREFIX_LIMIT);
+        // One listing for the whole walk. Fetched here rather than per cut: a
+        // ten-level sequence has ten prefixes, and ten catalogue listings to
+        // answer one question is a page that reads the shelf ten times to say
+        // the same thing.
+        const pool = await shelfDescriptors(base, token);
+        if (!current()) return;
         for (let cut = wanted.ks.length - 1; cut >= floor; cut -= 1) {
-          const upto = prefixDescriptor(wanted, cut);
-          if (tried.includes(picksKey(upto))) continue;
-          tried.push(picksKey(upto));
-          const below = await look(upto);
-          if (!current()) return;
-          if (below.best && below.stage) {
+          const candidates = keysForPrefix(wanted, cut, pool);
+          for (const upto of candidates) {
+            if (tried.includes(picksKey(upto))) continue;
+            tried.push(picksKey(upto));
+            const below = await look(upto);
+            if (!current()) return;
+            if (!below.best || !below.stage) continue;
             note(`Preload: ★ best for the first ${cut} level${cut === 1 ? "" : "s"}`
-              + ` — ${nameOf(upto)}, judged by ${below.best.chooser}`);
+              + ` — ${nameOf(upto)}, judged by ${below.best.chooser}`
+              + `, under ${picksKey(upto).split("/").pop()}`);
             show({ stage: below.stage, judgement: below.best, from: below.picks.from,
                    descriptor: upto, judgements: below.picks.judgements }, "prefix");
             return;
@@ -1434,20 +1518,56 @@ export function Fitter() {
    * stored carry no strands and cannot be adopted; those still search.
    */
   const judgedLevelOne = async (d: RunDescriptor) => {
-    const upto = prefixDescriptor(d, 1);
-    const shelf = await readPicks(upto, apiUrl.trim(), apiToken.trim());
-    const best = shelf.judgements.find(j => j.verdict === "best");
-    const bands = best?.levels.find(l => l.level === 1);
-    const strands = best?.strands as Strand[] | undefined;
-    if (!best || !bands || !Array.isArray(strands) || !strands.length) return null;
-    return {
-      judgement: best, from: shelf.from, bands,
-      ring: {
-        strands,
-        h_ext: bands.h?.ext ?? [],
-        v_ext: bands.v?.ext ?? [],
-      },
+    // Every key about this size, hand, direction and ks[0], under any search
+    // flags — the same widening the preload does, and for the same reason: a
+    // ★ best judged from the lab is not keyed by the fitter's own search, and
+    // the run must adopt it all the same.
+    const look = async (upto: RunDescriptor) => {
+      const shelf = await readPicks(upto, apiUrl.trim(), apiToken.trim());
+      const best = shelf.judgements.find(j => j.verdict === "best");
+      const bands = best?.levels.find(l => l.level === 1);
+      const strands = best?.strands as Strand[] | undefined;
+      if (!best || !bands || !Array.isArray(strands) || !strands.length) return null;
+      return {
+        judgement: best, from: shelf.from, bands, key: picksKey(upto),
+        ring: {
+          strands,
+          h_ext: bands.h?.ext ?? [],
+          v_ext: bands.v?.ext ?? [],
+        },
+      };
     };
+    // What the preload already found, before anything is fetched.
+    //
+    // The preload has done this search — the exact key, then every key on the
+    // shelf about the same size, hand, direction and ks[0] under any search
+    // flags — and it is holding the judgement, strands and all. Repeating it
+    // here would be a second round trip for an answer already on screen, and
+    // worse: a Run would wait on a catalogue listing before it could draw a
+    // CACHED run, spending the cache's whole saving looking for something it
+    // has. It also keeps one promise the page should keep anyway — what is
+    // drawn as this run's L1 is what the run is built on.
+    const shown = preloadRef.current;
+    if (shown.state === "shown") {
+      const p = shown.descriptor;
+      const isL1 = p.m === d.m && p.n === d.n && p.hand === d.hand
+        && p.direction === d.direction
+        && p.ks.length === 1 && p.ks[0] === d.ks[0];
+      const bands = shown.judgement.levels.find(l => l.level === 1);
+      const strands = shown.judgement.strands as Strand[] | undefined;
+      if (isL1 && shown.judgement.verdict === "best" && bands
+          && Array.isArray(strands) && strands.length) {
+        return {
+          judgement: shown.judgement, from: shown.from, bands,
+          key: picksKey(p),
+          ring: { strands, h_ext: bands.h?.ext ?? [], v_ext: bands.v?.ext ?? [] },
+        };
+      }
+    }
+    // Otherwise the exact key, and only that: one GET. The widening lives in
+    // the preload, which runs on load and on every parameter change and is not
+    // holding a drawing up while it works.
+    return look(prefixDescriptor(d, 1));
   };
 
   const run = async () => {
@@ -1482,8 +1602,8 @@ export function Fitter() {
       }
       if (adopt) {
         note(`Level 1 taken from ${adopt.from} — ${adopt.judgement.chooser}'s `
-          + "★ best. The engine adopts it instead of searching, and every level "
-          + "above is built on it");
+          + `★ best under picks/${adopt.key}. The engine adopts it instead of `
+          + "searching, and every level above is built on it");
       }
       const shelf = apiUrl.trim()
         ? createCache({ base: apiUrl.trim(), token: apiToken.trim() }) : null;

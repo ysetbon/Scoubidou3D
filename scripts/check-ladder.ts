@@ -18,7 +18,7 @@ import {
   stackLevels, stackMetrics, stackSummary, type FixedLevel,
 } from "../src/mxn-fit/ladder";
 import { parseSequence, specFromSearch } from "../src/mxn-farm/plan";
-import { picksKey, type RunDescriptor } from "../src/mxn-lab/cache";
+import { parsePicksKey, picksKey, type RunDescriptor } from "../src/mxn-lab/cache";
 
 const THE_URL = "?m=2&n=1&ks=-1-1-1-1-1-1-1-1-1-1&hand=lh&direction=cw";
 
@@ -92,6 +92,55 @@ check("L1's key is the key a single-k judgement was saved under",
   picksKey(prefixDescriptor(TEN, 1)));
 check("and it is NOT the ten-level key",
   picksKey(prefixDescriptor(TEN, 1)) !== picksKey(TEN));
+
+{
+  // The one that bit in the field. A picks key ends in the search the run was
+  // computed under — the fitter's `s1-eauto-b400000`, the farm's
+  // `s1-e5-b100000000`, `-r1` for a reach cap, `-h63` for a hand grid. Asking
+  // for one exact key asks "what did somebody judge about a run searched
+  // exactly the way I search", so a ★ best judged from the lab answered a
+  // different key and was invisible. For a judged RING the flags are not part
+  // of what it is: they say how it was found, and the ring is adopted whole.
+  const flags = [
+    "s1-eauto-b400000",         // the fitter's own
+    "s1-e5-b100000000",         // the farm's sweep
+    "s1-eauto-b400000-r1",      // reach-capped
+    "s1-eauto-b400000-h63",     // on a hand grid
+    "s1-eauto-b400000-j63",     // L1 adopted from a judged ring
+  ];
+  const wanted = prefixDescriptor(TEN, 1);
+  const keys = flags.map(f => `picks/v3/lh-cw/2x1/-1/${f}`);
+  const parsed = keys.map(parsePicksKey);
+  check("every flag spelling parses back to a descriptor",
+    parsed.every(p => !!p), keys.length + " keys");
+  const matches = parsed.filter(p => !!p).filter(p =>
+    p!.descriptor.m === wanted.m && p!.descriptor.n === wanted.n
+    && p!.descriptor.hand === wanted.hand
+    && p!.descriptor.direction === wanted.direction
+    && p!.descriptor.ks.length === wanted.ks.length
+    && p!.descriptor.ks.every((k, i) => k === wanted.ks[i]));
+  check("and every one of them is about L1 of this run, flags aside",
+    matches.length === flags.length, `${matches.length} of ${flags.length}`);
+  check("while their keys are all different, which is why one GET missed them",
+    new Set(keys).size === flags.length);
+  // The guard that stops the widening going too far: a different ks, size,
+  // hand or direction is a different ring and must NOT match.
+  for (const [label, key] of [
+    ["a different k", "picks/v3/lh-cw/2x1/1/s1-eauto-b400000"],
+    ["a longer prefix", "picks/v3/lh-cw/2x1/-1_-1/s1-eauto-b400000"],
+    ["another size", "picks/v3/lh-cw/3x1/-1/s1-eauto-b400000"],
+    ["the other hand", "picks/v3/rh-cw/2x1/-1/s1-eauto-b400000"],
+    ["the other direction", "picks/v3/lh-ccw/2x1/-1/s1-eauto-b400000"],
+  ] as [string, string][]) {
+    const p = parsePicksKey(key)!;
+    const hit = p.descriptor.m === wanted.m && p.descriptor.n === wanted.n
+      && p.descriptor.hand === wanted.hand
+      && p.descriptor.direction === wanted.direction
+      && p.descriptor.ks.length === wanted.ks.length
+      && p.descriptor.ks.every((k, i) => k === wanted.ks[i]);
+    check(`  ${label} is not this run's L1`, !hit, key);
+  }
+}
 
 console.log("\n=========== what state each level is in ===========\n");
 
