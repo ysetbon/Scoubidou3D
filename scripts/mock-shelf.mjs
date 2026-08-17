@@ -259,7 +259,9 @@ createServer(async (request, response) => {
   console.log('  The link loads M 3, N 1, KS -1 -1 -1, opens ADVANCED SEARCH,');
   console.log('  sizes from the judged ★ best, and lets each deeper level stop at');
   console.log("  the largest extension the finished level immediately below used.");
-  console.log('  Just press RUN — the sidebar says which grid it chose.\n');
+  console.log("  L1 is Yonatan's ★ best from the [-1] subdirectory, on screen");
+  console.log('  before anyone presses Run. Press RUN to search L2 and L3 inside');
+  console.log('  that ring\'s reach.\n');
   console.log('  Then untick and Run again to compare against the full width.\n');
   console.log('  Pyodide still comes from the CDN, so this needs internet the');
   console.log('  first time the engine runs. Ctrl-C to stop.\n');

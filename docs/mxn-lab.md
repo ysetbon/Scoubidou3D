@@ -445,6 +445,8 @@ and the log says how many of the plan actually got sized.
 copied from Cloudflare into that local shelf — strands included, with no token
 because cache reads are public. It prints a one-click URL with M 3, N 1,
 KS `-1 -1 -1`, judged-pick sizing and prior-level reach already selected.
+Opening it draws Yonatan's L1 from the `[-1]` subdirectory immediately; Run
+then searches L2 and L3 inside that ring's reach.
 
 If the public read is unavailable, the mock says so loudly and falls back to
 `mocks/fixtures/judged-3x1-k-1.json`, an 8/12 engine ring. That fallback is
@@ -722,6 +724,16 @@ was on screen at the time. The lookup asks the run's own key first, then the
 fitter's canonical flags, then any other flags-variant of the *same size, hand,
 direction and ks* that the shelf or this browser lists — so an exact match is
 never passed over for a looser one. Nothing else is ever substituted.
+
+**The ks sequence is allowed to be a prefix.** L1 of `[k, k, k]` *is* the L1 of
+`[k]`, and a hand judges that ring under the single-k subdirectory
+(`picks/…/3x1/-1/…`). A lab showing `[-1, -1, -1]` that only asked
+`picks/…/3x1/-1_-1_-1/…` used to report no human pick for a size whose k board
+plainly showed one. The walk is longest-first: a judgement that really is about
+this sequence still wins its level, and shorter prefixes fill the levels nobody
+judged here — which is how Yonatan's 3×1 k=−1 ★ best lands on L1 of a deep
+run, including the `run=0` mock:shelf URL that draws it without waking the
+engine.
 
 `src/mxn-lab/picks-shelf.ts` is pure and React-free so `npm run check:picks` can
 pin all of the above without a browser; `npm run qa:cache` drives the same rules

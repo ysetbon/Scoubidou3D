@@ -265,6 +265,32 @@ export function picksPrefix(d: RunDescriptor): string {
   return `picks/${CACHE_VERSION}/${d.hand}-${d.direction}/${d.m}x${d.n}/${ks}/`;
 }
 
+/**
+ * The same size, walked from the full sequence down to `[ks[0]]`.
+ *
+ * A ★ best is judged one level at a time, and L1 of `[k, k, k]` IS the L1 of
+ * `[k]` — that is the identity the whole shelf stands on. The fitter writes
+ * under the single-k subdirectory (`picks/…/3x1/-1/…`), so a lab showing
+ * `[-1, -1, -1]` that only asked the exact key would report no human pick for
+ * a size whose k board plainly shows one. Longest first, so a judgement that
+ * really is about this sequence still wins its level over a parent.
+ */
+export function ksPrefixDescriptors(want: RunDescriptor): RunDescriptor[] {
+  const out: RunDescriptor[] = [];
+  for (let len = want.ks.length; len >= 1; len--) {
+    out.push({ ...want, ks: want.ks.slice(0, len) });
+  }
+  return out;
+}
+
+/** Every level a prefix walk found a drawable ★ best for. */
+export type PrefixBests = {
+  byLevel: Record<number, JudgedPick>;
+  /** A best exists but carries no ring, so only the engine can draw it. */
+  ringless: Judgement | null;
+  searched: number;
+};
+
 /** What a lab card ended up with, and what it cost to find out. */
 export type ShelfBest = {
   pick: JudgedPick | null;
@@ -330,4 +356,31 @@ export async function findShelfBest(
     } catch { /* one unreadable artifact must not end the search */ }
   }
   return { pick: null, ringless: null, searched };
+}
+
+/**
+ * The ★ bests that apply to this run, including parent ks directories.
+ *
+ * `findShelfBest` stays exact-sequence: a flags-variant of `[1, 2, 2]` is
+ * still about that sequence. This is the other axis — a shorter ks that
+ * starts the same way is about an earlier level of the same ring, and L1
+ * of a deep run is where that matters.
+ */
+export async function findPrefixBests(
+  want: RunDescriptor, base: string, token: string, alive: () => boolean,
+): Promise<PrefixBests> {
+  const byLevel: Record<number, JudgedPick> = {};
+  let ringless: Judgement | null = null;
+  let searched = 0;
+  for (const prefix of ksPrefixDescriptors(want)) {
+    if (!alive()) break;
+    const found = await findShelfBest(prefix, base, token, alive);
+    searched += found.searched;
+    if (found.pick) {
+      if (!byLevel[found.pick.level]) byLevel[found.pick.level] = found.pick;
+    } else if (found.ringless && !ringless) {
+      ringless = found.ringless;
+    }
+  }
+  return { byLevel, ringless, searched };
 }
