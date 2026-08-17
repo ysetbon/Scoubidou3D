@@ -383,14 +383,34 @@ export function ComputeFarm() {
    * can fail a job: an unreachable shelf simply means the level is searched,
    * which is what every run did before this existed.
    */
-  const level1For = async (job: PlanJob): Promise<number[][] | null> => {
+  const level1For = async (job: PlanJob): Promise<
+    { ext: number[][] } | { nearMiss: string[] } | null
+  > => {
     if (job.ks.length < 2 || !replayL1Ref.current) return null;
+    const client = cacheRef.current;
     try {
-      const stored = await cacheRef.current.getRun(
-        { ...job.descriptor, ks: [job.ks[0]] });
+      const stored = await client.getRun({ ...job.descriptor, ks: [job.ks[0]] });
       const ext = (stored?.result as { rows?: { ext: number[][] }[] } | undefined)
         ?.rows?.[0]?.ext;
-      return Array.isArray(ext) && ext.length === 2 ? ext : null;
+      if (Array.isArray(ext) && ext.length === 2) return { ext };
+    } catch {
+      return null;   // an unreachable shelf just means the level is searched
+    }
+    // A miss on the exact key is the ordinary state — but a single-k run stored
+    // under DIFFERENT flags is not, and it is silent in a way that costs real
+    // hours: the level below is right there and the sweep searches it anyway,
+    // because a step-5 L1 is a different ring from a step-10 one and pinning
+    // across that would substitute somebody else's answer. Correct, and worth
+    // saying out loud with the key that WOULD have matched, because the fix is
+    // one field on this page.
+    try {
+      const ksPath = String(Math.trunc(job.ks[0]));
+      const entries = await client.catalogue(
+        `run/${CACHE_VERSION}/${job.hand}-${job.direction}/${job.m}x${job.n}/${ksPath}/`,
+        20);
+      const near = entries.map(entry => entry.key)
+        .filter(key => key !== `run/${runKey({ ...job.descriptor, ks: [job.ks[0]] })}`);
+      return near.length ? { nearMiss: near } : null;
     } catch {
       return null;
     }
@@ -506,9 +526,14 @@ export function ComputeFarm() {
         // "stored" is left out (the job-end line already sums the artifacts up)
         // but still advances the marker, so each census band logs its start.
         let loggedPhase: string | null = null;
-        const level1Extensions = await level1For(job);
+        const found = await level1For(job);
+        const level1Extensions = found && "ext" in found ? found.ext : null;
         if (level1Extensions) {
           say(`${label} — L1 replayed off the stored ks ${job.ks[0]} run`);
+        } else if (found && "nearMiss" in found) {
+          say(`${label} — L1 is on the shelf but under other flags, so this `
+            + `searches it: ${found.nearMiss.join(", ")}. Match those flags `
+            + `(section 2) to replay it instead.`);
         }
         const summaryReply = await driveHand(worker, {
           type: "job", hand: id,

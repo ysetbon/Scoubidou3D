@@ -172,6 +172,24 @@ it bought fifty seconds and arms nine times longer. Whole runs through
 
 Crossings never fall in any case measured, and rise in two.
 
+**On a deeper sequence it is a real trade, not a free win.** Measured on
+`[-1,-1,-1]`, where the escalation has two levels to compound over:
+
+| size · ks | off | on |
+| --- | --- | --- |
+| `3×1 [-1,-1,-1]` | 147.2s · **8, 10, 2** /12 · arms 170, 450, 280 | 16.3s · **8, 10, 10** /12 · arms 170, 50, 0 |
+| `2×1 [-1,-1,-1]` | 7.4s · **6, 6, 5** /8 · arms 110, 220, 180 | 1.9s · **6, 8, 2** /8 · arms 110, 30, 80 |
+
+On `3×1` level 3 goes from 2/12 to 10/12 — five times more complete, in a ninth
+of the time. On `2×1` level 2 improves and **level 3 falls from 5/8 to 2/8**. So
+this is a knob to try per size, not one to leave on across a sweep, and it being
+in the cache key is what makes trying it cheap: both answers can sit on the
+shelf at once and be compared.
+
+Deriving the *step* from the level below rather than the ceiling was measured
+too, and buys nothing: `gcd(80, 70, 20)` is 10, which is what `auto` already
+picks. It is not implemented.
+
 #### Why the cases it does nothing for are the closing ones
 
 `2×2 [-1,-1]` and every `[1,1]` row above are untouched, and that is not luck.
@@ -290,6 +308,30 @@ That last rule is the exact one, and it is narrower than "no JsNull anywhere":
 harmless because Python only ever tests it for truth. What is fatal is calling a
 method on one. Reintroducing the original line turns the check red on that
 assertion and nothing else.
+
+#### The flags have to match, and the miss is now said out loud
+
+L1 at step 5 is a **different ring** from L1 at step 10 — a finer grid is a
+different search — so the pin only fires when the stored single-k run carries
+the same flags as the run being computed. Pinning across that boundary would
+substitute somebody else's answer, so it is not done.
+
+What was wrong is that the miss was silent. A sweep at step 5 with `3x1/-1`
+sitting on the shelf at `s1-eauto-b400000` searched level 1 from scratch and
+said nothing about why, which on a 3×1 is 34 seconds per job. The farm now
+names the keys that *would* have matched:
+
+```
+3×1 ks -1 -1 -1 — L1 is on the shelf but under other flags, so this searches
+it: run/v3/lh-cw/3x1/-1/s1-eauto-b400000. Match those flags (section 2) to
+replay it instead.
+```
+
+Note that `auto` never resolves to 5: `EXT_STEPS` is `[10, 20, 25, 40, 50, 100]`
+and 5 is an explicit choice only, exactly as in the Python. So a sweep at step 5
+and a lab at `auto` are on two different shelves by construction, and the plan's
+own combo count tells them apart — 3×1 over three levels is 206,886 at step 5
+and 27,846 at step 10.
 
 #### Where it deliberately does not happen
 
