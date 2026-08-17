@@ -49,6 +49,13 @@ jobs:
       - name: The farm planner and cache-key shapes
         run: npm run check:plan
 
+      # The JS -> Python seam, in a real Pyodide off npm. Nothing else in the
+      # repo executes it: qa:cache drives the real page but asserts the engine
+      # is never woken, and the path that does wake it needs a CDN. A JS null
+      # arriving as JsNull rather than None broke every run once, on a green CI.
+      - name: The worker-to-engine boundary
+        run: npm run check:boundary
+
       # public/ files are served verbatim under stable URLs, so the ?v= key is
       # the only thing stopping a browser running last month's engine against
       # this month's workers. Changing the Python without bumping it is how
