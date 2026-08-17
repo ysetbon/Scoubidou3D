@@ -45,26 +45,38 @@ const eq = (what, got, want) =>
 // --------------------------------------------------------------------------
 
 function d1(db) {
-  const prepare = (sql, args = []) => ({
-    bind: (...next) => prepare(sql, next.map(v => v === undefined ? null : v)),
-    async first(column) {
-      const row = db.prepare(sql).all(...args)[0] ?? null;
-      return column && row ? row[column] : row;
-    },
-    async all() {
-      return { results: db.prepare(sql).all(...args), success: true };
-    },
-    async run() {
-      // RETURNING statements have to be stepped as a query or SQLite hands back
-      // nothing; everything else reports its change count.
-      if (/returning/i.test(sql)) {
-        const rows = db.prepare(sql).all(...args);
-        return { meta: { changes: rows.length }, results: rows };
-      }
-      const info = db.prepare(sql).run(...args);
-      return { meta: { changes: Number(info.changes) } };
-    },
-  });
+  const prepare = (sql) => {
+    // D1 accepts numbered placeholders, while older Node 22 node:sqlite
+    // releases do not bind them consistently. Reproduce D1's behaviour with
+    // anonymous placeholders and occurrence-ordered arguments.
+    const order = [];
+    sql = sql.replace(/\?(\d+)/g, (_, num) => {
+      order.push(Number(num) - 1);
+      return "?";
+    });
+    const remap = args => order.length ? order.map(at => args[at]) : args;
+    const statement = (args = []) => ({
+      bind: (...next) => statement(remap(next.map(v => v === undefined ? null : v))),
+      async first(column) {
+        const row = db.prepare(sql).all(...args)[0] ?? null;
+        return column && row ? row[column] : row;
+      },
+      async all() {
+        return { results: db.prepare(sql).all(...args), success: true };
+      },
+      async run() {
+        // RETURNING statements have to be stepped as a query or SQLite hands back
+        // nothing; everything else reports its change count.
+        if (/returning/i.test(sql)) {
+          const rows = db.prepare(sql).all(...args);
+          return { meta: { changes: rows.length }, results: rows };
+        }
+        const info = db.prepare(sql).run(...args);
+        return { meta: { changes: Number(info.changes) } };
+      },
+    });
+    return statement();
+  };
   return {
     prepare: sql => prepare(sql),
     async batch(statements) {

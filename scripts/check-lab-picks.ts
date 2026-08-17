@@ -21,8 +21,8 @@
 import type { Judgement, RunDescriptor } from "../src/mxn-lab/cache";
 import { picksKey } from "../src/mxn-lab/cache";
 import {
-  FITTER_FLAGS, auditOfPick, bestOf, levelOf, picksCandidates, picksPrefix,
-  pickOfJudgement,
+  FITTER_FLAGS, auditOfPick, bestOf, judgedDescriptor, levelOf, picksCandidates,
+  picksPrefix, pickOfJudgement,
 } from "../src/mxn-lab/picks-shelf";
 import type { Strand } from "../src/mxn-lab/exact-draw";
 
@@ -175,6 +175,28 @@ const FARM = { step: 5 as const, budget: 100_000_000 };
     paths.length === 3, paths.join(" · "));
   check("and the exact match is still first, never passed over for a looser one",
     paths[0] === "v3/lh-cw/2x1/-1/s1-e5-b100000000", paths[0]);
+}
+
+{
+  // A judgement is a hand-placed ring; the engine's search flags say nothing
+  // about it and the fitter sets none of them. Ticking "learn each level's
+  // reach" or "size from the ★ best" sent the lookup to `…-r1` / `…-h65`,
+  // which nothing will ever write, and the page then reported no ★ best for a
+  // size whose board plainly shows one. Both flags are stripped, and the size,
+  // hand, direction and ks — which are what the ring IS — are not.
+  const searching = descriptorAt(3, 1, [-1], {
+    reachFromPrevious: true, handCeiling: 65 });
+  const judged = judgedDescriptor(searching);
+  check("a pick is looked up without the engine's search flags",
+    picksKey(judged) === "v3/lh-cw/3x1/-1/s1-eauto-b400000", picksKey(judged));
+  check("  and the reach cap cannot send it somewhere nothing writes",
+    picksKey(judged) !== picksKey(searching));
+  check("  while the size, hand, direction and ks all survive",
+    judged.m === 3 && judged.n === 1 && judged.hand === "lh"
+    && judged.direction === "cw" && judged.ks.join() === "-1");
+  check("  and the first candidate asked for is the stripped one",
+    picksKey(picksCandidates(searching, [])[0]) === picksKey(judged),
+    picksKey(picksCandidates(searching, [])[0]));
 }
 
 {

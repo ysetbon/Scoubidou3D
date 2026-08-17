@@ -33,6 +33,22 @@ export const JUDGEMENTS_KEY = "mxn-fit-judgements";
  */
 export const FITTER_FLAGS = { shortArms: true, step: "auto" as const, budget: 400_000 };
 
+/**
+ * The parameter set a JUDGEMENT lives under, whatever the run asking is doing.
+ *
+ * A search flag describes how the engine looked; a judgement is a ring somebody
+ * placed by hand and a verdict they pressed on it, and the fitter sets none of
+ * them. So `reachFromPrevious` and `handCeiling` are stripped before a pick is
+ * looked up — otherwise ticking "learn each level's reach" sends the lookup to
+ * `picks/…-r1`, which nothing will ever write, and the page reports no ★ best
+ * for a size whose board plainly shows one. That happened.
+ *
+ * The size, the hand, the direction and the ks stay: those are what the ring IS.
+ */
+export function judgedDescriptor(d: RunDescriptor): RunDescriptor {
+  return { ...d, reachFromPrevious: false, handCeiling: undefined };
+}
+
 /** The judgements for one parameter set, and which stores answered for them. */
 export type Picks = { judgements: Judgement[]; from: string; reached: boolean };
 
@@ -180,6 +196,23 @@ export function auditOfPick(pick: JudgedPick): CardAudit {
   };
 }
 
+/**
+ * How far a judged ring reaches: its largest pair extension, either band.
+ *
+ * The one number a hand-fitted pick can hand a search. Its extensions cannot be
+ * searched FOR — 3×1 k=−1 was judged at `(62.55)` and `(55.75, 57.3, 27.5)`,
+ * and no grid contains those — but they say where the answer lives, and the
+ * 70→200 the engine walks past them is the expensive part of every level.
+ *
+ * Null when the pick carries no extensions at all, which is a judgement saved
+ * before the bands were stored: nothing to learn, so nothing is claimed.
+ */
+export function reachOfPick(pick: JudgedPick): number | null {
+  const values = [...pick.hExt, ...pick.vExt].filter(v => Number.isFinite(v));
+  const reach = Math.max(0, ...values);
+  return reach > 0 ? reach : null;
+}
+
 // ---------------------------------------------------------------------------
 // Finding the parameter set the judgements are actually under.
 // ---------------------------------------------------------------------------
@@ -211,8 +244,8 @@ export function picksCandidates(
     seen.add(key);
     out.push(d);
   };
-  add(want);
-  add({ ...want, ...FITTER_FLAGS });
+  add(judgedDescriptor(want));
+  add(judgedDescriptor({ ...want, ...FITTER_FLAGS }));
   const sameRing = (d: RunDescriptor) =>
     d.m === want.m && d.n === want.n && d.hand === want.hand
     && d.direction === want.direction
@@ -266,7 +299,7 @@ export async function findShelfBest(
     return { pick, ringless: pick ? null : best, searched };
   };
 
-  const first = await ask(want);
+  const first = await ask(judgedDescriptor(want));
   if (first) return first;
   if (!alive()) return { pick: null, ringless: null, searched };
 
@@ -287,7 +320,7 @@ export async function findShelfBest(
   } catch { /* a torn local store contributes no keys */ }
 
   const rest = picksCandidates(want, keys)
-    .filter(d => picksKey(d) !== picksKey(want))
+    .filter(d => picksKey(d) !== picksKey(judgedDescriptor(want)))
     .slice(0, CANDIDATE_LIMIT);
   for (const d of rest) {
     if (!alive()) break;

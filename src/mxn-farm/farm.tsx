@@ -21,7 +21,8 @@ import {
   writeSetting,
   type RunDescriptor,
 } from "../mxn-lab/cache";
-import { DEFAULT_COMBO_BUDGET } from "../mxn-lab/search-cost";
+import { DEFAULT_COMBO_BUDGET, handGrid, worstPairs } from "../mxn-lab/search-cost";
+import { findShelfBest, reachOfPick } from "../mxn-lab/picks-shelf";
 import {
   MAX_JOBS, MAX_LEVELS, MAX_SIDE, kLimits, labSearch, planSweep, specFromSearch,
   type KsMode, type PlanJob, type SweepSpec,
@@ -52,6 +53,7 @@ const DEFAULT_SPEC: SweepSpec = {
   // Off, like the lab's own default: a sweep stores what the engine ships
   // unless somebody asks for the other search.
   reachFromPrevious: false,
+  handFromPick: false,
   depth: 1,
   ksText: "1\n1 1 -1\n-1 -1",
   hand: "lh",
@@ -146,6 +148,8 @@ function jobFromRow(row: QueueRow, spec: SweepSpec): PlanJob {
     hand: descriptor.hand, direction: descriptor.direction,
     shortArms: descriptor.shortArms, step, budget: descriptor.budget,
     reachFromPrevious: !!descriptor.reachFromPrevious,
+    handStep: Number(raw.hand_step) || 0,
+    handCeiling: parseRunKey(row.id)?.descriptor.handCeiling ?? 0,
     weight: row.weight,
     wantTraces: Number(raw.want_traces) !== 0,
     // Runner policy rather than part of the answer's identity: how patient THIS
@@ -335,8 +339,15 @@ export function ComputeFarm() {
     writeSetting(BATCH_KEY, batch);
     try {
       let pushed = 0;
-      for (let at = 0; at < plan.jobs.length; at += 200) {
-        const slice = plan.jobs.slice(at, at + 200);
+      // The ★ best's grid is resolved HERE rather than in expandPlan, and the
+      // job's id re-minted from it. A job's id IS its cache key, so the ceiling
+      // has to be known before anything is queued — resolve it at run time and
+      // the runner would upload to a key the queue never heard of. expandPlan
+      // stays pure and synchronous, which is what check:plan holds it to.
+      const jobs = spec.handFromPick
+        ? await sizedFromPicks(plan.jobs) : plan.jobs;
+      for (let at = 0; at < jobs.length; at += 200) {
+        const slice = jobs.slice(at, at + 200);
         await request("/farm/jobs", {
           method: "POST",
           body: JSON.stringify({
@@ -346,11 +357,12 @@ export function ComputeFarm() {
               hand: job.hand, direction: job.direction,
               shortArms: job.shortArms, step: job.step, budget: job.budget,
               weight: job.weight, wantTraces: job.wantTraces,
+              handStep: job.handStep, handCeiling: job.handCeiling,
             })),
           }),
         });
         pushed += slice.length;
-        say(`queued ${pushed} / ${plan.jobs.length}`);
+        say(`queued ${pushed} / ${jobs.length}`);
       }
       say(`plan pushed to batch “${batch}” — ${plan.jobs.length} parameter sets`);
       await refreshQueue();
@@ -416,6 +428,47 @@ export function ComputeFarm() {
     }
   };
 
+  /**
+   * Every job re-sized to the grid its ★ best implies, and re-keyed for it.
+   *
+   * A job whose size and k nobody has judged comes back untouched and searches
+   * the full width — no pick is not an error, it is the ordinary state of most
+   * of the plane. What is reported is the tally, because "the sweep ran on the
+   * hand grid" and "the sweep ran on the hand grid for two of ninety jobs" are
+   * very different sweeps and the log is the only place that shows up.
+   */
+  const sizedFromPicks = async (jobs: PlanJob[]): Promise<PlanJob[]> => {
+    const client = cacheRef.current;
+    const out: PlanJob[] = [];
+    let sized = 0;
+    for (const job of jobs) {
+      let next = job;
+      try {
+        const found = await findShelfBest(
+          { ...job.descriptor, ks: [job.ks[0]] }, client.base, client.token, () => true);
+        const reach = found.pick && reachOfPick(found.pick);
+        if (reach) {
+          const grid = handGrid(reach, worstPairs(job.m, job.n), job.budget);
+          // `-j` when the pick carries its ring — level 1 will be ADOPTED, not
+          // searched, which is a different answer and so a different key. The
+          // ring itself is fetched again at run time rather than carried
+          // through the queue: a 240 kB strand list has no business in a job
+          // row, and the id already says which shelf the answer belongs on.
+          const adopted = found.pick!.level === 1 && found.pick!.strands.length > 0;
+          const descriptor = { ...job.descriptor,
+            handCeiling: grid.ceiling, handAdopted: adopted };
+          next = { ...job, descriptor, id: runKey(descriptor),
+                   handStep: grid.step, handCeiling: grid.ceiling };
+          sized += 1;
+        }
+      } catch { /* an unreachable shelf just means the full width */ }
+      out.push(next);
+    }
+    say(`${sized} of ${jobs.length} job(s) sized from a judged ★ best`
+      + `${sized ? "" : " — none of these sizes has one"}`);
+    return out;
+  };
+
   const missingFor = async (job: PlanJob) => {
     const client = cacheRef.current;
     const traces: Record<string, string> = {};
@@ -435,7 +488,7 @@ export function ComputeFarm() {
 
   const spawnHand = () => {
     const worker = new Worker(
-      new URL(`${FARM_BASE}farm-worker.js?v=trace-plan-v24`, window.location.href),
+      new URL(`${FARM_BASE}farm-worker.js?v=trace-plan-v26`, window.location.href),
       { type: "module" });
     workersRef.current.push(worker);
     return worker;
@@ -526,6 +579,35 @@ export function ComputeFarm() {
         // "stored" is left out (the job-end line already sums the artifacts up)
         // but still advances the marker, so each census band logs its start.
         let loggedPhase: string | null = null;
+        // A `-j` job stands on the judged ring: fetch it now and refuse to run
+        // without it. Uploading a searched L1 under a key that promises the
+        // adopted one would be the exact lie the -j/-h split exists to prevent.
+        let level1Ring: { strands: unknown[]; h_ext: number[]; v_ext: number[] } | null = null;
+        if (parseRunKey(job.id)?.descriptor.handAdopted) {
+          try {
+            const best = await findShelfBest(
+              { ...job.descriptor, ks: [job.ks[0]], handCeiling: undefined,
+                handAdopted: undefined },
+              cacheRef.current.base, cacheRef.current.token, () => true);
+            if (best.pick && best.pick.level === 1 && best.pick.strands.length) {
+              level1Ring = { strands: best.pick.strands as unknown[],
+                             h_ext: best.pick.hExt, v_ext: best.pick.vExt };
+            }
+          } catch { /* reported below */ }
+          if (!level1Ring) {
+            await request("/farm/jobs", {
+              method: "PATCH",
+              body: JSON.stringify({ id: job.id, state: "failed",
+                error: "queued to adopt the judged L1 ring, but the pick no longer carries one" }),
+            });
+            say(`${label} — the ★ best lost its ring since queueing; job failed rather than`
+              + " storing a searched answer under an adopted key");
+            setHandState(current => current.map(hand =>
+              hand.id === id ? { ...hand, failed: hand.failed + 1 } : hand));
+            continue;
+          }
+          say(`${label} — L1 adopted from the judged ★ best`);
+        }
         const found = await level1For(job);
         const level1Extensions = found && "ext" in found ? found.ext : null;
         if (level1Extensions) {
@@ -537,7 +619,7 @@ export function ComputeFarm() {
         }
         const summaryReply = await driveHand(worker, {
           type: "job", hand: id,
-          job: { ...job, descriptor: job.descriptor, level1Extensions },
+          job: { ...job, descriptor: job.descriptor, level1Extensions, level1Ring },
           upload: {
             run: runUrl, traces,
             token: cacheRef.current.token,
@@ -931,6 +1013,15 @@ export function ComputeFarm() {
               <input type="checkbox" checked={replayL1} disabled={running}
                 onChange={e => setReplayL1(e.target.checked)} />
               <span>replay level 1 off a stored single-k run</span>
+            </label>
+            {/* The judged ring sits off the grid entirely, so its numbers
+                cannot be searched for — but they say where to look, and the
+                ceiling that buys pays for resolution. Measured on 3×1 k=−1:
+                0…200 step 10 is 8/12 in 33s, 0…65 step 5 is 10/12 in 13s. */}
+            <label className="farm-check">
+              <input type="checkbox" checked={spec.handFromPick} disabled={running}
+                onChange={e => patchSpec({ handFromPick: e.target.checked })} />
+              <span>size each search from the judged &#9733; best</span>
             </label>
             <div className="farm-pair">
               <label className="farm-field">

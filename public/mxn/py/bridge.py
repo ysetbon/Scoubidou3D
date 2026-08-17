@@ -136,6 +136,8 @@ def describe(result, strands, level, k, expected, sizes=None):
         return "ok" if row.get("success") else ("fb" if row.get("is_fallback") else "FAIL")
     search = result["search"]
     applied = []
+    if search["horizontal"].get("judged") or search["vertical"].get("judged"):
+        applied.append("judged ring")
     if search["horizontal"].get("seeded") or search["vertical"].get("seeded"):
         applied.append("seeded")
     if search["horizontal"].get("rescued") or search["vertical"].get("rescued"):
@@ -319,6 +321,45 @@ def _register_level(level, k, checkpoint, result, search):
     }
 
 
+def l1_ring_from_json(text):
+    """
+    A judged L1 ring off the page, as JSON TEXT, or None for "search it".
+
+    Text for the reason l1_from_json is text: a JS null set as a Pyodide global
+    arrives as JsNull, and "" has no such ambiguity. The payload is
+    {"strands": [...], "h_ext": [...], "v_ext": [...]} — the whole ring a
+    judgement carries, plus the extensions it was fitted at, which become the
+    row's ext since nothing here searches for them.
+    """
+    if not text:
+        return None
+    got = json.loads(text)
+    strands = got.get("strands") if isinstance(got, dict) else None
+    if (not isinstance(strands, list) or not strands
+            or not all(isinstance(s, dict) and s.get("layer_name") for s in strands)):
+        raise ValueError("level1_ring needs a strands list with layer names")
+    return {"strands": strands,
+            "h_ext": [float(v) for v in (got.get("h_ext") or [])],
+            "v_ext": [float(v) for v in (got.get("v_ext") or [])]}
+
+
+def _adopt_l1(built, ring):
+    """
+    The judged ring as this run's level 1, or None when it cannot be.
+
+    The one guard that matters: the judged ring must be a ring for THIS level of
+    THIS size — checked by comparing the non-mask layer names against the ones
+    build_level_one just produced. Masks are left free, because a fitted ring
+    may legitimately re-lay them. A mismatch is not an error, it is "this pick
+    is not this level's ring", and the caller searches instead and says so.
+    """
+    names = lambda lst: {s["layer_name"] for s in lst
+                         if s.get("type") != "MaskedStrand"}
+    if names(built) != names(ring["strands"]):
+        return None
+    return [dict(s) for s in ring["strands"]]
+
+
 def l1_from_json(text):
     """
     `[h_ext, v_ext]` off the page, as JSON TEXT, or None for "search it".
@@ -353,6 +394,23 @@ def _l1_seed(given):
     return (tuple(int(value) for value in h), tuple(int(value) for value in v))
 
 
+def _adopted_result(h_ext, v_ext):
+    """
+    What _register_level and describe() need, for a level nothing searched.
+
+    The extensions are the judgement's own, floats and all -- nothing here
+    searched for them, so nothing rounds them. The gaps are 0 because they were
+    not measured, which describe() prints as 0.00; the crossings ARE measured,
+    by audit(), off the adopted strands themselves. Empty candidate lists make
+    _register_level report the level as unbrowsable, which is true.
+    """
+    def side(ext):
+        return {"success": True, "average_gap": 0, "pair_extensions": tuple(ext)}
+    return {"horizontal": side(h_ext), "vertical": side(v_ext),
+            "search": {"horizontal": {"judged": True}, "vertical": {"judged": True}},
+            "candidates": {"h": [], "v": []}}
+
+
 def _learned_reach(rows):
     """
     The longest arm any level so far actually used.
@@ -369,13 +427,18 @@ def _learned_reach(rows):
     extends nothing -- and the caller leaves that level's search alone rather
     than capping it at a ceiling with no cells under it.
     """
-    return max((value for row in rows for side in row["ext"] for value in side),
-               default=0)
+    reach = max((value for row in rows for side in row["ext"] for value in side),
+                default=0)
+    # An adopted judged ring carries float extensions (62.55 was fitted by
+    # hand); the search grid below is integer, so the ceiling rounds UP -- a
+    # cap just short of the reach that produced the ring would be perverse.
+    return int(reach) + (1 if reach != int(reach) else 0)
 
 
 def generate(m, n, ks, hand="lh", direction="cw",
              prefer_short_arms=True, ext_step=None, combo_budget=None,
-             reach_from_previous=False, level1_pin=None):
+             reach_from_previous=False, level1_pin=None,
+             hand_step=0, hand_ceiling=0, level1_ring=None):
     m, n = int(m), int(n)
     ks = [int(k) for k in ks]
     if not ks:
@@ -392,6 +455,21 @@ def generate(m, n, ks, hand="lh", direction="cw",
         search["combo_budget"] = int(combo_budget)
     search["collect_candidates"] = True
     reach_from_previous = bool(reach_from_previous)
+    # The grid a judged best implies. Two plain numbers rather than a structure,
+    # and 0 for absent rather than None: a scalar crosses from JS as a scalar,
+    # and the one thing this boundary has already got wrong is a null that
+    # arrived as JsNull (see l1_from_json). There is nothing to be wrong about
+    # here -- 0 is falsy in both languages.
+    hand_step, hand_ceiling = int(hand_step or 0), int(hand_ceiling or 0)
+    if hand_ceiling:
+        # Every level, level 1 included. The pick's reach is a statement about
+        # where the answer lives for this m, n and k, and level 1 is the level
+        # it was judged on -- capping only the deeper ones would search widest
+        # exactly where the evidence is strongest.
+        search["max_pair_extension"] = hand_ceiling
+        search["escalate_extension"] = False
+        if hand_step:
+            search["pair_extension_step"] = hand_step
     _SESSION.clear()
     _SESSION.update({"m": m, "n": n, "ks": ks, "hand": hand,
                      "direction": direction, "levels": {}})
@@ -410,8 +488,30 @@ def generate(m, n, ks, hand="lh", direction="cw",
         # copying them separately would break that aliasing.
         checkpoint1 = copy.deepcopy((strands, level1_info))
         _send_stage_frame(strands, 1, ks[0], "ring built")
-        NX._progress_frame_callback = _candidate_frame_emitter(
-            strands, 1, ks[0])
+        # Level 1 ADOPTED rather than searched, when the caller has the ring.
+        #
+        # The L1 of [k, ...] is the L1 of [k] -- the same identity the replay
+        # below and level1_for_k both stand on -- so a judged ring for [k] IS
+        # this run's level 1, and searching for it would at best approximate
+        # it: a hand-fitted ring sits off every grid, in angle as well as
+        # extension. The strands go in whole; audit() measures crossings off
+        # the geometry itself, so the row is measured rather than trusted.
+        adopted = _adopt_l1(strands, level1_ring) if level1_ring else None
+        if adopted is not None:
+            strands = adopted
+            checkpoint1 = copy.deepcopy((strands, level1_info))
+            _send_stage_frame(strands, 1, ks[0], "judged ring adopted")
+            ext_pair = (tuple(level1_ring["h_ext"]), tuple(level1_ring["v_ext"]))
+            result = _adopted_result(*ext_pair)
+            _SESSION["level1_adopted"] = True
+        elif level1_ring:
+            # The pick was not this level's ring (wrong names, wrong size, an
+            # old placeholder). Said in the output rather than swallowed: a
+            # caller that sent a ring deserves to know it searched instead.
+            _SESSION["level1_adopt_failed"] = True
+        if adopted is None:
+            NX._progress_frame_callback = _candidate_frame_emitter(
+                strands, 1, ks[0])
         # Level 1 replayed rather than searched, when the caller has the combo.
         #
         # L1 depends on nothing but (m, n, ks[0], hand, direction) and the
@@ -425,17 +525,18 @@ def generate(m, n, ks, hand="lh", direction="cw",
         # one combo it was told to use. That enumeration is not lost from the
         # shelf, only from this artifact -- the single-k run it was replayed
         # from has it in full -- and _register_level says which it is.
-        try:
-            result = NX.align_continuation_level(
-                strands, m, n, ks[0], direction, hand, 1,
-                level1_info, mirror_sides=m == n, verbose=False,
-                seed_extensions=[_l1_seed(level1_pin)] if level1_pin else None,
-                pin_seed=bool(level1_pin),
-                **search)
-        finally:
-            NX._progress_frame_callback = None
-        if level1_pin and not (result.get("candidates") or {}).get("h"):
-            _SESSION["level1_replayed"] = True
+        if adopted is None:
+            try:
+                result = NX.align_continuation_level(
+                    strands, m, n, ks[0], direction, hand, 1,
+                    level1_info, mirror_sides=m == n, verbose=False,
+                    seed_extensions=[_l1_seed(level1_pin)] if level1_pin else None,
+                    pin_seed=bool(level1_pin),
+                    **search)
+            finally:
+                NX._progress_frame_callback = None
+            if level1_pin and not (result.get("candidates") or {}).get("h"):
+                _SESSION["level1_replayed"] = True
         _send_stage_frame(strands, 1, ks[0], "candidate accepted", 1, 1)
         snapshot = [dict(s) for s in strands]
         stages.append({"level": 1, "k": ks[0], "label": "1st twist",
@@ -494,9 +595,13 @@ def generate(m, n, ks, hand="lh", direction="cw",
         "expected": expected, "seconds": round(time.time() - started, 1),
         "rows": rows, "stages": stages,
         "reachFromPrevious": reach_from_previous,
+        "handCeiling": hand_ceiling,
+        "handStep": hand_step,
         # Whether L1 was replayed off a stored run rather than searched, so a
         # reader is told why that level has no solution browser.
         "level1Replayed": bool(_SESSION.get("level1_replayed")),
+        "level1Adopted": bool(_SESSION.get("level1_adopted")),
+        "level1AdoptFailed": bool(_SESSION.get("level1_adopt_failed")),
         "solutions": [_solution_meta(_SESSION["levels"][lv])
                       for lv in sorted(_SESSION["levels"])],
     }, separators=(",", ":"))
