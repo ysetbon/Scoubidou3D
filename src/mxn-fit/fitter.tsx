@@ -23,9 +23,10 @@ import {
   VALID, VERDICT_NAMES, placeStarts, sweepAngle,
 } from "../mxn-lab/trace-census";
 import {
-  CACHE_TOKEN_KEY, CACHE_URL_KEY, CACHE_VERSION, createCache, mergeJudgement,
+  CACHE_TOKEN_KEY, CACHE_URL_KEY, CACHE_VERSION, DEFAULT_CACHE_URL,
+  createCache, mergeJudgement,
   parsePicksKey, picksKey, runKey,
-  readSetting, writeSetting,
+  readSetting, readSettingOr, writeSetting,
   type Judgement, type JudgementSource, type PickBand,
   type RunDescriptor,
   type Verdict,
@@ -797,7 +798,12 @@ export function Fitter() {
   const [ranAt, setRanAt] = useState<string | null>(null);
 
   // The shelf. Same Worker, same two localStorage fields as the lab sidebar.
-  const [apiUrl, setApiUrl] = useState(() => readSetting(CACHE_URL_KEY));
+  // Defaulted to this project's own Worker, so a fresh browser — or a reader
+  // on localhost, whose localStorage is a different origin's — sees the shelf
+  // that is actually there rather than "nothing judged anywhere". Clearing the
+  // field still means no shelf; see readSettingOr.
+  const [apiUrl, setApiUrl] = useState(
+    () => readSettingOr(CACHE_URL_KEY, DEFAULT_CACHE_URL));
   const [apiToken, setApiToken] = useState(() => readSetting(CACHE_TOKEN_KEY));
   const [chooser, setChooser] = useState(() => readSetting(CHOOSER_KEY));
   const [judgeNote, setJudgeNote] = useState("");
@@ -984,6 +990,28 @@ export function Fitter() {
     setEditor({ from: "preload", key: picksKey(f.descriptor), descriptor: f.descriptor,
                 source: f.judgement.source });
     setFailed(false);
+    // A judged ★ best for THIS run's level 1 arrives already placed.
+    //
+    // It costs nothing to record — the judgement carries the ring and the
+    // picks, and no engine was involved in drawing it — and it asserts nothing
+    // untrue: a person placed this ring, and it is the ring every level above
+    // will be built on. What it buys is the thing the ladder is for. The page
+    // opens with L1 already fixed and yonatan's name on it, and the next move
+    // is L2 rather than re-fixing a level nobody has changed.
+    const bands = f.judgement.levels.find(l => l.level === 1);
+    const isOwnL1 = level === 1 && f.judgement.verdict === "best"
+      && f.descriptor.ks.length === 1;
+    if (isOwnL1 && bands) {
+      setFixed({
+        1: {
+          level: 1, h: bands.h, v: bands.v, at: f.judgement.at, rebuilt: true,
+          origin: "judged", chooser: f.judgement.chooser,
+          audit: f.judgement.audit, metrics: f.judgement.metrics,
+          strands: stage.strands,
+        },
+      });
+      setStale([]);
+    }
     return true;
   };
 
@@ -3201,9 +3229,14 @@ export function Fitter() {
                         : `Keep this ring and open L${fitLevel + 1}'s knobs on top of it`}
                       onClick={() => fixLevel(true)}>
                       {!canWeave
-                        ? (fitLevel < ks.length
-                           ? `Fix L${fitLevel} · open L${fitLevel + 1}`
-                           : `Fix L${fitLevel}`)
+                        ? (fitLevel >= ks.length ? `Fix L${fitLevel}`
+                           // Already fixed and untouched — there is nothing to
+                           // fix, so the button says what it will actually do.
+                           // Nothing has been moved since it was fixed, so
+                           // this press is not a fix — it is the next level.
+                           : fixed[fitLevel] && origin?.kind !== "manual"
+                             ? `L${fitLevel} is fixed · open L${fitLevel + 1}`
+                             : `Fix L${fitLevel} · open L${fitLevel + 1}`)
                         : levelsAbove
                           ? `Fix L${fitLevel} · rebuild the ${levelsAbove} above`
                           : `Fix L${fitLevel}`}

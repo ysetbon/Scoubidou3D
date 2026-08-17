@@ -60,6 +60,10 @@ page.on('console', m => {
 // a stub that happily replied anyway would hide it (see the cached-run check
 // at the bottom). `delay` slows the generate so a run drawn from the cache can
 // be told apart from one drawn by the engine.
+// Every page that is not deliberately given a shelf gets an empty one, for the
+// reason above: the default url is real, and these tests must not depend on it.
+const NO_SHELF = () => localStorage.setItem('mxn-lab-api', '');
+
 const STUB = ({ size, delay }) => {
   let sessioned = false;
   window.__stubGenerates = 0;
@@ -154,6 +158,7 @@ const STUB_SIZE = {
   held: { h: size.held.h.ext ?? null, v: size.held.v.ext ?? null },
 };
 
+await page.addInitScript(NO_SHELF);
 await page.addInitScript(STUB, { size: STUB_SIZE, delay: 0 });
 
 await page.goto(URL_BASE, { waitUntil: 'domcontentloaded' });
@@ -608,7 +613,10 @@ const strangeKs = size.ks.map(k => k + 3);
 await page.evaluate(({ own, spare, ownKey, spareKey }) => {
   // No worker url: the shelf is unreachable from a sandbox, and the local
   // store exercises exactly the same readPicks path.
-  localStorage.removeItem('mxn-lab-api');
+  // Explicitly empty, not removed. The field now DEFAULTS to the project's
+  // Worker, so an absent setting means "use it" — and a QA page that reached
+  // the real Cloudflare would be testing the network, not the page.
+  localStorage.setItem('mxn-lab-api', '');
   localStorage.setItem('mxn-fit-judgements', JSON.stringify([
     { key: ownKey, judgement: own }, { key: spareKey, judgement: spare },
   ]));
@@ -930,6 +938,7 @@ if (edited.knobs >= 3) {
   const fast = await browser.newPage({ viewport: { width: 1440, height: 1300 } });
   const fastErrors = [];
   fast.on('pageerror', e => fastErrors.push(String(e)));
+  await fast.addInitScript(NO_SHELF);
   await fast.addInitScript(STUB, { size: STUB_SIZE, delay: 4000 });
   await fast.goto(URL_BASE, { waitUntil: 'domcontentloaded' });
   await fast.waitForSelector('button.go');
@@ -988,6 +997,7 @@ ok('no page errors on the no-search path', fastErrors.length === 0,
   const stale = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const staleErrors = [];
   stale.on('pageerror', e => staleErrors.push(String(e)));
+  await stale.addInitScript(NO_SHELF);
   await stale.addInitScript(() => {
     class Deaf {
       constructor() { this.onmessage = null; }
@@ -1034,6 +1044,7 @@ ok('no page errors on the no-search path', fastErrors.length === 0,
   const ap = await browser.newPage({ viewport: { width: 1440, height: 1300 } });
   const apErrors = [];
   ap.on('pageerror', e => apErrors.push(String(e)));
+  await ap.addInitScript(NO_SHELF);
   await ap.addInitScript(STUB, { size: STUB_SIZE, delay: 0 });
   await ap.goto(URL_BASE, { waitUntil: 'domcontentloaded' });
   await ap.waitForSelector('button.go');
@@ -1115,6 +1126,7 @@ if (network.length) console.log(`  note  ${network.length} resource(s) blocked b
 const ladderPage = await browser.newPage({ viewport: { width: 1440, height: 1300 } });
 const ladderErrors = [];
 ladderPage.on('pageerror', e => ladderErrors.push(String(e)));
+await ladderPage.addInitScript(NO_SHELF);
 await ladderPage.addInitScript(STUB, { size: STUB_SIZE, delay: 0 });
 await ladderPage.goto(URL_BASE, { waitUntil: 'domcontentloaded' });
 await ladderPage.waitForSelector('button.go');

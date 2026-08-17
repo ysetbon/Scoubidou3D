@@ -441,6 +441,34 @@ async function decode(response: Response): Promise<unknown> {
  * Same shape as the lab's own and src/model/customSamples.ts: private mode and
  * a full quota both throw, and neither is worth losing the page over.
  */
+/**
+ * The Worker this project's shelf actually lives on.
+ *
+ * A DEFAULT, not a constant: the field still overrides it and a cleared field
+ * still means "no shelf". It is here because the alternative is worse than a
+ * hardcoded hostname — a reader on localhost, or in a fresh browser, gets a
+ * page that says "nothing has been judged anywhere on the shelf" when the
+ * shelf is full, and no way to tell that from an empty one. Reads on
+ * `/cache/…` and `/catalogue` are public, so this costs no secret; writing
+ * still needs the admin token, which is never defaulted.
+ */
+export const DEFAULT_CACHE_URL = "https://mxn-solutions-api.ysetbon.workers.dev";
+
+/**
+ * A setting, or the default for it — telling "never set" apart from "set to
+ * nothing", which localStorage does not do for you and which is the whole
+ * difference between a helpful default and one that fights the reader who
+ * cleared the field on purpose.
+ */
+export function readSettingOr(key: string, fallback: string) {
+  try {
+    const held = window.localStorage.getItem(key);
+    return held === null ? fallback : held;
+  } catch {
+    return fallback;
+  }
+}
+
 export function readSetting(key: string) {
   try {
     return window.localStorage.getItem(key) || "";

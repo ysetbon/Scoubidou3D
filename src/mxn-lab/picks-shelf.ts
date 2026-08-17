@@ -63,6 +63,14 @@ export type Picks = { judgements: Judgement[]; from: string; reached: boolean };
  * reachable is not an error: no page may be blocked by the database being away,
  * so an unreachable shelf reads as "no judgements there".
  */
+/**
+ * How long a shelf read may hold up an answer the browser already has.
+ *
+ * Generous for a working Worker (it answers in tens of milliseconds) and short
+ * enough that a broken one is a pause rather than a hang.
+ */
+export const SHELF_TIMEOUT_MS = 6000;
+
 export async function readPicks(
   d: RunDescriptor, base: string, token: string,
 ): Promise<Picks> {
@@ -71,7 +79,20 @@ export async function readPicks(
   let reached = !base;
   if (base) {
     try {
-      artifact = await createCache({ base, token }).getPicks(d);
+      // Bounded, because this browser's OWN judgements are folded in below and
+      // they are already in hand. An unreachable Worker — an offline reader, a
+      // sandbox that blocks the host, a url with a typo — must cost a wait,
+      // not the answer: without the bound the page sat on a pending fetch and
+      // drew nothing, including the judgements it could read locally.
+      //
+      // A timeout reads as "not reached", never as "nothing judged": those are
+      // different answers and the pages say so differently.
+      artifact = await Promise.race([
+        createCache({ base, token }).getPicks(d),
+        new Promise<null>((_, reject) => setTimeout(
+          () => reject(new Error("the shelf did not answer in time")),
+          SHELF_TIMEOUT_MS)),
+      ]);
       reached = true;
       if (artifact) from = "Cloudflare";
     } catch { /* the shelf being away must not block the caller */ }
