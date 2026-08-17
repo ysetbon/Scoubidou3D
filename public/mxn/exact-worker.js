@@ -49,7 +49,7 @@ async function prepare() {
       // Resolved against this worker's own URL rather than the site root: the
       // lab is published under a project-site sub-path, where "/py/..." would
       // miss. Keeps the cache key in step with the one in the Worker URL.
-      const url = new URL(`./py/${name}?v=trace-plan-v26`, import.meta.url);
+      const url = new URL(`./py/${name}?v=trace-plan-v27`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
@@ -84,7 +84,7 @@ function ensureCountPool() {
   const size = Math.min(3, cores);
   countPool = size < 2 ? [] : Array.from({ length: size }, () => {
     const worker = new Worker(
-      new URL("./count-worker.js?v=trace-plan-v26", import.meta.url),
+      new URL("./count-worker.js?v=trace-plan-v27", import.meta.url),
       { type: "module" });
     worker.postMessage({ type: "warm" });
     return worker;
@@ -148,20 +148,25 @@ const HANDLERS = {
       + " hand_step=mxn_hstep, hand_ceiling=mxn_hceil,"
       + " level1_ring=bridge.l1_ring_from_json(mxn_l1ring))"
     ));
-    // Count every level's solutions BEFORE the result posts, so the cards land
-    // with `1 / total` already exact — the counting is part of the thinking,
-    // not a number that climbs afterwards. Slices go to the counting hands in
-    // parallel where the pool exists; the serial walk is the fallback and the
-    // small-product path. count-progress is the UI's feed; the prose line
-    // rides along for the status bar. Capped so a huge product cannot hold
-    // the run hostage — a level left inexact says so and is finished by the
-    // page's background chain.
+    // Count every ALREADY-ENUMERATED level's solutions BEFORE the result posts,
+    // so browsable cards land with `1 / total` already exact — the counting is
+    // part of the thinking, not a number that climbs afterwards. An adopted or
+    // seeded level has no browser by design and must not be searched just to
+    // manufacture one here. Slices go to the counting hands in parallel where
+    // the pool exists; the serial walk is the fallback and the small-product
+    // path. count-progress is the UI's feed; the prose line rides along for the
+    // status bar. Capped so a huge product cannot hold the run hostage — a
+    // level left inexact says so and is finished by the page's background chain.
     const COUNT_CHUNK = 500;
     const COUNT_CEILING = 60000;
     let spent = 0;
     for (const meta of parsed.solutions ?? []) {
       if (!meta || meta.level <= 0) continue;
-      if (meta.enumerated !== "full" && (meta.reason ?? "").startsWith("k=0")) continue;
+      // Adopted, replayed and pinned levels deliberately carry no candidate
+      // lists. Counting one calls export_count_job(), which enumerates it first
+      // and silently turns "do not search L1" back into a full L1 search after
+      // the geometry has finished. Only count levels the run already enumerated.
+      if (meta.enumerated !== "full") continue;
       runtime.globals.set("mxn_level", meta.level);
       const progress = (scanned, cells, count) => {
         post("count-progress", { level: meta.level, scanned, cells, count });
@@ -169,6 +174,10 @@ const HANDLERS = {
           + `${count.toLocaleString()} closed in ${scanned.toLocaleString()}`
           + ` of ${cells.toLocaleString()} pairs…` });
       };
+      // Announce the level before a counting hand has warmed or completed its
+      // first chunk. Small products otherwise show no row at all until done,
+      // leaving the stale final search frame saying only "thinking".
+      progress(0, Number(meta.candidates) || 0, 0);
 
       let reply = null;
       const pool = ensureCountPool();

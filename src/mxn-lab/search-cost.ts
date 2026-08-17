@@ -95,7 +95,10 @@ export function worstPairs(m: number, n: number) {
  * the run finishes at or before this. That is the point of showing it. A bar
  * against a number that can be beaten is a promise the engine can keep.
  */
-export function worstCase(m: number, n: number, levels: number, step: number) {
-  const perLevel = comboCount(step, m) + comboCount(step, n);
+export function worstCase(
+  m: number, n: number, levels: number, step: number,
+  extMax = MAX_PAIR_EXTENSION,
+) {
+  const perLevel = comboCount(step, m, extMax) + comboCount(step, n, extMax);
   return { perLevel, groups: levels * 2, total: perLevel * levels };
 }

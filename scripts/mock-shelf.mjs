@@ -204,13 +204,15 @@ createServer(async (request, response) => {
     n: '1',
     ks: '-1 -1 -1',
     pick: '1',
+    reach: '1',
     run: '0',
     advanced: '1',
   });
   console.log(`\n  mock shelf up on :${PORT}\n`);
   console.log(`    ${base}/?${query}\n`);
   console.log('  The link loads M 3, N 1, KS -1 -1 -1, opens ADVANCED SEARCH,');
-  console.log('  and ticks "size the search from the judged ★ best".');
+  console.log('  sizes from the judged ★ best, and lets each deeper level stop');
+  console.log("  at the largest extension the finished levels below it used.");
   console.log('  Just press RUN — the sidebar says which grid it chose.\n');
   console.log('  Then untick and Run again to compare against the full width.\n');
   console.log('  Pyodide still comes from the CDN, so this needs internet the');

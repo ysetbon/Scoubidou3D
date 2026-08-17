@@ -456,7 +456,7 @@ const offSite = url =>
   const external = [];
   page.on('request', request => { if (offSite(request.url())) external.push(request.url()); });
   await page.goto(`${base}/mxn/?${cacheArg}`
-    + '&m=3&n=1&ks=-1%20-1%20-1&pick=1&run=0&advanced=1',
+    + '&m=3&n=1&ks=-1%20-1%20-1&pick=1&reach=1&run=0&advanced=1',
   { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.run-button', { timeout: 20000 });
   const controls = await page.evaluate(() => ({
@@ -464,6 +464,7 @@ const offSite = url =>
     n: document.querySelector('#n').value,
     ks: document.querySelector('#ks').value,
     pick: document.querySelector('#hand-grid').checked,
+    reach: document.querySelector('#reach-cap').checked,
     advanced: document.querySelector('.advanced-settings').open,
     runEnabled: !document.querySelector('.run-button').disabled,
     status: document.querySelector('.engine-status').textContent,
@@ -471,7 +472,8 @@ const offSite = url =>
   ok('run=0 preloads the mock dimensions and sequence',
     controls.m === '3' && controls.n === '1' && controls.ks === '-1 -1 -1',
     JSON.stringify(controls));
-  ok('and preselects the judged-pick grid', controls.pick);
+  ok('and preselects the judged-pick grid and prior-level reach',
+    controls.pick && controls.reach, JSON.stringify(controls));
   ok('and opens Advanced with Run still enabled',
     controls.advanced && controls.runEnabled, JSON.stringify(controls));
   ok('and does not wake the engine before Run',

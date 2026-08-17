@@ -884,7 +884,7 @@ standing in. See `mocks/README.md`.
 There are two of them, and they are bumped for the same reason and never
 together.
 
-**`trace-plan-v26`**, the engine-file key, appears in six places: the worker URL
+**`trace-plan-v27`**, the engine-file key, appears in six places: the worker URL
 (`weave-studio.tsx`), the Python fetch URL and the counting-hand URL
 (`exact-worker.js`), the counting hand's own fetch (`count-worker.js`), the farm
 hand's fetch (`farm-worker.js`) and the URL the farm page spawns it with

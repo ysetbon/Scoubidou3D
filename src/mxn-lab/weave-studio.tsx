@@ -117,6 +117,7 @@ export type ProgressFrame = {
   /** Set when the frame comes from a trace replay, naming the band traced. */
   trace?: string | null;
 };
+type CountProgress = { scanned: number; cells: number; count: number };
 export type AuditRow = {
   level: number; k: number; expected: number; state: string;
   gap: [number, number]; ext: [number[], number[]];
@@ -392,10 +393,11 @@ function groupIndex(frame: ProgressFrame) {
  * said the tab had not frozen; they never said whether the wait was ten
  * seconds or ten minutes, which is the question anyone watching it has.
  */
-export function LiveCandidateFigure({ store, worst }: {
+export function LiveCandidateFigure({ store, worst, counting }: {
   store: FrameStore;
   /** The run's ceiling, from the parameters it was started with. */
   worst: { perLevel: number; groups: number; total: number };
+  counting?: Record<number, CountProgress>;
 }) {
   const frame = useSyncExternalStore(store.subscribe, store.get);
   const group = frame ? groupIndex(frame) : 0;
@@ -415,20 +417,39 @@ export function LiveCandidateFigure({ store, worst }: {
   if (frame && frame.id !== high.current.id) high.current = { id: frame.id, at: 0 };
   if (reached > high.current.at) high.current.at = reached;
   const overall = high.current.at;
+  const counts = Object.entries(counting ?? {})
+    .map(([level, value]) => ({ level: Number(level), ...value }))
+    .sort((a, b) => a.level - b.level);
+  const activeCount = counts[counts.length - 1];
+  const countingNow = activeCount !== undefined;
+  const countCells = counts.reduce((sum, value) => sum + value.cells, 0);
+  const countScanned = counts.reduce((sum, value) => sum + value.scanned, 0);
+  const countOverall = countCells ? Math.min(1, countScanned / countCells) : 0;
+  const countWithin = activeCount?.cells
+    ? Math.min(1, activeCount.scanned / activeCount.cells) : 0;
+  const shownOverall = countingNow ? countOverall : overall;
+  const shownWithin = countingNow ? countWithin : within;
 
   return (
     <figure className="candidate-sheet" aria-label="Live search candidates">
       <figcaption>
         <span>
-          live candidates
-          {frame ? ` · L${frame.level} · k=${frame.k}` : ""}
+          {countingNow ? "solution count" : "live candidates"}
+          {countingNow
+            ? ` · L${activeCount.level}`
+            : frame ? ` · L${frame.level} · k=${frame.k}` : ""}
         </span>
-        <b>{frame?.phase ?? "starting search"}</b>
+        <b>{countingNow
+          ? "search complete · counting exact totals"
+          : frame?.phase ?? "starting search"}</b>
         <em>
-          {frame && frame.total > 0
+          {countingNow
+            ? `${activeCount.count.toLocaleString()} closed · `
+              + `${activeCount.scanned.toLocaleString()} / ${activeCount.cells.toLocaleString()} pairs`
+            : frame && frame.total > 0
             ? `${frame.completed.toLocaleString()} / ${frame.total.toLocaleString()}`
             : "preparing search"}
-          {frame && frame.valid > 0 ? ` · ${frame.valid} valid` : ""}
+          {!countingNow && frame && frame.valid > 0 ? ` · ${frame.valid} valid` : ""}
         </em>
       </figcaption>
       <div className="sheet-stage">
@@ -438,18 +459,24 @@ export function LiveCandidateFigure({ store, worst }: {
             Kept to one plaque-width column so it covers no more of the sheet
             than the word "thinking" did. */}
         <div className="thinking-plaque" aria-hidden="true">
-          <span className="thinking-word">thinking<ThinkingDots /></span>
+          <span className="thinking-word">
+            {countingNow ? "counting" : "thinking"}<ThinkingDots />
+          </span>
           {/* Two bars, one track: the pale fill is the whole run against its
               ceiling, the solid one is the group being searched now. */}
           <span className="thinking-track">
-            <i className="thinking-run" style={{ width: `${overall * 100}%` }} />
-            <b className="thinking-group" style={{ width: `${within * 100}%` }} />
+            <i className="thinking-run" style={{ width: `${shownOverall * 100}%` }} />
+            <b className="thinking-group" style={{ width: `${shownWithin * 100}%` }} />
           </span>
           <span className="thinking-scale">
-            {frame && frame.total > 0
+            {countingNow
+              ? `${Math.round(countWithin * 100)}% of L${activeCount.level}`
+              : frame && frame.total > 0
               ? `${Math.round(within * 100)}% of group ${group}/${worst.groups}`
               : `group 1/${worst.groups}`}
-            <em>≤ {worst.total.toLocaleString()} combos</em>
+            <em>{countingNow
+              ? `${countScanned.toLocaleString()} / ${countCells.toLocaleString()} pairs before cards`
+              : `≤ ${worst.total.toLocaleString()} combos`}</em>
           </span>
         </div>
       </div>
@@ -529,8 +556,7 @@ export function ContinuationLab() {
   const [picksNote, setPicksNote] = useState("");
   // The in-run counting, level by level, for the strip under the busy sheet:
   // the walk's position and what it has found so far.
-  const [counting, setCounting] =
-    useState<Record<number, { scanned: number; cells: number; count: number }>>({});
+  const [counting, setCounting] = useState<Record<number, CountProgress>>({});
   /** Forget an override without putting anything back: for when something else
    *  has already replaced the ring on the card. */
   const clearTraced = (level: number) => {
@@ -772,7 +798,7 @@ export function ContinuationLab() {
   const ensureWorker = () => {
     if (workerRef.current) return workerRef.current;
     const worker = new Worker(
-      `${LAB_BASE}exact-worker.js?v=trace-plan-v26${FAST_ENGINE ? "&engine=fast" : ""}`,
+      `${LAB_BASE}exact-worker.js?v=trace-plan-v27${FAST_ENGINE ? "&engine=fast" : ""}`,
       { type: "module" },
     );
     worker.onmessage = (event) => {
@@ -1096,7 +1122,9 @@ export function ContinuationLab() {
       // fields now — the two part company the moment anyone types during a run.
       setRunScale(worstCase(
         params.m, params.n, params.ks.length,
-        params.extStep ?? autoStep(worstPairs(params.m, params.n), params.comboBudget)));
+        params.handStep || params.extStep
+          || autoStep(worstPairs(params.m, params.n), params.comboBudget),
+        params.handCeiling || undefined));
       setRanKey(params.key);
       ranKeyRef.current = params.key;
       lastParamsRef.current = params;
@@ -1269,10 +1297,14 @@ export function ContinuationLab() {
       const ring = pick.level === 1 && pick.strands.length
         ? { strands: pick.strands as unknown[], h_ext: pick.hExt, v_ext: pick.vExt }
         : null;
+      const deeper = base.reachFromPrevious
+        ? `deeper levels start at 0…${grid.ceiling}, step ${grid.step}, then cap`
+          + " at the largest extension the finished levels below used"
+        : `deeper levels search 0…${grid.ceiling} at step ${grid.step}`;
       return { step: grid.step, ceiling: grid.ceiling, ring,
         note: ring
           ? `★ best by ${pick.judgement.chooser} — L1 adopted from the judged`
-            + ` ring; deeper levels search 0…${grid.ceiling} at step ${grid.step}`
+            + ` ring; ${deeper}`
           : `★ best by ${pick.judgement.chooser} reaches ${reach} —`
             + ` searching 0…${grid.ceiling} at step ${grid.step} (the judgement`
             + " carries no ring, so L1 is searched too)" };
@@ -1473,7 +1505,9 @@ export function ContinuationLab() {
     frameStore.set(null);
     setRunScale(worstCase(
       params.m, params.n, params.ks.length,
-      params.extStep ?? autoStep(worstPairs(params.m, params.n), params.comboBudget)));
+      params.handStep || params.extStep
+        || autoStep(worstPairs(params.m, params.n), params.comboBudget),
+      params.handCeiling || undefined));
     const id = ++activeIdRef.current;
     warmIdRef.current = id;
     setStatus(`These cards came from the cache — warming the engine over ${params.m}×${params.n} `
@@ -2176,7 +2210,8 @@ export function ContinuationLab() {
           {/* The busy figure renders itself from the frame store — frames
               arrive too fast to route through this component's state. This is
               where finished diagrams land too. */}
-          {busy && <LiveCandidateFigure store={frameStore} worst={runScale} />}
+          {busy && <LiveCandidateFigure store={frameStore} worst={runScale}
+            counting={counting} />}
           {/* Counting is the tail of the thinking: the search is done, the
               cards are not out yet, and this is what the wait is buying — a
               bar per level, its position in the pair product, and the count

@@ -229,6 +229,9 @@ for name in ("exact-worker.js", "farm-worker.js"):
           and 'set("mxn_l1", job.level1Extensions ?? null)' not in source)
     check("  and parses it with the one function that knows about JsNull",
           "bridge.l1_from_json(mxn_l1)" in source and ".to_py()" not in source.split("mxn_l1")[-1][:200])
+    if name == "exact-worker.js":
+        check("  and never enumerates an adopted L1 merely to count it",
+              'if (meta.enumerated !== "full") continue;' in source)
 
 print(f"\n{f'{failed} check(s) failed, {passed} passed' if failed else f'all {passed} checks passed'}")
 sys.exit(1 if failed else 0)
