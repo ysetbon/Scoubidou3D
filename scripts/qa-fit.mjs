@@ -1221,6 +1221,27 @@ if (edited.knobs >= 3) {
   ok('and says it is still a proposal, naming the Fix button',
     /back on screen/.test(back.status) && /Fix L\d+/.test(back.status),
     back.status.slice(0, 110));
+  // Now fix it. The page opens the next level — and has to SAY whose ring is
+  // underneath: a fixed L1 keeps its extensions and headings under L2 but its
+  // arms draw shorter there, which reads exactly like the fix having been
+  // lost. The header chip is the page's answer to that report.
+  await wander.locator('.ladder-act .primary').click();
+  await wander.waitForTimeout(1200);
+  const fixedOn = await wander.evaluate(() => ({
+    current: [...document.querySelectorAll('.ladder .rung')]
+      .findIndex(r => r.dataset.current) + 1,
+    chip: [...document.querySelectorAll('.chip')]
+      .map(c => c.textContent.replace(/\s+/g, ' ').trim())
+      .find(t => /^on your L1/.test(t)) ?? '',
+    stripCaption: [...document.querySelectorAll('.levels figcaption var')]
+      .map(v => v.textContent).find(t => /fixed/.test(t)) ?? '',
+  }));
+  ok('fixing L1 opens L2 and the header names the ring underneath',
+    fixedOn.current === 2 && /on your L1 · placed by hand/.test(fixedOn.chip),
+    `rung ${fixedOn.current} · ${fixedOn.chip || '(no chip)'}`);
+  ok('and the level strip marks the fixed L1 card',
+    /fixed · by hand/.test(fixedOn.stripCaption),
+    fixedOn.stripCaption || '(no caption)');
   ok('no page errors on the wander path', wErrors.length === 0,
     wErrors.slice(0, 2).join(' | '));
   await wander.close();
