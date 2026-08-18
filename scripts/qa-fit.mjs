@@ -88,8 +88,12 @@ const STUB = ({ size, delay }) => {
           data: { type: 'progress', message: 'Loading the exact MXN engine…' } }), 0);
         setTimeout(() => {
           sessioned = true;
+          const rows = data.level1Ring
+            ? size.rows.map(r => r.level > 1
+                ? { ...r, applied: ['placed at the ring below'] } : r)
+            : size.rows;
           this.onmessage?.({ data: { id: data.id, type: 'result',
-            result: { stages: size.stages, rows: size.rows,
+            result: { stages: size.stages, rows,
                       level1Adopted: !!data.level1Ring } } });
         }, delay);
       } else if (!sessioned && data.type !== 'fit-plan-now') {
@@ -1042,6 +1046,11 @@ if (edited.knobs >= 3) {
     ladderNow.first.slice(0, 60));
   ok('and the page opens fitting L2 immediately',
     ladderNow.current === 2, `rung ${ladderNow.current}`);
+  const placedStatus = await knobs2.evaluate(() =>
+    document.querySelector('.status')?.textContent ?? '');
+  ok('and nothing is searched over the placed L2 — no candidate walk',
+    /welded at the fixed L1/.test(placedStatus) && /nothing searched/.test(placedStatus),
+    placedStatus.slice(0, 110));
   ok('no page errors on the decided-L1 knobs path', kErrors.length === 0,
     kErrors.slice(0, 2).join(' | '));
   await knobs2.close();
