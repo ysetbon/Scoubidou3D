@@ -567,7 +567,7 @@ function useWorker(onProgress: (message: string) => void) {
     // cached worker had no fit-plan-now. BUMP THIS whenever the worker's
     // message vocabulary changes. src/mxn-lab/weave-studio.tsx does the same.
     const worker = new Worker(
-      new URL(`${BASE}mxn/exact-worker.js?v=trace-plan-v27`, window.location.href),
+      new URL(`${BASE}mxn/exact-worker.js?v=trace-plan-v28`, window.location.href),
       { type: "module" });
     worker.onmessage = (event) => {
       const data = event.data || {};
@@ -851,10 +851,11 @@ export function Fitter() {
    */
   const openSession = (
     d: RunDescriptor, running?: Promise<unknown>, level1Ring?: unknown,
+    preserveArms?: boolean,
   ) => {
     const ready = running ?? ask(
       { type: "generate", m: d.m, n: d.n, ks: d.ks, hand: d.hand,
-        direction: d.direction, level1Ring },
+        direction: d.direction, level1Ring, preserveArms },
       "result");
     const entry = { ready, primed: false };
     session.current = entry;
@@ -1602,8 +1603,14 @@ export function Fitter() {
         const began = Date.now();
         // This generate IS the session — the run and the state fitting reads
         // are the same call — so it is registered rather than repeated.
+        // A person's ring underneath means PLACED levels above: the engine
+        // welds them at the ring's own arm ends, unsearched, instead of
+        // re-laying the arms and searching a default over them. The ring a
+        // hand or a judgement placed is the truth; the levels above are the
+        // person's next move, not the engine's.
         const computed = await openSession(
-          d, undefined, adopt?.ring ?? saved?.ring) as typeof result;
+          d, undefined, adopt?.ring ?? saved?.ring,
+          !!(adopt || saved)) as typeof result;
         result = computed;
         const seconds = (Date.now() - began) / 1000;
         note(`generate finished in ${seconds.toFixed(1)}s`);
@@ -1710,14 +1717,18 @@ export function Fitter() {
     setBusy(true);
     setFailed(false);
     setStatus(rebuild && above
-      ? `Adopting L${level} and rebuilding the ${above} level${
-          above === 1 ? "" : "s"} above it — a full search each…`
+      ? `Adopting L${level} and welding the ${above} level${
+          above === 1 ? "" : "s"} above at its arm ends…`
       : `Adopting L${level}…`);
     try {
       await session.current?.ready;
       const began = performance.now();
       const reply = await ask({
         type: "fit-adopt", level, rebuild,
+        // Fixing is a person's act, so the rebuilt levels are PLACED: welded
+        // at this ring's own arm ends, unsearched, ready to be placed by the
+        // same hand -- never a searched default re-laid over the fix.
+        preserveArms: true,
         hExt: pick("h")?.ext ?? null, hAngle: pick("h")?.angle ?? null,
         vExt: pick("v")?.ext ?? null, vAngle: pick("v")?.angle ?? null,
       }, "fit-adopt-ready") as {
@@ -1731,7 +1742,7 @@ export function Fitter() {
         return;
       }
       note(`L${level} adopted${reply.rebuilt && above
-        ? `, ${above} level${above === 1 ? "" : "s"} rebuilt on it` : ""} in `
+        ? `, ${above} level${above === 1 ? "" : "s"} welded at its arm ends` : ""} in `
         + `${((performance.now() - began) / 1000).toFixed(1)}s`);
 
       // The run's diagrams and audit rows, with everything the adopt returned
@@ -1815,7 +1826,8 @@ export function Fitter() {
       setStatus(`L${level} fixed — ${reply.row.across}/${reply.row.expected} crossings`
         + `${closes ? "" : ", and it does not close"}`
         + `${reply.rebuilt && above
-          ? `. The ${above} level${above === 1 ? "" : "s"} above were rebuilt on it`
+          ? `. The ${above} level${above === 1 ? "" : "s"} above now start at this `
+            + "ring's own arm ends — place them by hand"
           : reply.rebuilt ? "" : ". The levels above still stand on the old ring"}`
         + `${next && reply.rebuilt ? ` — opening L${level + 1}.` : "."}`);
       setFailed(!closes);
@@ -3110,7 +3122,8 @@ export function Fitter() {
                     <button type="button" className="primary"
                       disabled={!before || busy || !canWeave}
                       title={canWeave
-                        ? "Make this the level's ring, and build the levels above it again"
+                        ? "Make this the level's ring; the levels above are welded "
+                          + "at its arm ends, ready to be placed by hand"
                         : "Adopting reads the engine's browsing session — press Run first"}
                       onClick={() => fixLevel(true)}>
                       {levelsAbove
@@ -3134,10 +3147,10 @@ export function Fitter() {
                   moving to L2 leaves L2 standing on the engine's L1 — the two fits never meet,
                   and a judgement saved over both would describe a stitch nobody wove.{" "}
                   <em>Fix</em> is what makes them meet: the ring on screen becomes this level's
-                  ring and every level above it is <em>built again</em> from it, by the same
-                  search, the same flags and the same seeds the run itself used. That costs a
-                  real search per level above — the same work the run did for them — which is
-                  why it is a button and not something that happens quietly.
+                  ring — <em>locked, never re-laid</em> — and every level above it is built
+                  again <em>welded at this ring's own arm ends</em>, unsearched, with its
+                  knobs opening at extension 0 on those very points. Placing each level is
+                  then your move, the same way this one was.
                   {levelsAbove > 0 && <> Right now that is <em>{levelsAbove} level
                     {levelsAbove === 1 ? "" : "s"}</em>.</>}{" "}
                   A fixed stack is also remembered in this browser: the next Run of these
