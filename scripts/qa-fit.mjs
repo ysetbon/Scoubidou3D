@@ -18,7 +18,7 @@
 // be worse than a gap. `npm run check:fit` covers the solver; scripts/
 // check-fit.py covers the geometry against the engine.
 import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
-import { readFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const SHOTS = `${ROOT}node_modules/.cache`;
@@ -1326,6 +1326,78 @@ if (edited.knobs >= 3) {
   ok('no page errors on the wander path', wErrors.length === 0,
     wErrors.slice(0, 2).join(' | '));
   await wander.close();
+}
+
+
+// ---------------------------------------------------------------------------
+// "Load L1 from file": a ring off disk becomes level 1, and the page opens L2.
+//
+// The reader has an L1 they are happy with — exported from here — and should
+// not have to reproduce it through the shelf to build on it. The file's
+// strands go to generate as level1Ring with preserveArms, L1 reads as fixed ·
+// placed by hand, the page lands on L2, and the ring is remembered in this
+// browser so the next Run needs no file. The notes file (.fit.json) that
+// Export writes beside the ring is recognised by name rather than by a parse
+// error, because picking it has already cost a reader a round trip.
+// ---------------------------------------------------------------------------
+{
+  const fromFile = await browser.newPage({ viewport: { width: 1440, height: 1300 } });
+  const fErrors = [];
+  fromFile.on('pageerror', e => fErrors.push(String(e)));
+  await fromFile.addInitScript(STUB, { size: STUB_SIZE, delay: 0 });
+  await fromFile.goto(URL_BASE, { waitUntil: 'domcontentloaded' });
+  await fromFile.waitForSelector('button.go');
+  await fromFile.fill('#fit-m', String(size.m));
+  await fromFile.fill('#fit-n', String(size.n));
+  await fromFile.fill('#fit-ks', size.ks.join(' '));
+
+  // The notes file first: it must be named, not parsed at.
+  const notesPath = `${SHOTS}/qa-l1-notes.fit.json`;
+  writeFileSync(notesPath, JSON.stringify({ params: { m: size.m, n: size.n },
+                                            bands: [], fitted: true }));
+  await fromFile.locator('input[type=file]').setInputFiles(notesPath);
+  await fromFile.waitForTimeout(500);
+  const notesSaid = await fromFile.evaluate(() =>
+    document.querySelector('.status')?.textContent ?? '');
+  ok('the notes file is recognised by name, not by a parse error',
+    /notes file/.test(notesSaid) && /without \.fit/.test(notesSaid),
+    notesSaid.slice(0, 120));
+  const noGenerateYet = await fromFile.evaluate(() => window.__stubGenerates ?? 0);
+  ok('and no engine was started for it', noGenerateYet === 0,
+    `${noGenerateYet} generate(s)`);
+
+  // Then the ring itself — exactly what Export writes: a list of strands.
+  const ringPath = `${SHOTS}/qa-l1-ring.json`;
+  writeFileSync(ringPath,
+    JSON.stringify(size.stages.find(s => s.level === 1).strands));
+  await fromFile.locator('input[type=file]').setInputFiles(ringPath);
+  await fromFile.waitForTimeout(1500);
+  const loaded = await fromFile.evaluate(() => {
+    const rungs = [...document.querySelectorAll('.ladder .rung')];
+    return {
+      generates: window.__stubGenerates ?? 0,
+      sent: (window.__l1ring?.strands ?? []).length,
+      preserve: window.__preserveGen === true,
+      first: rungs[0]?.textContent.replace(/\s+/g, ' ').trim() ?? '',
+      state: rungs[0]?.dataset.state ?? '',
+      current: rungs.findIndex(r => r.dataset.current) + 1,
+      remembered: localStorage.getItem('mxn-fit-fixed') ?? '',
+    };
+  });
+  ok('the file\u2019s strands are sent to generate as the ring to adopt',
+    loaded.generates === 1 && loaded.sent > 0 && loaded.preserve,
+    `generates=${loaded.generates}, strands=${loaded.sent}, preserve=${loaded.preserve}`);
+  ok('L1 reads as fixed, placed by hand',
+    loaded.state === 'fixed' && /placed by hand/.test(loaded.first),
+    loaded.first.slice(0, 60));
+  ok('and the page opens at L2, ready to edit',
+    loaded.current === 2, `rung ${loaded.current}`);
+  ok('the ring is remembered for these parameters, so the next Run needs no file',
+    loaded.remembered.includes(`v3/lh-cw/${size.m}x${size.n}/${size.ks.join('_')}`),
+    loaded.remembered.slice(0, 80) || '(nothing stored)');
+  ok('no page errors on the file path', fErrors.length === 0,
+    fErrors.slice(0, 2).join(' | '));
+  await fromFile.close();
 }
 
 ok('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));

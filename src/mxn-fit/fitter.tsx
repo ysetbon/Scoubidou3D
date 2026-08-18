@@ -1540,7 +1540,17 @@ export function Fitter() {
     };
   };
 
-  const run = async () => {
+  /**
+   * Run the stitch, optionally standing on a level 1 handed in from a FILE.
+   *
+   * `fromFile` is the ring somebody exported and wants back: the strands
+   * themselves, which outrank every other source of an L1 because the reader
+   * just pointed at them. The run then behaves exactly as it does for a judged
+   * ★ best — adopt, weld the levels above at its arm ends, open at L2 — and
+   * the ring is remembered here afterwards, so the NEXT run stands on it
+   * without the file being picked again. That is what "by default" means.
+   */
+  const run = async (fromFile?: { strands: Strand[]; name: string }) => {
     if (!ks.length) { setStatus("Give at least one k."); setFailed(true); return; }
     setBusy(true);
     setFailed(false);
@@ -1572,7 +1582,14 @@ export function Fitter() {
       // the default under the ring a hand had placed — the ladder starting
       // over with nothing anywhere saying so.
       let saved: ReturnType<typeof seedFromStack> = null;
-      if (buildOnJudged) {
+      if (fromFile) {
+        // A file the reader just pointed at outranks the shelf and the
+        // browser's memory: it is the most explicit statement of "this is my
+        // level 1" the page can receive.
+        note(`Level 1 taken from ${fromFile.name} — ${fromFile.strands.length} `
+          + "strands read off the file. The engine adopts it instead of "
+          + "searching, and every level above is welded at its arm ends");
+      } else if (buildOnJudged) {
         setStatus("Looking for a judged level 1 to build the run on…");
         try { adopt = await judgedLevelOne(d); } catch { adopt = null; }
         saved = seedFromStack(savedStackFor(readSetting(FIXED_KEY), picksKey(d)));
@@ -1604,13 +1621,14 @@ export function Fitter() {
       // which it is: the `-j…` segment descriptorPath writes belongs to the
       // farm's hand grid, not to this. So the cache is left out of it entirely
       // rather than being handed two answers under one key.
-      const cacheable = !adopt && !saved;
+      const cacheable = !adopt && !saved && !fromFile;
       let result: { stages?: Stage[]; rows?: AuditRow[];
                     level1Adopted?: boolean; level1AdoptFailed?: boolean } | null = null;
       if (!shelf) note("No worker url — the shelf is not consulted");
       else if (!cacheable) {
-        note(`Cached runs skipped: this run's L1 is ${adopt ? "a judged"
-          : "a here-fixed"} ring, and the run key cannot tell that apart from `
+        note(`Cached runs skipped: this run's L1 is ${
+          fromFile ? "a ring read from a file" : adopt ? "a judged"
+            : "a here-fixed"} ring, and the run key cannot tell that apart from `
           + "a searched one");
       }
       if (shelf && cacheable) {
@@ -1654,8 +1672,11 @@ export function Fitter() {
         // hand or a judgement placed is the truth; the levels above are the
         // person's next move, not the engine's.
         const computed = await openSession(
-          d, undefined, adopt?.ring ?? saved?.ring,
-          !!(adopt || saved)) as typeof result;
+          d, undefined,
+          fromFile
+            ? { strands: fromFile.strands, h_ext: [], v_ext: [] }
+            : adopt?.ring ?? saved?.ring,
+          !!(adopt || saved || fromFile)) as typeof result;
         result = computed;
         const seconds = (Date.now() - began) / 1000;
         note(`generate finished in ${seconds.toFixed(1)}s`);
@@ -1683,7 +1704,37 @@ export function Fitter() {
       // not match this level's is not this level's ring, and bridge.generate
       // searches instead and says so.
       const l1 = audits.find(row => row.level === 1);
-      if (adopt && payload.level1Adopted) {
+      if (fromFile && payload.level1Adopted) {
+        // The file's ring IS this run's level 1, and it is fixed from the
+        // moment it lands: the reader placed it elsewhere and handed it over
+        // finished. Remembered here too, so the next Run (and "open the
+        // knobs") stands on it without the file being picked again.
+        const at = new Date().toISOString();
+        const entry: FixedLevel = {
+          level: 1, h: null, v: null, at, rebuilt: true, origin: "hand",
+          audit: l1
+            ? { crossings: l1.across, expected: l1.expected,
+                stray: l1.stray, broken: l1.broken }
+            : undefined,
+          strands: fromFile.strands,
+        };
+        holdFixed({ 1: entry });
+        try {
+          writeSetting(FIXED_KEY, rememberStack(readSetting(FIXED_KEY),
+            picksKey(d), packStack(picksKey(d), d.ks, { 1: entry }, at)));
+          note(`L1 from ${fromFile.name} is now this browser's level 1 for `
+            + `${nameOf(d)} — the next Run stands on it with no file to pick`);
+        } catch {
+          note("The file's L1 could not be written to this browser's storage");
+        }
+        setStatus(`L1 loaded from ${fromFile.name} — locked. Every level above `
+          + "is welded at its arm ends, nothing searched.");
+      } else if (fromFile && payload.level1AdoptFailed) {
+        setStatus(`${fromFile.name} is not a level-1 ring for ${nameOf(d)} — `
+          + "its strands name a different size or hand, so the engine searched "
+          + "instead. Check m, n, hand and direction against the file.");
+        setFailed(true);
+      } else if (adopt && payload.level1Adopted) {
         setPinned({ chooser: adopt.judgement.chooser, from: adopt.from });
         holdFixed({
           1: {
@@ -1723,7 +1774,8 @@ export function Fitter() {
       // there rather than at the top, which would be ten levels past the
       // question. Without one, the top level is what "the ring" means and it
       // opens there.
-      const first = (adopt || saved) && payload.level1Adopted && drawn.length > 1
+      const first = (adopt || saved || fromFile) && payload.level1Adopted
+          && drawn.length > 1
         ? 2 : (drawn.length ? drawn[drawn.length - 1].level : 1);
       await fitAt(first, drawn, audits);
     } catch (error) {
@@ -2496,6 +2548,66 @@ export function Fitter() {
     setFailed(!heldLocally);
   };
 
+  /** The file picker behind "Load L1 from file". */
+  const l1FileInput = useRef<HTMLInputElement>(null);
+
+  /**
+   * Adopt a level-1 ring read off disk, and open the stitch on it.
+   *
+   * Export writes two files and only one of them is the ring: the strands
+   * themselves, and a `.fit.json` of notes ABOUT them. That distinction has
+   * already cost a reader a round trip, so picking the wrong one is answered
+   * by name here rather than by a parse error — the notes file is recognised
+   * and the right filename is quoted back.
+   *
+   * Nothing is validated beyond "these are strands": whether the ring belongs
+   * to this size and hand is the ENGINE's judgement, made by comparing layer
+   * names against the level-1 it builds (bridge._adopt_l1), and it is reported
+   * as `level1AdoptFailed` rather than guessed at here.
+   */
+  const loadL1FromFile = async (file: File) => {
+    setBusy(true);
+    setFailed(false);
+    setStatus(`Reading ${file.name}…`);
+    let strands: Strand[];
+    try {
+      const got: unknown = JSON.parse(await file.text());
+      if (!Array.isArray(got)) {
+        const notes = !!got && typeof got === "object"
+          && ("params" in got || "bands" in got);
+        setStatus(notes
+          ? `${file.name} is the notes file Export writes beside the ring — it `
+            + "describes the fit but holds no strands. Pick the other file, the "
+            + "one without .fit in its name."
+          : `${file.name} is not a ring: a level-1 file is a JSON list of `
+            + "strands, and this is not a list.");
+        setFailed(true);
+        setBusy(false);
+        return;
+      }
+      const looksLikeStrand = (s: unknown) =>
+        !!s && typeof s === "object"
+        && typeof (s as Strand).layer_name === "string"
+        && !!(s as Strand).start && !!(s as Strand).end;
+      if (!got.length || !got.every(looksLikeStrand)) {
+        setStatus(`${file.name} is a list, but not of strands — every entry `
+          + "needs a layer_name and a start and end point.");
+        setFailed(true);
+        setBusy(false);
+        return;
+      }
+      strands = got as Strand[];
+    } catch (error) {
+      setStatus(`${file.name} could not be read: ${
+        error instanceof Error ? error.message : String(error)}`);
+      setFailed(true);
+      setBusy(false);
+      return;
+    }
+    note(`L1 file picked · ${file.name} · ${strands.length} strands`);
+    await run({ strands, name: file.name });
+  };
+
   const exportRing = () => {
     if (!plan || !before) return;
     const source = after ?? null;
@@ -2696,10 +2808,34 @@ export function Fitter() {
 
           <section>
             <h2 className="kicker">Run</h2>
-            <button className="go" type="button" onClick={run} disabled={busy}>
+            {/* `() => run()` rather than `run`: the handler takes an optional
+                file ring, and a bare reference would hand it the click event. */}
+            <button className="go" type="button" onClick={() => run()} disabled={busy}>
               {busy ? "Working…"
                 : apiUrl.trim() ? "Run · load best from Cloudflare"
                 : "Run · load best fit"}
+            </button>
+            {/* The ring straight off disk. A reader who has an L1 they are
+                happy with — exported from here, or from anywhere that writes
+                these strands — should not have to reproduce it through the
+                shelf to build on it. */}
+            <input ref={l1FileInput} type="file" accept=".json,application/json"
+              style={{ display: "none" }}
+              onChange={event => {
+                const file = event.target.files?.[0];
+                // Cleared so picking the SAME file twice fires onChange twice;
+                // re-loading a file one has just edited is an obvious move.
+                event.target.value = "";
+                if (file) loadL1FromFile(file);
+              }} />
+            <button className="go ghost" type="button" disabled={busy}
+              onClick={() => l1FileInput.current?.click()}
+              title={"Adopt a level-1 ring from a .json file of strands — the one "
+                + "Export writes (not the .fit.json notes). It is locked as L1, "
+                + "every level above is welded at its arm ends unsearched, the "
+                + "page opens at L2, and this browser remembers it as the L1 for "
+                + "these parameters"}>
+              Load L1 from file · start at L2
             </button>
             <button className="go ghost" type="button" onClick={openWithoutSearching}
               disabled={busy}
