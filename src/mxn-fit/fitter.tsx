@@ -67,6 +67,10 @@ type AuditRow = {
   level: number; k: number | null; expected: number; across: number;
   within: number; masks: number; stray: number; broken: number;
   healthy: boolean; ext: number[][];
+  /** What the engine says it did for this level — "placed at the ring below"
+   *  is the one this page keys off: such a level is a person's to place, and
+   *  the candidate walk must not run over it. */
+  applied?: string[];
 };
 
 type Woven = {
@@ -567,7 +571,7 @@ function useWorker(onProgress: (message: string) => void) {
     // cached worker had no fit-plan-now. BUMP THIS whenever the worker's
     // message vocabulary changes. src/mxn-lab/weave-studio.tsx does the same.
     const worker = new Worker(
-      new URL(`${BASE}mxn/exact-worker.js?v=trace-plan-v28`, window.location.href),
+      new URL(`${BASE}mxn/exact-worker.js?v=trace-plan-v29`, window.location.href),
       { type: "module" });
     worker.onmessage = (event) => {
       const data = event.data || {};
@@ -1412,6 +1416,23 @@ export function Fitter() {
         }
         pickNote = `The best fit from ${pick.from} no longer survives the audit `
           + `(${woven.row?.across ?? 0}/${woven.row?.expected ?? "?"}) — fitting fresh. `;
+      }
+
+      // A PLACED level is a person's to place: it was welded at the fixed
+      // ring's arm ends, unsearched, and running the candidate walk over it
+      // would be the page searching a default over exactly the ring the
+      // placed mode exists to protect. The knobs are open at extension 0 on
+      // the fixed ring's own arm ends; the reader's saved best for this level
+      // (checked above) still outranks this, because that is their own word.
+      const placedHere = audits.find(r => r.level === target)
+        ?.applied?.includes("placed at the ring below");
+      if (placedHere) {
+        const belowFixed = level - 1;
+        setStatus(`L${level} is welded at the fixed L${belowFixed}'s arm ends — `
+          + "knobs at 0 on its very points, nothing searched. Place it, "
+          + `Apply, then Fix L${level}.`);
+        setBusy(false);
+        return;
       }
 
       if (!lists.h.length && !lists.v.length) {

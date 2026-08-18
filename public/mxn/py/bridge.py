@@ -312,6 +312,13 @@ def _register_level(level, k, checkpoint, result, search):
     pick_v = next((i for i, c in enumerate(v_cands) if c["ext"] == engine_v), 0)
     _SESSION["levels"][level] = {
         "level": level, "k": k, "checkpoint": checkpoint,
+        # Whether this level was PLACED -- welded at a fixed ring's arm ends,
+        # never searched. The plan reader keys off it: a placed level's band
+        # inputs are grabbed at the hook and the replay is aborted, because
+        # replaying a search nobody ran (and nobody wants) is exactly the
+        # wait the placed mode exists to remove.
+        "placed": bool((result.get("search") or {})
+                       .get("horizontal", {}).get("placed")),
         "h_cands": h_cands, "v_cands": v_cands,
         # What the level actually adopted, straight off the alignment result.
         # The candidate lists are empty on a seeded or square-mirrored level --
@@ -876,6 +883,10 @@ def _band_name(band):
     return "vertical" if str(band).lower().startswith("v") else "horizontal"
 
 
+class _PlanGrabbed(Exception):
+    """The wanted band's inputs are in hand; the rest of the replay is waste."""
+
+
 def _trace_band_inputs(entry, want):
     """The band search's own arguments, grabbed by replaying the level.
 
@@ -919,6 +930,15 @@ def _trace_band_inputs(entry, want):
         })
         emitTrace(json.dumps(ahead, separators=(",", ":")))
 
+    # A PLACED level was never searched, so replaying its search only to read
+    # the band inputs would be paying for a walk nobody ran. The inputs exist
+    # the moment the hook fires -- fit_plan_now stands on the same fact -- so
+    # for a placed level the replay is aborted right there. When the wanted
+    # band is the second one searched, the first band's own (cheap) walk still
+    # runs, because the geometry between the two is real; the expensive band
+    # is searched second and is exactly the one the abort skips.
+    abort_when_grabbed = bool(entry.get("placed"))
+
     def hook(strands_list, pairs, pair_directions, pair_originals, ext_range_values,
              angle_step_degrees, max_extension, strand_width,
              custom_angle_min, custom_angle_max, angle_mode,
@@ -941,6 +961,8 @@ def _trace_band_inputs(entry, want):
                 "pairs_n": len(pairs),
             })
             announce(grabbed[0])
+        if abort_when_grabbed and grabbed:
+            raise _PlanGrabbed()
         return real_search(strands_list, pairs, pair_directions, pair_originals,
                            ext_range_values, angle_step_degrees, max_extension,
                            strand_width, custom_angle_min, custom_angle_max,
@@ -961,6 +983,8 @@ def _trace_band_inputs(entry, want):
                 strands, m, n, entry["k"], _SESSION["direction"], _SESSION["hand"],
                 entry["level"], info, mirror_sides=False, seed_extensions=[],
                 collect_candidates=False, verbose=False)
+    except _PlanGrabbed:
+        pass
     finally:
         LH._search_combo_space_cpu = real_search
         LH.FAST_ANGLE_SCAN = was_fast

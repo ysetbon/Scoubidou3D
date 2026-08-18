@@ -243,6 +243,23 @@ def run_case(m, n, ks):
     check("placed: their knobs open at extension 0",
           all(all(v == 0 for side in r["ext"] for v in side)
               for r in placed["rows"] if r["level"] > 1))
+    # The plan for a placed level is grabbed at the hook and the replay is
+    # aborted -- reading the knobs must not replay a search nobody ran. What
+    # is asserted is the CONTRACT: both bands come back usable (pairs, names,
+    # applied zeros), because an abort that also lost the inputs would trade
+    # a wait for a dead panel.
+    plan_up = json.loads(quiet(bridge.fit_plan, 2))
+    for key in ("h", "v"):
+        side = plan_up[key]
+        if side.get("unavailable"):
+            check("placed: fit_plan(2) %s band is usable" % key, False,
+                  str(side.get("reason")))
+            continue
+        check("placed: fit_plan(2) %s band is usable, applied zeros" % key,
+              len(side.get("names") or []) >= 2
+              and all(v == 0 for v in (side.get("applied") or [None])),
+              "applied %s, %d arms" % (side.get("applied"),
+                                       len(side.get("names") or [])))
 
 
 run_case(2, 1, [-1, -1, -1])
