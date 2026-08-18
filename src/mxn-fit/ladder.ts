@@ -294,3 +294,106 @@ export function stackAudit(fixed: Record<number, FixedLevel>) {
 export function judgementCovers(j: Judgement): number[] {
   return j.levels.map(entry => entry.level).sort((a, b) => a - b);
 }
+
+// ---------------------------------------------------------------------------
+// The stack, remembered between visits.
+//
+// Fixing a level used to live only in React state, which meant it lived only
+// until the tab closed: a reader who fixed L1 by hand, came back, and pressed
+// Run got the engine's default L1 back — and every level above it rebuilt on
+// the wrong ring, with nothing anywhere saying the fix was gone. The judgement
+// path (★ save the stack → the next run adopts it) already survives, but it
+// asks for a chooser and a deliberate save; the fix itself should not need
+// either to still be there tomorrow.
+//
+// So each fix is also written to this browser's storage, keyed by the same
+// picksKey the judgements use, and the next Run of the same parameters reads
+// it back and adopts its level 1 exactly the way a judged ★ best is adopted.
+// All of it is string-in string-out so it runs in node (`npm run check:ladder`)
+// — the page owns the localStorage calls, this owns what is stored.
+// ---------------------------------------------------------------------------
+
+/** One run's fixed levels, as this browser remembers them between visits. */
+export type SavedStack = {
+  /** The cache key of the run the stack belongs to — `picksKey(descriptor)`. */
+  key: string;
+  /** When the stack was last touched, so the store can shed the oldest. */
+  at: string;
+  ks: number[];
+  levels: FixedLevel[];
+};
+
+/**
+ * How many runs' stacks the store keeps. Each fixed level carries its ring's
+ * strands — that is what makes it adoptable — so the entries are not small,
+ * and localStorage is not large. Oldest out first.
+ */
+export const SAVED_STACKS_MAX = 8;
+
+/** The fixed map as one storable entry, or null when nothing is fixed. */
+export function packStack(
+  key: string, ks: number[], fixed: Record<number, FixedLevel>, at: string,
+): SavedStack | null {
+  const levels = Object.values(fixed).sort((a, b) => a.level - b.level);
+  if (!levels.length) return null;
+  return { key, at, ks: [...ks], levels };
+}
+
+/** The raw store rows that are actually stack entries, whatever was written. */
+function storedStacks(raw: string | null): SavedStack[] {
+  try {
+    const got: unknown = JSON.parse(raw || "[]");
+    if (!Array.isArray(got)) return [];
+    return got.filter((row): row is SavedStack =>
+      !!row && typeof row === "object"
+      && typeof (row as SavedStack).key === "string"
+      && typeof (row as SavedStack).at === "string"
+      && Array.isArray((row as SavedStack).levels));
+  } catch {
+    // An unreadable store is replaced, not obeyed — losing a remembered fix
+    // is recoverable (the ladder still works), obeying garbage is not.
+    return [];
+  }
+}
+
+/**
+ * The store with `entry` in place of whatever `key` held.
+ *
+ * Passing `entry: null` forgets the key. Newest-last, capped at
+ * SAVED_STACKS_MAX by shedding the oldest — a browser that fixed eight other
+ * stitches since is allowed to have moved on.
+ */
+export function rememberStack(
+  raw: string | null, key: string, entry: SavedStack | null,
+): string {
+  const rows = storedStacks(raw).filter(row => row.key !== key);
+  if (entry) rows.push(entry);
+  rows.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+  return JSON.stringify(rows.slice(-SAVED_STACKS_MAX));
+}
+
+/** What the store holds for one run's key, or null. */
+export function savedStackFor(raw: string | null, key: string): SavedStack | null {
+  return storedStacks(raw).find(row => row.key === key) ?? null;
+}
+
+/**
+ * The saved level 1 as the ring `bridge.generate` can adopt, or null.
+ *
+ * Level 1 only, because level 1 is the one level a fresh generate can take
+ * whole: `level1_ring` swaps it in before anything is searched, and every
+ * level above is then built on it by the same `_grow_levels` the original
+ * fix used — so the rebuilt levels come back as the fix left them. A saved
+ * level with no strands (or no bands) cannot be adopted and returns null
+ * rather than a ring that would fail the engine's name check.
+ */
+export function seedFromStack(stack: SavedStack | null) {
+  const level = stack?.levels.find(entry => entry.level === 1);
+  const strands = level?.strands;
+  if (!level || !Array.isArray(strands) || !strands.length
+      || (!level.h && !level.v)) return null;
+  return {
+    level,
+    ring: { strands, h_ext: level.h?.ext ?? [], v_ext: level.v?.ext ?? [] },
+  };
+}

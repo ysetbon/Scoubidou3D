@@ -1118,6 +1118,26 @@ under the ten-level key it would claim four levels nobody has looked at. That is
 also what makes the work reusable — the next run of the ten-level URL finds it
 by prefix and starts from there.
 
+### A fix survives the tab
+
+Saving a stack is a judgement, and a judgement is deliberate: it has an author
+and a verdict, and nothing writes one unattended. Which left a hole that was
+reported exactly as it bites: *fix L1 by hand, come back, and the run gives the
+default back* — every level above rebuilt on the engine's L1, with nothing
+anywhere saying the fix was gone. The fix lived only in React state.
+
+So every fix is **also** written to this browser's storage
+(`mxn-fit-fixed`, keyed by the run's own `picksKey`, newest eight runs kept),
+and the next Run of the same parameters reads it back: the saved level 1 —
+strands and all — is handed to `generate` as `level1_ring`, adopted exactly the
+way a judged ★ best is, the rung reads *fixed · placed by hand* again, and the
+run opens at L2, which is the level the reader was about to edit. When both a
+judged ★ best and a here-fixed L1 exist, the newer of the two human decisions
+wins. It is a browser memory, not a shelf write — sharing the fix is still what
+★ *save the stack* is for. The store logic is pure string-in string-out in
+`ladder.ts`, checked in `npm run check:ladder`; the round trip is driven on the
+real page in `npm run qa:fit`.
+
 ### `?ks=-1-1-1` is ten levels, not none
 
 The URL above did not work. `ks` was split on spaces, commas, brackets and

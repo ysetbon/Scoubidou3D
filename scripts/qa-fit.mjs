@@ -75,6 +75,11 @@ const STUB = ({ size, delay }) => {
       }, 0);
       if (data.type === 'generate') {
         window.__stubGenerates += 1;
+        // The ring a remembered or judged L1 hands to generate, kept so the
+        // restore checks can assert it was actually sent — and echoed back as
+        // adopted, which is what bridge.generate reports for a ring whose
+        // layer names match.
+        window.__l1ring = data.level1Ring ?? null;
         // The real engine narrates its boot before it answers. The timeline is
         // built out of exactly these, so the stub has to send one or the check
         // below would be asserting against a silence the engine never keeps.
@@ -83,7 +88,8 @@ const STUB = ({ size, delay }) => {
         setTimeout(() => {
           sessioned = true;
           this.onmessage?.({ data: { id: data.id, type: 'result',
-            result: { stages: size.stages, rows: size.rows } } });
+            result: { stages: size.stages, rows: size.rows,
+                      level1Adopted: !!data.level1Ring } } });
         }, delay);
       } else if (!sessioned && data.type !== 'fit-plan-now') {
         reply({ type: 'error',
@@ -342,6 +348,13 @@ if (ladder.count) {
     fixedNow.stackButton.trim().endsWith(`L${topLevelOfRun}`)
     && !/L1–/.test(fixedNow.stackButton),
     fixedNow.stackButton || '(absent)');
+  // The fix must survive the tab: it is written to this browser's storage,
+  // keyed by the run, so the next Run of these parameters can stand on it.
+  const stored = await page.evaluate(() =>
+    localStorage.getItem('mxn-fit-fixed') ?? '');
+  ok('and the fix is remembered in this browser, keyed by the run',
+    stored.includes(`v3/lh-cw/${size.m}x${size.n}/${size.ks.join('_')}`),
+    stored.slice(0, 80) || '(nothing stored)');
 }
 
 if (knobs.rows >= 3) {
@@ -1079,6 +1092,67 @@ if (edited.knobs >= 3) {
   ok('no page errors on the apply path', apErrors.length === 0,
     apErrors.slice(0, 2).join(' | '));
   await ap.close();
+}
+
+// ---------------------------------------------------------------------------
+// A level 1 fixed here is remembered, and the next Run stands on it.
+//
+// This is the report that produced the whole store: fix L1 by hand, come back,
+// and the run rebuilt the engine's default under it — the ladder starting over
+// with nothing anywhere saying so. So a saved stack is seeded the way fixLevel
+// writes one, the page reloaded, and Run pressed. What has to happen: the
+// generate is handed the saved ring as level1Ring, the ladder's first rung
+// reads as fixed · placed by hand again, and the run opens at L2 — the level
+// the reader was about to edit on top of that L1.
+// ---------------------------------------------------------------------------
+{
+  const back = await browser.newPage({ viewport: { width: 1440, height: 1300 } });
+  const backErrors = [];
+  back.on('pageerror', e => backErrors.push(String(e)));
+  await back.addInitScript(STUB, { size: STUB_SIZE, delay: 0 });
+  const fixedKey = `v3/lh-cw/${size.m}x${size.n}/${size.ks.join('_')}/s1-eauto-b400000`;
+  await back.addInitScript(stack => {
+    localStorage.setItem('mxn-fit-fixed', JSON.stringify([stack]));
+  }, {
+    key: fixedKey, at: '2026-08-18T00:00:00.000Z', ks: size.ks,
+    levels: [{
+      level: 1,
+      h: size.held.h.ext ? { ext: size.held.h.ext, angle: null } : null,
+      v: size.held.v.ext ? { ext: size.held.v.ext, angle: null } : null,
+      at: '2026-08-18T00:00:00.000Z', rebuilt: true, origin: 'hand',
+      audit: { crossings: size.before.row.across,
+               expected: size.before.row.expected, stray: 0, broken: 0 },
+      strands: size.stages.find(s => s.level === 1).strands,
+    }],
+  });
+  await back.goto(URL_BASE, { waitUntil: 'domcontentloaded' });
+  await back.waitForSelector('button.go');
+  await back.fill('#fit-m', String(size.m));
+  await back.fill('#fit-n', String(size.n));
+  await back.fill('#fit-ks', size.ks.join(' '));
+  await back.click('button.go');
+  await back.waitForTimeout(1500);
+  const restored = await back.evaluate(() => {
+    const rungs = [...document.querySelectorAll('.ladder .rung')];
+    return {
+      ring: window.__l1ring,
+      states: rungs.map(r => r.dataset.state),
+      first: rungs[0]?.textContent.replace(/\s+/g, ' ').trim() ?? '',
+      current: rungs.findIndex(r => r.dataset.current) + 1,
+    };
+  });
+  ok('the run hands the remembered L1 to generate as the ring to adopt',
+    !!restored.ring && Array.isArray(restored.ring.strands)
+    && restored.ring.strands.length > 0,
+    restored.ring ? `${restored.ring.strands.length} strands` : '(no ring sent)');
+  ok('the first rung reads as fixed · placed by hand again',
+    restored.states[0] === 'fixed' && /placed by hand/.test(restored.first),
+    restored.first.slice(0, 60));
+  ok('and the run opens at L2, on top of the restored L1',
+    restored.current === 2, `rung ${restored.current}`);
+  ok('no page errors on the remembered-fix path', backErrors.length === 0,
+    backErrors.slice(0, 2).join(' | '));
+  await back.close();
 }
 
 ok('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));

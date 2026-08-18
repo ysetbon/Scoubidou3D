@@ -14,7 +14,8 @@
 // is here so that cannot come back quietly.
 
 import {
-  askedFrom, ksOf, ladderRows, levelSpan, prefixDescriptor, stackAudit,
+  SAVED_STACKS_MAX, askedFrom, ksOf, ladderRows, levelSpan, packStack,
+  prefixDescriptor, rememberStack, savedStackFor, seedFromStack, stackAudit,
   stackLevels, stackMetrics, stackSummary, type FixedLevel,
 } from "../src/mxn-fit/ladder";
 import { parseSequence, specFromSearch } from "../src/mxn-farm/plan";
@@ -206,6 +207,77 @@ console.log("\n=========== the stack a judgement carries ===========\n");
     JSON.stringify(stackLevels(fixed).map(entry => entry.level)));
   check("but the top level needs no rebuild, and is kept",
     same(stackLevels({ 3: fixture(3, false) }).map(entry => entry.level), [3]));
+}
+
+console.log("\n=========== the stack, remembered between visits ===========\n");
+//
+// Fixing a level must survive the tab, or "fix L1, come back, keep going"
+// silently rebuilds the default under a ring somebody placed by hand. The
+// store is string-in string-out — the page owns localStorage, this owns what
+// is stored — so all of it runs here.
+
+{
+  const withRing = (level: number, rebuilt = true): FixedLevel => ({
+    ...fixture(level, rebuilt),
+    origin: "hand",
+    strands: [{ layer_name: "1_2", start: { x: 0, y: 0 }, end: { x: 1, y: 1 } }],
+  });
+  const KEY = picksKey(prefixDescriptor(TEN, 4));
+
+  check("an empty fixed map packs to nothing",
+    packStack(KEY, TEN.ks.slice(0, 4), {}, "2026-08-18T00:00:00Z") === null);
+
+  const entry = packStack(KEY, TEN.ks.slice(0, 4),
+    { 2: withRing(2), 1: withRing(1) }, "2026-08-18T00:00:00Z");
+  check("a packed stack keeps its levels in order",
+    same(entry?.levels.map(l => l.level), [1, 2]));
+
+  const store = rememberStack(null, KEY, entry);
+  check("a remembered stack reads back under its own key",
+    same(savedStackFor(store, KEY)?.levels.map(l => l.level), [1, 2]));
+  check("and not under another's",
+    savedStackFor(store, picksKey(TEN)) === null);
+
+  const rewritten = rememberStack(store, KEY,
+    packStack(KEY, TEN.ks.slice(0, 4), { 1: withRing(1) }, "2026-08-18T01:00:00Z"));
+  check("remembering again replaces the key's entry rather than stacking it",
+    same(savedStackFor(rewritten, KEY)?.levels.map(l => l.level), [1])
+    && JSON.parse(rewritten).length === 1);
+  check("forgetting a key removes it",
+    savedStackFor(rememberStack(rewritten, KEY, null), KEY) === null);
+  check("garbage in the store is replaced, not obeyed",
+    same(savedStackFor(rememberStack("{not json", KEY, entry), KEY)?.ks,
+      TEN.ks.slice(0, 4)));
+
+  // The cap: the oldest run's stack is shed, never the newest.
+  let full: string | null = null;
+  for (let i = 0; i <= SAVED_STACKS_MAX; i += 1) {
+    const key = picksKey({ ...TEN, ks: [i] });
+    full = rememberStack(full, key,
+      packStack(key, [i], { 1: withRing(1) },
+        `2026-08-${String(i + 1).padStart(2, "0")}T00:00:00Z`));
+  }
+  check(`the store keeps at most ${SAVED_STACKS_MAX} runs' stacks`,
+    JSON.parse(full!).length === SAVED_STACKS_MAX);
+  check("and it is the oldest that was shed",
+    savedStackFor(full, picksKey({ ...TEN, ks: [0] })) === null
+    && savedStackFor(full, picksKey({ ...TEN, ks: [SAVED_STACKS_MAX] })) !== null);
+
+  // The seed: the saved L1, as the ring bridge.generate can adopt.
+  const seed = seedFromStack(savedStackFor(store, KEY));
+  check("a saved L1 with its ring seeds the next run",
+    !!seed && Array.isArray(seed.ring.strands)
+    && same(seed.ring.h_ext, [0]) && same(seed.ring.v_ext, [42.5, 80]),
+    JSON.stringify(seed && { h: seed.ring.h_ext, v: seed.ring.v_ext }));
+  check("a stack fixed only above L1 seeds nothing",
+    seedFromStack(packStack(KEY, TEN.ks.slice(0, 4),
+      { 2: withRing(2) }, "2026-08-18T00:00:00Z")) === null);
+  check("a saved L1 with no strands cannot be adopted, and says so by seeding nothing",
+    seedFromStack(packStack(KEY, TEN.ks.slice(0, 4),
+      { 1: fixture(1, true) }, "2026-08-18T00:00:00Z")) === null);
+  check("an L1 fixed without a rebuild still seeds — the ring itself is real",
+    seedFromStack(packStack(KEY, TEN.ks.slice(0, 4),
+      { 1: withRing(1, false) }, "2026-08-18T00:00:00Z")) !== null);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

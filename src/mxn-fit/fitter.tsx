@@ -48,7 +48,8 @@ import {
 // what "fixed" means for one. All of it pure, all of it checked in node —
 // `npm run check:ladder`.
 import {
-  askedFrom, ksOf, ladderRows, levelSpan, prefixDescriptor, stackAudit,
+  askedFrom, ksOf, ladderRows, levelSpan, packStack, prefixDescriptor,
+  rememberStack, savedStackFor, seedFromStack, stackAudit,
   stackLevels, stackMetrics, stackSummary, type FixedLevel,
 } from "./ladder";
 
@@ -160,6 +161,13 @@ const VERDICT_GLYPH: Record<Verdict, string> = {
 const DESCRIPTOR_FLAGS = { shortArms: true, step: "auto" as const, budget: 400_000 };
 
 const CHOOSER_KEY = "mxn-fit-chooser";
+
+/**
+ * Where a fixed stack survives the tab. Keyed by the run's own picksKey, so
+ * the next Run of the same parameters can stand on the level 1 that was fixed
+ * here — see ladder.ts § the stack, remembered between visits.
+ */
+const FIXED_KEY = "mxn-fit-fixed";
 
 /**
  * How large a size this page will take.
@@ -1443,9 +1451,21 @@ export function Fitter() {
       // Level 1 first: if somebody has judged one, the run is built ON it
       // rather than around it. See judgedLevelOne.
       let adopt: Awaited<ReturnType<typeof judgedLevelOne>> = null;
+      // The L1 this page itself fixed for these parameters, remembered in this
+      // browser. Without it, "fix L1, come back, keep going" silently rebuilt
+      // the default under the ring a hand had placed — the ladder starting
+      // over with nothing anywhere saying so.
+      let saved: ReturnType<typeof seedFromStack> = null;
       if (buildOnJudged) {
         setStatus("Looking for a judged level 1 to build the run on…");
         try { adopt = await judgedLevelOne(d); } catch { adopt = null; }
+        saved = seedFromStack(savedStackFor(readSetting(FIXED_KEY), picksKey(d)));
+        // Both a judged ★ best and a fix made here: the newest human decision
+        // wins, because both ARE human decisions and one came later.
+        if (saved && adopt) {
+          if (adopt.judgement.at >= saved.level.at) saved = null;
+          else adopt = null;
+        }
       } else {
         note("Level 1 will be searched — building on a judged L1 is switched off");
       }
@@ -1453,21 +1473,29 @@ export function Fitter() {
         note(`Level 1 taken from ${adopt.from} — ${adopt.judgement.chooser}'s `
           + "★ best. The engine adopts it instead of searching, and every level "
           + "above is built on it");
+      } else if (saved) {
+        note(`Level 1 taken from this browser — fixed here ${
+          saved.level.at.slice(0, 10)}, ${
+          saved.level.origin === "hand" ? "placed by hand"
+            : saved.level.origin === "judged" ? "a judged ring" : "fitted here"
+          }. The engine adopts it instead of searching, and every level above `
+          + "is built on it");
       }
       const shelf = apiUrl.trim()
         ? createCache({ base: apiUrl.trim(), token: apiToken.trim() }) : null;
-      // A run whose level 1 is a judged ring is a DIFFERENT run from the same
-      // parameters searched, and the run key does not say which it is: the
-      // `-j…` segment descriptorPath writes belongs to the farm's hand grid,
-      // not to this. So the cache is left out of it entirely rather than
-      // being handed two answers under one key.
-      const cacheable = !adopt;
+      // A run whose level 1 is a judged (or here-fixed) ring is a DIFFERENT
+      // run from the same parameters searched, and the run key does not say
+      // which it is: the `-j…` segment descriptorPath writes belongs to the
+      // farm's hand grid, not to this. So the cache is left out of it entirely
+      // rather than being handed two answers under one key.
+      const cacheable = !adopt && !saved;
       let result: { stages?: Stage[]; rows?: AuditRow[];
                     level1Adopted?: boolean; level1AdoptFailed?: boolean } | null = null;
       if (!shelf) note("No worker url — the shelf is not consulted");
       else if (!cacheable) {
-        note("Cached runs skipped: this run's L1 is a judged ring, and the run "
-          + "key cannot tell that apart from a searched one");
+        note(`Cached runs skipped: this run's L1 is ${adopt ? "a judged"
+          : "a here-fixed"} ring, and the run key cannot tell that apart from `
+          + "a searched one");
       }
       if (shelf && cacheable) {
         setStatus("Looking for a cached run…");
@@ -1504,7 +1532,8 @@ export function Fitter() {
         const began = Date.now();
         // This generate IS the session — the run and the state fitting reads
         // are the same call — so it is registered rather than repeated.
-        const computed = await openSession(d, undefined, adopt?.ring) as typeof result;
+        const computed = await openSession(
+          d, undefined, adopt?.ring ?? saved?.ring) as typeof result;
         result = computed;
         const seconds = (Date.now() - began) / 1000;
         note(`generate finished in ${seconds.toFixed(1)}s`);
@@ -1548,16 +1577,31 @@ export function Fitter() {
           },
         });
         note("L1 adopted: the whole run stands on the judged ring");
-      } else if (adopt && payload.level1AdoptFailed) {
-        note("The judged L1 is not this size's level-1 ring — the engine "
-          + "searched for one instead");
+      } else if (saved && payload.level1Adopted) {
+        // The fix reads as fixed again, audit refreshed from the run that just
+        // measured it — the ladder picks up where it left off rather than
+        // presenting yesterday's fix as this run's engine output.
+        setFixed({
+          1: {
+            ...saved.level, rebuilt: true,
+            audit: l1
+              ? { crossings: l1.across, expected: l1.expected,
+                  stray: l1.stray, broken: l1.broken }
+              : saved.level.audit,
+          },
+        });
+        note("L1 restored: the whole run stands on the ring fixed here before");
+      } else if ((adopt || saved) && payload.level1AdoptFailed) {
+        note(`The ${adopt ? "judged" : "remembered"} L1 is not this size's `
+          + "level-1 ring — the engine searched for one instead");
       }
       setBusy(false);
-      // Where the work starts. With a judged L1 in place the reader's next
-      // move is L2 — that is the whole ladder — so the run opens there rather
-      // than at the top, which would be ten levels past the question. Without
-      // one, the top level is what "the ring" means and it opens there.
-      const first = adopt && payload.level1Adopted && drawn.length > 1
+      // Where the work starts. With a judged or restored L1 in place the
+      // reader's next move is L2 — that is the whole ladder — so the run opens
+      // there rather than at the top, which would be ten levels past the
+      // question. Without one, the top level is what "the ring" means and it
+      // opens there.
+      const first = (adopt || saved) && payload.level1Adopted && drawn.length > 1
         ? 2 : (drawn.length ? drawn[drawn.length - 1].level : 1);
       await fitAt(first, drawn, audits);
     } catch (error) {
@@ -1655,27 +1699,36 @@ export function Fitter() {
           margin = Math.min(margin, readAt(inputs, p.ext, p.angle).margin);
         }
       }
-      setFixed(current => {
-        const next: Record<number, FixedLevel> = {};
-        for (const [key, entry] of Object.entries(current)) {
-          if (reply.rebuilt && entry.level > level) continue;
-          next[Number(key)] = entry;
-        }
-        next[level] = {
-          level, h: pick("h") ? { ext: [...pick("h")!.ext], angle: pick("h")!.angle } : null,
-          v: pick("v") ? { ext: [...pick("v")!.ext], angle: pick("v")!.angle } : null,
-          at, rebuilt: reply.rebuilt,
-          origin: origin?.kind === "judged" ? "judged"
-            : origin?.kind === "manual" ? "hand" : "fitted",
-          chooser: origin?.kind === "judged" ? origin.chooser : undefined,
-          audit: { crossings: reply.row.across, expected: reply.row.expected,
-                   stray: reply.row.stray, broken: reply.row.broken },
-          metrics: { neighbour_delta: delta, spread: spr,
-                     gap_margin: Number.isFinite(margin) ? margin : 0 },
-          strands: attempt ? attempt.woven.strands : before.stage.strands,
-        };
-        return next;
-      });
+      const nextFixed: Record<number, FixedLevel> = {};
+      for (const [key, entry] of Object.entries(fixed)) {
+        if (reply.rebuilt && entry.level > level) continue;
+        nextFixed[Number(key)] = entry;
+      }
+      nextFixed[level] = {
+        level, h: pick("h") ? { ext: [...pick("h")!.ext], angle: pick("h")!.angle } : null,
+        v: pick("v") ? { ext: [...pick("v")!.ext], angle: pick("v")!.angle } : null,
+        at, rebuilt: reply.rebuilt,
+        origin: origin?.kind === "judged" ? "judged"
+          : origin?.kind === "manual" ? "hand" : "fitted",
+        chooser: origin?.kind === "judged" ? origin.chooser : undefined,
+        audit: { crossings: reply.row.across, expected: reply.row.expected,
+                 stray: reply.row.stray, broken: reply.row.broken },
+        metrics: { neighbour_delta: delta, spread: spr,
+                   gap_margin: Number.isFinite(margin) ? margin : 0 },
+        strands: attempt ? attempt.woven.strands : before.stage.strands,
+      };
+      setFixed(nextFixed);
+      // And the same stack into this browser's storage, so the fix survives
+      // the tab: the next Run of these parameters adopts the fixed L1 instead
+      // of rebuilding the default under it. Failing to write costs only the
+      // memory, never the fix on screen, so it is a note rather than an error.
+      try {
+        const d = editor?.from === "run" ? editor.descriptor : descriptor;
+        writeSetting(FIXED_KEY, rememberStack(readSetting(FIXED_KEY),
+          picksKey(d), packStack(picksKey(d), d.ks, nextFixed, at)));
+      } catch {
+        note("The fixed stack could not be written to this browser's storage");
+      }
       const closes = reply.row.healthy;
       const next = drawn.find(s => s.level === level + 1);
       setStatus(`L${level} fixed — ${reply.row.across}/${reply.row.expected} crossings`
@@ -2521,10 +2574,13 @@ export function Fitter() {
               {buildOnJudged
                 ? <>And the ★ best judged for <em>k = {ks[0] ?? "?"}</em> alone is
                    adopted as this run's <em>level 1</em>, so every level above is
-                   built on it rather than on a search for something like it. Turn
+                   built on it rather than on a search for something like it. A
+                   level 1 <em>fixed on this page</em> is remembered in this browser
+                   the same way — the next Run of these parameters stands on it,
+                   whichever of the two is newer. Turn
                    that off to see the engine's own answer from scratch.</>
                 : <><em>Level 1 will be searched.</em> The engine's own answer, from
-                   scratch — nothing judged is adopted.</>}
+                   scratch — nothing judged or fixed here is adopted.</>}
             </p>
             {preloadLine && (
               <p className="hint preloaded" data-state={preload.state}>{preloadLine}</p>
@@ -2961,7 +3017,10 @@ export function Fitter() {
                   real search per level above — the same work the run did for them — which is
                   why it is a button and not something that happens quietly.
                   {levelsAbove > 0 && <> Right now that is <em>{levelsAbove} level
-                    {levelsAbove === 1 ? "" : "s"}</em>.</>}
+                    {levelsAbove === 1 ? "" : "s"}</em>.</>}{" "}
+                  A fixed stack is also remembered in this browser: the next Run of these
+                  parameters adopts the fixed <em>level 1</em> and builds on it, instead of
+                  quietly rebuilding the default underneath your work.
                 </p>
               </div>
 
