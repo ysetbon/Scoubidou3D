@@ -757,8 +757,41 @@ export function Fitter() {
   // only sense in which a level is done. See ladder.ts and docs/mxn-fit.md.
   // ---------------------------------------------------------------------
   const [fixed, setFixed] = useState<Record<number, FixedLevel>>({});
+  // Mirrored in a ref because fixLevel opens the next level in the same tick
+  // it fixes this one: the fitAt it calls still holds the PRE-fix render's
+  // `fixed`, and a stash decision made on that stale copy would keep the
+  // just-adopted ring as if it were still a proposal.
+  const fixedRef = useRef<Record<number, FixedLevel>>({});
+  const holdFixed = (next: Record<number, FixedLevel>) => {
+    fixedRef.current = next;
+    setFixed(next);
+  };
   /** Levels standing on a ring that has moved under them. */
   const [stale, setStale] = useState<number[]>([]);
+  /**
+   * Unadopted proposals, kept per level while the reader looks at another one.
+   *
+   * The trap this closes was reported exactly as it bites: apply a ring at L1,
+   * click L2 to see what it should stand on, and the applied ring was simply
+   * GONE — fitAt resets the editor when it opens a level, so a wander to a
+   * neighbouring rung silently discarded work a hand had just placed, and
+   * coming back to L1 showed the engine's default as if nothing had happened.
+   * A proposal is not a fix, and the ladder says so — but "not fixed yet" and
+   * "thrown away" are different things, and only one of them is acceptable.
+   *
+   * The map holds the editor state a proposal is made of; the mirror list is
+   * React state so the ladder re-renders when the map changes (a ref mutation
+   * alone is invisible to the memo that builds the rungs).
+   */
+  const proposals = useRef<Map<number, {
+    after: Attempt; origin: Origin | null;
+    manual: Record<BandKey, ManualBand | null>;
+    touched: Record<BandKey, boolean>;
+    anchor: Record<BandKey, number>;
+  }>>(new Map());
+  const [proposedLevels, setProposedLevels] = useState<number[]>([]);
+  const syncProposed = () =>
+    setProposedLevels([...proposals.current.keys()].sort((a, b) => a - b));
   /** The judged L1 this run was built on, when the shelf had one. */
   const [pinned, setPinned] = useState<{ chooser: string; from: string } | null>(null);
   /**
@@ -1144,6 +1177,13 @@ export function Fitter() {
   const fitAt = async (target: number, drawn: Stage[], audits: AuditRow[]) => {
     const stage = drawn.find(s => s.level === target);
     if (!stage) { setStatus(`the run came back without an L${target}`); setFailed(true); return; }
+    // Leaving a level with an unadopted ring on screen? Keep it. The reset
+    // below is right for the TARGET level and wrong for the work being left
+    // behind — see the proposals store above.
+    if (after && !fixedRef.current[fitLevel] && fitLevel !== target) {
+      proposals.current.set(fitLevel, { after, origin, manual, touched, anchor });
+      syncProposed();
+    }
     setBusy(true);
     setFailed(false);
     setFitLevel(target);
@@ -1233,6 +1273,33 @@ export function Fitter() {
         lists[key] = fitCandidates(inputs);
       }
       setCandidates(lists);
+
+      // A ring this hand already placed on THIS level comes back before any
+      // policy runs: restoring a kept proposal beats both the judged-best
+      // auto-load and the candidate walk, because it is the most recent human
+      // decision about this exact level — and because losing it once is the
+      // bug this store exists to close. It is restored as what it is: a
+      // proposal, with the Fix button still the thing that makes it count.
+      const kept = proposals.current.get(level);
+      if (kept && !fixedRef.current[level]) {
+        proposals.current.delete(level);
+        syncProposed();
+        setManual({
+          h: kept.manual.h ? { ext: [...kept.manual.h.ext], angle: kept.manual.h.angle } : null,
+          v: kept.manual.v ? { ext: [...kept.manual.v.ext], angle: kept.manual.v.angle } : null,
+        });
+        setTouched({ ...kept.touched });
+        setAnchor({ ...kept.anchor });
+        setAfter(kept.after);
+        setOrigin(kept.origin);
+        setAttempts([kept.after]);
+        const above = drawn.filter(s => s.level > level).length;
+        setStatus(`L${level}'s applied ring is back on screen — still a proposal. `
+          + `Press Fix L${level}${above ? ` · rebuild the ${above} above` : ""} `
+          + "to make the stitch stand on it.");
+        setBusy(false);
+        return;
+      }
 
       // A person's word comes before any policy: if somebody has marked a
       // best ring for this parameter set — on the shelf, or in this browser's
@@ -1432,8 +1499,11 @@ export function Fitter() {
     setBusy(true);
     setFailed(false);
     setStages([]); setPlan(null); setBefore(null); setAfter(null); setAttempts([]);
-    // A run is a new stitch: nothing fixed on the last one survives into it.
-    setFixed({}); setStale([]); setPinned(null);
+    // A run is a new stitch: nothing fixed on the last one survives into it —
+    // and no kept proposal either, because it was about the last run's rings.
+    holdFixed({}); setStale([]); setPinned(null);
+    proposals.current.clear();
+    syncProposed();
     restartClock();
     note(`Run pressed · ${m}×${n} · k=${ks.join(", ")} · ${hand} · ${direction}`);
     try {
@@ -1563,7 +1633,7 @@ export function Fitter() {
       const l1 = audits.find(row => row.level === 1);
       if (adopt && payload.level1Adopted) {
         setPinned({ chooser: adopt.judgement.chooser, from: adopt.from });
-        setFixed({
+        holdFixed({
           1: {
             level: 1, h: adopt.bands.h, v: adopt.bands.v,
             at: new Date().toISOString(), rebuilt: true,
@@ -1581,7 +1651,7 @@ export function Fitter() {
         // The fix reads as fixed again, audit refreshed from the run that just
         // measured it — the ladder picks up where it left off rather than
         // presenting yesterday's fix as this run's engine output.
-        setFixed({
+        holdFixed({
           1: {
             ...saved.level, rebuilt: true,
             audit: l1
@@ -1717,7 +1787,18 @@ export function Fitter() {
                    gap_margin: Number.isFinite(margin) ? margin : 0 },
         strands: attempt ? attempt.woven.strands : before.stage.strands,
       };
-      setFixed(nextFixed);
+      holdFixed(nextFixed);
+      // The proposal became the level's ring, so there is nothing left to
+      // keep — and a rebuild moved the ground under any proposal ABOVE this
+      // level, so those are dropped rather than restored onto rings that no
+      // longer exist.
+      proposals.current.delete(level);
+      if (reply.rebuilt) {
+        for (const kept of [...proposals.current.keys()]) {
+          if (kept > level) proposals.current.delete(kept);
+        }
+      }
+      syncProposed();
       // And the same stack into this browser's storage, so the fix survives
       // the tab: the next Run of these parameters adopts the fixed L1 instead
       // of rebuilding the default under it. Failing to write costs only the
@@ -1792,8 +1873,11 @@ export function Fitter() {
     // IS fixed, showing a proposal over the top of it would be the page
     // contradicting itself about the same level.
     proposed: !!after && !fixed[fitLevel],
+    // And the kept ones: levels carrying an applied ring the reader wandered
+    // away from — see the proposals store.
+    proposedLevels,
     pinned: !!pinned,
-  }), [ks, fitLevel, stages, auditRows, fixed, stale, after, pinned]);
+  }), [ks, fitLevel, stages, auditRows, fixed, stale, after, pinned, proposedLevels]);
   const summary = useMemo(() => stackSummary(ladder), [ladder]);
   /** How many levels a fix here would have to rebuild. The whole of its cost. */
   const levelsAbove = stages.filter(s => s.level > fitLevel).length;
@@ -1982,11 +2066,21 @@ export function Fitter() {
     setOrigin({ kind: "manual" });
     setFailed(false);
     note("Knobs applied — the ring on screen is the fitted ring");
+    // The sentence the report was missing: applying makes this level's ring,
+    // and does NOT move anything above it. Every level up still stands on the
+    // engine's own ring until fix_adopt rebuilds it — the same fact the
+    // ladder's note states, said here at the exact moment it matters.
+    const levelsUp = stages.filter(s => s.level > fitLevel).length;
+    const andFix = levelsUp
+      ? ` The ${levelsUp} level${levelsUp === 1 ? "" : "s"} above still stand `
+        + `on the engine's L${fitLevel} — press Fix L${fitLevel} · rebuild `
+        + "in the ladder to make the stitch stand on this ring."
+      : "";
     const engine = session.current;
     if (!engine) {
       setStatus("Applied. This is your ring — measured off the strands the "
         + "diagram drew. Nothing has audited it; press Run if you want the "
-        + "engine to count its crossings.");
+        + "engine to count its crossings." + andFix);
       return;
     }
     // A session exists, so the count is free to ask for. The ring is already on
@@ -2009,13 +2103,15 @@ export function Fitter() {
         : current);
       note(`Audited: ${woven.row.across}/${woven.row.expected} crossings`);
       setStatus(`Applied — and the engine counts ${woven.row.across}/`
-        + `${woven.row.expected} crossings${ok ? ", so the ring closes" : ", so it does not close"}.`);
+        + `${woven.row.expected} crossings${ok ? ", so the ring closes" : ", so it does not close"}.`
+        + andFix);
       setFailed(!ok);
     } catch {
       // The ring stays; only its verdict is missing, and that is what it says.
       note("The engine refused to weave it; the ring stands, unaudited");
       setStatus("Applied. The engine would not weave this configuration, so it "
-        + "stays unaudited — the ring on screen is still exactly your knobs.");
+        + "stays unaudited — the ring on screen is still exactly your knobs."
+        + andFix);
     }
   };
 

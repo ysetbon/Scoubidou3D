@@ -1155,6 +1155,77 @@ if (edited.knobs >= 3) {
   await back.close();
 }
 
+// ---------------------------------------------------------------------------
+// A proposal survives a wander to another level.
+//
+// The report behind this: apply a ring at one level, click another rung to
+// look at it, and the applied ring was simply gone — fitAt resets the editor
+// when it opens a level, so the wander silently discarded the work and the
+// level showed the engine's default again. Now the proposal is kept: the rung
+// left behind reads "fitted — not fixed yet", and coming back restores the
+// applied ring with a status pointing at the Fix button that makes it count.
+// ---------------------------------------------------------------------------
+{
+  const wander = await browser.newPage({ viewport: { width: 1440, height: 1300 } });
+  const wErrors = [];
+  wander.on('pageerror', e => wErrors.push(String(e)));
+  await wander.addInitScript(STUB, { size: STUB_SIZE, delay: 0 });
+  await wander.goto(URL_BASE, { waitUntil: 'domcontentloaded' });
+  await wander.waitForSelector('button.go');
+  await wander.fill('#fit-m', String(size.m));
+  await wander.fill('#fit-n', String(size.n));
+  await wander.fill('#fit-ks', size.ks.join(' '));
+  await wander.click('button.go');
+  await wander.waitForTimeout(1200);
+  // The run opens at the top; the report's shape is "apply at L1, wander to
+  // L2" — so go to L1 first, where a level genuinely stands above.
+  await wander.locator('.ladder .rung button').first().click();
+  await wander.waitForTimeout(900);
+  await wander.locator('.mrow .mnum').nth(1).fill('123');
+  await wander.waitForTimeout(300);
+  await wander.locator('.mbtns button', { hasText: /apply/i }).click();
+  await wander.waitForTimeout(600);
+  const appliedHere = await wander.evaluate(() => ({
+    status: document.querySelector('.status')?.textContent ?? '',
+    after: [...document.querySelectorAll('.rings figcaption span')]
+      .map(s => s.textContent).find(t => /adopted by hand/.test(t)) ?? '',
+  }));
+  ok('apply says the levels above still stand on the engine, naming Fix',
+    /still stand on the engine/.test(appliedHere.status)
+    && /Fix L1 · rebuild/.test(appliedHere.status),
+    appliedHere.status.slice(-140));
+  // Wander to the top level…
+  await wander.locator('.ladder .rung button').last().click();
+  await wander.waitForTimeout(900);
+  const away = await wander.evaluate(() => {
+    const rungs = [...document.querySelectorAll('.ladder .rung')];
+    return {
+      states: rungs.map(r => r.dataset.state),
+      firstText: rungs[0]?.textContent.replace(/\s+/g, ' ').trim() ?? '',
+    };
+  });
+  ok('the rung left behind says the level carries an unadopted fit',
+    away.states[0] === 'proposed' && /not fixed yet/.test(away.firstText),
+    `${away.states.join(' · ')} — ${away.firstText.slice(0, 60)}`);
+  // …and back: the applied ring must be on screen again, as a proposal.
+  await wander.locator('.ladder .rung button').first().click();
+  await wander.waitForTimeout(900);
+  const back = await wander.evaluate(() => ({
+    status: document.querySelector('.status')?.textContent ?? '',
+    after: [...document.querySelectorAll('.rings figcaption span')]
+      .map(s => s.textContent).find(t => /adopted by hand/.test(t)) ?? '',
+    states: [...document.querySelectorAll('.ladder .rung')].map(r => r.dataset.state),
+  }));
+  ok('coming back restores the applied ring instead of the default',
+    /adopted by hand/.test(back.after), back.after || '(no after card)');
+  ok('and says it is still a proposal, naming the Fix button',
+    /back on screen/.test(back.status) && /Fix L\d+/.test(back.status),
+    back.status.slice(0, 110));
+  ok('no page errors on the wander path', wErrors.length === 0,
+    wErrors.slice(0, 2).join(' | '));
+  await wander.close();
+}
+
 ok('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
 if (network.length) console.log(`  note  ${network.length} resource(s) blocked by the environment, not the page`);
 
