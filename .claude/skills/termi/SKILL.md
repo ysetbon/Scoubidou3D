@@ -1,5 +1,5 @@
 ---
-name: terminal-handoff
+name: termi
 description: >
   Whenever anything needs to run on the user's own machine or any terminal this
   session cannot reach — pulling the repo, starting or restarting the local dev
@@ -13,7 +13,7 @@ description: >
   themselves (e.g. "pull and restart to see it").
 ---
 
-# Terminal handoff — exact lines, in order
+# termi — exact terminal lines, in order
 
 This session runs in a sandbox. The user's machine, their dev server, and some
 networks (for this repo: `mxn-solutions-api.ysetbon.workers.dev`) are out of
