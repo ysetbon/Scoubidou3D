@@ -983,6 +983,70 @@ if (edited.knobs >= 3) {
   await fast.close();
 }
 
+// ---------------------------------------------------------------------------
+// "Open the knobs" with a decided L1 opens the ladder, not the sketchpad.
+//
+// The report: "i wanted to press open the knobs so that l1 should already
+// automatically pick l1 and i can start fixing l2 immediately." With a ★ best
+// for the ks prefix there is nothing to search anywhere — L1 adopts, the
+// levels above weld at its arm ends — so the button now goes straight there:
+// generate is called with the judged ring and preserveArms, L1 reads as fixed,
+// and the page opens fitting L2 with a live session.
+// ---------------------------------------------------------------------------
+{
+  const knobs2 = await browser.newPage({ viewport: { width: 1440, height: 1300 } });
+  const kErrors = [];
+  knobs2.on('pageerror', e => kErrors.push(String(e)));
+  await knobs2.addInitScript(STUB, { size: STUB_SIZE, delay: 0 });
+  await knobs2.addInitScript(({ key, judgement }) => {
+    localStorage.setItem('mxn-fit-judgements', JSON.stringify([{ key, judgement }]));
+  }, {
+    // The ks PREFIX key — where a level-1 judgement lives.
+    key: `picks/v3/lh-cw/${size.m}x${size.n}/${size.ks[0]}/s1-eauto-b400000`,
+    judgement: {
+      id: 'j-qa-l1best', verdict: 'best', source: 'hand', chooser: 'qa-l1',
+      at: '2026-08-18T00:00:00.000Z',
+      levels: [{
+        level: 1,
+        h: size.held.h.ext ? { ext: size.held.h.ext, angle: null } : null,
+        v: size.held.v.ext ? { ext: size.held.v.ext, angle: null } : null,
+      }],
+      audit: { crossings: size.before.row.across,
+               expected: size.before.row.expected, stray: 0, broken: 0 },
+      strands: size.stages.find(s => s.level === 1).strands,
+    },
+  });
+  await knobs2.goto(URL_BASE, { waitUntil: 'domcontentloaded' });
+  await knobs2.waitForSelector('button.go');
+  await knobs2.fill('#fit-m', String(size.m));
+  await knobs2.fill('#fit-n', String(size.n));
+  await knobs2.fill('#fit-ks', size.ks.join(' '));
+  await knobs2.locator('button.go', { hasText: /no search/i }).click();
+  await knobs2.waitForTimeout(1500);
+  const ladderNow = await knobs2.evaluate(() => {
+    const rungs = [...document.querySelectorAll('.ladder .rung')];
+    return {
+      generates: window.__stubGenerates ?? 0,
+      ring: !!window.__l1ring,
+      preserve: window.__preserveGen === true,
+      first: rungs[0]?.textContent.replace(/\s+/g, ' ').trim() ?? '',
+      states: rungs.map(r => r.dataset.state),
+      current: rungs.findIndex(r => r.dataset.current) + 1,
+    };
+  });
+  ok('a decided L1 turns "open the knobs" into the ladder — one generate, ring sent',
+    ladderNow.generates === 1 && ladderNow.ring && ladderNow.preserve,
+    `generates=${ladderNow.generates}, ring=${ladderNow.ring}, preserve=${ladderNow.preserve}`);
+  ok('L1 reads as fixed with its chooser',
+    ladderNow.states[0] === 'fixed' && /qa-l1/.test(ladderNow.first),
+    ladderNow.first.slice(0, 60));
+  ok('and the page opens fitting L2 immediately',
+    ladderNow.current === 2, `rung ${ladderNow.current}`);
+  ok('no page errors on the decided-L1 knobs path', kErrors.length === 0,
+    kErrors.slice(0, 2).join(' | '));
+  await knobs2.close();
+}
+
 // A stale cached worker is the realistic failure for any message type added
 // after a deploy, and it used to be a permanent silent hang: the dispatcher
 // returned without answering, so the page's promise never settled. This drives

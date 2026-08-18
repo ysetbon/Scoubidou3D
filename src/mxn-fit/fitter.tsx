@@ -973,6 +973,30 @@ export function Fitter() {
    */
   const openWithoutSearching = async () => {
     if (!ks.length) { setStatus("Give at least one k."); setFailed(true); return; }
+    // With a ★ best (or a fix made here) for level 1, "no search" no longer
+    // means "L1 only": since the placed mode there is nothing to search
+    // ANYWHERE on such a run — L1 is adopted whole and every level above is
+    // welded at its arm ends, unsearched. So the knobs open on the LADDER,
+    // at L2, with a live session (Fix works immediately), which is where the
+    // reader who already finished L1 actually wanted to start. Only with no
+    // decided L1 anywhere does this stay the L1-only sketchpad.
+    // (judgedLevelOne is asked again inside run(); the double read costs one
+    // shelf GET and keeps run() the single owner of the adopt flow.)
+    if (buildOnJudged) {
+      const d: RunDescriptor = { m, n, ks, hand, direction, ...DESCRIPTOR_FLAGS };
+      let decided = false;
+      try { decided = !!(await judgedLevelOne(d)); } catch { decided = false; }
+      if (!decided) {
+        decided = !!seedFromStack(savedStackFor(readSetting(FIXED_KEY), picksKey(d)));
+      }
+      if (decided) {
+        note("Level 1 is already decided (★ best or a fix made here) — opening "
+          + "the ladder on it: L1 adopted, the levels above welded at its arm "
+          + "ends, nothing searched");
+        await run();
+        return;
+      }
+    }
     setBusy(true); setFailed(false);
     restartClock();
     note(`Knobs requested without a search · ${m}×${n} · k=${ks.join(", ")}`);
@@ -2658,8 +2682,11 @@ export function Fitter() {
             </button>
             <button className="go ghost" type="button" onClick={openWithoutSearching}
               disabled={busy}
-              title={"The band plan is the space the search walks, not its result — "
-                + "so the knobs are ready long before the walk finishes"}>
+              title={"With a ★ best (or a fixed L1) this opens the ladder on it — "
+                + "L1 adopted, the levels above welded at its arm ends, nothing "
+                + "searched, straight to L2. Without one it opens L1's knobs "
+                + "alone: the band plan is the space the search walks, not its "
+                + "result, so they are ready long before any walk would finish"}>
               Open the knobs · no search
             </button>
             <button className="go ghost" type="button" onClick={exportRing}
