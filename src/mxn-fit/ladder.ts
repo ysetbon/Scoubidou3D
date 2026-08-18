@@ -153,6 +153,15 @@ export type LadderInput = {
   stale: number[];
   /** A fit is on screen for the level being fitted, and is not adopted. */
   proposed: boolean;
+  /**
+   * Levels holding a kept, unadopted proposal while another level is open.
+   *
+   * The page keeps an applied ring when the reader wanders to a different
+   * rung, and the ladder has to say so: a rung reading "as the run left it"
+   * over a level that is actually carrying somebody's applied ring would be
+   * the ladder reporting work as absent because it is merely not on screen.
+   */
+  proposedLevels?: number[];
   /** Level 1 was adopted from a judged ★ best when the run was started. */
   pinned: boolean;
   /** What the shelf holds per level, where it has been asked. */
@@ -180,7 +189,8 @@ export function ladderRows(input: LadderInput): LadderRow[] {
       stale.has(level) ? "stale"
       : fixed ? "fixed"
       : level === 1 && input.pinned ? "pinned"
-      : level === input.fitLevel && input.proposed ? "proposed"
+      : (level === input.fitLevel && input.proposed)
+        || input.proposedLevels?.includes(level) ? "proposed"
       : "engine";
     const across = fixed?.audit?.crossings ?? audit?.across ?? null;
     const expected = fixed?.audit?.expected ?? audit?.expected ?? null;

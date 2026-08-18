@@ -1118,6 +1118,22 @@ under the ten-level key it would claim four levels nobody has looked at. That is
 also what makes the work reusable — the next run of the ten-level URL finds it
 by prefix and starts from there.
 
+### A proposal survives a wander
+
+*Apply — this is the ring* makes a **proposal** about one level, and only
+*Fix* makes the levels above stand on it — the ladder has always said so. What
+it must never do is punish a look: applying at L1 and clicking L2 to see what
+it should stand on used to silently discard the applied ring, because opening
+a level resets the editor. The reader came back to L1, found the engine's
+default, and reasonably reported that "going to L2 reverts it".
+
+Now the unadopted proposal is kept per level: the rung left behind reads
+*fitted — not fixed yet*, coming back restores the applied ring with a status
+naming the Fix button, and applying under levels that would not hear about it
+says so at that exact moment. A proposal is dropped only when something makes
+it untrue — its level is fixed, a rebuild below moves its ground, or a new Run
+starts a new stitch. Driven end to end in `npm run qa:fit`.
+
 ### A fix survives the tab
 
 Saving a stack is a judgement, and a judgement is deliberate: it has an author

@@ -148,6 +148,23 @@ const base = {
 }
 
 {
+  // A kept proposal: the reader applied a ring at L1 and wandered to L2. The
+  // page keeps the applied ring, and the ladder has to say the level carries
+  // one — "as the run left it" over somebody's applied ring would be the
+  // ladder reporting work as absent because it is merely not on screen.
+  const rows = ladderRows({ ...base, fitLevel: 2, fixed: {},
+    proposedLevels: [1] });
+  check("a level carrying a kept proposal reads as proposed",
+    rows[0].state === "proposed", rows[0].state);
+  check("without being counted as fixed", stackSummary(rows).fixed === 0);
+  // And a fix outranks the memory of the proposal it came from.
+  const fixedOver = ladderRows({ ...base, fitLevel: 2,
+    fixed: { 1: fixture(1, true) }, proposedLevels: [1] });
+  check("a fixed level outranks its own kept proposal",
+    fixedOver[0].state === "fixed", fixedOver[0].state);
+}
+
+{
   // Adopted without a rebuild: everything above stands on a ring that moved.
   const rows = ladderRows({ ...base, fitLevel: 2,
     fixed: { 2: fixture(2, false) }, stale: [3, 4] });
