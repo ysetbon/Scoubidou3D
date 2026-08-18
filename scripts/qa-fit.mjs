@@ -80,6 +80,7 @@ const STUB = ({ size, delay }) => {
         // adopted, which is what bridge.generate reports for a ring whose
         // layer names match.
         window.__l1ring = data.level1Ring ?? null;
+        window.__preserveGen = data.preserveArms === true;
         // The real engine narrates its boot before it answers. The timeline is
         // built out of exactly these, so the stub has to send one or the check
         // below would be asserting against a silence the engine never keeps.
@@ -120,6 +121,7 @@ const STUB = ({ size, delay }) => {
         // once it has. The rebuild itself is checked in Python, against the
         // engine, by scripts/check-fit-stack.py.
         window.__stubAdopts = (window.__stubAdopts ?? 0) + 1;
+        window.__preserve = data.preserveArms === true;
         const from = data.level;
         reply({
           type: 'fit-adopt-ready', level: from, unavailable: false,
@@ -334,6 +336,9 @@ if (ladder.count) {
   });
   ok('fixing asks the engine to adopt the ring', fixedNow.adopts === 1,
     `${fixedNow.adopts} adopt call(s)`);
+  const preserved = await page.evaluate(() => window.__preserve === true);
+  ok('and asks for the fixed ring to be preserved — levels above welded at its arms',
+    preserved, preserved ? 'preserveArms: true' : 'preserveArms missing');
   ok('the fixed level reads as fixed on the ladder',
     fixedNow.states.some(s => /\bfixed\b/.test(s)), fixedNow.states.join(' · '));
   ok('and a fixed rung stays in the column', !fixedNow.overlapping);
@@ -1145,6 +1150,9 @@ if (edited.knobs >= 3) {
     !!restored.ring && Array.isArray(restored.ring.strands)
     && restored.ring.strands.length > 0,
     restored.ring ? `${restored.ring.strands.length} strands` : '(no ring sent)');
+  const genPreserved = await back.evaluate(() => window.__preserveGen === true);
+  ok('and asks for its arms to be preserved under the levels above',
+    genPreserved, genPreserved ? 'preserveArms: true' : 'preserveArms missing');
   ok('the first rung reads as fixed · placed by hand again',
     restored.states[0] === 'fixed' && /placed by hand/.test(restored.first),
     restored.first.slice(0, 60));

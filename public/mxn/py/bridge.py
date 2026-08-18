@@ -138,6 +138,8 @@ def describe(result, strands, level, k, expected, sizes=None):
     applied = []
     if search["horizontal"].get("judged") or search["vertical"].get("judged"):
         applied.append("judged ring")
+    if search["horizontal"].get("placed") or search["vertical"].get("placed"):
+        applied.append("placed at the ring below")
     if search["horizontal"].get("seeded") or search["vertical"].get("seeded"):
         applied.append("seeded")
     if search["horizontal"].get("rescued") or search["vertical"].get("rescued"):
@@ -293,6 +295,11 @@ def _register_level(level, k, checkpoint, result, search):
     h_cands, v_cands = cands.get("h") or [], cands.get("v") or []
     if k == 0:
         enumerated, reason = "none", "k=0 preserves the continuation"
+    elif (result.get("search") or {}).get("horizontal", {}).get("placed"):
+        # A placed level was never searched at all: it was welded at the
+        # fixed ring's own arm ends and handed to a person to place.
+        enumerated, reason = "none", ("built at the fixed ring's arm ends -- "
+                                      "place this level by hand")
     elif not h_cands or not v_cands:
         # A seeded, pinned or square-mirrored level only ever saw the one
         # combo it was told to use, so there is no list to page through.
@@ -394,6 +401,24 @@ def _l1_seed(given):
     return (tuple(int(value) for value in h), tuple(int(value) for value in v))
 
 
+def _placed_result(h_pairs, v_pairs):
+    """What _register_level and describe() need, for a level built PLACED.
+
+    A placed level was welded at the fixed ring's own arm ends and never
+    searched: extension 0 IS the fixed ring's arm end, and the level is
+    handed to a person to place, not to the search. The zeros here are the
+    truth of that -- the level's configuration is "exactly where the build
+    left it" -- and the empty candidate lists make _register_level report it
+    as unbrowsable, which it is.
+    """
+    def side(pairs):
+        return {"success": True, "average_gap": 0,
+                "pair_extensions": tuple(0.0 for _ in range(pairs))}
+    return {"horizontal": side(h_pairs), "vertical": side(v_pairs),
+            "search": {"horizontal": {"placed": True}, "vertical": {"placed": True}},
+            "candidates": {"h": [], "v": []}}
+
+
 def _adopted_result(h_ext, v_ext):
     """
     What _register_level and describe() need, for a level nothing searched.
@@ -465,6 +490,36 @@ def _grow_levels(strands, prev_v2r, first, ctx):
     m, n, ks = ctx["m"], ctx["n"], ctx["ks"]
     hand, direction, search = ctx["hand"], ctx["direction"], ctx["search"]
     rows, stages, level1_for_k = ctx["rows"], ctx["stages"], ctx["level1_for_k"]
+    # Placed mode: the ring below is FIXED -- somebody's hand or judgement --
+    # and the levels growing on it must not touch it. Each level is welded at
+    # the fixed ring's own arm ends (anchor="placed", zero retraction), and it
+    # is NOT searched: extension 0 is the fixed ring's arm end, the level is
+    # registered as unsearched, and placing it is the person's next move. The
+    # searched default the ordinary mode produces is exactly what a reader in
+    # this mode did not ask for.
+    placed = bool(ctx.get("placed"))
+    if placed:
+        for level in range(first, len(ks) + 1):
+            k_level = ks[level - 1]
+            emitProgress(f"Building L{level} · k={k_level} at the fixed ring's arms…")
+            with contextlib.redirect_stdout(io.StringIO()):
+                strands, info = NX.add_continuation_level(
+                    strands, m, n, k_level, direction, hand, level,
+                    k_prev=ks[level - 2], prev_virtual_to_real=prev_v2r,
+                    anchor="placed", verbose=False)
+                prev_v2r = info["virtual_to_real"]
+                checkpoint = copy.deepcopy((strands, info))
+                _send_stage_frame(strands, level, k_level, "ring built")
+                result = _placed_result(len(info["horizontal_order"]) // 2,
+                                        len(info["vertical_order"]) // 2)
+                snapshot = [dict(s) for s in strands]
+                stages.append({"level": level, "k": k_level,
+                               "label": f"twist {level}",
+                               "strands": _stage_strands(NX._snapshot_json(strands))})
+            rows.append(describe(result, snapshot, level, k_level,
+                                 ctx["expected"], ctx["sizes"]))
+            _register_level(level, k_level, checkpoint, result, search)
+        return strands
     for level in range(first, len(ks) + 1):
         k_level = ks[level - 1]
         emitProgress(f"Calculating L{level} · k={k_level}…")
@@ -518,7 +573,8 @@ def _grow_levels(strands, prev_v2r, first, ctx):
 def generate(m, n, ks, hand="lh", direction="cw",
              prefer_short_arms=True, ext_step=None, combo_budget=None,
              reach_from_previous=False, level1_pin=None,
-             hand_step=0, hand_ceiling=0, level1_ring=None):
+             hand_step=0, hand_ceiling=0, level1_ring=None,
+             preserve_arms=False):
     m, n = int(m), int(n)
     ks = [int(k) for k in ks]
     if not ks:
@@ -632,6 +688,11 @@ def generate(m, n, ks, hand="lh", direction="cw",
                "search": search, "reach_from_previous": reach_from_previous,
                "expected": expected, "sizes": sizes,
                "rows": rows, "stages": stages,
+               # Placed mode is asked for AND earned: the caller wants the
+               # adopted ring preserved, and a ring was actually adopted. A
+               # searched L1 has no placed arms to preserve, so the flag on
+               # its own changes nothing.
+               "placed": bool(preserve_arms) and bool(_SESSION.get("level1_adopted")),
                "level1_for_k": {ks[0]: (tuple(rows[0]["ext"][0]),
                                         tuple(rows[0]["ext"][1]))}}
     _SESSION["run"] = context
@@ -1437,7 +1498,8 @@ def fit_weave(level, h_ext, h_angle, v_ext, v_angle):
     }, separators=(",", ":"))
 
 
-def fit_adopt(level, h_ext, h_angle, v_ext, v_angle, rebuild=True):
+def fit_adopt(level, h_ext, h_angle, v_ext, v_angle, rebuild=True,
+              preserve_arms=False):
     """Make a fitted ring THIS level's ring, and rebuild every level above it.
 
     This is what lets a stitch be fixed one level at a time. `fit_weave` weaves
@@ -1508,6 +1570,12 @@ def fit_adopt(level, h_ext, h_angle, v_ext, v_angle, rebuild=True):
         for above in list(_SESSION["levels"]):
             if above > level:
                 _SESSION["levels"][above].pop("adopted", None)
+        # preserve_arms: the ring being fixed is a person's -- weld the levels
+        # above at ITS arm ends and hand them over unsearched, instead of
+        # re-laying its arms and searching a default over it. Set (not merely
+        # defaulted) each time, so one preserving fix cannot leak the mode
+        # into a later ordinary rebuild.
+        context["placed"] = bool(preserve_arms)
         _grow_levels(strands, info["virtual_to_real"], level + 1, context)
         _SESSION["adopted"] = sorted(
             {lv for lv, e in _SESSION["levels"].items() if e.get("adopted")})

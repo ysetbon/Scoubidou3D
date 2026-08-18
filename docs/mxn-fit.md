@@ -1118,6 +1118,34 @@ under the ten-level key it would claim four levels nobody has looked at. That is
 also what makes the work reusable — the next run of the ten-level URL finds it
 by prefix and starts from there.
 
+### A fixed ring is never re-laid — placed levels
+
+The report that forced this one, verbatim: *"i want l1 to be exactly this,
+and when i press lvl2, the new level starting point and lvl1 ending point
+will be those red points."* And the engine did the opposite by design:
+`add_continuation_level` PULLED EVERY PARENT ARM END BACK to a crossing
+(`_retract_end`, `anchor="crossing"`) before welding the next level on — so
+the ring a hand had placed was re-laid the moment anything grew on it, and
+the joints left the arm ends a person had chosen.
+
+`anchor="placed"` is the answer: zero retraction, the parent's arms come
+through byte-identical, and every new strand is welded exactly at a parent
+arm end — extension 0 IS the fixed ring's arm end. In this mode the levels
+above are **not searched**: they are registered as placed
+(`"built at the fixed ring's arm ends — place this level by hand"`, knobs
+opening at 0), because a reader who fixed a ring by hand asked for a
+starting point on it, not for a searched default drawn over it.
+
+The mode is asked for and earned, never ambient: `bridge.generate(...,
+preserve_arms=True)` uses it only when a `level1_ring` was actually adopted,
+and `bridge.fit_adopt(..., preserve_arms=True)` only on a rebuild. The page
+sends it whenever the ring underneath is a person's — the adopted ★ best, a
+remembered fix, or the ring being fixed right now. Default calls are
+byte-for-byte the old behavior (`check:stack` claims 1–3 still pass
+unchanged); claim 4 in `scripts/check-fit-stack.py` asserts the placed
+contract: fixed arms identical under every level above, every new strand
+starting on one, rows saying *placed at the ring below*, knobs at 0.
+
 ### A proposal survives a wander
 
 *Apply — this is the ring* makes a **proposal** about one level, and only

@@ -198,6 +198,52 @@ def run_case(m, n, ks):
     check("and the levels above are left exactly where they were",
           json.dumps(bridge._SESSION["run"]["rows"][-1], sort_keys=True) == before_top)
 
+    # ---------------------------------------------------------------- claim 4
+    #
+    # PLACED. A fixed ring is a person's: adopt it with preserve_arms and the
+    # levels above must be WELDED AT ITS ARM ENDS, unsearched -- the arms a
+    # hand placed come through byte-identical under every level, each new
+    # strand starts exactly on one of them, and the level says what it is
+    # ("placed at the ring below", knobs at extension 0). This is the report
+    # that produced the mode: "keep L1, and L2 starts at the red points".
+    plan4, held4 = band_inputs(1)
+    band4 = "v" if not plan4["v"].get("unavailable") else "h"
+    moved4 = [e + 21.5 for e in held4[band4][0]]
+    other4 = "h" if band4 == "v" else "v"
+    args4 = {band4: (moved4, held4[band4][1]), other4: held4[other4]}
+    woven4 = json.loads(quiet(bridge.fit_weave, 1,
+                              args4["h"][0], args4["h"][1],
+                              args4["v"][0], args4["v"][1]))
+    arm_names = [nm for nm in
+                 (plan4["h"].get("names") or []) + (plan4["v"].get("names") or [])]
+    red = {s["layer_name"]: (s["end"]["x"], s["end"]["y"])
+           for s in woven4["strands"] if s["layer_name"] in arm_names}
+    placed = json.loads(quiet(bridge.fit_adopt, 1,
+                              args4["h"][0], args4["h"][1],
+                              args4["v"][0], args4["v"][1], True, True))
+    placed_stages = stages_by_level(placed)
+    for lv in range(2, top + 1):
+        tips = {s["layer_name"]: (s["end"]["x"], s["end"]["y"])
+                for s in placed_stages[lv]["strands"]
+                if s["layer_name"] in arm_names}
+        check("placed: the fixed arms are byte-identical under L%d" % lv,
+              all(tips.get(nm) == red[nm] for nm in red),
+              "%d/%d intact" % (sum(tips.get(nm) == red[nm] for nm in red), len(red)))
+    starts_on_red = [
+        s for s in placed_stages[2]["strands"]
+        if s.get("attached_to") in red
+        and (s["start"]["x"], s["start"]["y"]) == red[s["attached_to"]]]
+    check("placed: every new strand starts exactly on a fixed arm end",
+          len(starts_on_red) >= len(red),
+          "%d welds on %d arm ends" % (len(starts_on_red), len(red)))
+    check("placed: the levels above say what they are",
+          all("placed at the ring below" in (r.get("applied") or [])
+              for r in placed["rows"] if r["level"] > 1),
+          str([r.get("applied") for r in placed["rows"]]))
+    check("placed: their knobs open at extension 0",
+          all(all(v == 0 for side in r["ext"] for v in side)
+              for r in placed["rows"] if r["level"] > 1))
+
 
 run_case(2, 1, [-1, -1, -1])
 if "--big" in sys.argv:
