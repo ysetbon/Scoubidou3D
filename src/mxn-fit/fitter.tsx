@@ -2996,6 +2996,32 @@ export function Fitter() {
                   </>
                 )}
                 <span className="chip soft">fitting L{fitLevel} of {stages.length}</span>
+                {/* Which ring this level STANDS ON. After a fix, the level
+                    below keeps its extensions and headings under this one —
+                    but its arms draw shorter here, because this level's
+                    strands continue from them, and that reads exactly like
+                    the fix having been lost. Reported as precisely that. So
+                    the page says whose ring is underneath, in the header,
+                    where the doubt happens. */}
+                {(() => {
+                  const below = Object.values(fixed)
+                    .filter(f => f.level < fitLevel)
+                    .sort((a, b) => b.level - a.level)[0];
+                  if (!below) return null;
+                  const who = below.origin === "hand" ? "placed by hand"
+                    : below.origin === "judged"
+                      ? `${below.chooser ?? "somebody"}'s ★ best` : "fitted here";
+                  return (
+                    <span className="chip ok"
+                      title={`This level was built on the fixed L${below.level}`
+                        + ` (${who}, ${below.at.slice(11, 16)}). Its arms draw`
+                        + " shorter under this level because this level's"
+                        + " strands continue from them — the extensions and"
+                        + " headings underneath are still the fixed ring's."}>
+                      on your L{below.level} · {who}
+                    </span>
+                  );
+                })()}
                 {health && (
                   <span className={`chip ${health.healthy ? "soft" : "warn"}`}>
                     {health.across}/{health.expected} crossings
@@ -3374,6 +3400,13 @@ export function Fitter() {
                   their parents, which <em>lengthens the level below by the same amount</em> —
                   so the card for L{Math.max(1, fitLevel - 1)} above is part of the answer too,
                   not context.
+                  {fitLevel > 1 && (
+                    <> And the reverse surprise, worth saying because it reads like a lost
+                    fix: a ring fixed <em>below</em> this level keeps its extensions and
+                    headings here, but its arms <em>draw shorter</em>, because this level's
+                    strands continue from them and absorb the length. The default run does
+                    the same. Whose ring is underneath is stated in the bar above.</>
+                  )}
                 </p>
               </div>
             </>
@@ -3412,7 +3445,11 @@ export function Fitter() {
                               ? { ...s, label: "fitted", strands: after!.woven.strands } : s}
                             bounds={bounds}
                             caption={isFitted ? "fitted"
-                              : s.level === fitLevel ? "fitting" : ""} />
+                              : s.level === fitLevel ? "fitting"
+                              : fixed[s.level]
+                                ? `fixed${fixed[s.level].origin === "hand" ? " · by hand"
+                                    : fixed[s.level].origin === "judged" ? " · ★ best" : ""}`
+                                : ""} />
                         </button>
                       );
                     })}
