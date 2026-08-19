@@ -1,0 +1,1218 @@
+<title>The ks Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;800&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+
+<!--
+  A working drawing of a page that does not exist yet: /mxn/hand/, proposed as
+  the fourth tool over the MXN ring — the one with no engine and no Cloudflare
+  on it at all.
+
+  The tokens, the type and the furniture are lifted from the published artifact
+  "Four Twists by Hand", because this page is that page with the numbers made
+  editable.
+
+  What is REAL here: the base 2x1 ring is the committed geometry of
+  artifacts/four-twists-2x1/ring.json, and every arm above it is placed by the
+  same affine arithmetic the fitter uses — start slid along the parent's own
+  line by the pair's extension, both arms of a pair alike, the band's heading
+  adopted whole, the mirror arm taken by 180-degree rotation about the ring's
+  centre. The lengths, the neighbour spread and the gaps in the panel are
+  measured off what is drawn.
+
+  What is a STAND-IN: how a k maps to a heading. Here each unit of k turns the
+  band 27 degrees, which is what the measured k=-1 stack does per level. The
+  real mapping is the engine's plan, and on the built page it would be the
+  seed the sliders start from rather than an answer.
+-->
+
+<style>
+  :root{
+    --ground:#efeef4; --plate:#f7f6fa; --card:#ffffff;
+    --ink:#191823; --body:#3a3750; --dim:#6b6880;
+    --rule:#dddae7; --rule-soft:#e9e7f0;
+    --accent:#6e3fd4; --accent-soft:#ede7fb;
+    --pass:#1f7a54; --pass-soft:#e2f2ea;
+    --warn:#a5471b; --warn-soft:#fbe9df;
+    --shadow:0 1px 2px rgba(25,24,35,.06), 0 12px 32px -18px rgba(25,24,35,.30);
+    --canvas-bg:#f2f2f7;
+    --track:#e4e1ee;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#131220; --plate:#1a192a; --card:#1e1d30;
+      --ink:#f0eef8; --body:#c8c4dc; --dim:#918da8;
+      --rule:#2f2d48; --rule-soft:#262439;
+      --accent:#a684f5; --accent-soft:#2a2145;
+      --pass:#5cc898; --pass-soft:#12301f;
+      --warn:#e8a06a; --warn-soft:#33200f;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 14px 34px -18px rgba(0,0,0,.8);
+      --canvas-bg:#e8e7ef;
+      --track:#332f4c;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#131220; --plate:#1a192a; --card:#1e1d30;
+    --ink:#f0eef8; --body:#c8c4dc; --dim:#918da8;
+    --rule:#2f2d48; --rule-soft:#262439;
+    --accent:#a684f5; --accent-soft:#2a2145;
+    --pass:#5cc898; --pass-soft:#12301f;
+    --warn:#e8a06a; --warn-soft:#33200f;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 14px 34px -18px rgba(0,0,0,.8);
+    --canvas-bg:#e8e7ef;
+    --track:#332f4c;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--body);
+    font:400 16px/1.6 "Public Sans", ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .shell{max-width:1220px; margin:0 auto; padding:48px 28px 72px}
+
+  /* ---------- masthead ---------- */
+  .mast{
+    display:flex; flex-wrap:wrap; align-items:flex-end; gap:20px 32px;
+    padding-bottom:22px; border-bottom:2px solid var(--ink);
+  }
+  .mast h1{
+    margin:0; color:var(--ink);
+    font-family:"Archivo", ui-sans-serif, system-ui, sans-serif;
+    font-weight:800; font-size:clamp(30px, 5.4vw, 54px); line-height:.98;
+    letter-spacing:-.022em; text-wrap:balance; font-stretch:112%;
+  }
+  .mast h1 em{font-style:normal; color:var(--accent)}
+  .mast .spec{
+    margin-left:auto; text-align:right;
+    font-family:"IBM Plex Mono", ui-monospace, monospace;
+    font-size:12.5px; line-height:1.75; color:var(--dim);
+    font-variant-numeric:tabular-nums;
+  }
+  .mast .spec b{color:var(--ink); font-weight:600}
+  .lede{margin:20px 0 0; max-width:66ch; font-size:17.5px; color:var(--body)}
+  .lede strong{color:var(--ink); font-weight:600}
+
+  /* ---------- panels ---------- */
+  .panel{
+    background:var(--card); border:1px solid var(--rule);
+    border-radius:4px; box-shadow:var(--shadow); overflow:hidden;
+  }
+  .panel > header{
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    padding:13px 18px; border-bottom:1px solid var(--rule);
+    background:var(--plate);
+    font-family:"IBM Plex Mono", ui-monospace, monospace;
+    font-size:11.5px; font-weight:600; letter-spacing:.13em;
+    text-transform:uppercase; color:var(--ink);
+  }
+  .panel > header .push{margin-left:auto}
+  .panel > header .meta{
+    font-weight:400; letter-spacing:.06em; color:var(--dim);
+    text-transform:none; font-variant-numeric:tabular-nums;
+  }
+  .inner{padding:18px}
+
+  /* ---------- the ks bar ---------- */
+  .ksbar{margin-top:30px}
+  .ksrow{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+  .fieldlab{
+    font-family:"IBM Plex Mono", monospace; font-size:11px; letter-spacing:.13em;
+    text-transform:uppercase; color:var(--dim);
+  }
+  #ksText{
+    flex:1 1 260px; min-width:0; background:var(--plate); color:var(--ink);
+    border:1px solid var(--rule); border-radius:3px; padding:11px 13px;
+    font-family:"IBM Plex Mono", monospace; font-size:16px; font-weight:500;
+    letter-spacing:.06em; font-variant-numeric:tabular-nums;
+  }
+  #ksText:focus{outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent)}
+  #ksText[aria-invalid="true"]{border-color:var(--warn)}
+  .btn{
+    appearance:none; cursor:pointer; background:transparent; color:var(--dim);
+    border:1px solid var(--rule); border-radius:2px; padding:9px 13px;
+    font-family:"IBM Plex Mono", monospace; font-size:11px; letter-spacing:.08em;
+    text-transform:uppercase; transition:border-color .16s, color .16s, background .16s;
+  }
+  .btn:hover{border-color:var(--accent); color:var(--accent)}
+  .btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .btn.primary{background:var(--accent-soft); border-color:var(--accent); color:var(--accent)}
+
+  .ladder{display:flex; flex-wrap:wrap; gap:9px; margin-top:16px}
+  .lev{
+    display:flex; align-items:stretch; border:1px solid var(--rule);
+    border-radius:3px; overflow:hidden; background:var(--plate);
+  }
+  .lev.bad{border-color:var(--warn); background:var(--warn-soft)}
+  .lev .face{
+    appearance:none; cursor:pointer; background:transparent; border:0;
+    display:flex; flex-direction:column; gap:1px; padding:7px 12px 6px;
+    min-width:70px; align-items:center;
+  }
+  .lev .who{
+    font-family:"IBM Plex Mono", monospace; font-size:9.5px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--dim);
+  }
+  .lev .kv{
+    font-family:"Archivo", sans-serif; font-weight:800; font-size:21px;
+    color:var(--ink); line-height:1.05; font-variant-numeric:tabular-nums;
+  }
+  .lev.bad .kv{color:var(--warn)}
+  .lev.sel{border-color:var(--accent); background:var(--accent-soft)}
+  .lev.sel .kv, .lev.sel .who{color:var(--accent)}
+  .lev .stack{display:flex; flex-direction:column; border-left:1px solid var(--rule)}
+  .lev .step{
+    appearance:none; cursor:pointer; background:transparent; border:0;
+    color:var(--dim); padding:0 9px; font-size:10px; line-height:1;
+    flex:1; display:flex; align-items:center;
+  }
+  .lev .step:first-child{border-bottom:1px solid var(--rule)}
+  .lev .step:hover{background:var(--accent-soft); color:var(--accent)}
+  .lev .kill{
+    appearance:none; cursor:pointer; background:transparent; border:0;
+    border-left:1px solid var(--rule); color:var(--dim); padding:0 10px;
+    font-size:13px; line-height:1;
+  }
+  .lev .kill:hover{background:var(--warn-soft); color:var(--warn)}
+  .lev button:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+
+  .urlline{
+    margin-top:16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  }
+  .urlline code{
+    flex:1 1 320px; min-width:0; overflow-x:auto; white-space:nowrap;
+    padding:9px 12px; background:var(--plate); border:1px solid var(--rule-soft);
+    border-radius:3px; font-family:"IBM Plex Mono", monospace; font-size:12px;
+    color:var(--accent);
+  }
+
+  /* ---------- work grid ---------- */
+  .work{
+    display:grid; gap:22px; margin-top:22px;
+    grid-template-columns:minmax(0,1.35fr) minmax(320px,1fr);
+  }
+  @media (max-width:940px){ .work{grid-template-columns:minmax(0,1fr)} }
+
+  .rail{display:flex; gap:0; border-bottom:1px solid var(--rule); overflow-x:auto}
+  .rail button{
+    flex:1 0 auto; appearance:none; cursor:pointer; background:var(--card);
+    border:0; border-right:1px solid var(--rule-soft);
+    padding:13px 14px 12px; color:var(--dim);
+    font-family:"Archivo", sans-serif; font-weight:600; font-size:13px;
+    letter-spacing:.06em; display:flex; flex-direction:column; gap:3px;
+    align-items:center; transition:background .16s, color .16s;
+  }
+  .rail button:last-child{border-right:0}
+  .rail button .n{
+    font-size:19px; font-weight:800; letter-spacing:-.01em; color:var(--ink);
+    font-variant-numeric:tabular-nums;
+  }
+  .rail button .t{
+    font-family:"IBM Plex Mono", monospace; font-size:10px; font-weight:500;
+    letter-spacing:.1em; text-transform:uppercase;
+  }
+  .rail button:hover{background:var(--plate)}
+  .rail button[aria-pressed="true"]{
+    background:var(--accent-soft); color:var(--accent);
+    box-shadow:inset 0 -3px 0 var(--accent);
+  }
+  .rail button[aria-pressed="true"] .n{color:var(--accent)}
+  .rail button:focus-visible{outline:2px solid var(--accent); outline-offset:-3px}
+
+  .stage{padding:14px; background:var(--card)}
+  .stage canvas{
+    display:block; width:100%; aspect-ratio:1/1; border-radius:3px;
+    background:var(--canvas-bg);
+  }
+  .toggles{display:flex; flex-wrap:wrap; gap:8px; padding:0 14px 14px; background:var(--card)}
+  .toggles button{
+    appearance:none; cursor:pointer; background:transparent;
+    border:1px solid var(--rule); border-radius:2px; color:var(--dim);
+    padding:6px 11px; font-family:"IBM Plex Mono", monospace;
+    font-size:11px; letter-spacing:.07em; text-transform:uppercase;
+    display:inline-flex; align-items:center; gap:7px;
+    transition:border-color .16s, color .16s, background .16s;
+  }
+  .toggles button:hover{border-color:var(--accent); color:var(--accent)}
+  .toggles button[aria-pressed="true"]{
+    background:var(--accent-soft); border-color:var(--accent); color:var(--accent);
+  }
+  .toggles button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .dot{width:9px; height:9px; border-radius:50%; border:2.5px solid currentColor; flex:none}
+  .dot.red{color:#d81e1e} .dot.pur{color:#8c39c4} .dot.gry{color:#6b6880}
+
+  /* ---------- the editor ---------- */
+  .record{display:flex; flex-direction:column; align-self:start}
+  .verdict{
+    display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;
+    padding-bottom:14px; margin-bottom:14px; border-bottom:1px solid var(--rule-soft);
+  }
+  .verdict .big{
+    font-family:"Archivo", sans-serif; font-weight:800; font-size:34px;
+    letter-spacing:-.02em; color:var(--pass); line-height:1;
+    font-variant-numeric:tabular-nums;
+  }
+  .verdict .cap{
+    font-family:"IBM Plex Mono", monospace; font-size:11px; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--dim);
+  }
+  .chips{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:18px}
+  .chip{
+    display:inline-flex; align-items:baseline; gap:6px;
+    border:1px solid var(--rule); border-radius:2px; padding:4px 9px;
+    font-family:"IBM Plex Mono", monospace; font-size:11px; color:var(--dim);
+    letter-spacing:.04em; font-variant-numeric:tabular-nums;
+  }
+  .chip b{color:var(--ink); font-weight:600; font-size:12px}
+  .chip.ok{background:var(--pass-soft); border-color:transparent; color:var(--pass)}
+  .chip.ok b{color:var(--pass)}
+  .chip.no{background:var(--warn-soft); border-color:transparent; color:var(--warn)}
+  .chip.no b{color:var(--warn)}
+
+  h3.sec{
+    margin:0 0 10px; color:var(--ink);
+    font-family:"IBM Plex Mono", monospace; font-size:11px; font-weight:600;
+    letter-spacing:.13em; text-transform:uppercase;
+  }
+  .bands{display:flex; flex-direction:column; gap:18px; margin-bottom:20px}
+  .band{border-left:3px solid var(--accent); padding-left:12px}
+  .band.narrow{border-left-color:var(--dim)}
+  .band .top{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin-bottom:9px}
+  .band .ang{
+    font-family:"Archivo", sans-serif; font-weight:800; font-size:21px;
+    color:var(--ink); letter-spacing:-.01em; font-variant-numeric:tabular-nums;
+  }
+  .band .lbl{
+    font-family:"IBM Plex Mono", monospace; font-size:10.5px; color:var(--dim);
+    letter-spacing:.1em; text-transform:uppercase;
+  }
+  .knobs{display:flex; flex-direction:column; gap:4px; margin-bottom:12px}
+  .knob{display:grid; grid-template-columns:68px minmax(0,1fr) 72px; gap:10px; align-items:center}
+  .knob .nm, .arm .nm{
+    font-family:"IBM Plex Mono", monospace; font-size:11.5px; color:var(--ink);
+    font-weight:500;
+  }
+  .knob .px, .arm .px{
+    font-family:"IBM Plex Mono", monospace; font-size:11.5px; color:var(--dim);
+    text-align:right; font-variant-numeric:tabular-nums;
+  }
+  input[type=range]{
+    appearance:none; -webkit-appearance:none; width:100%; height:26px;
+    background:transparent; cursor:ew-resize; margin:0; touch-action:none;
+  }
+  input[type=range]::-webkit-slider-runnable-track{
+    height:8px; border-radius:2px; background:var(--track);
+  }
+  input[type=range]::-moz-range-track{height:8px; border-radius:2px; background:var(--track)}
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:20px; height:20px; margin-top:-6px;
+    border-radius:50%; background:var(--accent); border:3px solid var(--card);
+    box-shadow:0 0 0 1px var(--accent), 0 1px 3px rgba(25,24,35,.35);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:17px; height:17px; border-radius:50%; background:var(--accent);
+    border:3px solid var(--card);
+    box-shadow:0 0 0 1px var(--accent), 0 1px 3px rgba(25,24,35,.35);
+  }
+  input[type=range]:active::-webkit-slider-thumb{transform:scale(1.12)}
+  input[type=range]:focus-visible{outline:2px solid var(--accent); outline-offset:3px}
+  .knob.sub{margin:-6px 0 4px}
+  .knob .hint{
+    font-family:"IBM Plex Mono", monospace; font-size:10.5px; line-height:1.45;
+    color:var(--dim); letter-spacing:.02em; font-variant-numeric:tabular-nums;
+  }
+  .arms{display:flex; flex-direction:column; gap:5px}
+  .arm{display:grid; grid-template-columns:56px 1fr 62px; gap:9px; align-items:center}
+  .arm .bar{height:7px; background:var(--rule-soft); border-radius:1px; overflow:hidden}
+  .arm .bar i{display:block; height:100%; background:var(--accent); border-radius:1px}
+  .arm.gap .bar i{background:var(--pass)}
+  .arm.gap.no .bar i{background:var(--warn)}
+
+  .note{
+    margin:0; padding:12px 14px; background:var(--plate);
+    border:1px solid var(--rule-soft); border-radius:3px;
+    font-size:14px; color:var(--body);
+  }
+  .note + .note{margin-top:10px}
+  .note b{color:var(--ink); font-weight:600}
+  .note code{font-family:"IBM Plex Mono", monospace; font-size:12.5px; color:var(--accent)}
+
+  /* ---------- growth strip ---------- */
+  .strip{margin-top:22px}
+  .strip .grid{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:0}
+  @media (max-width:760px){ .strip .grid{grid-template-columns:repeat(2, minmax(0,1fr))} }
+  .cell{
+    border-right:1px solid var(--rule-soft); border-bottom:1px solid var(--rule-soft);
+    padding:14px; display:flex; flex-direction:column; gap:9px; background:var(--card);
+  }
+  .cell canvas{
+    display:block; width:100%; aspect-ratio:1/1; border-radius:2px;
+    background:var(--canvas-bg);
+  }
+  .cell .cap{
+    display:flex; align-items:baseline; gap:8px;
+    font-family:"IBM Plex Mono", monospace; font-size:11px; color:var(--dim);
+    letter-spacing:.06em; font-variant-numeric:tabular-nums;
+  }
+  .cell .cap b{
+    font-family:"Archivo", sans-serif; font-size:14px; font-weight:800;
+    color:var(--ink); letter-spacing:.02em;
+  }
+  .cell.add{
+    align-items:center; justify-content:center; gap:12px;
+    border-style:dashed; border-color:var(--rule); background:var(--plate);
+  }
+  .cell.add .btn{padding:12px 16px}
+
+  /* ---------- table ---------- */
+  .tablewrap{overflow-x:auto}
+  table{border-collapse:collapse; width:100%; min-width:620px}
+  th,td{
+    text-align:left; padding:8px 14px; border-bottom:1px solid var(--rule-soft);
+    font-family:"IBM Plex Mono", monospace; font-size:12px;
+    font-variant-numeric:tabular-nums; white-space:nowrap;
+  }
+  th{
+    color:var(--dim); font-weight:600; font-size:10.5px; letter-spacing:.11em;
+    text-transform:uppercase; background:var(--plate); position:sticky; top:0;
+  }
+  td{color:var(--body)}
+  td.k{color:var(--ink); font-weight:500}
+  td.v{color:var(--accent); font-weight:500}
+  tr.sel td{background:var(--accent-soft)}
+  tr:last-child td{border-bottom:0}
+
+  footer{
+    margin-top:44px; padding-top:20px; border-top:1px solid var(--rule);
+    display:flex; flex-wrap:wrap; gap:12px 28px; align-items:baseline;
+    font-family:"IBM Plex Mono", monospace; font-size:11.5px; color:var(--dim);
+    letter-spacing:.03em;
+  }
+  footer b{color:var(--ink); font-weight:600}
+  @media (prefers-reduced-motion: reduce){ *{transition:none !important} }
+</style>
+
+<div class="shell">
+
+  <header class="mast">
+    <h1>The ks bench,<br><em>levels by hand</em></h1>
+    <div class="spec">
+      <b>2 &times; 1</b> &middot; ks <b id="specKs">&minus;1 1 &minus;1 1</b><br>
+      left hand &middot; clockwise<br>
+      <b id="specLevels">4</b> levels &middot; <b id="specStrands">39</b> strands<br>
+      proposed for <b>/mxn/hand/</b>
+    </div>
+  </header>
+
+  <p class="lede">Type the k sequence. Every level in it appears, with its own heading, its own
+  arm length and one extension per pair &mdash; measured from the weave point, the way the
+  engine measures it &mdash; and every one of those is a slider you drag.
+  <strong>Nothing is searched and nothing is fetched</strong>: no engine picks a ring for you,
+  no shelf is read, and the arms come out flush because you set their length rather than
+  because something went looking for it.</p>
+
+  <section class="panel ksbar">
+    <header>The ks <span class="push meta">2&times;1 admits k &minus;2&hellip;3</span></header>
+    <div class="inner">
+      <div class="ksrow">
+        <label class="fieldlab" for="ksText">ks</label>
+        <input id="ksText" value="-1 1 -1 1" spellcheck="false" autocomplete="off"
+               aria-label="k sequence, one k per level">
+        <button class="btn primary" type="button" id="ksApply">apply</button>
+        <button class="btn" type="button" id="ksAdd">+ level</button>
+        <button class="btn" type="button" id="ksMirror">mirror</button>
+      </div>
+
+      <div class="ladder" id="ladder"></div>
+
+      <div class="urlline">
+        <code id="permalink"></code>
+        <button class="btn" type="button" id="copyLink">copy link</button>
+      </div>
+
+      <p class="note" style="margin-top:16px"><b>Both spellings read the same.</b>
+      <code>-1 1 -1 1</code> and <code>-11-11</code> are the same four levels, so a link
+      from a k board and a sequence you typed cannot mean two different stitches. A k
+      outside <code>&minus;2&hellip;3</code> is kept in the field and marked &mdash;
+      it is never quietly rounded into one the size admits.</p>
+    </div>
+  </section>
+
+  <div class="work">
+
+    <section class="panel">
+      <header>The ring <span class="push meta" id="stageMeta"></span></header>
+      <div class="rail" id="rail"></div>
+      <div class="stage"><canvas id="main"></canvas></div>
+      <div class="toggles">
+        <button type="button" id="tLabels" aria-pressed="true">arm names</button>
+        <button type="button" id="tWelds" aria-pressed="true"
+          title="Where extension 0 sits: the parent&rsquo;s outermost weave point."><i class="dot pur"></i><span>e = 0</span></button>
+        <button type="button" id="tJoints" aria-pressed="false"
+          title="Where this level&rsquo;s arms start once the extension is dialled in."><i class="dot red"></i><span>joints</span></button>
+        <button type="button" id="tGaps" aria-pressed="false"
+          title="The neighbour gaps this level&rsquo;s bands are measured on."><i class="dot gry"></i><span>gaps</span></button>
+      </div>
+    </section>
+
+    <section class="panel record">
+      <header>Level <span id="recLevel">1</span> &middot; k <span id="recK">&minus;1</span>
+        <span class="push meta" id="recMeta"></span></header>
+      <div class="inner">
+        <div class="verdict">
+          <span class="big" id="vFlush">0.00 px</span>
+          <span class="cap">neighbour spread &mdash; flush by construction</span>
+        </div>
+        <div class="chips" id="chips"></div>
+
+        <h3 class="sec">Bands, headings &amp; pairs</h3>
+        <div class="bands" id="bands"></div>
+
+        <p class="note" id="levelNote"></p>
+      </div>
+    </section>
+
+  </div>
+
+  <section class="panel strip">
+    <header>The stack <span class="push meta">each level welded onto the one below</span></header>
+    <div class="grid" id="strip"></div>
+  </section>
+
+  <section class="panel strip">
+    <header>What each level is holding <span class="push meta">read off what is drawn</span></header>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>level</th><th>k</th><th>band</th><th>heading</th>
+            <th>arm length</th><th>pair extensions</th><th>e 0 back from tip</th><th>gaps</th><th>fit</th>
+          </tr>
+        </thead>
+        <tbody id="stackRows"></tbody>
+      </table>
+    </div>
+    <div class="inner">
+      <p class="note"><b>Extension 0 is the weave point, not the tip.</b> An arm is anchored on
+      its parent&rsquo;s <em>outermost crossing</em> with another lace &mdash;
+      <code>crossing_anchors</code>, the purple circles on the ring &mdash; and the extension slides
+      its start out along the parent&rsquo;s own line from there, re-welding the parent to it:
+      <em>parent end == child start</em> is the invariant the engine is written against, so a
+      pair&rsquo;s extension really does lengthen its parent by exactly that much. A pair reading
+      <code>0</code> has handed the parent&rsquo;s loose tail back, and the table says how long that
+      tail was. An arm that crosses nothing keeps its full length &mdash; the fallback is the tip,
+      never a flat retraction. That is <code>docs/mxn-fit.md</code> &sect; <i>Where the joint
+      sits</i>, and it is the one thing the older hand-fitted ring underneath does differently.</p>
+      <p class="note"><b>What else is real.</b> The base 2&times;1 ring is the committed geometry of
+      <code>artifacts/four-twists-2x1/ring.json</code>. Above it, both arms of a pair take the same
+      extension, the band&rsquo;s heading is adopted whole, and the mirror arm is taken by rotating
+      180&deg; about the ring&rsquo;s centre. Extensions run <code>0&hellip;200 px</code> &mdash; the
+      engine&rsquo;s <code>MAX_PAIR_EXTENSION</code> &mdash; and off its grid of 10 on purpose, because
+      the flush answer generally is not on that grid. The arm lengths, the spread and the gaps are
+      measured off what you can see.</p>
+      <p class="note"><b>What is a stand-in.</b> How a k becomes a heading. Here each unit of k
+      turns its band 75&deg;, and its pairs then open at the gap the bounds want &mdash; one
+      division each. It is close in spirit to what the measured <code>k = &minus;1</code> stack does per
+      level, so <code>-1 1 -1 1</code> unwinds and rewinds. On the built page that number is
+      the engine&rsquo;s plan read once as a starting point &mdash; and then it is yours to drag,
+      which is the whole argument for the page.</p>
+    </div>
+  </section>
+
+  <footer>
+    <span>drawn with the app&rsquo;s own renderer <b>exact-draw.ts</b></span>
+    <span>base ring <b>a438a722-mxn2x1k1_1_1_1lhcw</b></span>
+    <span>no engine &middot; no Pyodide &middot; no Cloudflare</span>
+    <span><b>mock</b> for /mxn/hand/</span>
+  </footer>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---- the ring, as data -------------------------------------------------
+  // The base 2x1: three laces, each with its two starting arms. Real
+  // coordinates, straight out of artifacts/four-twists-2x1/ring.json.
+  const CENTRE = { x: 1232, y: 392 };
+  const WIDTH = 46, STROKE = 4;
+  const COLOUR = { 1: [255, 255, 255], 2: [61, 58, 140], 3: [123, 113, 214] };
+  const MIN_GAP = 56, MAX_GAP = 69;
+  const EXT_MAX = 200;                 // MAX_PAIR_EXTENSION
+  const K_LO = -2, K_HI = 3;           // kLimits for 2x1: -(m+n-1) .. m+n
+  const TURN = 75;                     // degrees of band heading per unit of k
+  const BASE_A = 280;                  // where the four-arm band starts before any k
+  const BAND_OFFSET = 105;             // the two-arm band sits across it
+
+  const BASE = [
+    { name: "1_1", lace: 1, start: { x: 1120, y: 420 }, end: { x: 1344, y: 364 }, caps: [true, true] },
+    { name: "1_2", lace: 1, start: { x: 1344, y: 364 }, end: { x: 1148, y: 364 }, caps: [true, false] },
+    { name: "1_3", lace: 1, start: { x: 1120, y: 420 }, end: { x: 1316, y: 420 }, caps: [true, false] },
+    { name: "2_1", lace: 2, start: { x: 1204, y: 448 }, end: { x: 1148, y: 336 }, caps: [true, true] },
+    { name: "2_2", lace: 2, start: { x: 1204, y: 448 }, end: { x: 1204, y: 364 }, caps: [true, false] },
+    { name: "2_3", lace: 2, start: { x: 1148, y: 336 }, end: { x: 1148, y: 420 }, caps: [true, false] },
+    { name: "3_1", lace: 3, start: { x: 1316, y: 448 }, end: { x: 1260, y: 336 }, caps: [true, true] },
+    { name: "3_2", lace: 3, start: { x: 1316, y: 448 }, end: { x: 1316, y: 364 }, caps: [true, false] },
+    { name: "3_3", lace: 3, start: { x: 1260, y: 336 }, end: { x: 1260, y: 420 }, caps: [true, false] },
+  ];
+
+  // Three pairs, and they are the same three at every level: each pair is one
+  // arm and the arm 180 degrees opposite it, so a pair's two arms always take
+  // the same extension. Lace 2 and lace 3 are each other's mirror; lace 1 is
+  // its own.
+  const PAIRS = [
+    { id: "A", lace: 1, mirrorLace: 1, seed: ["1_2", "1_3"] },
+    { id: "B", lace: 2, mirrorLace: 3, seed: ["2_2", "3_3"] },
+    { id: "C", lace: 3, mirrorLace: 2, seed: ["3_2", "2_3"] },
+  ];
+  // Which pairs make the four-arm band and which the two-arm one. It swaps
+  // level by level, exactly as the engine's plan does on a 2x1.
+  const wideOf = L => (L % 2 === 1 ? ["A", "B"] : ["B", "C"]);
+  const narrowOf = L => (L % 2 === 1 ? ["C"] : ["A"]);
+
+  // ---- small vector helpers ---------------------------------------------
+  const rad = d => (d * Math.PI) / 180;
+  const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
+  const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y });
+  const scale = (a, k) => ({ x: a.x * k, y: a.y * k });
+  const len = a => Math.hypot(a.x, a.y) || 1;
+  const unit = a => scale(a, 1 / len(a));
+  const dot = (a, b) => a.x * b.x + a.y * b.y;
+  const polar = (a, r) => ({ x: Math.cos(rad(a)) * r, y: Math.sin(rad(a)) * r });
+  const rot180 = p => ({ x: 2 * CENTRE.x - p.x, y: 2 * CENTRE.y - p.y });
+  const wrap = a => ((a + 180) % 360 + 360) % 360 - 180;
+
+  // ---- the k sequence ----------------------------------------------------
+  // The one tokeniser: "-1 1 -1 1" and "-11-11" are the same four levels.
+  const ksTokens = raw => (String(raw).match(/-?\d+/g) || []).map(Number);
+
+  // ---- state -------------------------------------------------------------
+  const seedLevel = k => ({
+    k,
+    wide: { a: 0, len: 150 },
+    narrow: { a: 0, len: 190 },
+    ext: { A: 0, B: 0, C: 0 },
+    touched: { wide: false, narrow: false, ext: false },
+  });
+
+  const state = { levels: [], sel: 1, labels: true, joints: false, welds: true, gaps: false };
+
+  // A level nobody has dragged takes its heading from the ks that reach it:
+  // each unit of k turns the band by TURN degrees. Drag it and it stops
+  // following the sequence, and says so.
+  function reseed() {
+    let cum = 0;
+    state.levels.forEach(lv => {
+      cum += lv.k;
+      if (!lv.touched.wide) lv.wide.a = wrap(BASE_A + TURN * cum);
+      if (!lv.touched.narrow) lv.narrow.a = wrap(BASE_A + TURN * cum + BAND_OFFSET);
+    });
+  }
+
+  function setKs(ks) {
+    const next = ks.slice(0, 12);
+    state.levels = next.map((k, i) => {
+      const kept = state.levels[i];
+      if (!kept) return seedLevel(k);
+      kept.k = k;
+      return kept;
+    });
+    if (!state.levels.length) state.levels = [seedLevel(-1)];
+    reseed();
+    state.sel = Math.min(state.sel, state.levels.length);
+  }
+
+  // ---- where extension 0 sits -------------------------------------------
+  // Not the parent's tip. The engine anchors every level on the parent's own
+  // OUTERMOST WEAVE POINT — its last crossing with another lace — and
+  // extension 0 sits on that crossing (docs/mxn-fit.md § Where the joint sits).
+  // What a hand fixes is the stitch, not the loose tail an arm trails past its
+  // last crossing. An arm that crosses nothing keeps its full length: the
+  // fallback is the tip, not a flat retraction.
+  function cross(a, b, c, d) {
+    const r = sub(b, a), s = sub(d, c);
+    const den = r.x * s.y - r.y * s.x;
+    if (Math.abs(den) < 1e-9) return null;
+    const t = ((c.x - a.x) * s.y - (c.y - a.y) * s.x) / den;
+    const u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / den;
+    const eps = 1e-6;
+    if (t < -eps || t > 1 + eps || u < -eps || u > 1 + eps) return null;
+    return add(a, scale(r, t));
+  }
+
+  function weavePoint(arm, strands) {
+    const dir = unit(sub(arm.end, arm.start));
+    const tip = dot(sub(arm.end, arm.start), dir);
+    let bestT = -Infinity, best = null;
+    strands.forEach(other => {
+      if (other === arm || other.lace === arm.lace) return;
+      const hit = cross(arm.start, arm.end, other.start, other.end);
+      if (!hit) return;
+      const t = dot(sub(hit, arm.start), dir);
+      if (t > bestT && t <= tip + 1e-6) { bestT = t; best = hit; }
+    });
+    return { at: best || arm.end, back: best ? tip - bestT : 0 };
+  }
+
+  // ---- seeding a fresh level --------------------------------------------
+  // Perpendicular position is affine in a pair's extension and both its arms
+  // move alike, so putting the gaps where they belong is one division per pair
+  // — the fitter's own arithmetic, not a search. It is only ever a starting
+  // point: drag anything and this level stops being seeded.
+  const GAP_TARGET = (MIN_GAP + MAX_GAP) / 2;
+
+  function seedExt(ids, anchors, normal) {
+    const centre = dot(CENTRE, normal);
+    const pairs = ids.map(id => ({
+      id,
+      d: dot(anchors[id].at, normal) - centre,  // where the pair sits across the band
+      s: dot(anchors[id].dir, normal),          // how fast its extension moves it
+    }));
+    // Innermost pair belongs half a gap off the centre line, the next one and
+    // a half, and so on outward.
+    const out = {};
+    [...pairs].sort((x, y) => Math.abs(x.d) - Math.abs(y.d)).forEach((pair, i) => {
+      const want = (i + 0.5) * GAP_TARGET;
+      let best = 0, closest = Infinity;
+      if (Math.abs(pair.s) > 1e-6) {
+        [want, -want].forEach(t => {
+          const e = (t - pair.d) / pair.s;
+          if (e < 0 || e > EXT_MAX || Math.abs(e) >= closest) return;
+          closest = Math.abs(e); best = e;
+        });
+      }
+      out[pair.id] = best;
+    });
+    return out;
+  }
+
+  // ---- building the stack ------------------------------------------------
+  function build() {
+    const strands = BASE.map(s => ({
+      ...s, level: 0, start: { ...s.start }, end: { ...s.end },
+    }));
+    const byName = n => strands.find(s => s.name === n);
+    const parents = {};
+    PAIRS.forEach(p => { parents[p.id] = { p: byName(p.seed[0]), m: byName(p.seed[1]) }; });
+
+    const levels = [];
+    state.levels.forEach((lv, i) => {
+      const L = i + 1;
+      const arms = [], bands = {}, welds = {};
+      // Every anchor for this level is read off the ring BELOW it, before any
+      // of this level's welds move a parent's end.
+      const ids = [...wideOf(L), ...narrowOf(L)];
+      ids.forEach(id => {
+        const par = parents[id].p;
+        const dir = unit(sub(par.end, par.start));
+        const w = weavePoint(par, strands);
+        welds[id] = { at: w.at, back: w.back, dir };
+      });
+
+      const made = {};
+      const place = (bandName, bandIds) => {
+        const band = lv[bandName];
+        const normal = { x: -Math.sin(rad(band.a)), y: Math.cos(rad(band.a)) };
+        if (!lv.touched.ext) Object.assign(lv.ext, seedExt(bandIds, welds, normal));
+        bandIds.forEach(id => {
+          const spec = PAIRS.find(p => p.id === id);
+          const weld = welds[id];
+          const e = lv.ext[id];
+          // Extension 0 is the weave point; e slides the start out along the
+          // parent's own line from there, and the parent is re-welded to it —
+          // parent end == child start is the invariant the engine is written
+          // against, so a pair's extension really does lengthen its parent.
+          const start = add(weld.at, scale(weld.dir, e));
+          const one = add(start, polar(band.a, band.len));
+          const two = add(start, polar(band.a + 180, band.len));
+          const end = len(sub(one, CENTRE)) <= len(sub(two, CENTRE)) ? one : two;
+          const mStart = rot180(start), mEnd = rot180(end);
+          parents[id].p.end = start;
+          parents[id].m.end = mStart;
+          const primary = {
+            name: `${spec.lace}_${2 * L + 2}`, lace: spec.lace, pair: id, band: bandName,
+            level: L, start, end, caps: [true, false], ext: e, back: weld.back,
+            heading: wrap(Math.atan2(end.y - start.y, end.x - start.x) * 180 / Math.PI),
+          };
+          const mirror = {
+            ...primary, name: `${spec.mirrorLace}_${2 * L + 3}`, lace: spec.mirrorLace,
+            start: mStart, end: mEnd, heading: wrap(primary.heading + 180),
+          };
+          strands.push(primary, mirror);
+          arms.push(primary, mirror);
+          made[id] = { primary, mirror };
+          parents[id] = { p: primary, m: mirror };
+        });
+        // The band's own order is where the arms actually lie across it, so a
+        // gap is always between arms that are neighbours on the stitch.
+        const order = bandIds.flatMap(id => [made[id].primary, made[id].mirror])
+          .sort((a, b) => dot(a.start, normal) - dot(b.start, normal));
+        const gaps = order.slice(1).map((arm, j) =>
+          Math.abs(dot(arm.start, normal) - dot(order[j].start, normal)));
+        bands[bandName] = {
+          name: bandName, ids: bandIds, arms: order, gaps,
+          heading: band.a, len: band.len,
+        };
+      };
+      place("wide", wideOf(L));
+      place("narrow", narrowOf(L));
+      levels.push({ level: L, k: lv.k, arms, bands, welds });
+    });
+    return { levels, strands };
+  }
+
+  const margin = band => Math.min(...band.gaps.map(g => Math.min(g - MIN_GAP, MAX_GAP - g)));
+  const levelMargin = lv => Math.min(margin(lv.bands.wide), margin(lv.bands.narrow));
+
+  // ---- the renderer, ported from src/mxn-lab/exact-draw.ts ---------------
+  const css = c => `rgb(${c[0]},${c[1]},${c[2]})`;
+  const plateBg = () => getComputedStyle(document.documentElement)
+    .getPropertyValue("--canvas-bg").trim() || "#f2f2f7";
+
+  function bounds(stack) {
+    const pts = stack.strands.flatMap(s => [s.start, s.end]);
+    return {
+      minX: Math.min(...pts.map(p => p.x)) - 70, minY: Math.min(...pts.map(p => p.y)) - 70,
+      maxX: Math.max(...pts.map(p => p.x)) + 70, maxY: Math.max(...pts.map(p => p.y)) + 70,
+    };
+  }
+
+  function draw(canvas, stack, upto, box, opts) {
+    const o = Object.assign({ labels: false, joints: false, welds: false, gaps: false }, opts);
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.max(1, rect.width), h = Math.max(1, rect.height);
+    const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
+    if (canvas.width !== pw) canvas.width = pw;
+    if (canvas.height !== ph) canvas.height = ph;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = plateBg();
+    ctx.fillRect(0, 0, w, h);
+
+    const pad = 8;
+    const sw = Math.max(1, box.maxX - box.minX), sh = Math.max(1, box.maxY - box.minY);
+    const k = Math.max(.001, Math.min((w - pad * 2) / sw, (h - pad * 2) / sh));
+    const ox = (w - sw * k) / 2 - box.minX * k, oy = (h - sh * k) / 2 - box.minY * k;
+    const P = p => ({ x: p.x * k + ox, y: p.y * k + oy });
+
+    const shape = (target, s, width) => {
+      const a = P(s.start), b = P(s.end);
+      const d = sub(b, a), l = len(d);
+      const nx = (-d.y / l) * width / 2, ny = (d.x / l) * width / 2;
+      target.moveTo(a.x + nx, a.y + ny);
+      target.lineTo(b.x + nx, b.y + ny);
+      target.lineTo(b.x - nx, b.y - ny);
+      target.lineTo(a.x - nx, a.y - ny);
+      target.closePath();
+      const r = width / 2;
+      if (s.caps[0]) { target.moveTo(a.x + r, a.y); target.arc(a.x, a.y, r, 0, Math.PI * 2, true); }
+      if (s.caps[1]) { target.moveTo(b.x + r, b.y); target.arc(b.x, b.y, r, 0, Math.PI * 2, true); }
+    };
+
+    const body = s => {
+      const bw = WIDTH * k, outline = Math.max(1.25, STROKE * k);
+      ctx.beginPath(); shape(ctx, s, bw + outline * 2);
+      ctx.fillStyle = "#000"; ctx.fill();
+      ctx.beginPath(); shape(ctx, s, bw);
+      ctx.fillStyle = css(COLOUR[s.lace]); ctx.fill();
+    };
+
+    // Older first, so each level's arms lie over the one it grew from.
+    const drawn = stack.strands.filter(s => s.level <= upto);
+    drawn.filter(s => s.level === 0 && s.lace === 1).forEach(body);
+    drawn.filter(s => s.level === 0 && s.lace !== 1).forEach(body);
+    stack.levels.filter(l => l.level <= upto).forEach(l => {
+      l.bands.narrow.arms.forEach(body);
+      l.bands.wide.arms.forEach(body);
+    });
+
+    const here = stack.levels.find(l => l.level === upto);
+    if (!here) return;
+    const ring = (p, colour) => {
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = Math.max(2, 5 * k);
+      ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(5, 13 * k), 0, Math.PI * 2); ctx.stroke();
+    };
+
+    if (o.gaps) {
+      ctx.lineWidth = Math.max(1.5, 4 * k);
+      ctx.strokeStyle = "#6b6880";
+      ["wide", "narrow"].forEach(b => {
+        const arms = here.bands[b].arms;
+        arms.slice(1).forEach((arm, j) => {
+          const a = P(arms[j].start), c = P(arm.start);
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(c.x, c.y); ctx.stroke();
+        });
+      });
+    }
+    // Purple: where extension 0 sits — the parent's outermost weave point.
+    if (o.welds) Object.values(here.welds).forEach(wd => {
+      ring(P(wd.at), "#8c39c4"); ring(P(rot180(wd.at)), "#8c39c4");
+    });
+    // Red: where the arms actually start, once the extension is dialled in.
+    if (o.joints) here.arms.forEach(a => ring(P(a.start), "#d81e1e"));
+
+    if (!o.labels) return;
+    const size = sw / 30;
+    ctx.font = `700 ${size * k}px "IBM Plex Mono", ui-monospace, monospace`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    here.arms.forEach(a => {
+      const d = unit(sub(a.end, a.start));
+      const at = P(add(a.end, scale(d, size * 1.4)));
+      ctx.lineWidth = size * .28 * k;
+      ctx.strokeStyle = "rgba(255,255,255,.96)";
+      ctx.strokeText(a.name, at.x, at.y);
+      ctx.fillStyle = "#191823";
+      ctx.fillText(a.name, at.x, at.y);
+    });
+  }
+
+  // ---- the page ----------------------------------------------------------
+  const $ = id => document.getElementById(id);
+  const fixed = (v, n = 2) => v.toFixed(n);
+  const signed = k => (k < 0 ? "−" + Math.abs(k) : "+" + k);
+
+  function renderLadder(ks) {
+    const bad = k => k < K_LO || k > K_HI;
+    $("ladder").innerHTML = ks.map((k, i) => `
+      <div class="lev ${bad(k) ? "bad" : ""} ${state.sel === i + 1 ? "sel" : ""}">
+        <button class="face" type="button" data-pick="${i + 1}" title="Edit level ${i + 1}">
+          <span class="who">L${i + 1}</span><span class="kv">${signed(k)}</span>
+        </button>
+        <span class="stack">
+          <button class="step" type="button" data-bump="${i}" data-by="1" aria-label="k up on level ${i + 1}">&#9650;</button>
+          <button class="step" type="button" data-bump="${i}" data-by="-1" aria-label="k down on level ${i + 1}">&#9660;</button>
+        </span>
+        <button class="kill" type="button" data-drop="${i}" aria-label="Remove level ${i + 1}">&times;</button>
+      </div>`).join("");
+  }
+
+  function renderRail(stack) {
+    $("rail").innerHTML = stack.levels.map(l => `
+      <button type="button" data-pick="${l.level}" aria-pressed="${state.sel === l.level}">
+        <span class="n">L${l.level}</span>
+        <span class="t">k ${signed(l.k)}</span>
+      </button>`).join("");
+  }
+
+  // Ranges: the extension is the engine's own 0…200 (MAX_PAIR_EXTENSION), off
+  // its grid of 10 on purpose. The heading turns the whole way round because a
+  // hand may want any of it. Arm length spans a stitch that has collapsed to a
+  // stub through one twice the base ring across.
+  const RANGE = {
+    a: { min: -180, max: 180, step: 0.1, unit: "°" },
+    len: { min: 60, max: 360, step: 0.5, unit: " px" },
+    ext: { min: 0, max: EXT_MAX, step: 0.05, unit: " px" },
+  };
+
+  const hintFor = (lv, level, pid) => {
+    const back = level.welds[pid].back, e = lv.ext[pid];
+    return `e&nbsp;0 sits ${fixed(back, 1)} px inside the parent&rsquo;s tip &middot; `
+      + `parent ${e >= back ? "+" : "−"}${fixed(Math.abs(e - back), 1)} px`;
+  };
+
+  const armRows = band => band.arms.map(a => `
+    <div class="arm">
+      <span class="nm">${a.name}</span>
+      <span class="bar"><i style="width:${Math.min(100, band.len / 3.6)}%"></i></span>
+      <span class="px">${fixed(band.len, 1)} px</span>
+    </div>`).join("")
+    + band.gaps.map((g, i) => {
+      const ok = g >= MIN_GAP && g <= MAX_GAP;
+      return `
+      <div class="arm gap ${ok ? "" : "no"}">
+        <span class="nm">gap ${i + 1}</span>
+        <span class="bar"><i style="width:${Math.max(2, Math.min(100, (g / MAX_GAP) * 100))}%"></i></span>
+        <span class="px">${fixed(g, 1)} px</span>
+      </div>`;
+    }).join("");
+
+  const bandLabel = band =>
+    `${band.name === "wide" ? "four-arm band" : "two-arm band"} &middot; `
+    + `${band.ids.length} pair${band.ids.length > 1 ? "s" : ""} &middot; `
+    + `gaps ${fixed(Math.min(...band.gaps), 1)}&ndash;${fixed(Math.max(...band.gaps), 1)} px`;
+
+  function bandBlock(lv, level, band) {
+    const wide = band.name === "wide";
+    const knob = (nm, key, value, attrs, label, out) => `
+      <div class="knob">
+        <span class="nm">${nm}</span>
+        <input type="range" min="${RANGE[key].min}" max="${RANGE[key].max}"
+          step="${RANGE[key].step}" value="${value}" ${attrs} aria-label="${label}">
+        <span class="px" data-out="${out}">${fixed(value, key === "ext" ? 2 : 1)}${RANGE[key].unit}</span>
+      </div>`;
+    return `
+      <div class="band ${wide ? "" : "narrow"}">
+        <div class="top">
+          <span class="ang" data-out="ang-${band.name}">${fixed(band.heading, 1)}&deg;</span>
+          <span class="lbl" data-out="lbl-${band.name}">${bandLabel(band)}</span>
+        </div>
+        <div class="knobs">
+          ${knob("heading", "a", band.heading,
+            `data-band="${band.name}" data-knob="a"`, `${band.name} band heading`,
+            `a-${band.name}`)}
+          ${knob("arm length", "len", band.len,
+            `data-band="${band.name}" data-knob="len"`, `${band.name} band arm length`,
+            `len-${band.name}`)}
+          ${band.ids.map((pid, i) => knob(`pair ${i + 1}`, "ext", lv.ext[pid],
+            `data-ext="${pid}"`, `pair ${i + 1} extension`, `ext-${pid}`)
+            + `<div class="knob sub"><span class="nm"></span>
+                 <span class="hint" data-out="hint-${pid}">${hintFor(lv, level, pid)}</span>
+                 <span class="px"></span></div>`).join("")}
+        </div>
+        <div class="arms" data-arms="${band.name}">${armRows(band)}</div>
+      </div>`;
+  }
+
+  function paintVerdict(stack, here, lv) {
+    const m = levelMargin(here);
+    const v = $("vFlush");
+    v.textContent = `${fixed(m, 2)} px`;
+    v.style.color = m >= 0 ? "var(--pass)" : "var(--warn)";
+    v.nextElementSibling.textContent = m >= 0
+      ? "clearance to the nearest gap bound"
+      : "past a gap bound — pull it back";
+
+    const allGaps = here.bands.wide.gaps.concat(here.bands.narrow.gaps);
+    const ok = allGaps.every(g => g >= MIN_GAP && g <= MAX_GAP);
+    $("chips").innerHTML = [
+      `<span class="chip ok"><b>0.00 px</b> arms flush</span>`,
+      `<span class="chip ${ok ? "ok" : "no"}"><b>${fixed(Math.min(...allGaps), 1)}&ndash;${fixed(Math.max(...allGaps), 1)}</b> px gaps ${ok ? "in bounds" : "out of bounds"}</span>`,
+      `<span class="chip">bounds <b>${MIN_GAP}&ndash;${MAX_GAP}</b> px</span>`,
+      `<span class="chip">e 0 on the <b>weave point</b></span>`,
+      `<span class="chip">extensions <b>${["A", "B", "C"].map(id => fixed(lv.ext[id], 1)).join(" / ")}</b></span>`,
+    ].join("");
+
+    const loose = ["wide", "narrow"].filter(b =>
+      here.bands[b].gaps.some(g => g < MIN_GAP || g > MAX_GAP));
+    const followed = !lv.touched.wide && !lv.touched.narrow;
+    $("levelNote").innerHTML = loose.length
+      ? `<b>The ${loose[0] === "wide" ? "four" : "two"}-arm band is outside the gap bounds.</b>
+         Its arms are ${fixed(Math.max(...here.bands[loose[0]].gaps), 1)} px apart where
+         <code>${MIN_GAP}&ndash;${MAX_GAP}</code> is what fits. An extension only ever slides an arm
+         further OUT along its parent, so it cannot pull that back on its own &mdash; drag the
+         band&rsquo;s <b>heading</b> and watch the gaps move with it. Nothing here decides it for you.`
+      : followed
+        ? `<b>Both headings still follow the ks.</b> They sit where <code>k = ${signed(here.k)}</code>
+           puts them &mdash; ${TURN}&deg; of turn per unit, carried up from the levels below.
+           Drag either one and this level stops following the sequence; the ks field does not change,
+           and nothing re-searches.`
+        : `<b>This level is placed by hand.</b> Its heading no longer follows the ks, which is the
+           point of dragging it. Everything below it is untouched: a level is only ever moved by you.`;
+  }
+
+  function renderEditor(stack) {
+    const here = stack.levels.find(l => l.level === state.sel) || stack.levels[0];
+    const lv = state.levels[here.level - 1];
+    $("recLevel").textContent = here.level;
+    $("recK").innerHTML = signed(here.k);
+    $("recMeta").textContent = "6 arms · 3 pairs";
+    $("bands").innerHTML = bandBlock(lv, here, here.bands.wide)
+      + bandBlock(lv, here, here.bands.narrow);
+    paintVerdict(stack, here, lv);
+  }
+
+  function renderStrip(stack, box) {
+    const grid = $("strip");
+    grid.innerHTML = stack.levels.map(l => `
+      <div class="cell">
+        <canvas data-strip="${l.level}"></canvas>
+        <span class="cap"><b>L${l.level}</b> k ${signed(l.k)} &middot;
+          ${fixed(l.bands.wide.heading, 0)}&deg; / ${fixed(l.bands.narrow.heading, 0)}&deg;</span>
+      </div>`).join("") + `
+      <div class="cell add">
+        <button class="btn primary" type="button" id="stripAdd">+ add a level</button>
+        <span class="cap">repeats the last k</span>
+      </div>`;
+    grid.querySelectorAll("canvas[data-strip]").forEach(c => {
+      draw(c, stack, Number(c.dataset.strip), box, { labels: false });
+    });
+    $("stripAdd").addEventListener("click", addLevel);
+  }
+
+  function renderTable(stack) {
+    $("stackRows").innerHTML = stack.levels.flatMap(l => ["wide", "narrow"].map((b, i) => {
+      const band = l.bands[b];
+      const ok = band.gaps.every(g => g >= MIN_GAP && g <= MAX_GAP);
+      const lv = state.levels[l.level - 1];
+      return `<tr class="${state.sel === l.level ? "sel" : ""}">
+        <td class="k">${i === 0 ? "L" + l.level : ""}</td>
+        <td>${i === 0 ? signed(l.k) : ""}</td>
+        <td>${b === "wide" ? "4 arms" : "2 arms"}</td>
+        <td class="v">${fixed(band.heading, 1)}&deg;</td>
+        <td>${fixed(band.len, 1)} px</td>
+        <td>${band.ids.map(id => fixed(lv.ext[id], 2)).join(" / ")}</td>
+        <td>${band.ids.map(id => fixed(l.welds[id].back, 1)).join(" / ")}</td>
+        <td>${band.gaps.map(g => fixed(g, 1)).join(" / ")}</td>
+        <td style="color:${ok ? "var(--pass)" : "var(--warn)"}">${ok ? "in bounds" : "out"}</td>
+      </tr>`;
+    })).join("");
+  }
+
+  // Everything that changes while a knob moves, written into the DOM that is
+  // already there. A drag must never replace the element under the pointer:
+  // the browser would drop the drag on the first move.
+  function paint(stack, box) {
+    const here = stack.levels.find(l => l.level === state.sel) || stack.levels[0];
+    const lv = state.levels[here.level - 1];
+    const set = (key, html) => {
+      const el = $("bands").querySelector(`[data-out="${key}"]`);
+      if (el) el.innerHTML = html;
+    };
+    draw($("main"), stack, state.sel, box, {
+      labels: state.labels, joints: state.joints, welds: state.welds, gaps: state.gaps,
+    });
+    ["wide", "narrow"].forEach(b => {
+      const band = here.bands[b];
+      set(`ang-${b}`, `${fixed(band.heading, 1)}&deg;`);
+      set(`lbl-${b}`, bandLabel(band));
+      set(`a-${b}`, `${fixed(band.heading, 1)}&deg;`);
+      set(`len-${b}`, `${fixed(band.len, 1)} px`);
+      band.ids.forEach(pid => {
+        set(`ext-${pid}`, `${fixed(lv.ext[pid])} px`);
+        set(`hint-${pid}`, hintFor(lv, here, pid));
+      });
+      const armsBox = $("bands").querySelector(`[data-arms="${b}"]`);
+      if (armsBox) armsBox.innerHTML = armRows(band);
+    });
+    paintVerdict(stack, here, lv);
+    renderTable(stack);
+    $("strip").querySelectorAll("canvas[data-strip]").forEach(c => {
+      draw(c, stack, Number(c.dataset.strip), box, { labels: false });
+    });
+  }
+
+  let queued = false;
+  function live() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      const stack = build();
+      paint(stack, bounds(stack));
+    });
+  }
+
+  function render() {
+    const stack = build();
+    const box = bounds(stack);
+    const ks = state.levels.map(l => l.k);
+
+    $("specKs").innerHTML = ks.map(signed).join(" ");
+    $("specLevels").textContent = state.levels.length;
+    $("specStrands").textContent = stack.strands.length;
+    $("permalink").textContent =
+      `/Scoubidou3D/mxn/hand/?m=2&n=1&ks=${ks.join(" ")}&hand=lh&direction=cw`;
+    $("stageMeta").textContent =
+      `L${state.sel} of ${state.levels.length} · ${9 + state.sel * 6} strands drawn`;
+
+    renderLadder(ks);
+    renderRail(stack);
+    draw($("main"), stack, state.sel, box, {
+      labels: state.labels, joints: state.joints, welds: state.welds, gaps: state.gaps,
+    });
+    renderEditor(stack);
+    renderStrip(stack, box);
+    renderTable(stack);
+  }
+
+  // ---- editing -----------------------------------------------------------
+  function addLevel() {
+    const last = state.levels[state.levels.length - 1];
+    state.levels.push(seedLevel(last ? last.k : -1));
+    reseed();
+    state.sel = state.levels.length;
+    $("ksText").value = state.levels.map(l => l.k).join(" ");
+    render();
+  }
+
+  $("ksApply").addEventListener("click", () => {
+    const ks = ksTokens($("ksText").value);
+    if (!ks.length) { $("ksText").setAttribute("aria-invalid", "true"); return; }
+    $("ksText").removeAttribute("aria-invalid");
+    setKs(ks);
+    render();
+  });
+  $("ksText").addEventListener("input", () => {
+    const ks = ksTokens($("ksText").value);
+    $("ksText").setAttribute("aria-invalid", String(ks.some(k => k < K_LO || k > K_HI)));
+  });
+  $("ksText").addEventListener("keydown", e => {
+    if (e.key === "Enter") $("ksApply").click();
+  });
+  $("ksAdd").addEventListener("click", addLevel);
+  $("ksMirror").addEventListener("click", () => {
+    setKs(state.levels.map(l => -l.k));
+    $("ksText").value = state.levels.map(l => l.k).join(" ");
+    render();
+  });
+  $("copyLink").addEventListener("click", e => {
+    const text = $("permalink").textContent;
+    if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
+    e.currentTarget.textContent = "copied";
+    setTimeout(() => { e.currentTarget.textContent = "copy link"; }, 1400);
+  });
+
+  $("ladder").addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.pick) { state.sel = Number(b.dataset.pick); render(); return; }
+    if (b.dataset.bump) {
+      const i = Number(b.dataset.bump);
+      const next = state.levels[i].k + Number(b.dataset.by);
+      if (next < K_LO || next > K_HI) return;
+      state.levels[i].k = next;
+      reseed();
+      $("ksText").value = state.levels.map(l => l.k).join(" ");
+      render();
+      return;
+    }
+    if (b.dataset.drop) {
+      if (state.levels.length === 1) return;
+      state.levels.splice(Number(b.dataset.drop), 1);
+      reseed();
+      state.sel = Math.min(state.sel, state.levels.length);
+      $("ksText").value = state.levels.map(l => l.k).join(" ");
+      render();
+    }
+  });
+
+  $("rail").addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (b) { state.sel = Number(b.dataset.pick); render(); }
+  });
+
+  $("bands").addEventListener("input", e => {
+    const el = e.target;
+    const lv = state.levels[state.sel - 1];
+    if (el.dataset.band) {
+      lv[el.dataset.band][el.dataset.knob] = Number(el.value);
+      if (el.dataset.knob === "a") lv.touched[el.dataset.band] = true;
+    } else if (el.dataset.ext) {
+      lv.ext[el.dataset.ext] = Number(el.value);
+      lv.touched.ext = true;
+    } else return;
+    live();
+  });
+
+  const toggle = (id, key) => $(id).addEventListener("click", e => {
+    state[key] = !state[key];
+    e.currentTarget.setAttribute("aria-pressed", String(state[key]));
+    render();
+  });
+  toggle("tLabels", "labels");
+  toggle("tJoints", "joints");
+  toggle("tWelds", "welds");
+  toggle("tGaps", "gaps");
+
+  window.addEventListener("resize", () => render());
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
+  if (mq.addEventListener) mq.addEventListener("change", () => render());
+
+  setKs(ksTokens($("ksText").value));
+  render();
+})();
+</script>
