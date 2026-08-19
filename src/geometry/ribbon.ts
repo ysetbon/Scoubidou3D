@@ -302,6 +302,28 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   const noseSteps = Math.max(0, Math.floor(opts.noseSteps ?? 6));
 
   /**
+   * The section read the other way up: for each vertex, the one at the same place
+   * across the width and the opposite place through the thickness. That is the
+   * vertex a lace's own point arrives at once it has turned over, so it is how the
+   * two faces of a fold correspond to each other physically (see `noseOf`).
+   * Searched rather than derived, so it stays true of whatever `crossSection`
+   * returns; the section is closed and symmetric, so this is always a bijection.
+   */
+  const flip: number[] = [];
+  for (let j = 0; j < m; j++) {
+    let best = j;
+    let near = Infinity;
+    for (let k = 0; k < m; k++) {
+      const d = Math.hypot(section[k].x - section[j].x, section[k].y + section[j].y);
+      if (d < near) {
+        near = d;
+        best = k;
+      }
+    }
+    flip.push(best);
+  }
+
+  /**
    * The rings that carry the surface round the OUTSIDE of a fold.
    *
    * The two faces of a fold sit at one point in the drawing plane, one above the
@@ -317,37 +339,75 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
    * at a fold is a half-round of the radius that gap sets — the same half-round
    * whether the fold merely stacks a run on a run or carries a whole storey.
    *
-   * So the wall is replaced by that half-round, drawn vertex by vertex: each
-   * point of the arriving ring swings on a semicircle onto the matching point of
-   * the leaving one, bulging out along `nose`. Interpolating the rings the flat
-   * wall already joined is what keeps this safe — the vertex pairing, the winding
-   * and the mirroring are the ones the sweep had already worked out, so the nose
-   * cannot twist or turn its normals inside out, and it meets both faces exactly.
+   * So the wall is replaced by that half-round — and the lace has to TURN through
+   * it, not merely travel round it. That distinction is the whole of this
+   * function, and missing it puts the wall back somewhere else. Sliding each
+   * vertex along its own semicircle reads right on paper and is not: the two faces
+   * of a fold sit one gap apart in Z and nowhere else, so every vertex is handed
+   * the same arc and the ring is carried round bodily without ever tipping. At the
+   * crown it is travelling straight up while still standing on edge, parallel to
+   * its own direction of travel, and the sweep degenerates and creases there — the
+   * same flat face as before, moved to the top of the loop and dented into it.
+   *
+   * The ring is therefore ROTATED, about the crease line: the level axis square to
+   * the bulge, through the middle of the gap. A quarter of the way round the
+   * section lies flat with the surface climbing through it; half way round it has
+   * turned over, which is what a lace doubling back does.
+   *
+   * Turning over is also why the two faces have to be paired by `flip` rather than
+   * index for index. A fold's faces are one ring described twice, and the sweep
+   * describes the far one with the section's width mirrored and its thickness left
+   * alone — the same points, labelled for a lace that came back the same way up.
+   * The turn brings it back the OTHER way up, so it lands on the thickness-mirrored
+   * labelling instead. Pairing index for index rotates the two halves of the nose
+   * into opposition, and averaging them flattens the section to nothing at the
+   * crown — a worse dent than the one the nose was for. Paired through `flip` the
+   * two agree all the way round, and each end still lands exactly on its face.
    */
-  const noseOf = (a: number[], b: number[], dir: Vec2): number[][] => {
+  const noseOf = (a: number[], b: number[], dir: Vec2, hub: Vec3, rise: number): number[][] => {
+    // The crease line: level, square to the bulge. `dir` is a unit in-plane
+    // vector, so this is one too.
+    //
+    // Its SENSE comes off the rise, because the turn has to come out of the lace
+    // whichever way the lace is going through it. A run stepping up doubles back
+    // over the top; a run stepping down doubles back underneath, which is the same
+    // turn about the same line read the other way round. Fixing the sense would
+    // send every second fold's nose inward, burying it in the lace it came off and
+    // leaving that turn as square as it ever was.
+    const sense = rise < 0 ? -1 : 1;
+    const k1 = dir.y * sense;
+    const k2 = -dir.x * sense;
+    // Rodrigues about that axis. Its Z component is zero, which drops the last
+    // term of the usual formula from Z.
+    const spin = (wx: number, wy: number, wz: number, c: number, s: number): Vec3 => {
+      const dot = k1 * wx + k2 * wy;
+      return {
+        x: wx * c + k2 * wz * s + k1 * dot * (1 - c),
+        y: wy * c - k1 * wz * s + k2 * dot * (1 - c),
+        z: wz * c + (k1 * wy - k2 * wx) * s,
+      };
+    };
     const out: number[][] = [];
-    for (let k = 1; k <= noseSteps; k++) {
-      const th = (Math.PI * k) / (noseSteps + 1);
+    for (let n = 1; n <= noseSteps; n++) {
+      const th = (Math.PI * n) / (noseSteps + 1);
+      const f = th / Math.PI; // 0 at the arriving face, 1 at the leaving one
       const c = Math.cos(th);
       const s = Math.sin(th);
       const ring: number[] = [];
       for (let j = 0; j < m; j++) {
-        const ax = positions[a[j] * 3];
-        const ay = positions[a[j] * 3 + 1];
-        const az = positions[a[j] * 3 + 2];
-        const bx = positions[b[j] * 3];
-        const by = positions[b[j] * 3 + 1];
-        const bz = positions[b[j] * 3 + 2];
-        const mx = (ax + bx) / 2;
-        const my = (ay + by) / 2;
-        const mz = (az + bz) / 2;
-        const hx = ax - mx;
-        const hy = ay - my;
-        const hz = az - mz;
-        // Half the gap this vertex's two faces leave is the circle it turns on.
-        const r = Math.hypot(hx, hy, hz);
+        const ai = a[j] * 3;
+        const bi = b[flip[j]] * 3;
+        // Forward from the arriving face…
+        const p = spin(positions[ai] - hub.x, positions[ai + 1] - hub.y, positions[ai + 2] - hub.z, c, s);
+        // …and back from the leaving one, which is the same turn less a half
+        // circle, so cosine and sine simply change sign.
+        const q = spin(positions[bi] - hub.x, positions[bi + 1] - hub.y, positions[bi + 2] - hub.z, -c, -s);
         ring.push(positions.length / 3);
-        positions.push(mx + hx * c + dir.x * r * s, my + hy * c + dir.y * r * s, mz + hz * c);
+        positions.push(
+          hub.x + p.x + (q.x - p.x) * f,
+          hub.y + p.y + (q.y - p.y) * f,
+          hub.z + p.z + (q.z - p.z) * f,
+        );
       }
       out.push(ring);
     }
@@ -389,12 +449,19 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     // radius would be a handful of rings all sitting on each other.
     const gap = next.crease ? Math.abs(next.p.z - plan[i].p.z) : 0;
     if (next.nose && noseSteps > 0 && gap > 1e-6) {
+      // The turn is about the crease line through the middle of the gap: the two
+      // faces share a point in the drawing plane, so only the height is averaged.
+      const hub = { x: next.p.x, y: next.p.y, z: (plan[i].p.z + next.p.z) / 2 };
       let prev = a;
-      for (const ring of noseOf(a, b, next.nose)) {
+      for (const ring of noseOf(a, b, next.nose, hub, next.p.z - plan[i].p.z)) {
         strip(prev, ring, mirrored[i]);
         prev = ring;
       }
-      strip(prev, b, mirrored[i]);
+      // The nose comes off the turn on the far face's other-way-up labelling, so
+      // the last band closes onto it through the same pairing. Same ring, same
+      // walk, so the band has no area of its own — it only hands the surface back
+      // to the labels the rest of the sweep is using.
+      strip(prev, flip.map((k) => b[k]), mirrored[i]);
       continue;
     }
     strip(a, b, mirrored[i]);
