@@ -8,7 +8,7 @@
 // and in 3D that job is done for real by the Z stack.
 
 import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
-import { recomputeOccupancy } from './connections';
+import { endpoint, pointsClose, recomputeOccupancy } from './connections';
 import { inferTriangleHasMoved } from './controlPoints';
 
 interface RawColor {
@@ -35,6 +35,8 @@ interface RawStrand {
   color?: RawColor;
   stroke_color?: RawColor;
   is_hidden?: boolean;
+  /** OSS AttachedStrand.parent — the layer name this one hangs off. */
+  attached_to?: string;
 }
 
 const DEFAULT_COLOR: RGBA = { r: 200, g: 170, b: 230, a: 255 };
@@ -145,12 +147,40 @@ export function sceneFromOss(data: unknown, name = 'imported'): Scene3D {
       // Occupancy is derived from the geometry below, so the junctions of an
       // imported weave reconnect (attached strands share endpoints in OSS).
       hasCircles: [false, false],
-      // OSS attached-strand records carry the parent relation in their layer
-      // name/set; we don't need it for movement (that follows coincident points)
-      // and imported files may omit it, so leave lineage unset.
+      // Lineage is resolved below, once every id is known.
       parentId: null,
       parentSide: null,
     });
+  });
+
+  // ---- lineage ---------------------------------------------------------------
+  // An OSS AttachedStrand names the strand it hangs off (`attached_to`). Movement
+  // never needed it — that follows coincident points — but a STOREY does: where
+  // no parent is declared, `collectJunctions` recovers the joint from coincidence
+  // and confines that search to the strand's own level, because two ends a level
+  // apart can share an (x, y) without being the same joint. A lace carried up
+  // onto a new level is exactly the case that rule refuses, so an import with no
+  // lineage comes apart at every break: each storey's arms become laces of their
+  // own, ranked separately and swept as separate ribbons. Reading the declaration
+  // keeps the cord whole, the way a stitch the app built itself stays whole.
+  //
+  // The declaration still has to hold the geometry — a parent whose endpoint is
+  // no longer under the child's start says nothing about this scene — so a joint
+  // that has come open is left to the coincidence path exactly as before.
+  const byId = new Map(strands.map((s) => [s.id, s]));
+  raw.forEach((r) => {
+    if (!r.layer_name || !r.attached_to) return;
+    const child = byId.get(r.layer_name);
+    const parent = byId.get(r.attached_to);
+    if (!child || !parent || child === parent) return;
+    // Prefer the parent's END: a chain grows off a tip, and a shared START is the
+    // rarer two-strands-one-head shape.
+    for (const side of [1, 0] as const) {
+      if (!pointsClose(endpoint(parent, side), child.start)) continue;
+      child.parentId = parent.id;
+      child.parentSide = side;
+      break;
+    }
   });
 
   const ids = new Set(strands.map((s) => s.id));
