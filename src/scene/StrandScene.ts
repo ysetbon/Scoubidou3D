@@ -48,6 +48,30 @@ import { Vec2, Vec3 } from '../geometry/vec';
 // Source (pixel) units -> world units. Keeps camera distances comfortable.
 const SCALE = 0.02;
 
+/**
+ * How far apart a fold leaves its two runs AT the crease, in strand thicknesses.
+ *
+ * A fold is where a lace doubles back, and the flat face it turns on is exactly
+ * this tall — so this number is the whole of what a turn shows. One thickness is
+ * the two runs touching, which is right for a fold that only stacks a run on a
+ * run, and it used to be the cap for every fold in the model.
+ *
+ * It is the wrong cap for the folds that matter. A lace changes storey AT a fold,
+ * and a storey is two thicknesses (`levelStepSource`); capped at one, half of
+ * every storey change was refused at the crease and ramped away into the runs on
+ * either side instead. That did two things at once: it left the turn showing a
+ * face half the height the lace really steps through there, reading thin and
+ * cut-off against the round of the runs, and it tipped those runs up to carry
+ * what the crease would not — over 30 degrees off level at a third of the folds
+ * in a box stitch column.
+ *
+ * At two thicknesses the crease carries a whole storey, which is the step the
+ * lace actually makes. The face comes out at its true height and the runs into
+ * and out of the turn have nothing left to ramp. A fold with a smaller step than
+ * this is unaffected: the cap only ever caps.
+ */
+const FOLD_STACK = 2;
+
 // Handle appearance (world-unit radii + colors), tuned against SCALE so the grab
 // dots read clearly at the default framing.
 const END_R = 0.18;
@@ -237,9 +261,9 @@ export class StrandScene {
    * The centreline each merged LACE is finally swept along — after the folds and
    * storey steps have been settled and the gentle corners rounded. Kept because
    * it is the only place the finished shape of a lace exists as numbers rather
-   * than as triangles: `npm run check:fold` reads it to assert that a storey
-   * change is climbed at a slope the sweep can actually lie along, which is not
-   * a thing that can be measured off the mesh afterwards.
+   * than as triangles: `npm run qa:fold` reads it to measure the face a fold
+   * shows and the step the runs either side are left to walk, neither of which
+   * is recoverable from the mesh afterwards.
    */
   laceCenterlines: Array<{ chain: number[]; line: Vec3[]; width: number; thickness: number }> = [];
   // Resting height per strand (see computeBaseZ) and the lowest of them, which the
@@ -678,7 +702,7 @@ export class StrandScene {
       // Settle each fold before sweeping: the lace stacks on itself there, one
       // thickness apart, with the change eased into the runs on either side.
       const thickness = (first.thickness ?? this.params.thickness) * SCALE;
-      easeFolds(line, thickness, thickness * 2);
+      easeFolds(line, thickness * FOLD_STACK, thickness * 2);
       // Then walk up any step left at a gentle joint — a level break between two
       // members of the lace puts one storey's worth of height there, and without a
       // crease to climb at it has to be ramped into the runs instead.

@@ -236,11 +236,17 @@ function creaseShear(t: { x: number; y: number }, m: { x: number; y: number }): 
  * The weave, which knows nothing of folds, will often want much more than that —
  * the arm of a stitch can come in riding over everything and leave ducking under
  * everything, a drop of two thicknesses. Taking that literally turns the crease
- * into a cliff. So the step is capped at one thickness and the difference is eased
- * back into the runs on either side, over `reach` of in-plane length: the lace
- * ramps to the fold and ramps away from it, which is what it does in the hand.
+ * into a cliff. So the step is capped at `stack` and the difference is eased back
+ * into the runs on either side, over `reach` of in-plane length: the lace ramps to
+ * the fold and ramps away from it, which is what it does in the hand.
+ *
+ * `stack` is how far apart the two runs are left AT the crease, and so it is also
+ * the height of the face the fold turns on — the whole of what that turn shows.
+ * One thickness is the two runs touching. A fold that also climbs a storey has a
+ * storey's worth of step to place, and can carry more of it here rather than ramp
+ * it away; see FOLD_STACK in StrandScene.
  */
-export function easeFolds(pts: Vec3[], thickness: number, reach: number): void {
+export function easeFolds(pts: Vec3[], stack: number, reach: number): void {
   const folds = foldsOf(pts);
   if (folds.length === 0 || reach <= 0) return;
   const was = pts.map((p) => p.z); // read heights from before any easing
@@ -250,7 +256,7 @@ export function easeFolds(pts: Vec3[], thickness: number, reach: number): void {
     const zIn = pts[i].zIn ?? was[i];
     const zOut = pts[i].zOut ?? was[i];
     const mid = (zIn + zOut) / 2;
-    const half = Math.max(-thickness, Math.min(thickness, zOut - zIn)) / 2;
+    const half = Math.max(-stack, Math.min(stack, zOut - zIn)) / 2;
     const toIn = mid - half;
     const toOut = mid + half;
 

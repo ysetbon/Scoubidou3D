@@ -8,6 +8,9 @@
 // screenshots. Compositing is done in the browser — the same Chromium qa-fold
 // already drives — because the project has no image library and does not need
 // one for this.
+//
+// The two runs differ by whatever was changed between them; qa-fold's own header
+// has the FOLD_STACK recipe.
 import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 
@@ -84,7 +87,7 @@ for (const view of views) {
       g.fillText(caption, PAD, PAD);
       g.fillStyle = '#9a9088';
       g.font = '15px system-ui, -apple-system, Segoe UI, sans-serif';
-      g.fillText('the storey turn: a flat wall, and the half-round a lace really turns on', PAD, PAD + 32);
+      g.fillText('the storey turn: the flat face a fold shows, and how tall it is left', PAD, PAD + 32);
 
       g.drawImage(a, PAD, HEAD);
       g.drawImage(b, PAD * 2 + a.width, HEAD);
@@ -95,9 +98,9 @@ for (const view of views) {
 
       g.font = '600 19px system-ui, -apple-system, Segoe UI, sans-serif';
       g.fillStyle = '#e0857a';
-      g.fillText('BEFORE — fold walled off square', PAD, HEAD + a.height + 12);
+      g.fillText('BEFORE', PAD, HEAD + a.height + 12);
       g.fillStyle = '#8fc79a';
-      g.fillText('AFTER — fold turns on its nose', PAD * 2 + a.width, HEAD + a.height + 12);
+      g.fillText('AFTER', PAD * 2 + a.width, HEAD + a.height + 12);
 
       return cv.toDataURL('image/png');
     },

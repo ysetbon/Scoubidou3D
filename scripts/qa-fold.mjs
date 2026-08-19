@@ -4,10 +4,11 @@
 //   node scripts/qa-fold.mjs [--out DIR] [--tag NAME] [key...]
 //
 // A lace that changes storey does it at a FOLD — it doubles back and the run it
-// comes away on rests on the run it came off, one storey up. That climb is the
-// hardest thing the sweep is asked to draw, and when it is crammed into too
-// little run the ribbon stands on its edge and the turn reads as a flat tab
-// stuck on the side of the model rather than as a bight.
+// comes away on rests on the run it came off, one storey up. The fold shows that
+// climb as a flat face the height of the gap it leaves, and whatever of the climb
+// the face does not carry has to be walked by the runs on either side instead.
+// Too little on the face and the turn reads thin and cut-off, with the runs
+// tipped up on edge to make up for it.
 //
 // This measures the climb rather than describing it. For every merged lace it
 // reads `view.laceCenterlines` — the polyline the ribbon is actually swept
@@ -18,22 +19,20 @@
 //              the gradient at the crease, in degrees. Past ~30 degrees the flat
 //              face of the lace is visibly on edge.
 //   maxSlope   the steepest gradient anywhere on the lace, fold or not.
-//   creaseStep the height the two faces are apart at the crease itself. One
-//              thickness is right — that is the returning run lying on the run
-//              it came off. More than that is a cliff.
-//   noseReach  how far the SURFACE gets past the crease, on the outside of the
-//              turn, as a fraction of the gap the two faces leave. Zero is a flat
-//              wall — the square-cut block a fold used to come out as. Half is
-//              the half-round a lace really turns on (`noseOf` in ribbon.ts).
-//              This one is read off the built mesh, not off the centreline: it is
-//              the whole of what the nose changed, and the centreline is
-//              identical either way.
+//   faceHeight the height of the flat face the fold turns on — the gap its two
+//              runs are left at, in strand thicknesses. This is the whole of what
+//              a turn shows, and it is set by FOLD_STACK in StrandScene. One is
+//              the two runs touching; a fold that also climbs a storey has two
+//              thicknesses of step to place and should show all of it.
+//   ramped     how much of the step the crease refused and the runs had to carry
+//              instead, in thicknesses. Whatever the cap turns away lands here,
+//              and it is what tips the runs up either side of the turn.
 //
-// To measure the fold as it was before the nose, build with it switched off:
+// To compare two settings, build each with its own tag:
 //
-//   sed -i 's/opts.noseSteps ?? 6/opts.noseSteps ?? 0/' src/geometry/ribbon.ts
+//   sed -i 's/const FOLD_STACK = 2/const FOLD_STACK = 1/' src/scene/StrandScene.ts
 //   node scripts/qa-fold.mjs --tag before
-//   git checkout src/geometry/ribbon.ts
+//   git checkout src/scene/StrandScene.ts
 //   node scripts/qa-fold.mjs --tag after
 //
 // and writes a PNG per view so the numbers can be checked against the picture.
@@ -61,9 +60,8 @@ const TAG = flag('tag', 'now');
 // large enough to see the ribbon's own face.
 // A `detail` view stands close to ONE turn instead of framing the model: the
 // number of lace widths to fit across the frame, centred on the steepest fold in
-// the scene. Which fold that is comes off the centreline, which the nose does not
-// touch — so the before and after shots of a detail are of the same turn from the
-// same spot, and can be laid side by side.
+// the scene. Which fold that is comes off the centreline, so two builds that
+// differ only in FOLD_STACK pick the same turn and can be laid side by side.
 const VIEWS = [
   { key: 'ring-2x1-k1111-lh', az: 34, el: 14, fill: 0.78, label: 'Fitted ring 2x1 — from the side' },
   { key: 'ring-2x1-k1111-lh', az: 110, el: 12, detail: 3.5, label: 'Fitted ring 2x1 — one turn' },
@@ -128,25 +126,11 @@ for (const view of shots) {
         overTilt: 0,
         steep: 0,
         samples: 0,
-        minNoseReach: Infinity,
-        meanNoseReach: 0,
-        flatFolds: 0,
+        minFace: Infinity,
+        meanFace: 0,
+        worstRamped: 0,
+        meanRamped: 0,
       };
-
-      // Every body vertex in the scene, in world space, for the nose measurement.
-      // The outline shell is skipped: it has no nose by design (openFolds), and a
-      // shell vertex would answer for a surface the eye never sees.
-      const V = window.__scoubidou.view.camera.position.constructor;
-      const verts = [];
-      for (const group of window.__scoubidou.view.strandGroup.children) {
-        const mesh = group.isMesh ? group : group.children?.[0];
-        const pos = mesh?.geometry?.attributes?.position;
-        if (!pos) continue;
-        mesh.updateWorldMatrix(true, false);
-        for (let i = 0; i < pos.count; i++) {
-          verts.push(new V(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(mesh.matrixWorld));
-        }
-      }
 
       for (const L of window.__scoubidou.view.laceCenterlines) {
         const P = L.line;
@@ -171,43 +155,24 @@ for (const view of shots) {
           const tilt = deg(Math.atan(Math.abs((sIn + sOut) / 2)));
           if (tilt > out.worstFaceTilt) out.worstFaceTilt = tilt;
           if (tilt > 30) out.overTilt++;
-          const gap = Math.abs(zOut - zIn);
-          const step = gap / L.thickness;
-          if (step > out.worstCreaseStep) out.worstCreaseStep = step;
+          const face = Math.abs(zOut - zIn) / L.thickness;
+          if (face > out.worstCreaseStep) out.worstCreaseStep = face;
+          if (face < out.minFace) out.minFace = face;
+          out.meanFace += face;
 
-          // How far the surface gets past the crease, on the outside of the turn.
-          // `din - dout` is the way the lace would have carried on had it not
-          // doubled back, which is the direction the nose bulges into. Only
-          // vertices within a ball round the crease are asked, so the runs
-          // leading up to it cannot answer for the turn itself.
-          const din = { x: P[i].x - P[i - 1].x, y: P[i].y - P[i - 1].y };
-          const dout = { x: P[i + 1].x - P[i].x, y: P[i + 1].y - P[i].y };
-          const dl = Math.hypot(din.x, din.y) || 1;
-          const ol = Math.hypot(dout.x, dout.y) || 1;
-          let nx = din.x / dl - dout.x / ol;
-          let ny = din.y / dl - dout.y / ol;
-          const nl = Math.hypot(nx, ny);
-          if (nl < 1e-9 || gap < 1e-9) continue;
-          nx /= nl;
-          ny /= nl;
-          const ball = L.width * 0.75;
-          let reach = 0;
-          for (const v of verts) {
-            const dx = v.x - P[i].x;
-            const dy = v.y - P[i].y;
-            const dz = v.z - P[i].z;
-            if (dx * dx + dy * dy + dz * dz > ball * ball) continue;
-            const along = dx * nx + dy * ny;
-            if (along > reach) reach = along;
-          }
-          const rel = reach / gap;
-          out.meanNoseReach += rel;
-          if (rel < out.minNoseReach) out.minNoseReach = rel;
-          if (rel < 0.25) out.flatFolds++;
+          // What the crease turned away, and the runs on either side had to walk
+          // instead. The step the lace really makes here is the height difference
+          // between the two runs clear of the fold, so anything of it the face is
+          // not showing is being ramped.
+          const step = Math.abs(P[i + 1].z - P[i - 1].z) / L.thickness;
+          const ramped = Math.max(0, step - face);
+          if (ramped > out.worstRamped) out.worstRamped = ramped;
+          out.meanRamped += ramped;
         }
       }
-      out.meanNoseReach = out.folds ? out.meanNoseReach / out.folds : 0;
-      if (!isFinite(out.minNoseReach)) out.minNoseReach = 0;
+      out.meanFace = out.folds ? out.meanFace / out.folds : 0;
+      out.meanRamped = out.folds ? out.meanRamped / out.folds : 0;
+      if (!isFinite(out.minFace)) out.minFace = 0;
       return out;
     });
     report.push({ key: view.key, ...stats });
@@ -243,7 +208,11 @@ for (const view of shots) {
       };
 
       if (detail) {
-        // The steepest fold in the scene, ties going to the first one found.
+        // The middle fold of the first lace. Deliberately NOT the steepest one:
+        // steepness is read off Z, and Z is the thing under test, so the steepest
+        // fold moves between builds and two panels of a comparison would be of
+        // different turns. Every build has the same laces with the same folds in
+        // the same order, so an ordinal picks the same turn every time.
         const FOLD = Math.PI / 3;
         const turnAt = (p, i) => {
           const ax = p[i].x - p[i - 1].x;
@@ -255,23 +224,11 @@ for (const view of shots) {
           if (la < 1e-9 || lb < 1e-9) return 0;
           return Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by) / (la * lb))));
         };
-        let best = null;
-        let worst = -1;
-        for (const L of view.laceCenterlines) {
-          const P = L.line;
-          for (let i = 1; i < P.length - 1; i++) {
-            if (turnAt(P, i) < FOLD) continue;
-            const zIn = P[i].zIn ?? P[i].z;
-            const zOut = P[i].zOut ?? P[i].z;
-            const rIn = Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y);
-            const rOut = Math.hypot(P[i + 1].x - P[i].x, P[i + 1].y - P[i].y);
-            const s = Math.abs(((zIn - P[i - 1].z) / rIn + (P[i + 1].z - zOut) / rOut) / 2);
-            if (s > worst) {
-              worst = s;
-              best = { p: P[i], w: L.width };
-            }
-          }
-        }
+        const L = view.laceCenterlines[0];
+        const P = L.line;
+        const folds = [];
+        for (let i = 1; i < P.length - 1; i++) if (turnAt(P, i) >= FOLD) folds.push(i);
+        const best = { p: P[folds[folds.length >> 1]], w: L.width };
         const c = new V(best.p.x, best.p.y, best.p.z);
         stand(c, (best.w * detail) / (2 * Math.tan((cam.fov * Math.PI) / 360)));
         return shoot();
@@ -310,14 +267,14 @@ await browser.close();
 
 console.log('');
 console.log(`${TAG}: the storey turn, per scene`);
-console.log('  scene                     folds  noseReach min/mean  flat folds  faceTilt  creaseStep');
+console.log('  scene                     folds  faceHeight min/mean  ramped max/mean  faceTilt  folds>30deg');
 for (const r of report) {
   console.log(
     `  ${r.key.padEnd(24)} ${String(r.folds).padStart(5)}` +
-      `  ${r.minNoseReach.toFixed(3).padStart(9)}/${r.meanNoseReach.toFixed(3)}` +
-      `  ${String(r.flatFolds).padStart(10)}` +
+      `  ${r.minFace.toFixed(2).padStart(10)}/${r.meanFace.toFixed(2)}` +
+      `  ${r.worstRamped.toFixed(2).padStart(10)}/${r.meanRamped.toFixed(2)}` +
       `  ${r.worstFaceTilt.toFixed(1).padStart(8)}` +
-      `  ${r.worstCreaseStep.toFixed(2).padStart(10)}`,
+      `  ${String(r.overTilt).padStart(11)}`,
   );
 }
 writeFileSync(`${OUT}/${TAG}.json`, `${JSON.stringify(report, null, 2)}\n`);
