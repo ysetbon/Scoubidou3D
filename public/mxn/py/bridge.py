@@ -297,8 +297,8 @@ def _register_level(level, k, checkpoint, result, search):
         enumerated, reason = "none", "k=0 preserves the continuation"
     elif (result.get("search") or {}).get("horizontal", {}).get("placed"):
         # A placed level was never searched at all: it was welded at the
-        # fixed ring's own arm ends and handed to a person to place.
-        enumerated, reason = "none", ("built at the fixed ring's arm ends -- "
+        # fixed ring's own weave points and handed to a person to place.
+        enumerated, reason = "none", ("built at the fixed ring's weave points -- "
                                       "place this level by hand")
     elif not h_cands or not v_cands:
         # A seeded, pinned or square-mirrored level only ever saw the one
@@ -312,7 +312,7 @@ def _register_level(level, k, checkpoint, result, search):
     pick_v = next((i for i, c in enumerate(v_cands) if c["ext"] == engine_v), 0)
     _SESSION["levels"][level] = {
         "level": level, "k": k, "checkpoint": checkpoint,
-        # Whether this level was PLACED -- welded at a fixed ring's arm ends,
+        # Whether this level was PLACED -- welded at a fixed ring's weave points,
         # never searched. The plan reader keys off it: a placed level's band
         # inputs are grabbed at the hook and the replay is aborted, because
         # replaying a search nobody ran (and nobody wants) is exactly the
@@ -411,8 +411,8 @@ def _l1_seed(given):
 def _placed_result(h_pairs, v_pairs):
     """What _register_level and describe() need, for a level built PLACED.
 
-    A placed level was welded at the fixed ring's own arm ends and never
-    searched: extension 0 IS the fixed ring's arm end, and the level is
+    A placed level was welded at the fixed ring's own weave points and never
+    searched: extension 0 IS the fixed ring's weave point, and the level is
     handed to a person to place, not to the search. The zeros here are the
     truth of that -- the level's configuration is "exactly where the build
     left it" -- and the empty candidate lists make _register_level report it
@@ -498,12 +498,12 @@ def _grow_levels(strands, prev_v2r, first, ctx):
     hand, direction, search = ctx["hand"], ctx["direction"], ctx["search"]
     rows, stages, level1_for_k = ctx["rows"], ctx["stages"], ctx["level1_for_k"]
     # Placed mode: the ring below is FIXED -- somebody's hand or judgement --
-    # and the levels growing on it must not touch it. Each level is welded at
-    # the fixed ring's own arm ends (anchor="placed", zero retraction), and it
-    # is NOT searched: extension 0 is the fixed ring's arm end, the level is
-    # registered as unsearched, and placing it is the person's next move. The
-    # searched default the ordinary mode produces is exactly what a reader in
-    # this mode did not ask for.
+    # and the levels growing on it are NOT searched. Each level is welded at
+    # the fixed ring's own weave points, the purple crossings (anchor="placed"):
+    # extension 0 sits where the arm crosses the other band, the same place it
+    # sits at every other level of this engine, and placing the level from
+    # there is the person's next move. The searched default the ordinary mode
+    # produces is exactly what a reader in this mode did not ask for.
     placed = bool(ctx.get("placed"))
     if placed:
         # ONE rung, not the whole stack. A level above the first would be
@@ -515,7 +515,7 @@ def _grow_levels(strands, prev_v2r, first, ctx):
         for level in range(first, min(first, len(ks)) + 1):
             k_level = ks[level - 1]
             emitProgress(f"Welding L{level}'s strands onto the fixed ring's "
-                         f"arm ends — no search…")
+                         f"weave points — no search…")
             with contextlib.redirect_stdout(io.StringIO()):
                 strands, info = NX.add_continuation_level(
                     strands, m, n, k_level, direction, hand, level,
@@ -1676,7 +1676,7 @@ def fit_adopt(level, h_ext, h_angle, v_ext, v_angle, rebuild=True,
             if above > level:
                 _SESSION["levels"][above].pop("adopted", None)
         # preserve_arms: the ring being fixed is a person's -- weld the levels
-        # above at ITS arm ends and hand them over unsearched, instead of
+        # above at ITS weave points and hand them over unsearched, instead of
         # re-laying its arms and searching a default over it. Set (not merely
         # defaulted) each time, so one preserving fix cannot leak the mode
         # into a later ordinary rebuild.

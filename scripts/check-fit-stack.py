@@ -39,6 +39,7 @@ wait, and a silent rebuild there would be a very expensive surprise.
 import contextlib
 import hashlib
 import io
+import math
 import json
 import os
 import sys
@@ -69,6 +70,14 @@ def quiet(call, *args, **kwargs):
     """The engine prints; this is a test report."""
     with contextlib.redirect_stdout(io.StringIO()):
         return call(*args, **kwargs)
+
+
+def at_purple(point, want, tol=1e-6):
+    """Is a point the weave point `want`? Compared, not hashed: the weld runs
+    through a float normalise on its way into the ring, so a bit-for-bit test
+    here would be asserting the serialiser rather than the geometry."""
+    return (abs(point["x"] - want[0]) <= tol
+            and abs(point["y"] - want[1]) <= tol)
 
 
 def ring_hash(strands):
@@ -201,11 +210,12 @@ def run_case(m, n, ks):
     # ---------------------------------------------------------------- claim 4
     #
     # PLACED. A fixed ring is a person's: adopt it with preserve_arms and the
-    # levels above must be WELDED AT ITS ARM ENDS, unsearched -- the arms a
-    # hand placed come through byte-identical under every level, each new
-    # strand starts exactly on one of them, and the level says what it is
-    # ("placed at the ring below", knobs at extension 0). This is the report
-    # that produced the mode: "keep L1, and L2 starts at the red points".
+    # levels above must be WELDED AT ITS PURPLE WEAVE POINTS, unsearched --
+    # each fixed arm keeps the line the hand gave it and is trimmed only to
+    # its own outermost crossing, every new strand starts exactly there, and
+    # the level says what it is ("placed at the ring below", knobs at
+    # extension 0). This is the report that produced the mode: "keep L1, and
+    # L2 starts where the strands cross -- the purple circles, not the tips".
     plan4, held4 = band_inputs(1)
     band4 = "v" if not plan4["v"].get("unavailable") else "h"
     moved4 = [e + 21.5 for e in held4[band4][0]]
@@ -216,8 +226,23 @@ def run_case(m, n, ks):
                               args4["v"][0], args4["v"][1]))
     arm_names = [nm for nm in
                  (plan4["h"].get("names") or []) + (plan4["v"].get("names") or [])]
-    red = {s["layer_name"]: (s["end"]["x"], s["end"]["y"])
-           for s in woven4["strands"] if s["layer_name"] in arm_names}
+    fixed4 = {s["layer_name"]: s for s in woven4["strands"]
+              if s["layer_name"] in arm_names}
+    # The purple points, read off the engine's own anchor routine on the ring
+    # the hand placed: how far back from each tip that arm crosses the other
+    # band. An arm that crosses nothing keeps its full length (fallback 0) --
+    # a hand-placed arm is never shortened by a constant.
+    back4 = NX.crossing_anchors(
+        {nm: {"start": s["start"], "end": s["end"]} for nm, s in fixed4.items()},
+        0.0, sizes=(2 * m, 2 * n))
+    purple = {}
+    for nm, s in fixed4.items():
+        dx = s["end"]["x"] - s["start"]["x"]
+        dy = s["end"]["y"] - s["start"]["y"]
+        span = math.hypot(dx, dy) or 1.0
+        step = back4.get(nm, 0.0) / span
+        purple[nm] = (round(s["end"]["x"] - dx * step, 6),
+                      round(s["end"]["y"] - dy * step, 6))
     placed = json.loads(quiet(bridge.fit_adopt, 1,
                               args4["h"][0], args4["h"][1],
                               args4["v"][0], args4["v"][1], True, True))
@@ -229,20 +254,40 @@ def run_case(m, n, ks):
           sorted(placed_stages) == [1, 2],
           "returned %s of a %d-level run — the level fixed, and the one rung "
           "it welded" % (sorted(placed_stages), top))
-    for lv in sorted(placed_stages):
-        tips = {s["layer_name"]: (s["end"]["x"], s["end"]["y"])
-                for s in placed_stages[lv]["strands"]
+    # The level a hand fixed comes back EXACTLY as it was fitted -- its own
+    # stage is the ring the person made, tips and all. What the levels welded
+    # on top of it show is that ring trimmed to its weave points: the hand's
+    # line is never re-laid (every arm still leaves from where it was placed,
+    # along the same heading), only the loose tail past the last crossing is
+    # taken, which is where the continuation leaves it.
+    own_stage = {s["layer_name"]: s for s in placed_stages[1]["strands"]
+                 if s["layer_name"] in arm_names}
+    check("placed: the fixed level itself comes back as it was fitted",
+          all(own_stage.get(nm, {}).get("start") == s["start"]
+              and own_stage.get(nm, {}).get("end") == s["end"]
+              for nm, s in fixed4.items()),
+          "%d/%d arms byte-identical"
+          % (sum(own_stage.get(nm, {}).get("end") == s["end"]
+                 for nm, s in fixed4.items()), len(fixed4)))
+    for lv in [lv for lv in sorted(placed_stages) if lv > 1]:
+        arms = {s["layer_name"]: s for s in placed_stages[lv]["strands"]
                 if s["layer_name"] in arm_names}
-        check("placed: the fixed arms are byte-identical under L%d" % lv,
-              all(tips.get(nm) == red[nm] for nm in red),
-              "%d/%d intact" % (sum(tips.get(nm) == red[nm] for nm in red), len(red)))
-    starts_on_red = [
-        s for s in placed_stages[2]["strands"]
-        if s.get("attached_to") in red
-        and (s["start"]["x"], s["start"]["y"]) == red[s["attached_to"]]]
-    check("placed: every new strand starts exactly on a fixed arm end",
-          len(starts_on_red) >= len(red),
-          "%d welds on %d arm ends" % (len(starts_on_red), len(red)))
+        rooted = sum(arms.get(nm, {}).get("start") == fixed4[nm]["start"]
+                     for nm in fixed4)
+        landed = sum(nm in arms and at_purple(arms[nm]["end"], purple[nm])
+                     for nm in purple)
+        check("placed: under L%d the fixed arms keep their roots" % lv,
+              rooted == len(fixed4), "%d/%d" % (rooted, len(fixed4)))
+        check("placed: and end on their own weave point under L%d" % lv,
+              landed == len(purple), "%d/%d on the purple crossings"
+              % (landed, len(purple)))
+    welded = [s for s in placed_stages[2]["strands"]
+              if s.get("attached_to") in purple
+              and s["layer_name"] not in arm_names
+              and at_purple(s["start"], purple[s["attached_to"]])]
+    check("placed: every new strand starts exactly on a weave point",
+          len(welded) >= len(purple),
+          "%d welds on %d weave points" % (len(welded), len(purple)))
     check("placed: the levels above say what they are",
           all("placed at the ring below" in (r.get("applied") or [])
               for r in placed["rows"] if r["level"] > 1),
@@ -255,17 +300,22 @@ def run_case(m, n, ks):
         grew = stages_by_level(welded)
         check("placed: fixing L2 welds L3, and still nothing above it",
               sorted(grew) == [2, 3], "returned %s" % sorted(grew))
-        deep = {s["layer_name"]: (s["end"]["x"], s["end"]["y"])
-                for s in grew[3]["strands"] if s["layer_name"] in arm_names}
-        check("placed: and L1's own arms are untouched three levels down",
-              all(deep.get(nm) == red[nm] for nm in red),
-              "%d/%d intact" % (sum(deep.get(nm) == red[nm] for nm in red), len(red)))
+        deep = {s["layer_name"]: s for s in grew[3]["strands"]
+                if s["layer_name"] in arm_names}
+        # Trimming to the weave point happens ONCE, when the fixed ring is
+        # welded. Three levels up it must not have crept any further back:
+        # a setback that compounds would eat a hand's ring one rung at a time.
+        still = sum(nm in deep and at_purple(deep[nm]["end"], purple[nm])
+                    for nm in purple)
+        check("placed: and L1's arms sit on the same weave points three "
+              "levels down", still == len(purple),
+              "%d/%d" % (still, len(purple)))
     # The band plan names the level's OWN arms. It reports them off the
     # engine's virtual view, where every level's arms are renamed _4/_5 — at
     # level 1 that happens to equal the real names, and above it does not. The
     # page looks its arms up BY NAME in the ring it draws, so a virtual name
     # there meant fitting L2 measured and MOVED one of L1's arms.
-    own = {s["layer_name"] for s in placed_stages[2]["strands"]} - set(red)
+    own = {s["layer_name"] for s in placed_stages[2]["strands"]} - set(purple)
     below = {s["layer_name"] for s in woven4["strands"]}
     for key in ("h", "v"):
         side = json.loads(quiet(bridge.fit_plan, 2))[key]

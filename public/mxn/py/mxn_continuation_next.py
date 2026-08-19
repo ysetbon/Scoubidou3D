@@ -547,11 +547,12 @@ def add_continuation_level(strands, m, n, k, direction, hand, level,
         anchor:       `"crossing"` welds each new stub at its source arm's own
                       outermost weave point, so extension 0 sits on a crossing;
                       `"flat"` uses `retract` for every arm; `"placed"` welds
-                      each stub at the source arm's end EXACTLY AS PLACED --
-                      no retraction at all -- so a ring somebody fixed by hand
-                      is not re-laid by the level growing on it, and extension
-                      0 sits on the fixed ring's own arm ends. Defaults to
-                      `ANCHOR`, resolved at call time so it can be overridden.
+                      at that same weave point but for a ring somebody FIXED by
+                      hand -- an arm that crosses nothing keeps its full length
+                      instead of losing a flat setback it never asked to lose,
+                      and the level welded on is handed over unsearched at
+                      extension 0. Defaults to `ANCHOR`, resolved at call time
+                      so it can be overridden.
 
     Returns:
         (all_strands, info) where info carries the relabel maps, the new strand
@@ -592,17 +593,26 @@ def add_continuation_level(strands, m, n, k, direction, hand, level,
         name: {"start": dict(s["start"]), "end": dict(s["end"])}
         for name, s in source_by_name.items()
     }
-    # "placed" is the mode a FIXED ring asks for: the arms a hand (or a
-    # judgement) placed are the truth, and pulling their ends back to a
-    # crossing would be this function quietly re-laying a ring it was told
-    # to stand on. Zero setback, and _retract_end(…, 0) is a no-op, so the
-    # source strands come through byte-identical.
-    if anchor == "placed":
-        anchors, setback = {}, 0.0
+    # "placed" is the mode a FIXED ring asks for, and what it fixes is the
+    # STITCH -- every crossing, every angle, every extension a hand chose --
+    # not the loose tail each arm trails past its last crossing. So the weld
+    # sits on the ring's own WEAVE POINT, where the arm crosses the other
+    # band, exactly as the ordinary "crossing" mode puts it: that is where a
+    # continuation physically leaves its parent, and it is what extension 0
+    # means everywhere else in this engine.
+    #
+    # What "placed" does NOT do is search: the level welded here is handed
+    # over at extension 0 for the person to fit. The only geometry it differs
+    # on is the fallback -- an arm that crosses nothing keeps its full length
+    # rather than losing a flat 52px it never asked to lose. A hand-placed arm
+    # is never shortened by a constant.
+    if anchor in ("crossing", "placed"):
+        anchors = crossing_anchors(source_by_name,
+                                   0.0 if anchor == "placed" else retract,
+                                   sizes=(2 * m, 2 * n))
+        setback = 0.0 if anchor == "placed" else retract
     else:
-        anchors = (crossing_anchors(source_by_name, retract, sizes=(2 * m, 2 * n))
-                   if anchor == "crossing" else {})
-        setback = retract
+        anchors, setback = {}, retract
     for real_name in real_to_virtual:
         _retract_end(source_by_name[real_name], anchors.get(real_name, setback))
 

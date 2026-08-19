@@ -49,7 +49,7 @@ async function prepare() {
       // Resolved against this worker's own URL rather than the site root: the
       // lab is published under a project-site sub-path, where "/py/..." would
       // miss. Keeps the cache key in step with the one in the Worker URL.
-      const url = new URL(`./py/${name}?v=trace-plan-v32`, import.meta.url);
+      const url = new URL(`./py/${name}?v=trace-plan-v33`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
@@ -84,7 +84,7 @@ function ensureCountPool() {
   const size = Math.min(3, cores);
   countPool = size < 2 ? [] : Array.from({ length: size }, () => {
     const worker = new Worker(
-      new URL("./count-worker.js?v=trace-plan-v32", import.meta.url),
+      new URL("./count-worker.js?v=trace-plan-v33", import.meta.url),
       { type: "module" });
     worker.postMessage({ type: "warm" });
     return worker;
@@ -143,7 +143,7 @@ const HANDLERS = {
     // The judged ring itself, JSON text, "" absent — same boundary rule.
     runtime.globals.set("mxn_l1ring", data.level1Ring ? JSON.stringify(data.level1Ring) : "");
     // Preserve the adopted ring's arms: the levels above are welded at its
-    // arm ends as placed, unsearched. Boolean scalar, same guard as mxn_short:
+    // weave points as placed, unsearched. Boolean scalar, same guard as mxn_short:
     // absent from an older cached page means off.
     runtime.globals.set("mxn_preserve", data.preserveArms === true);
     runtime.globals.set("mxn_l1", level1Extensions ? JSON.stringify(level1Extensions) : "");
@@ -174,7 +174,7 @@ const HANDLERS = {
     let spent = 0;
     // A PLACED ladder is nobody's to browse, and counting one is worse than
     // pointless. Its L1 was adopted whole and every level above was welded at
-    // that ring's arm ends, so NO level has a candidate list -- and counting a
+    // that ring's weave points, so NO level has a candidate list -- and counting a
     // level without one means re-solving it (export_count_job falls back to
     // enumerate_level), which is the exact search this run refused to do.
     // Worse, the counting happens BEFORE the result posts, so it is also why
@@ -375,7 +375,7 @@ const HANDLERS = {
     runtime.globals.set("mxn_fit_bands", fitBands(data));
     runtime.globals.set("mxn_rebuild", data.rebuild !== false);
     // The ring being fixed is a person's (hand or judged): weld the rebuilt
-    // levels at ITS arm ends, unsearched, instead of re-laying them.
+    // levels at ITS weave points, unsearched, instead of re-laying them.
     runtime.globals.set("mxn_preserve", data.preserveArms === true);
     return ["fit-adopt-ready", await runtime.runPythonAsync(
       "bridge.fit_adopt(mxn_level, *bridge.fit_bands_from_json(mxn_fit_bands),"

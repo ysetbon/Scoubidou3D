@@ -1122,19 +1122,42 @@ by prefix and starts from there.
 
 The report that forced this one, verbatim: *"i want l1 to be exactly this,
 and when i press lvl2, the new level starting point and lvl1 ending point
-will be those red points."* And the engine did the opposite by design:
-`add_continuation_level` PULLED EVERY PARENT ARM END BACK to a crossing
-(`_retract_end`, `anchor="crossing"`) before welding the next level on — so
-the ring a hand had placed was re-laid the moment anything grew on it, and
-the joints left the arm ends a person had chosen.
+will be those red points."* And the engine did the opposite by design: it
+**searched** the levels above and drew its own default over the ring a hand
+had placed, so the joint landed wherever the search put it.
 
-`anchor="placed"` is the answer: zero retraction, the parent's arms come
-through byte-identical, and every new strand is welded exactly at a parent
-arm end — extension 0 IS the fixed ring's arm end. In this mode the levels
-above are **not searched**: they are registered as placed
-(`"built at the fixed ring's arm ends — place this level by hand"`, knobs
-opening at 0), because a reader who fixed a ring by hand asked for a
-starting point on it, not for a searched default drawn over it.
+`anchor="placed"` is the answer. In this mode the levels above are **not
+searched**: they are registered as placed (`"built at the fixed ring's arm
+ends — place this level by hand"`, knobs opening at 0), because a reader who
+fixed a ring by hand asked for a starting point on it, not for a searched
+default drawn over it.
+
+**Where the joint sits: the purple circles.** The first cut of this mode
+welded at the arm TIPS with zero retraction, reading "keep my ring" as
+literally *touch no coordinate*. The follow-up report corrected it against a
+picture — *"make sure red circles should, extension = 0, should be like this
+image, marked as purple circles"* — and the correction is right: what a hand
+fixes is the STITCH, every crossing and angle and extension it chose, not the
+loose tail each arm trails past its last crossing. So placed mode anchors
+where every other level of this engine anchors, on the arm's own outermost
+weave point (`crossing_anchors`), and **extension 0 sits on a crossing**. The
+hand's line is untouched — every arm still leaves from where it was placed,
+along the same heading — and only the tail past the last crossing is taken,
+which is exactly where the continuation leaves it.
+
+Two things follow, and both are load-bearing:
+
+- **The fallback is 0, not `RETRACT`.** An arm that crosses nothing keeps its
+  full length rather than losing a flat 52px it never asked to lose. That is
+  the only geometry `"placed"` differs from `"crossing"` on.
+- **The weld cannot be moved off the parent's end.** The weave machinery
+  re-welds a parent to its child (`_band_moves` carries `strand_2_3` beside
+  `strand_4_5`, and `apply_solution` keeps them joined), so starting the child
+  short of the parent's end DRAGS THE PARENT there on the next weave —
+  measured, four of six L1 arms moved on `fit_adopt(2)`. Retracting the parent
+  to its crossing puts the joint in the same place while keeping
+  parent-end == child-start, which is the invariant the rest of the engine is
+  written against.
 
 The mode is asked for and earned, never ambient: `bridge.generate(...,
 preserve_arms=True)` uses it only when a `level1_ring` was actually adopted,
@@ -1143,8 +1166,12 @@ sends it whenever the ring underneath is a person's — the adopted ★ best, a
 remembered fix, or the ring being fixed right now. Default calls are
 byte-for-byte the old behavior (`check:stack` claims 1–3 still pass
 unchanged); claim 4 in `scripts/check-fit-stack.py` asserts the placed
-contract: fixed arms identical under every level above, every new strand
-starting on one, rows saying *placed at the ring below*, knobs at 0.
+contract: the fixed level's own stage byte-identical to the ring that was
+fitted, its arms rooted where the hand left them and ending on their weave
+points under every level above, every new strand starting on one of those
+points, the same points still three levels up (a setback that compounded
+would eat a hand's ring one rung at a time), rows saying *placed at the ring
+below*, knobs at 0.
 
 ### The plan names the level's OWN arms
 
@@ -1174,7 +1201,7 @@ then it is a ring standing on a proposal, drawn as though the engine had
 decided it.
 
 So placed mode builds exactly one level: this one is welded at the fixed
-ring's arm ends and handed over, and the next is welded when this one is
+ring's weave points and handed over, and the next is welded when this one is
 fixed. The rungs past it read `unbuilt` on the ladder — present in the k
 sequence, absent from the stitch, unclickable, quoting no audit — and the fix
 button says what it will do (`Fix L2 · weld L3`). Measured on the reporter's
