@@ -5,6 +5,7 @@
 
 import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
 import { BOX_COLUMN_SAMPLES, BOX_LABELS, BOX_SAMPLES } from './boxmn';
+import { FITTED_RING_LABELS, FITTED_RING_SAMPLES } from './fittedRings';
 import { SWIRL_LABELS, SWIRL_SAMPLES } from './swirl';
 import { TWOFAN_COLUMN_SAMPLES, TWOFAN_LABELS, TWOFAN_SAMPLES } from './twofan';
 
@@ -831,6 +832,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
   ...SWIRL_SAMPLES,
   ...BOX_SAMPLES,
   ...BOX_COLUMN_SAMPLES,
+  ...FITTED_RING_SAMPLES,
   'two-crossing': twoCrossing,
   'box-stitch': boxStitch,
   'box-stitch-10': () => boxStitchRounds(10, 'Box stitch — 10 levels'),
@@ -883,6 +885,9 @@ export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }>
   // square faces are named; the browser grid has all 64. See docs/box-stitch-mxn/.
   ...SWIRL_LABELS,
   ...BOX_LABELS,
+  // Not a generator but a record: a ring somebody placed round by round, storeys
+  // and all. See fittedRings.ts.
+  ...FITTED_RING_LABELS,
 ];
 
 export function makeSample(key: string): Scene3D {
