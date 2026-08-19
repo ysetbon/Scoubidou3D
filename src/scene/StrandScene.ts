@@ -233,6 +233,15 @@ export class StrandScene {
   // null for hidden strands), rebuilt every frame the scene changes. Handles and
   // connectors read endpoint heights from here so they follow the weave.
   private world3D: Array<Vec3[] | null> = [];
+  /**
+   * The centreline each merged LACE is finally swept along — after the folds and
+   * storey steps have been settled and the gentle corners rounded. Kept because
+   * it is the only place the finished shape of a lace exists as numbers rather
+   * than as triangles: `npm run check:fold` reads it to assert that a storey
+   * change is climbed at a slope the sweep can actually lie along, which is not
+   * a thing that can be measured off the mesh afterwards.
+   */
+  laceCenterlines: Array<{ chain: number[]; line: Vec3[]; width: number; thickness: number }> = [];
   // Resting height per strand (see computeBaseZ) and the lowest of them, which the
   // grid sits below.
   private baseZ: number[] = [];
@@ -573,6 +582,7 @@ export class StrandScene {
   private buildLaceMeshes(): Set<number> {
     const strands = this.current.strands;
     const absorbed = new Set<number>();
+    this.laceCenterlines = [];
 
     // Which end is glued to which. An end shared by more than two strands is a
     // fork, not a chain, so it is left unlinked and handled by a connector.
@@ -674,6 +684,7 @@ export class StrandScene {
       // crease to climb at it has to be ramped into the runs instead.
       easeSteps(line, width);
       const rounded = roundCorners(line, width * 0.5);
+      this.laceCenterlines.push({ chain: chain.map((m) => m.index), line: rounded, width, thickness });
       const mesh = this.buildStrandMesh(first, rounded, [true, true]);
       if (!mesh) {
         for (const m of chain) visited.delete(m.index);

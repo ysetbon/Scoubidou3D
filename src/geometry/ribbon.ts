@@ -42,12 +42,20 @@ export interface RibbonOptions {
   openStart?: boolean;
   openEnd?: boolean;
   /**
-   * Leave the band across a fold's outer face out of the surface. The OUTLINE
-   * shell needs this: grown outward, its band sits in FRONT of the body's own and
-   * floods the fold black. Left out, the shell has a hole exactly there, the
-   * body's face shows through it, and the rim still runs round the edges.
+   * Leave the outside of a fold — the NOSE — out of the surface. The OUTLINE
+   * shell needs this and nothing else does. Growing the section outward moves the
+   * nose ACROSS the lace rather than along its own reach, so a shell nose is not
+   * outside the body's; worse, the shell's two runs are grown into each other at
+   * a fold, where the body's merely touch, so there is no clean outside there to
+   * put one on. Left out, the shell has a hole exactly at the nose, the body's
+   * own shows through it, and the rim still runs round the edges.
    */
   openFolds?: boolean;
+  /**
+   * How many rings the fold's NOSE is drawn with — the half-round the lace turns
+   * over at a fold (see `noseOf`). Zero leaves the flat wall the nose replaced.
+   */
+  noseSteps?: number;
 }
 
 // A cross-section is a closed loop of {u, v} points in the local (side, up)
@@ -170,14 +178,14 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   //
   // Because both faces lie on that one line, and the section is walked the other
   // way round after the fold, the two cross-sections come out vertex for vertex
-  // IDENTICAL. The strip the sweep lays between them therefore has no area at all:
-  // the surface passes straight through the fold as one continuous skin. Nothing
-  // is cut, nothing is capped, and there is no seam to see — just a crease, which
-  // is exactly what a folded lace has.
+  // the SAME POINT — offset only by the height `easeFolds` stacks the returning
+  // run at. So the surface passes through the fold as one continuous skin, and
+  // what the sweep lays between the faces is the outside of the bight: the NOSE
+  // (`noseOf`). Nothing is cut and nothing is capped.
   //
   // Sweeping the fold instead of splitting it is what keeps the mitre out. Neither
-  // face reaches past the crease, so there is no spike; the faces coincide, so
-  // there is no notch.
+  // face reaches past the crease, so there is no spike; the faces meet vertex for
+  // vertex, so there is no notch.
   const folds = new Map<number, Fold>();
   for (const f of foldsOf(pts)) folds.set(f.index, f);
 
@@ -187,6 +195,9 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     up: Vec3; // thickness axis, pitched with the climb
     shear: number; // tips the face over onto the crease
     crease: boolean; // second face of a fold: the section turns over here
+    /** On a crease section: the in-plane direction the fold's nose bulges into
+     *  — outward past the turn. See `noseOf`. */
+    nose?: Vec2;
   }
   // The thickness axis for a run heading `t` at gradient `slope`: leant back over
   // the heading just enough to stand square to the climb.
@@ -231,8 +242,15 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     uy -= along * f.crease.y;
     const len = Math.hypot(ux, uy, uz) || 1;
     const up = { x: ux / len, y: uy / len, z: uz / len };
+    // Which way the nose bulges: on past the turn. `din - dout` is the direction
+    // the lace would have carried on in had it not doubled back — square to the
+    // crease line, and pointing out of the bight rather than back into the lace.
+    const nx = f.din.x - f.dout.x;
+    const ny = f.din.y - f.dout.y;
+    const nl = Math.hypot(nx, ny);
+    const nose = nl < 1e-9 ? undefined : { x: nx / nl, y: ny / nl };
     plan.push({ p: pIn, t: f.din, up, shear: f.shearIn, crease: false });
-    plan.push({ p: pOut, t: f.dout, up, shear: f.shearOut, crease: true });
+    plan.push({ p: pOut, t: f.dout, up, shear: f.shearOut, crease: true, nose });
   }
 
   const positions: number[] = [];
@@ -281,11 +299,63 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   }
 
   const indices: number[] = [];
-  // Stitch consecutive rings into a tube.
-  for (let i = 0; i < rings.length - 1; i++) {
-    if (opts.openFolds && plan[i + 1].crease) continue; // skip the fold's outer face
-    const a = rings[i];
-    const b = rings[i + 1];
+  const noseSteps = Math.max(0, Math.floor(opts.noseSteps ?? 6));
+
+  /**
+   * The rings that carry the surface round the OUTSIDE of a fold.
+   *
+   * The two faces of a fold sit at one point in the drawing plane, one above the
+   * other — the returning run lying on the run it came off (`easeFolds`). Joined
+   * by a single strip, the outside of the fold is a flat wall the height of that
+   * gap and the full width of the lace: a square-cut block that reads as a tab
+   * stuck on the side of the model, and the taller the gap the bigger the block.
+   * Where the fold also climbs a storey it is the most prominent thing on the
+   * turn, which is exactly where a real lace shows its softest feature.
+   *
+   * A real lace has no such face, because it cannot come back on itself without
+   * going round something, and what it goes round is the gap. Its outer surface
+   * at a fold is a half-round of the radius that gap sets — the same half-round
+   * whether the fold merely stacks a run on a run or carries a whole storey.
+   *
+   * So the wall is replaced by that half-round, drawn vertex by vertex: each
+   * point of the arriving ring swings on a semicircle onto the matching point of
+   * the leaving one, bulging out along `nose`. Interpolating the rings the flat
+   * wall already joined is what keeps this safe — the vertex pairing, the winding
+   * and the mirroring are the ones the sweep had already worked out, so the nose
+   * cannot twist or turn its normals inside out, and it meets both faces exactly.
+   */
+  const noseOf = (a: number[], b: number[], dir: Vec2): number[][] => {
+    const out: number[][] = [];
+    for (let k = 1; k <= noseSteps; k++) {
+      const th = (Math.PI * k) / (noseSteps + 1);
+      const c = Math.cos(th);
+      const s = Math.sin(th);
+      const ring: number[] = [];
+      for (let j = 0; j < m; j++) {
+        const ax = positions[a[j] * 3];
+        const ay = positions[a[j] * 3 + 1];
+        const az = positions[a[j] * 3 + 2];
+        const bx = positions[b[j] * 3];
+        const by = positions[b[j] * 3 + 1];
+        const bz = positions[b[j] * 3 + 2];
+        const mx = (ax + bx) / 2;
+        const my = (ay + by) / 2;
+        const mz = (az + bz) / 2;
+        const hx = ax - mx;
+        const hy = ay - my;
+        const hz = az - mz;
+        // Half the gap this vertex's two faces leave is the circle it turns on.
+        const r = Math.hypot(hx, hy, hz);
+        ring.push(positions.length / 3);
+        positions.push(mx + hx * c + dir.x * r * s, my + hy * c + dir.y * r * s, mz + hz * c);
+      }
+      out.push(ring);
+    }
+    return out;
+  };
+
+  // Stitch consecutive rings into a tube, going round the nose at every fold.
+  const strip = (a: number[], b: number[], flip: boolean): void => {
     for (let j = 0; j < m; j++) {
       const j2 = (j + 1) % m;
       const v00 = a[j];
@@ -297,7 +367,7 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
       // outside and the BackSide outline shell reads as a silhouette rim. Where the
       // section is walked backwards (past a fold) the loop runs the other way, so
       // the winding is reversed to match and the normals still face out.
-      if (mirrored[i]) {
+      if (flip) {
         indices.push(v00, v10, v11);
         indices.push(v00, v11, v01);
       } else {
@@ -305,6 +375,29 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
         indices.push(v00, v01, v11);
       }
     }
+  };
+
+  for (let i = 0; i < rings.length - 1; i++) {
+    const next = plan[i + 1];
+    if (opts.openFolds && next.crease) continue; // skip the fold's outer face
+    const a = rings[i];
+    const b = rings[i + 1];
+    // Round the outside of the fold rather than walling it off — unless the two
+    // faces meet at one height, which leaves nothing to turn on. That is the
+    // shape of a fold in a strand meshed on its own: `easeFolds` runs over a
+    // merged lace, so a lone strand's fold arrives unstacked, and a nose of no
+    // radius would be a handful of rings all sitting on each other.
+    const gap = next.crease ? Math.abs(next.p.z - plan[i].p.z) : 0;
+    if (next.nose && noseSteps > 0 && gap > 1e-6) {
+      let prev = a;
+      for (const ring of noseOf(a, b, next.nose)) {
+        strip(prev, ring, mirrored[i]);
+        prev = ring;
+      }
+      strip(prev, b, mirrored[i]);
+      continue;
+    }
+    strip(a, b, mirrored[i]);
   }
 
   // End caps: fan-triangulate the first and last cross-section rings so the tube
