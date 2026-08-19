@@ -1146,6 +1146,25 @@ unchanged); claim 4 in `scripts/check-fit-stack.py` asserts the placed
 contract: fixed arms identical under every level above, every new strand
 starting on one, rows saying *placed at the ring below*, knobs at 0.
 
+### The plan names the level's OWN arms
+
+Found while building an editor for L2 by hand, and it explains a lot: for
+level 2 and above, `fit_plan` reported the engine's **virtual** arm names.
+
+The search serves every level through one virtual view, where a level's source
+arms are renamed `_2`/`_3` and its own arms `_4`/`_5`. At level 1 that relabel
+is the identity, so the names came out right by luck. At level 2 the virtual
+`1_4` is a real name too — **one of L1's arms** — and the page looks its arms
+up BY NAME in the ring it draws. So fitting L2 measured L1's arm lengths,
+took L1's heading as L2's, and the manual panel *moved L1's arms* when the L2
+knobs were dragged: the editor was quietly editing the level below the one it
+was fitting.
+
+`_real_arm_names` maps them back through the level's own relabel — virtual
+child → virtual source → real source → real child — so L1 still reports
+`1_4 3_5 2_4 1_5` and L2 now reports `3_6 2_6 3_7 2_7`. `check:stack` asserts
+it per level: a plan never names the level below's arms, and never repeats one.
+
 ### A placed ladder grows one rung at a time
 
 Reported as *"NOT CALCULATE L2 and L3 and L4, i want to do them myself"*, and

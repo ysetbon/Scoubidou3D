@@ -260,6 +260,23 @@ def run_case(m, n, ks):
         check("placed: and L1's own arms are untouched three levels down",
               all(deep.get(nm) == red[nm] for nm in red),
               "%d/%d intact" % (sum(deep.get(nm) == red[nm] for nm in red), len(red)))
+    # The band plan names the level's OWN arms. It reports them off the
+    # engine's virtual view, where every level's arms are renamed _4/_5 — at
+    # level 1 that happens to equal the real names, and above it does not. The
+    # page looks its arms up BY NAME in the ring it draws, so a virtual name
+    # there meant fitting L2 measured and MOVED one of L1's arms.
+    own = {s["layer_name"] for s in placed_stages[2]["strands"]} - set(red)
+    below = {s["layer_name"] for s in woven4["strands"]}
+    for key in ("h", "v"):
+        side = json.loads(quiet(bridge.fit_plan, 2))[key]
+        if side.get("unavailable"):
+            continue
+        names = side["names"]
+        check("plan: L2's %s band names L2's own arms, not the level below's" % key,
+              len(set(names)) == len(names)
+              and all(nm not in arm_names for nm in names)
+              and all(nm in own for nm in names),
+              "%s (L1's are %s)" % (names, sorted(arm_names)))
     check("placed: their knobs open at extension 0",
           all(all(v == 0 for side in r["ext"] for v in side)
               for r in placed["rows"] if r["level"] > 1))
