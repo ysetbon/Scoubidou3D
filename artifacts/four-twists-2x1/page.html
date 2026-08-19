@@ -1,0 +1,362 @@
+<title>Four Storeys by Hand</title>
+
+<style>
+  :root {
+    --ground: #f3ecdb;
+    --panel: #fbf6ea;
+    --ink: #221d16;
+    --muted: #82796a;
+    --line: #dccfb4;
+    --accent: #3d3a8c;
+    --accent-wash: #e2e0f2;
+    --ok: #2c6b52;
+    --ok-wash: #d9e8df;
+    --bad: #9d3a33;
+    --bad-wash: #f0dcd8;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --serif: Georgia, "Times New Roman", serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #16130f;
+      --panel: #201b15;
+      --ink: #f0e8d7;
+      --muted: #9d9280;
+      --line: #383025;
+      --accent: #a3a0ec;
+      --accent-wash: #262346;
+      --ok: #77c39c;
+      --ok-wash: #1e2f27;
+      --bad: #e2908a;
+      --bad-wash: #33211f;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #16130f;
+    --panel: #201b15;
+    --ink: #f0e8d7;
+    --muted: #9d9280;
+    --line: #383025;
+    --accent: #a3a0ec;
+    --accent-wash: #262346;
+    --ok: #77c39c;
+    --ok-wash: #1e2f27;
+    --bad: #e2908a;
+    --bad-wash: #33211f;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 26px 20px 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  /* ---- masthead ---------------------------------------------------------- */
+  .head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px 28px; }
+  .head h1 {
+    font-family: var(--serif);
+    font-size: clamp(26px, 4vw, 38px);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .eyebrow {
+    display: block;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .head p { margin: 0; max-width: 44ch; color: var(--muted); font-size: 14.5px; line-height: 1.6; }
+
+  /* ---- the storey rail --------------------------------------------------- */
+  .rail { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; }
+  .storeys { display: flex; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+  .storeys button, .lone button {
+    appearance: none;
+    background: var(--panel);
+    color: var(--muted);
+    border: 0;
+    padding: 8px 14px 9px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    align-items: flex-start;
+    line-height: 1.25;
+  }
+  .storeys button { border-right: 1px solid var(--line); }
+  .storeys button:last-child { border-right: 0; }
+  .storeys button b, .lone button b {
+    font-family: var(--serif);
+    font-size: 15px;
+    font-weight: normal;
+    font-variant-numeric: tabular-nums;
+  }
+  .storeys button i, .lone button i {
+    font-style: normal;
+    font-size: 9.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    opacity: 0.75;
+  }
+  .storeys button:hover, .lone button:hover { color: var(--ink); }
+  .storeys button[aria-pressed="true"] { background: var(--accent); color: var(--ground); }
+  .lone { display: flex; }
+  .lone button { border: 1px dashed var(--line); border-radius: 3px; }
+  .lone button[aria-pressed="true"] { background: var(--bad-wash); color: var(--bad); border-color: var(--bad); }
+  .rail button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+
+  /* ---- stage ------------------------------------------------------------- */
+  .stage {
+    position: relative;
+    height: min(66vh, 620px);
+    min-height: 380px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+    background: var(--ground);
+  }
+  .stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  .readout {
+    position: absolute;
+    left: 14px;
+    bottom: 14px;
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 11px 15px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    backdrop-filter: blur(6px);
+    pointer-events: none;
+    max-width: min(330px, calc(100% - 28px));
+  }
+  .figures { display: flex; gap: 18px; }
+  .figures div { display: flex; flex-direction: column; gap: 1px; }
+  .figures b {
+    font-family: var(--serif);
+    font-size: 27px;
+    line-height: 1;
+    font-weight: normal;
+    font-variant-numeric: tabular-nums;
+  }
+  .figures span {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  #verdict {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    padding: 3px 9px;
+    border-radius: 11px;
+    align-self: flex-start;
+  }
+  #verdict.ok { color: var(--ok); background: var(--ok-wash); }
+  #verdict.bad { color: var(--bad); background: var(--bad-wash); }
+  #caption { font-size: 12.5px; line-height: 1.5; color: var(--muted); margin: 0; }
+
+  .tools { position: absolute; right: 14px; bottom: 14px; display: flex; gap: 8px; }
+  .tools button {
+    appearance: none;
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 7px 12px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+  }
+  .tools button:hover { color: var(--ink); }
+  .tools button[aria-pressed="true"] { color: var(--ink); border-color: var(--ink); }
+  .tools button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .hint {
+    position: absolute;
+    left: 14px;
+    top: 14px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    pointer-events: none;
+  }
+  #loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--ground);
+  }
+
+  /* ---- the note ---------------------------------------------------------- */
+  .note { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 22px 34px; }
+  .note section { display: flex; flex-direction: column; gap: 7px; }
+  .note h2 {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0;
+    font-weight: 600;
+  }
+  .note p { margin: 0; font-size: 14px; line-height: 1.65; color: var(--ink); }
+  .note code {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 1px 5px;
+  }
+  .note em { font-style: normal; color: var(--accent); }
+  .note b { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+  .colophon {
+    border-top: 1px solid var(--line);
+    padding-top: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 24px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.03em;
+  }
+
+  @media (max-width: 640px) {
+    .hint { display: none; }
+    .readout { top: 12px; bottom: auto; }
+    .tools { flex-wrap: wrap; justify-content: flex-end; max-width: calc(100% - 28px); }
+    .stage { height: min(58vh, 460px); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+  <div class="head">
+    <div>
+      <span class="eyebrow">Scoubidou3D · 2×1 · k = −1 ×4 · left hand · fitted by hand</span>
+      <h1>Four rounds is not four storeys — until you say where the breaks go.</h1>
+    </div>
+    <p>Drag to orbit, scroll or pinch to zoom, ← → to step. Take the <em>side</em>
+    view and watch the storeys separate.</p>
+  </div>
+
+  <div class="rail">
+    <div class="storeys">
+      <button type="button" data-scene="S0"><b>Ground</b><i>the block</i></button>
+      <button type="button" data-scene="S1"><b>+1</b><i>k = −1</i></button>
+      <button type="button" data-scene="S2"><b>+2</b><i>k = −1</i></button>
+      <button type="button" data-scene="S3"><b>+3</b><i>k = −1</i></button>
+      <button type="button" data-scene="S4" aria-pressed="true"><b>+4</b><i>k = −1</i></button>
+    </div>
+    <div class="lone">
+      <button type="button" data-scene="FLAT"><b>One plane</b><i>as the lab saves it</i></button>
+    </div>
+  </div>
+
+  <div class="stage" id="stage">
+    <span class="hint">Drag to orbit · ← → to step</span>
+    <canvas id="c"></canvas>
+    <div class="readout">
+      <div class="figures">
+        <div><b id="height">4.00</b><span>storeys tall</span></div>
+        <div><b id="count">33</b><span>strands</span></div>
+      </div>
+      <div id="verdict" class="ok">4 breaks in the stack</div>
+      <p id="caption"></p>
+    </div>
+    <div class="tools">
+      <button type="button" id="spin" aria-pressed="true">Spinning</button>
+      <button type="button" data-view="all" aria-pressed="true">Whole ring</button>
+      <button type="button" data-view="side" aria-pressed="false">Side</button>
+      <button type="button" data-view="top" aria-pressed="false">Top</button>
+    </div>
+    <div id="loading">building the ring…</div>
+  </div>
+
+  <div class="note">
+    <section>
+      <h2>What you are looking at</h2>
+      <p>One 2×1 ring worked left-handed, <code>k = −1</code> four times over: a
+      block of three laces and then four rounds of six arms, <b>33</b> strands and
+      <b>20</b> crossings in all. Every round of it was placed by a person in the
+      MXN lab, not searched — and each one closes 8 crossings out of 8.</p>
+    </section>
+    <section>
+      <h2>Two things called a level</h2>
+      <p>The lab's level is an <em>observation of k</em> — the fourth round of this
+      ring is its level 4, and all four are drawn in one flat plane. Scoubidou3D's
+      level is a <em>break in the layer stack</em>: everything above it rests one
+      storey higher, and a storey is two strand thicknesses, because the thing it
+      has to hold is a woven round — one lace riding over, one ducking under.</p>
+    </section>
+    <section>
+      <h2>Where the breaks go</h2>
+      <p>The block is the ground. Each round of six arms is one storey up, so the
+      breaks land at <b>9</b>, <b>15</b>, <b>21</b> and <b>27</b> of the 33 rows —
+      exactly where <code>swirlStitch</code> splits its own continuation off its
+      block. The build refuses to run if a round is not one unbroken run of the
+      layer stack, or if any mask reaches across a break.</p>
+    </section>
+    <section>
+      <h2>What the flat one costs</h2>
+      <p>The same ring imported with no breaks stands <b id="hFlat">—</b> storeys
+      tall against <b id="hFull">—</b> with them. Every round lands in the plane of
+      the block, so the four of them interlock as one thick round instead of
+      standing on each other, and only the masks keep them from passing through.</p>
+    </section>
+    <section>
+      <h2>Six joints this save never closed</h2>
+      <p>An OpenStrand file names the strand each arm hangs off, and the import
+      now reads it — without that declaration a lace carried up onto a new storey
+      is refused at the break, and these 33 strands come apart into <b>27</b>
+      unrelated laces. With it, <b>24</b> of the 30 joints weld. The other six are
+      the block's: this ring's first round starts <b>25</b> to <b>47</b> px past
+      the tip it should leave from, so the three cords still read as <em>nine</em>
+      pieces. That is the save, not the model — re-dial those pairs in the lab and
+      they close.</p>
+    </section>
+  </div>
+
+  <div class="colophon">
+    <span>source · a438a722-mxn2x1k1_1_1_1lhcwL420260819.json</span>
+    <span>meshes baked from the studio's own renderer</span>
+    <span>one storey = 2 × 26 = 52 source units</span>
+  </div>
+</div>
+
+<script>__VIEWER__</script>

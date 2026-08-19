@@ -1,0 +1,8 @@
+{
+  "title": "Four Storeys by Hand",
+  "description": "A hand-fitted 2×1 ring, k = −1 four times over, built in 3D by the studio's own renderer — with its four rounds put on four storeys the way Scoubidou3D means a level, not flattened into one plane the way the lab draws them.",
+  "favicon": "🪜",
+  "sample": { "m": 2, "n": 1, "ks": [-1, -1, -1, -1], "hand": "lh", "direction": "cw" },
+  "show": ["S0", "S1", "S2", "S3", "S4", "FLAT"],
+  "variants": [{ "id": "built", "label": "Built" }]
+}
