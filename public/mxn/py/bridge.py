@@ -1256,6 +1256,43 @@ def trace_weave(level, band, ext, angle_deg):
 # the whole of what these two add (see docs/mxn-fit.md).
 # ---------------------------------------------------------------------------
 
+def _real_arm_names(entry, virtual_names):
+    """The level's own arm names, as the RING spells them.
+
+    The band plan comes off the engine's virtual view, where every level's
+    source arms are renamed to _2/_3 and its own arms to _4/_5 so one piece of
+    search code can serve every level. Those virtual names are what
+    `mxn_trace.plan` reports -- and at level 1 they happen to equal the real
+    ones, because the relabel is the identity there.
+
+    At level 2 and above they do not, and the consequence was severe rather
+    than cosmetic: the page looks its arms up BY NAME in the ring it is
+    drawing, so fitting L2 measured `1_4` -- which exists, as one of L1's arms
+    -- and moved it. The manual panel was quietly editing the level below the
+    one it was fitting.
+
+    So the virtual names are mapped back through the level's own relabel:
+    virtual child -> virtual source -> real source -> real child.
+    """
+    info = entry["checkpoint"][1]
+    v2r = info.get("virtual_to_real") or {}
+    src_a, src_b, dst_a, dst_b = NX.level_suffixes(entry["level"])
+    out = []
+    for name in virtual_names:
+        try:
+            set_no, suffix = name.split("_")
+            # The virtual view is canonical: a level's source arms are
+            # always _2/_3 there and its own arms always _4/_5, whatever the
+            # real suffixes of the level are.
+            virtual_src = "%s_%d" % (set_no, 2 if int(suffix) == 4 else 3)
+            real_src = v2r.get(virtual_src)
+        except (ValueError, KeyError):
+            real_src = None
+        out.append(NX._bump_suffix(real_src, src_a, src_b, dst_a, dst_b)
+                   if real_src else name)
+    return out
+
+
 def fit_plan(level):
     """Both bands of a level, as inputs the page can solve against.
 
@@ -1289,13 +1326,14 @@ def fit_plan(level):
             # from an extension and a heading (docs/mxn-fit.md).
             "appliedAngle": (float(cands[picked]["angle"])
                              if picked < len(cands)
-                             else _band_heading(entry, [
-                                 s["strand_4_5"]["layer_name"]
-                                 for s in data["strands_list"]])),
+                             else _band_heading(entry, _real_arm_names(
+                                 entry, [s["strand_4_5"]["layer_name"]
+                                         for s in data["strands_list"]]))),
             # The band's arms, in the band's own order. What makes it possible
             # to measure a length off a drawn ring rather than off a model of
             # one: these are the layer names to look for in a stage's strands.
-            "names": [s["strand_4_5"]["layer_name"] for s in data["strands_list"]],
+            "names": _real_arm_names(
+                entry, [s["strand_4_5"]["layer_name"] for s in data["strands_list"]]),
         })
         out[key] = band
     return json.dumps(out, separators=(",", ":"))
@@ -1501,8 +1539,9 @@ def _fit_bands(entry, h_ext, h_angle, v_ext, v_angle):
             # Extensions with no heading: place them where the band already
             # points. A placed level has no stored angle to have been handed,
             # and crashing on the hole helps nobody.
-            angle = _band_heading(entry, [s["strand_4_5"]["layer_name"]
-                                          for s in data["strands_list"]])
+            angle = _band_heading(entry, _real_arm_names(
+                entry, [s["strand_4_5"]["layer_name"]
+                        for s in data["strands_list"]]))
             if angle is None:
                 return None
         ext = [float(e) for e in ext]
