@@ -1,249 +1,284 @@
-// The page's own little studio: unpack the baked meshes, put them under an orbit
-// camera, and step the ring up one storey at a time.
+// The page's own studio — and here that is meant literally.
 //
-// Everything here is presentation. The geometry arrived already built by the app
-// (artifacts/lib/bake.mjs), so nothing in this file can lift a storey that the
-// model does not lift, or flatten one it does.
+// A baked artifact replays meshes a headless studio built for it. This one
+// cannot: the point of the page is that you can take hold of a point and move
+// it, and a mesh has no points to take hold of. So the page carries
+// `StrandScene` — the studio's own view, the same class the app runs, with the
+// same move tool — and builds the ring in the browser. The promise a bake makes
+// by construction ("the page cannot disagree with the app") this keeps by
+// identity: there is no second implementation, because it IS the app.
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import DATA from './.work/data.json';
+import { StrandScene } from '../../src/scene/StrandScene';
+import { connectedEndpoints, pointsClose, setEndpoint } from '../../src/model/connections';
+import { syncPassiveCp2, updateControlCenter } from '../../src/model/controlPoints';
+import { sceneToJson } from '../../src/model/sceneIO';
+import { armsOf, buildRing, cutTo, ROUNDS } from './ring-scene';
 
-const HOST = document.getElementById('stage');
 const canvas = document.getElementById('c');
-const META = DATA.variants.built.meta;
+const view = new StrandScene(canvas);
+// The grid is the app's drawing plane; on a page about how high things stand it
+// only competes with the model. Every vertex stays where the app puts it.
+view.setParams({ showGrid: false });
 
-// Strand counts per scene, so the readout can quote the model rather than the
-// mesh list: the block, then six arms a storey.
-const STRANDS = { S0: 9, S1: 15, S2: 21, S3: 27, S4: 33, FLAT: 33 };
+let ring = buildRing();
+let showing = ROUNDS; // the storey on top, or FLAT
+let flat = false;
+let picked = null; // the arm whose joint the nudger moves
 
-// ---- unpacking --------------------------------------------------------------
-function bytes(b64) {
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
+const $ = (id) => document.getElementById(id);
+const HEIGHT = $('height');
+const COUNT = $('count');
+const VERDICT = $('verdict');
+const CAPTION = $('caption');
+const EXT = $('ext');
+const ARMS = $('arms');
+const STATUS = $('status');
+
+// ---- what is on screen ------------------------------------------------------
+function shown() {
+  return cutTo(ring, flat ? ROUNDS : showing, !flat);
 }
 
-async function inflate(u8) {
-  const stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream('deflate'));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
+/** How tall the model stands, in storeys: one storey is two strand thicknesses,
+ *  which is what the app itself steps a level by. Measured off the meshes, so
+ *  the number cannot drift away from the model it describes. */
+function storeysTall() {
+  const box = new THREE.Box3().setFromObject(view.strandGroup);
+  if (!isFinite(box.min.z)) return 0;
+  const step = view.getLevelStep() * 0.02; // source units -> world, as StrandScene scales
+  return (box.max.z - box.min.z) / step;
 }
 
-function buildGroup(scene, raw) {
-  const group = new THREE.Group();
-  for (const p of scene.parts) {
-    const q = new Int16Array(raw.slice(p.posOff, p.posOff + p.posCount * 2).buffer);
-    const pos = new Float32Array(p.posCount);
-    for (let i = 0; i < p.posCount; i++) {
-      const k = i % 3;
-      pos[i] = (q[i] + 32767) * scene.scale[k] + scene.lo[k];
-    }
-    const width = p.idx16 ? 2 : 4;
-    const ib = raw.slice(p.idxOff, p.idxOff + p.idxCount * width).buffer;
-    const idx = p.idx16 ? new Uint16Array(ib) : new Uint32Array(ib);
-
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geom.setIndex(new THREE.BufferAttribute(idx, 1));
-    geom.computeVertexNormals();
-
-    // Match the studio's own materials. The outline is a slightly fatter shell
-    // shown BACK side only, so all you see of it is the rim behind the body.
-    const side = p.side === 2 ? THREE.DoubleSide : p.side === 1 ? THREE.BackSide : THREE.FrontSide;
-    const material = p.basic
-      ? new THREE.MeshBasicMaterial({
-          color: new THREE.Color(p.color),
-          side,
-          polygonOffset: p.polygonOffset,
-          polygonOffsetFactor: 4,
-          polygonOffsetUnits: 4,
-        })
-      : new THREE.MeshStandardMaterial({
-          color: new THREE.Color(p.color),
-          roughness: 0.5,
-          metalness: 0.04,
-          side,
-        });
-    const mesh = new THREE.Mesh(geom, material);
-    if (p.outline) mesh.renderOrder = -1;
-    group.add(mesh);
-  }
-  return group;
-}
-
-// ---- the scene --------------------------------------------------------------
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(45, 1, 0.05, 500);
-camera.up.set(0, 0, 1); // Z is up, as it is in the studio
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true;
-controls.dampingFactor = 0.08;
-
-scene.add(new THREE.HemisphereLight(0xffffff, 0x666677, 1.25));
-const key = new THREE.DirectionalLight(0xffffff, 1.5);
-key.position.set(4, -7, 9);
-scene.add(key);
-const fill = new THREE.DirectionalLight(0xffffff, 0.45);
-fill.position.set(-6, 4, 2);
-scene.add(fill);
-
-const groups = {};
-let current = null;
-let showing = 'S4';
-
-const HEIGHT = document.getElementById('height');
-const COUNT = document.getElementById('count');
-const VERDICT = document.getElementById('verdict');
-const CAPTION = document.getElementById('caption');
-
-/** How tall the model stands, in storeys, straight off its own bounding box.
- *  One storey is 1.04 world units — two strand thicknesses at the app's own
- *  scale — so this is the model answering the question, not the page. */
-function storeysTall(group) {
-  const box = new THREE.Box3().setFromObject(group);
-  return (box.max.z - box.min.z) / 1.04;
-}
-
-function show(which) {
-  if (current) scene.remove(current);
-  showing = which;
-  current = groups[which];
-  scene.add(current);
-  const flat = which === 'FLAT';
-  document.querySelectorAll('[data-scene]').forEach((b) =>
-    b.setAttribute('aria-pressed', String(b.dataset.scene === which)));
-  COUNT.textContent = STRANDS[which];
-  HEIGHT.textContent = storeysTall(current).toFixed(2);
-  const breaks = flat ? 0 : Number(which.slice(1));
+function paintReadout() {
+  const scene = view.getScene();
+  COUNT.textContent = scene.strands.length;
+  HEIGHT.textContent = storeysTall().toFixed(2);
+  const breaks = scene.levelBreaks.length;
   VERDICT.textContent = flat
     ? 'four rounds, one plane'
     : `${breaks} break${breaks === 1 ? '' : 's'} in the stack`;
   VERDICT.className = flat ? 'bad' : 'ok';
   CAPTION.textContent = flat
     ? 'The ring as the lab hands it over: no level breaks, so every round rests on the same plane and the four of them read as one thick round.'
-    : which === 'S0'
+    : showing === 0
       ? 'The block alone — three laces crossing, the ground floor. No break yet: there is nothing above it to lift.'
-      : `The block plus ${which.slice(1)} round${which === 'S1' ? '' : 's'} of k = −1, each one a storey up. Every crossing is woven inside its own storey.`;
+      : `The block plus ${showing} round${showing === 1 ? '' : 's'} of k = −1, each one a storey up. Every crossing is woven inside its own storey.`;
+  paintExtension();
 }
 
-// Frame on the FULL ring, so stepping through the storeys grows the model inside
-// a fixed shot instead of rescaling it every time.
-let frameBox = null;
-let view = 'all';
-
-const DIRECTIONS = {
-  all: new THREE.Vector3(0.34, -0.86, 0.38),
-  side: new THREE.Vector3(0.08, -0.99, 0.05),
-  top: new THREE.Vector3(0.0, -0.04, 1),
-};
-
-function frame(mode) {
-  if (mode) view = mode;
-  const size = frameBox.getSize(new THREE.Vector3());
-  const mid = frameBox.getCenter(new THREE.Vector3());
-  // The bounding SPHERE would frame a ring that is much wider than it is tall
-  // from too far back, so each view takes the radius it actually needs.
-  let radius = size.length() * 0.42;
-  if (view === 'top') radius = Math.max(size.x, size.y) * 0.55;
-  if (view === 'side') radius = Math.max(Math.max(size.x, size.y) * 0.42, size.z * 0.62);
-  const dist = (radius / Math.sin((camera.fov * Math.PI) / 360)) * 1.02;
-  const dir = DIRECTIONS[view].clone().normalize();
-  controls.target.copy(mid);
-  camera.position.copy(mid).addScaledVector(dir, dist);
-  camera.near = Math.max(0.02, dist / 200);
-  camera.far = dist * 40;
-  camera.updateProjectionMatrix();
-  controls.update();
-  document.querySelectorAll('[data-view]').forEach((b) =>
-    b.setAttribute('aria-pressed', String(b.dataset.view === view)));
+function paintButtons() {
+  document.querySelectorAll('[data-scene]').forEach((b) => {
+    const want = b.dataset.scene === 'FLAT' ? flat : !flat && Number(b.dataset.scene) === showing;
+    b.setAttribute('aria-pressed', String(want));
+  });
+  document.querySelectorAll('[data-tool]').forEach((b) =>
+    b.setAttribute('aria-pressed', String(b.dataset.tool === view.getMode())));
 }
 
-function resize() {
-  const r = HOST.getBoundingClientRect();
-  renderer.setSize(r.width, r.height, false);
-  camera.aspect = r.width / Math.max(1, r.height);
-  camera.updateProjectionMatrix();
+/** Refill the arm picker with the storey on top — those are the points a level
+ *  is normally dialled at, and the ones the fit moved last. */
+function paintArms() {
+  const storey = flat ? ROUNDS : showing;
+  const arms = armsOf(ring, storey).filter((id) => ring.scene.strands.find((s) => s.id === id)?.parentId);
+  ARMS.innerHTML = '';
+  for (const id of arms) {
+    const option = document.createElement('option');
+    option.value = id;
+    const parent = ring.scene.strands.find((s) => s.id === id).parentId;
+    option.textContent = `${id} · welds on ${parent}`;
+    ARMS.append(option);
+  }
+  ARMS.disabled = arms.length === 0;
+  if (!arms.includes(picked)) picked = arms[0] ?? null;
+  if (picked) ARMS.value = picked;
+  document.querySelectorAll('[data-nudge]').forEach((b) => (b.disabled = !picked));
 }
 
-function paint() {
+/** Where the picked arm's joint sits along the arm it leaves — the lab's
+ *  extension, measured from the parent's own start. */
+function extensionOf(id) {
+  const child = ring.scene.strands.find((s) => s.id === id);
+  if (!child || !child.parentId) return null;
+  const parent = ring.scene.strands.find((s) => s.id === child.parentId);
+  if (!parent) return null;
+  const along = Math.hypot(
+    child.start.x - parent.start.x,
+    child.start.y - parent.start.y,
+  );
+  return { child, parent, along };
+}
+
+function paintExtension() {
+  const at = picked && extensionOf(picked);
+  EXT.textContent = at ? `${at.along.toFixed(1)} px along ${at.parent.id}` : '—';
+}
+
+// ---- moving a joint ---------------------------------------------------------
+/**
+ * Slide the picked arm's joint along the arm it leaves.
+ *
+ * This is the app's own endpoint move, with the direction fixed: every endpoint
+ * glued to that point goes with it (so the weld stays welded and the storey
+ * above keeps hanging off it), and a control point that sat on the junction
+ * stays on it, which is what keeps a straight strand straight. Along the parent
+ * is the direction that means something — it is the extension the fit dials —
+ * and constraining it is the difference between adjusting a stitch and nudging
+ * a point somewhere in the plane. Drag with **Move points** for the latter.
+ */
+function nudge(px) {
+  const at = picked && extensionOf(picked);
+  if (!at) return;
+  const { child, parent } = at;
+  const vx = parent.end.x - parent.start.x;
+  const vy = parent.end.y - parent.start.y;
+  const len = Math.hypot(vx, vy) || 1;
+  const anchor = { x: child.start.x, y: child.start.y };
+  const to = { x: anchor.x + (vx / len) * px, y: anchor.y + (vy / len) * px };
+
+  const scene = ring.scene;
+  const index = scene.strands.indexOf(child);
+  for (const ref of connectedEndpoints(scene, index, 0)) {
+    const s = scene.strands[ref.index];
+    const pinned = [
+      pointsClose(s.control_points[0], anchor),
+      pointsClose(s.control_points[1], anchor),
+    ];
+    const centred = !!s.control_point_center && pointsClose(s.control_point_center, anchor);
+    setEndpoint(s, ref.side, to);
+    if (pinned[0]) s.control_points[0] = { ...to };
+    if (pinned[1]) s.control_points[1] = { ...to };
+    if (centred && s.control_point_center) s.control_point_center = { ...to };
+    if (ref.side === 1) syncPassiveCp2(s);
+    updateControlCenter(s);
+  }
+  say(`${picked} moved ${px > 0 ? '+' : ''}${px} px along ${parent.id}`);
+  render(false);
+}
+
+// ---- the page ---------------------------------------------------------------
+let says = 0;
+function say(text) {
+  STATUS.textContent = text;
+  const mine = ++says;
+  setTimeout(() => {
+    if (mine === says) STATUS.textContent = '';
+  }, 4000);
+}
+
+function paintTheme() {
   const forced = document.documentElement.dataset.theme;
   const dark = forced ? forced === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-  scene.background = new THREE.Color(dark ? 0x16130f : 0xf3ecdb);
+  view.setTheme(dark ? 'dark' : 'light');
 }
 
-let spin = !matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-function tick() {
-  requestAnimationFrame(tick);
-  if (spin) {
-    const a = 0.0022;
-    const o = camera.position.clone().sub(controls.target);
-    const c = Math.cos(a);
-    const s = Math.sin(a);
-    camera.position.set(
-      controls.target.x + o.x * c - o.y * s,
-      controls.target.y + o.x * s + o.y * c,
-      camera.position.z,
-    );
+let framed = '';
+function render(refit) {
+  view.setScene(shown(), false);
+  // Refit when the shape changes, not when a point moves: a joint sliding under
+  // a camera that keeps still is the thing worth watching.
+  const shape = flat ? 'flat' : `S${showing}`;
+  if (refit || shape !== framed) {
+    view.fitView();
+    framed = shape;
   }
-  controls.update();
-  renderer.render(scene, camera);
+  paintButtons();
+  paintArms();
+  paintReadout();
 }
 
-(async () => {
-  const raw = await inflate(bytes(DATA.variants.built.blob));
-  for (const [id, packed] of Object.entries(META)) groups[id] = buildGroup(packed, raw);
+function step(to) {
+  if (to === 'FLAT') {
+    flat = true;
+  } else {
+    flat = false;
+    showing = Math.max(0, Math.min(ROUNDS, to));
+  }
+  render(false);
+}
 
-  frameBox = new THREE.Box3().setFromObject(groups.S4);
-  // The two heights the note quotes are measured off the meshes themselves, so
-  // the prose cannot drift away from the model it is describing.
-  document.getElementById('hFull').textContent = storeysTall(groups.S4).toFixed(1);
-  document.getElementById('hFlat').textContent = storeysTall(groups.FLAT).toFixed(1);
-  show('S4');
-  paint();
-  resize();
-  frame('all');
-  tick();
-  document.getElementById('loading').remove();
+document.querySelectorAll('[data-scene]').forEach((b) =>
+  b.addEventListener('click', () => step(b.dataset.scene === 'FLAT' ? 'FLAT' : Number(b.dataset.scene))));
 
-  addEventListener('resize', resize);
-  new ResizeObserver(resize).observe(HOST);
-  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', paint);
-  new MutationObserver(paint).observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ['data-theme'],
-  });
+document.querySelectorAll('[data-tool]').forEach((b) =>
+  b.addEventListener('click', () => {
+    view.setMode(b.dataset.tool);
+    paintButtons();
+    say(b.dataset.tool === 'move' ? 'Grab a point and drag it.' : 'Drag to orbit.');
+  }));
 
-  document.querySelectorAll('[data-scene]').forEach((b) =>
-    b.addEventListener('click', () => show(b.dataset.scene)));
-  document.querySelectorAll('[data-view]').forEach((b) =>
-    b.addEventListener('click', () => frame(b.dataset.view)));
+/** Edge on, at the distance the app's own fit picked — the view a storey is
+ *  visible in, and the one this page is really about. */
+function sideView() {
+  view.fitView();
+  const target = view.controls.target;
+  const dist = view.camera.position.distanceTo(target);
+  const dir = new THREE.Vector3(0.1, -0.99, 0.08).normalize();
+  view.camera.position.copy(target).addScaledVector(dir, dist * 0.85);
+  view.camera.updateProjectionMatrix();
+  view.controls.update();
+}
 
-  // ← / → step through the storeys, which is the whole point of the rail.
-  addEventListener('keydown', (e) => {
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-    const order = ['S0', 'S1', 'S2', 'S3', 'S4', 'FLAT'];
-    const at = order.indexOf(showing);
-    const next = order[Math.min(order.length - 1, Math.max(0, at + (e.key === 'ArrowRight' ? 1 : -1)))];
-    if (next !== showing) show(next);
-  });
+document.querySelectorAll('[data-view]').forEach((b) =>
+  b.addEventListener('click', () => {
+    if (b.dataset.view === 'top') view.topView();
+    else if (b.dataset.view === 'side') sideView();
+    else view.fitView();
+    document.querySelectorAll('[data-view]').forEach((o) =>
+      o.setAttribute('aria-pressed', String(o === b)));
+  }));
 
-  const spinButton = document.getElementById('spin');
-  const paintSpin = () => {
-    spinButton.setAttribute('aria-pressed', String(spin));
-    spinButton.textContent = spin ? 'Spinning' : 'Spin';
-  };
-  paintSpin();
-  spinButton.addEventListener('click', () => {
-    spin = !spin;
-    paintSpin();
-  });
-  // Taking hold of the model stops the turntable — you are driving now.
-  canvas.addEventListener('pointerdown', () => {
-    spin = false;
-    paintSpin();
-  });
-})();
+document.querySelectorAll('[data-nudge]').forEach((b) =>
+  b.addEventListener('click', () => nudge(Number(b.dataset.nudge))));
+
+ARMS.addEventListener('change', () => {
+  picked = ARMS.value;
+  paintExtension();
+});
+
+$('reset').addEventListener('click', () => {
+  ring = buildRing();
+  picked = null;
+  render(true);
+  say('Back to the ring as it was fitted.');
+});
+
+$('copy').addEventListener('click', async () => {
+  const text = sceneToJson(ring.scene);
+  try {
+    await navigator.clipboard.writeText(text);
+    say(`Copied — ${ring.scene.strands.length} strands, ${ring.scene.levelBreaks.length} level breaks.`);
+  } catch {
+    // Clipboard access can be refused inside a frame; fall back to a selection
+    // the reader can copy themselves rather than losing the edit.
+    const box = $('json');
+    box.value = text;
+    box.hidden = false;
+    box.select();
+    say('Clipboard refused — the scene is selected below, copy it from there.');
+  }
+});
+
+// ← / → step through the storeys, which is the whole point of the rail.
+addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
+  if (e.key === 'ArrowRight') step(flat ? 'FLAT' : showing === ROUNDS ? 'FLAT' : showing + 1);
+  else if (e.key === 'ArrowLeft') step(flat ? ROUNDS : showing - 1);
+});
+
+// An edit made with the move tool is an edit to the ring, so the numbers follow.
+view.onSceneChanged = () => paintReadout();
+
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', paintTheme);
+new MutationObserver(paintTheme).observe(document.documentElement, {
+  attributes: true,
+  attributeFilter: ['data-theme'],
+});
+
+// What the ring itself reports, once its joints are closed and its storeys in.
+$('joints').textContent = `${ring.joints.welded}/${ring.joints.declared}`;
+$('pieces').textContent = ring.pieces;
+$('runs').textContent = ring.runs.length;
+
+paintTheme();
+render(true);
+$('loading').remove();

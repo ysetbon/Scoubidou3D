@@ -18,7 +18,7 @@ own light or dark theme, so both are designed rather than one inverted.
 | --- | --- |
 | [`twist-level-9`](twist-level-9/) | The 1×1 twist column at level 9, before and after the fix in `collectJunctions` — whether each lace is one continuous ribbon or four pieces with bridges lofted across the seams. |
 | [`box-family`](box-family/) | Every m×n box face, both hands, worked to ten rounds — whether a round really lands on the one below rather than through it, and whether the over/under flips the way a box's has to. **Live**: it carries `StrandScene` and builds what you pick. |
-| [`four-twists-2x1`](four-twists-2x1/) | One hand-fitted 2×1 ring, `k = −1` four times over, imported from the MXN lab — whether its four *rounds* stand as four *storeys* once the level breaks are put in, and what the same ring looks like with none. |
+| [`four-twists-2x1`](four-twists-2x1/) | One hand-fitted 2×1 ring, `k = −1` four times over, imported from the MXN lab — whether its four *rounds* stand as four *storeys* once the level breaks are put in, and what the same ring looks like with none. **Live**: it carries `StrandScene`, so its joints can be slid and its points dragged with the app's own move tool. |
 
 ---
 
@@ -58,6 +58,11 @@ because it *is* the app — the same view class, the same builder, no second
 implementation. What it gives up is the frozen record: a baked page still shows
 what the model looked like the day it was built, and a live one moves with the
 code. Bake a before/after, run a family live.
+
+A page you can EDIT has to be live for a second reason: a baked mesh has no
+points to take hold of. `four-twists-2x1` carries the view's `move` tool, so what
+the reader drags is the model — the same endpoint move the app makes, glued
+endpoints and all — and `Copy scene JSON` carries the result back out.
 
 ## Comparing two builds
 
