@@ -1102,6 +1102,15 @@ if (edited.knobs >= 3) {
   ok('and the fitter asks for a versioned worker, so a cached one cannot answer',
     /exact-worker\.js\?v=/.test(fitter),
     (fitter.match(/exact-worker\.js\?v=[\w.-]+/) ?? ['(unversioned)'])[0]);
+  // The census is what held the knobs behind "Working…" on a placed ladder:
+  // counting a level with no candidate list re-solves it, and it all happens
+  // before the result posts. A placed run must skip it outright.
+  const gen = src.slice(src.indexOf('generate: async'), src.indexOf('select: async'));
+  ok('a placed run skips the solution census, so the result posts at once',
+    /const census = data\.preserveArms !== true/.test(gen)
+    && /for \(const meta of \(census \?/.test(gen),
+    /for \(const meta of parsed\.solutions/.test(gen)
+      ? 'still counts unconditionally' : 'census gated on preserveArms');
 }
 
 // Apply. The hand finishes placing the arms and one press puts that exact ring
