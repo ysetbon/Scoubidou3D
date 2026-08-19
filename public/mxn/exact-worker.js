@@ -49,7 +49,7 @@ async function prepare() {
       // Resolved against this worker's own URL rather than the site root: the
       // lab is published under a project-site sub-path, where "/py/..." would
       // miss. Keeps the cache key in step with the one in the Worker URL.
-      const url = new URL(`./py/${name}?v=trace-plan-v29`, import.meta.url);
+      const url = new URL(`./py/${name}?v=trace-plan-v30`, import.meta.url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Could not load ${name}`);
       runtime.FS.writeFile(`/home/py/${name}`, await response.text());
@@ -84,7 +84,7 @@ function ensureCountPool() {
   const size = Math.min(3, cores);
   countPool = size < 2 ? [] : Array.from({ length: size }, () => {
     const worker = new Worker(
-      new URL("./count-worker.js?v=trace-plan-v29", import.meta.url),
+      new URL("./count-worker.js?v=trace-plan-v30", import.meta.url),
       { type: "module" });
     worker.postMessage({ type: "warm" });
     return worker;
@@ -172,7 +172,21 @@ const HANDLERS = {
     const COUNT_CHUNK = 500;
     const COUNT_CEILING = 60000;
     let spent = 0;
-    for (const meta of parsed.solutions ?? []) {
+    // A PLACED ladder is nobody's to browse, and counting one is worse than
+    // pointless. Its L1 was adopted whole and every level above was welded at
+    // that ring's arm ends, so NO level has a candidate list -- and counting a
+    // level without one means re-solving it (export_count_job falls back to
+    // enumerate_level), which is the exact search this run refused to do.
+    // Worse, the counting happens BEFORE the result posts, so it is also why
+    // the knobs sat behind "Working…": measured on a 4-level 2x1 loaded from
+    // a file, ~10s of a 12.7s run, all of it spent on a browser the page does
+    // not show for these levels. The reader wants L2's knobs, not a census.
+    const census = data.preserveArms !== true;
+    if (!census) {
+      post("progress", { message: "Levels welded at the fixed ring's arms — "
+        + "no solutions to count, opening the knobs" });
+    }
+    for (const meta of (census ? parsed.solutions ?? [] : [])) {
       if (!meta || meta.level <= 0) continue;
       if (meta.enumerated !== "full" && (meta.reason ?? "").startsWith("k=0")) continue;
       runtime.globals.set("mxn_level", meta.level);
