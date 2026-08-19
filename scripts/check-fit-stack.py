@@ -222,7 +222,14 @@ def run_case(m, n, ks):
                               args4["h"][0], args4["h"][1],
                               args4["v"][0], args4["v"][1], True, True))
     placed_stages = stages_by_level(placed)
-    for lv in range(2, top + 1):
+    # ONE rung at a time: adopting L1 welds L2 and stops. A level welded onto
+    # a ring nobody has placed would be discarded the moment that ring is
+    # fixed, so the ladder grows as the person climbs it.
+    check("placed: fixing a level welds the NEXT one and stops there",
+          sorted(placed_stages) == [1, 2],
+          "returned %s of a %d-level run — the level fixed, and the one rung "
+          "it welded" % (sorted(placed_stages), top))
+    for lv in sorted(placed_stages):
         tips = {s["layer_name"]: (s["end"]["x"], s["end"]["y"])
                 for s in placed_stages[lv]["strands"]
                 if s["layer_name"] in arm_names}
@@ -240,6 +247,19 @@ def run_case(m, n, ks):
           all("placed at the ring below" in (r.get("applied") or [])
               for r in placed["rows"] if r["level"] > 1),
           str([r.get("applied") for r in placed["rows"]]))
+    if top >= 3:
+        plan_two, held_two = band_inputs(2)
+        welded = json.loads(quiet(bridge.fit_adopt, 2,
+                                  held_two["h"][0], held_two["h"][1],
+                                  held_two["v"][0], held_two["v"][1], True, True))
+        grew = stages_by_level(welded)
+        check("placed: fixing L2 welds L3, and still nothing above it",
+              sorted(grew) == [2, 3], "returned %s" % sorted(grew))
+        deep = {s["layer_name"]: (s["end"]["x"], s["end"]["y"])
+                for s in grew[3]["strands"] if s["layer_name"] in arm_names}
+        check("placed: and L1's own arms are untouched three levels down",
+              all(deep.get(nm) == red[nm] for nm in red),
+              "%d/%d intact" % (sum(deep.get(nm) == red[nm] for nm in red), len(red)))
     check("placed: their knobs open at extension 0",
           all(all(v == 0 for side in r["ext"] for v in side)
               for r in placed["rows"] if r["level"] > 1))

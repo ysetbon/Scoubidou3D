@@ -571,7 +571,7 @@ function useWorker(onProgress: (message: string) => void) {
     // cached worker had no fit-plan-now. BUMP THIS whenever the worker's
     // message vocabulary changes. src/mxn-lab/weave-studio.tsx does the same.
     const worker = new Worker(
-      new URL(`${BASE}mxn/exact-worker.js?v=trace-plan-v30`, window.location.href),
+      new URL(`${BASE}mxn/exact-worker.js?v=trace-plan-v31`, window.location.href),
       { type: "module" });
     worker.onmessage = (event) => {
       const data = event.data || {};
@@ -1988,6 +1988,18 @@ export function Fitter() {
     pinned: !!pinned,
   }), [ks, fitLevel, stages, auditRows, fixed, stale, after, pinned, proposedLevels]);
   const summary = useMemo(() => stackSummary(ladder), [ladder]);
+  /**
+   * Whether fixing this level welds the NEXT one onto it.
+   *
+   * A placed ladder grows a rung at a time, so the top built level is where
+   * the sequence currently stops: fixing it is also what brings the level
+   * above into existence. Saying so on the button is the difference between
+   * "this ends here" and "this is how it continues".
+   */
+  const weldsNext = stages.length > 0
+    && fitLevel === Math.max(...stages.map(s => s.level))
+    && fitLevel < ks.length;
+
   /** How many levels a fix here would have to rebuild. The whole of its cost. */
   const levelsAbove = stages.filter(s => s.level > fitLevel).length;
   /** What a saved stack would cover: the levels themselves, and its top. */
@@ -3191,7 +3203,8 @@ export function Fitter() {
                     </button>
                   </>
                 )}
-                <span className="chip soft">fitting L{fitLevel} of {stages.length}</span>
+                <span className="chip soft">
+                  fitting L{fitLevel} of {ks.length || stages.length}</span>
                 {/* Which ring this level STANDS ON. After a fix, the level
                     below keeps its extensions and headings under this one —
                     but its arms draw shorter here, because this level's
@@ -3270,6 +3283,8 @@ export function Fitter() {
                         : row.state === "pinned" ? `pinned · ${pinned?.chooser ?? "judged"}'s ★ best`
                         : row.state === "proposed" ? "fitted — not fixed yet"
                         : row.state === "stale" ? "its parent moved — fit it again"
+                        : row.state === "unbuilt"
+                          ? `not built yet · welded when L${row.level - 1} is fixed`
                         : "as the run left it";
                       return (
                         // The state rides on a data attribute rather than a
@@ -3283,9 +3298,12 @@ export function Fitter() {
                           data-state={row.state}
                           data-current={row.current ? "1" : undefined}>
                           <button type="button" className="rungbtn"
-                            disabled={busy || row.current}
+                            disabled={busy || row.current || row.state === "unbuilt"}
                             onClick={() => fitAt(row.level, stages, auditRows)}
                             title={row.current ? "the level being fitted now"
+                              : row.state === "unbuilt"
+                                ? `L${row.level} does not exist yet — it is welded at `
+                                  + `L${row.level - 1}'s arm ends when that level is fixed`
                               : `Fit L${row.level}`}>
                             <b>L{row.level}</b>
                             <i>k={row.k}</i>
@@ -3312,7 +3330,9 @@ export function Fitter() {
                       onClick={() => fixLevel(true)}>
                       {levelsAbove
                         ? `Fix L${fitLevel} · rebuild the ${levelsAbove} above`
-                        : `Fix L${fitLevel}`}
+                        : weldsNext
+                          ? `Fix L${fitLevel} · weld L${fitLevel + 1}`
+                          : `Fix L${fitLevel}`}
                     </button>
                     {levelsAbove > 0 && (
                       <button type="button" disabled={!before || busy || !canWeave}

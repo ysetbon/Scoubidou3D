@@ -148,6 +148,28 @@ const base = {
 }
 
 {
+  // A placed ladder grows a rung at a time: L2 is welded when L1 is fixed, and
+  // L3 does not exist until L2 is. The rungs past the top BUILT level have to
+  // say so — drawing them as the engine's own would be the ladder reporting
+  // rings the engine never decided.
+  const rows = ladderRows({ ...base, drawn: [1, 2], fitLevel: 2,
+    fixed: { 1: fixture(1, true) } });
+  check("every level of the sequence gets a rung, built or not",
+    rows.length === 4, `${rows.length} rungs for ks ${base.ks.join(",")}`);
+  check("the levels that do not exist yet read as unbuilt",
+    rows[2].state === "unbuilt" && rows[3].state === "unbuilt",
+    rows.map(r => r.state).join(" · "));
+  check("and they quote no audit they never had",
+    rows[3].across === null && !rows[3].closes);
+  const summary = stackSummary(rows);
+  check("the stack is 1 of 4, next is the level being fitted",
+    summary.fixed === 1 && summary.total === 4 && summary.next === 2
+    && !summary.complete, JSON.stringify(summary));
+  check("an unbuilt level is never called stale, fixed or the engine's",
+    !["stale", "fixed", "engine"].includes(rows[3].state), rows[3].state);
+}
+
+{
   // A kept proposal: the reader applied a ring at L1 and wandered to L2. The
   // page keeps the applied ring, and the ladder has to say the level carries
   // one — "as the run left it" over somebody's applied ring would be the

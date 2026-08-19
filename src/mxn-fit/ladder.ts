@@ -103,13 +103,20 @@ export function isPrefixOfItself(d: RunDescriptor, level: number): boolean {
 /**
  * What a level is, in one word.
  *
+ * `unbuilt` is the newest and the plainest: the level is in the k sequence
+ * and does not exist yet. A placed ladder grows a rung at a time — welding a
+ * level onto a ring nobody has placed would produce a ring standing on a
+ * proposal — so the levels past the one being fitted are honestly absent
+ * rather than drawn as though the engine had decided them.
+ *
  * `fixed` is the only one that means the levels above stand on this ring.
  * `proposed` is a fit on screen that has not been adopted — real geometry,
  * and no consequence yet. `stale` is the one nobody would guess and everybody
  * needs: a level BELOW this one was adopted without a rebuild, so the ring
  * drawn here hangs off a parent that has since moved.
  */
-export type LevelState = "fixed" | "pinned" | "proposed" | "engine" | "stale";
+export type LevelState =
+  "fixed" | "pinned" | "proposed" | "engine" | "stale" | "unbuilt";
 
 /** One level as it was fixed: the pick, and what the engine said about it. */
 export type FixedLevel = {
@@ -179,21 +186,36 @@ export type LadderInput = {
 export function ladderRows(input: LadderInput): LadderRow[] {
   const stale = new Set(input.stale);
   const audits = new Map(input.audits.map(row => [row.level, row]));
-  const levels = input.drawn.length
-    ? [...input.drawn].sort((a, b) => a - b)
-    : input.ks.map((_, index) => index + 1);
+  // Every level the k sequence names, whether or not it has been built: a
+  // ladder that listed only the built rungs would answer "how far up am I"
+  // with "you are at the top", which is the one thing it must never say.
+  const built = new Set(input.drawn);
+  const levels = input.ks.length
+    ? input.ks.map((_, index) => index + 1)
+    : [...input.drawn].sort((a, b) => a - b);
   return levels.map(level => {
     const fixed = input.fixed[level];
     const audit = audits.get(level);
     const state: LevelState =
-      stale.has(level) ? "stale"
+      // Nothing else can be true of a level that does not exist yet, so this
+      // outranks even `stale`.
+      input.drawn.length && !built.has(level) ? "unbuilt"
+      : stale.has(level) ? "stale"
       : fixed ? "fixed"
       : level === 1 && input.pinned ? "pinned"
       : (level === input.fitLevel && input.proposed)
         || input.proposedLevels?.includes(level) ? "proposed"
       : "engine";
-    const across = fixed?.audit?.crossings ?? audit?.across ?? null;
-    const expected = fixed?.audit?.expected ?? audit?.expected ?? null;
+    // A level that does not exist quotes nothing, whatever is lying around.
+    // The page MERGES audit rows rather than replacing them, so a row from a
+    // previous, longer run can outlive the level it was about — and a rung
+    // reading "6/8" over a level nobody has built is the ladder inventing a
+    // measurement.
+    const unbuilt = state === "unbuilt";
+    const across = unbuilt ? null
+      : fixed?.audit?.crossings ?? audit?.across ?? null;
+    const expected = unbuilt ? null
+      : fixed?.audit?.expected ?? audit?.expected ?? null;
     return {
       level,
       k: input.ks[level - 1],
