@@ -506,9 +506,16 @@ def _grow_levels(strands, prev_v2r, first, ctx):
     # this mode did not ask for.
     placed = bool(ctx.get("placed"))
     if placed:
-        for level in range(first, len(ks) + 1):
+        # ONE rung, not the whole stack. A level above the first would be
+        # welded onto a ring NOBODY HAS PLACED YET -- it would be discarded
+        # the moment this level is fixed, and until then it is a ring standing
+        # on a proposal, drawn as though it were real. So the ladder grows a
+        # rung at a time: this level is welded at the fixed ring's arms and
+        # handed over, and the next one is welded when this one is fixed.
+        for level in range(first, min(first, len(ks)) + 1):
             k_level = ks[level - 1]
-            emitProgress(f"Building L{level} · k={k_level} at the fixed ring's arms…")
+            emitProgress(f"Welding L{level}'s strands onto the fixed ring's "
+                         f"arm ends — no search…")
             with contextlib.redirect_stdout(io.StringIO()):
                 strands, info = NX.add_continuation_level(
                     strands, m, n, k_level, direction, hand, level,
@@ -1281,7 +1288,10 @@ def fit_plan(level):
             # it measures the arms it is drawing rather than recomputing them
             # from an extension and a heading (docs/mxn-fit.md).
             "appliedAngle": (float(cands[picked]["angle"])
-                             if picked < len(cands) else None),
+                             if picked < len(cands)
+                             else _band_heading(entry, [
+                                 s["strand_4_5"]["layer_name"]
+                                 for s in data["strands_list"]])),
             # The band's arms, in the band's own order. What makes it possible
             # to measure a length off a drawn ring rather than off a model of
             # one: these are the layer names to look for in a stage's strands.
@@ -1438,6 +1448,30 @@ def fit_bands_from_json(text):
     return (ext("hExt"), angle("hAngle"), ext("vExt"), angle("vAngle"))
 
 
+def _band_heading(entry, names):
+    """The heading a band is actually drawn at, off the level's own ring.
+
+    A PLACED level has no candidate list, so there is no stored angle to
+    quote -- and reporting None made `appliedAngle` a hole that any caller
+    passing it straight back (fit_weave, fit_adopt) fell into as a TypeError
+    deep inside _band_moves. The ring always knows: arm 0 is never one of the
+    reversed ones, so the direction it is drawn in IS the band's heading. This
+    is the same recovery the page has always done for itself, moved to where
+    every caller benefits from it.
+    """
+    import math
+
+    if not names:
+        return None
+    strands = entry["checkpoint"][0]
+    for strand in strands:
+        if strand.get("layer_name") == names[0]:
+            dx = strand["end"]["x"] - strand["start"]["x"]
+            dy = strand["end"]["y"] - strand["start"]["y"]
+            return math.degrees(math.atan2(dy, dx))
+    return None
+
+
 def _fit_bands(entry, h_ext, h_angle, v_ext, v_angle):
     """The two band candidates a fit names, or None when no plan was read.
 
@@ -1463,6 +1497,14 @@ def _fit_bands(entry, h_ext, h_angle, v_ext, v_angle):
         data = (entry.get("trace_bands") or {}).get(want)
         if data is None:
             return None
+        if angle is None:
+            # Extensions with no heading: place them where the band already
+            # points. A placed level has no stored angle to have been handed,
+            # and crashing on the hole helps nobody.
+            angle = _band_heading(entry, [s["strand_4_5"]["layer_name"]
+                                          for s in data["strands_list"]])
+            if angle is None:
+                return None
         ext = [float(e) for e in ext]
         moves, arms = _band_moves(data, ext, angle)
         lengths["h" if want == "horizontal" else "v"] = [float(x) for x in arms]

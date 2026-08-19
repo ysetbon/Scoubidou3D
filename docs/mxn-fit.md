@@ -1146,6 +1146,31 @@ unchanged); claim 4 in `scripts/check-fit-stack.py` asserts the placed
 contract: fixed arms identical under every level above, every new strand
 starting on one, rows saying *placed at the ring below*, knobs at 0.
 
+### A placed ladder grows one rung at a time
+
+Reported as *"NOT CALCULATE L2 and L3 and L4, i want to do them myself"*, and
+the objection is stronger than it looks: a level welded onto a ring **nobody
+has placed yet** would be discarded the moment that ring is fixed, and until
+then it is a ring standing on a proposal, drawn as though the engine had
+decided it.
+
+So placed mode builds exactly one level: this one is welded at the fixed
+ring's arm ends and handed over, and the next is welded when this one is
+fixed. The rungs past it read `unbuilt` on the ladder — present in the k
+sequence, absent from the stitch, unclickable, quoting no audit — and the fix
+button says what it will do (`Fix L2 · weld L3`). Measured on the reporter's
+own ring: a four-level run went from 12.7 s of building-and-counting to
+**0.05 s**, and fixing a level welds the next in 0.04 s.
+
+Two things fell out of it. The census the worker ran before posting its
+result — counting every level's solutions — is skipped outright on a placed
+run: those levels have no candidate list, so counting one *re-solves* it
+(`export_count_job` falls back to `enumerate_level`), which is the search the
+mode refuses, and it ran before the knobs could open. And `fit_plan` now
+measures a placed band's heading off the ring (`_band_heading`) instead of
+reporting `appliedAngle: null` — the page always recovered it that way, but
+any other caller handing that null back crashed inside `_band_moves`.
+
 ### A proposal survives a wander
 
 *Apply — this is the ring* makes a **proposal** about one level, and only

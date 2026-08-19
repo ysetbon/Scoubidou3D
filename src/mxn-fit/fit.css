@@ -291,6 +291,12 @@ tr.applied .minibtn { border-color: var(--ink); background: var(--acid); }
 .rung[data-state=proposed] .rungbtn { border-style: dashed; border-color: var(--ink); }
 .rung[data-state=stale] .rungbtn { border-color: var(--red); background: rgba(228, 81, 63, .07); color: var(--red-ink); }
 .rung[data-state=stale] .rungbtn .state { color: var(--red-ink); }
+/* Not built yet: present in the sequence, absent from the stitch. Drawn as an
+   outline so the ladder reads as "three more to go" at a glance, and never as
+   a rung that could be pressed. */
+.rung[data-state=unbuilt] .rungbtn {
+  border-style: dotted; opacity: .55; background: transparent; cursor: default;
+}
 .rung[data-current] .rungbtn { box-shadow: inset 3px 0 0 var(--blue); }
 .rungbtn:disabled { opacity: 1; }
 @media (max-width: 720px) {
