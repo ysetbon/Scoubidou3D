@@ -18,6 +18,7 @@ own light or dark theme, so both are designed rather than one inverted.
 | --- | --- |
 | [`twist-level-9`](twist-level-9/) | The 1×1 twist column at level 9, before and after the fix in `collectJunctions` — whether each lace is one continuous ribbon or four pieces with bridges lofted across the seams. |
 | [`box-family`](box-family/) | Every m×n box face, both hands, worked to ten rounds — whether a round really lands on the one below rather than through it, and whether the over/under flips the way a box's has to. **Live**: it carries `StrandScene` and builds what you pick. |
+| [`four-twists-2x1`](four-twists-2x1/) | One hand-fitted 2×1 ring, `k = −1` four times over, imported from the MXN lab — whether its four *rounds* stand as four *storeys* once the level breaks are put in, and what the same ring looks like with none. |
 
 ---
 
