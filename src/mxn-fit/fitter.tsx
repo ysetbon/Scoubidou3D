@@ -571,7 +571,7 @@ function useWorker(onProgress: (message: string) => void) {
     // cached worker had no fit-plan-now. BUMP THIS whenever the worker's
     // message vocabulary changes. src/mxn-lab/weave-studio.tsx does the same.
     const worker = new Worker(
-      new URL(`${BASE}mxn/exact-worker.js?v=trace-plan-v32`, window.location.href),
+      new URL(`${BASE}mxn/exact-worker.js?v=trace-plan-v33`, window.location.href),
       { type: "module" });
     worker.onmessage = (event) => {
       const data = event.data || {};
@@ -980,7 +980,7 @@ export function Fitter() {
     // With a ★ best (or a fix made here) for level 1, "no search" no longer
     // means "L1 only": since the placed mode there is nothing to search
     // ANYWHERE on such a run — L1 is adopted whole and every level above is
-    // welded at its arm ends, unsearched. So the knobs open on the LADDER,
+    // welded at its weave points, unsearched. So the knobs open on the LADDER,
     // at L2, with a live session (Fix works immediately), which is where the
     // reader who already finished L1 actually wanted to start. Only with no
     // decided L1 anywhere does this stay the L1-only sketchpad.
@@ -1419,17 +1419,17 @@ export function Fitter() {
       }
 
       // A PLACED level is a person's to place: it was welded at the fixed
-      // ring's arm ends, unsearched, and running the candidate walk over it
+      // ring's weave points, unsearched, and running the candidate walk over it
       // would be the page searching a default over exactly the ring the
       // placed mode exists to protect. The knobs are open at extension 0 on
-      // the fixed ring's own arm ends; the reader's saved best for this level
+      // the fixed ring's own weave points; the reader's saved best for this level
       // (checked above) still outranks this, because that is their own word.
       const placedHere = audits.find(r => r.level === target)
         ?.applied?.includes("placed at the ring below");
       if (placedHere) {
         const belowFixed = level - 1;
-        setStatus(`L${level} is welded at the fixed L${belowFixed}'s arm ends — `
-          + "knobs at 0 on its very points, nothing searched. Place it, "
+        setStatus(`L${level} is welded at the fixed L${belowFixed}'s weave points — `
+          + "knobs at 0 on those crossings, nothing searched. Place it, "
           + `Apply, then Fix L${level}.`);
         setBusy(false);
         return;
@@ -1546,7 +1546,7 @@ export function Fitter() {
    * `fromFile` is the ring somebody exported and wants back: the strands
    * themselves, which outrank every other source of an L1 because the reader
    * just pointed at them. The run then behaves exactly as it does for a judged
-   * ★ best — adopt, weld the levels above at its arm ends, open at L2 — and
+   * ★ best — adopt, weld the levels above at its weave points, open at L2 — and
    * the ring is remembered here afterwards, so the NEXT run stands on it
    * without the file being picked again. That is what "by default" means.
    */
@@ -1588,7 +1588,7 @@ export function Fitter() {
         // level 1" the page can receive.
         note(`Level 1 taken from ${fromFile.name} — ${fromFile.strands.length} `
           + "strands read off the file. The engine adopts it instead of "
-          + "searching, and every level above is welded at its arm ends");
+          + "searching, and every level above is welded at its weave points");
       } else if (buildOnJudged) {
         setStatus("Looking for a judged level 1 to build the run on…");
         try { adopt = await judgedLevelOne(d); } catch { adopt = null; }
@@ -1667,7 +1667,7 @@ export function Fitter() {
         // This generate IS the session — the run and the state fitting reads
         // are the same call — so it is registered rather than repeated.
         // A person's ring underneath means PLACED levels above: the engine
-        // welds them at the ring's own arm ends, unsearched, instead of
+        // welds them at the ring's own weave points, unsearched, instead of
         // re-laying the arms and searching a default over them. The ring a
         // hand or a judgement placed is the truth; the levels above are the
         // person's next move, not the engine's.
@@ -1728,7 +1728,7 @@ export function Fitter() {
           note("The file's L1 could not be written to this browser's storage");
         }
         setStatus(`L1 loaded from ${fromFile.name} — locked. Every level above `
-          + "is welded at its arm ends, nothing searched.");
+          + "is welded at its weave points, nothing searched.");
       } else if (fromFile && payload.level1AdoptFailed) {
         setStatus(`${fromFile.name} is not a level-1 ring for ${nameOf(d)} — `
           + "its strands name a different size or hand, so the engine searched "
@@ -1815,7 +1815,7 @@ export function Fitter() {
     setFailed(false);
     setStatus(rebuild && above
       ? `Adopting L${level} and welding the ${above} level${
-          above === 1 ? "" : "s"} above at its arm ends…`
+          above === 1 ? "" : "s"} above at its weave points…`
       : `Adopting L${level}…`);
     try {
       await session.current?.ready;
@@ -1823,7 +1823,7 @@ export function Fitter() {
       const reply = await ask({
         type: "fit-adopt", level, rebuild,
         // Fixing is a person's act, so the rebuilt levels are PLACED: welded
-        // at this ring's own arm ends, unsearched, ready to be placed by the
+        // at this ring's own weave points, unsearched, ready to be placed by the
         // same hand -- never a searched default re-laid over the fix.
         preserveArms: true,
         hExt: pick("h")?.ext ?? null, hAngle: pick("h")?.angle ?? null,
@@ -1839,7 +1839,7 @@ export function Fitter() {
         return;
       }
       note(`L${level} adopted${reply.rebuilt && above
-        ? `, ${above} level${above === 1 ? "" : "s"} welded at its arm ends` : ""} in `
+        ? `, ${above} level${above === 1 ? "" : "s"} welded at its weave points` : ""} in `
         + `${((performance.now() - began) / 1000).toFixed(1)}s`);
 
       // The run's diagrams and audit rows, with everything the adopt returned
@@ -1924,7 +1924,7 @@ export function Fitter() {
         + `${closes ? "" : ", and it does not close"}`
         + `${reply.rebuilt && above
           ? `. The ${above} level${above === 1 ? "" : "s"} above now start at this `
-            + "ring's own arm ends — place them by hand"
+            + "ring's own weave points — place them by hand"
           : reply.rebuilt ? "" : ". The levels above still stand on the old ring"}`
         + `${next && reply.rebuilt ? ` — opening L${level + 1}.` : "."}`);
       setFailed(!closes);
@@ -2844,7 +2844,7 @@ export function Fitter() {
               onClick={() => l1FileInput.current?.click()}
               title={"Adopt a level-1 ring from a .json file of strands — the one "
                 + "Export writes (not the .fit.json notes). It is locked as L1, "
-                + "every level above is welded at its arm ends unsearched, the "
+                + "every level above is welded at its weave points unsearched, the "
                 + "page opens at L2, and this browser remembers it as the L1 for "
                 + "these parameters"}>
               Load L1 from file · start at L2
@@ -2852,7 +2852,7 @@ export function Fitter() {
             <button className="go ghost" type="button" onClick={openWithoutSearching}
               disabled={busy}
               title={"With a ★ best (or a fixed L1) this opens the ladder on it — "
-                + "L1 adopted, the levels above welded at its arm ends, nothing "
+                + "L1 adopted, the levels above welded at its weave points, nothing "
                 + "searched, straight to L2. Without one it opens L1's knobs "
                 + "alone: the band plan is the space the search walks, not its "
                 + "result, so they are ready long before any walk would finish"}>
@@ -3303,7 +3303,7 @@ export function Fitter() {
                             title={row.current ? "the level being fitted now"
                               : row.state === "unbuilt"
                                 ? `L${row.level} does not exist yet — it is welded at `
-                                  + `L${row.level - 1}'s arm ends when that level is fixed`
+                                  + `L${row.level - 1}'s weave points when that level is fixed`
                               : `Fit L${row.level}`}>
                             <b>L{row.level}</b>
                             <i>k={row.k}</i>
@@ -3325,7 +3325,7 @@ export function Fitter() {
                       disabled={!before || busy || !canWeave}
                       title={canWeave
                         ? "Make this the level's ring; the levels above are welded "
-                          + "at its arm ends, ready to be placed by hand"
+                          + "at its weave points, ready to be placed by hand"
                         : "Adopting reads the engine's browsing session — press Run first"}
                       onClick={() => fixLevel(true)}>
                       {levelsAbove
@@ -3352,8 +3352,8 @@ export function Fitter() {
                   and a judgement saved over both would describe a stitch nobody wove.{" "}
                   <em>Fix</em> is what makes them meet: the ring on screen becomes this level's
                   ring — <em>locked, never re-laid</em> — and every level above it is built
-                  again <em>welded at this ring's own arm ends</em>, unsearched, with its
-                  knobs opening at extension 0 on those very points. Placing each level is
+                  again <em>welded at this ring's own weave points</em> — the crossings, not the
+                  loose tips — unsearched, with its knobs opening at extension 0 there. Placing each level is
                   then your move, the same way this one was.
                   {levelsAbove > 0 && <> Right now that is <em>{levelsAbove} level
                     {levelsAbove === 1 ? "" : "s"}</em>.</>}{" "}
