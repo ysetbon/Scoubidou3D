@@ -123,6 +123,69 @@
   .lone button[aria-pressed="true"] { background: var(--bad-wash); color: var(--bad); border-color: var(--bad); }
   .rail button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
 
+  /* ---- the workbench ----------------------------------------------------- */
+  .bench {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: var(--panel);
+  }
+  .bench .group { display: flex; align-items: center; gap: 6px; }
+  .bench .push { margin-left: auto; }
+  .bench .lbl {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-right: 2px;
+  }
+  .bench button, .bench select {
+    appearance: none;
+    background: var(--ground);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 6px 11px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+  .bench select { padding-right: 8px; max-width: 210px; }
+  .bench button:hover:not([disabled]) { border-color: var(--ink); }
+  .bench button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--ground); }
+  .bench button[disabled] { opacity: 0.45; cursor: not-allowed; }
+  .bench button:focus-visible, .bench select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .bench .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    min-width: 12ch;
+  }
+  .status {
+    margin: 0;
+    min-height: 1.2em;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--accent);
+  }
+  #json {
+    width: 100%;
+    height: 140px;
+    font-family: var(--mono);
+    font-size: 11px;
+    background: var(--panel);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 10px;
+  }
+
   /* ---- stage ------------------------------------------------------------- */
   .stage {
     position: relative;
@@ -277,16 +340,38 @@
 
   <div class="rail">
     <div class="storeys">
-      <button type="button" data-scene="S0"><b>Ground</b><i>the block</i></button>
-      <button type="button" data-scene="S1"><b>+1</b><i>k = −1</i></button>
-      <button type="button" data-scene="S2"><b>+2</b><i>k = −1</i></button>
-      <button type="button" data-scene="S3"><b>+3</b><i>k = −1</i></button>
-      <button type="button" data-scene="S4" aria-pressed="true"><b>+4</b><i>k = −1</i></button>
+      <button type="button" data-scene="0"><b>Ground</b><i>the block</i></button>
+      <button type="button" data-scene="1"><b>+1</b><i>k = −1</i></button>
+      <button type="button" data-scene="2"><b>+2</b><i>k = −1</i></button>
+      <button type="button" data-scene="3"><b>+3</b><i>k = −1</i></button>
+      <button type="button" data-scene="4" aria-pressed="true"><b>+4</b><i>k = −1</i></button>
     </div>
     <div class="lone">
       <button type="button" data-scene="FLAT"><b>One plane</b><i>as the lab saves it</i></button>
     </div>
   </div>
+
+  <div class="bench">
+    <div class="group">
+      <span class="lbl">Tool</span>
+      <button type="button" data-tool="orbit" aria-pressed="true">Orbit</button>
+      <button type="button" data-tool="move" aria-pressed="false">Move points</button>
+    </div>
+    <div class="group">
+      <span class="lbl">Joint</span>
+      <select id="arms" aria-label="Which arm's joint to slide"></select>
+      <button type="button" data-nudge="-5" title="Slide the joint 5 px back down the arm">−5</button>
+      <button type="button" data-nudge="-1">−1</button>
+      <button type="button" data-nudge="1">+1</button>
+      <button type="button" data-nudge="5" title="Slide the joint 5 px further out">+5</button>
+      <span class="val" id="ext">—</span>
+    </div>
+    <div class="group push">
+      <button type="button" id="reset">Reset ring</button>
+      <button type="button" id="copy">Copy scene JSON</button>
+    </div>
+  </div>
+  <p class="status" id="status"></p>
 
   <div class="stage" id="stage">
     <span class="hint">Drag to orbit · ← → to step</span>
@@ -300,13 +385,14 @@
       <p id="caption"></p>
     </div>
     <div class="tools">
-      <button type="button" id="spin" aria-pressed="true">Spinning</button>
       <button type="button" data-view="all" aria-pressed="true">Whole ring</button>
       <button type="button" data-view="side" aria-pressed="false">Side</button>
       <button type="button" data-view="top" aria-pressed="false">Top</button>
     </div>
     <div id="loading">building the ring…</div>
   </div>
+
+  <textarea id="json" hidden readonly aria-label="The scene as JSON"></textarea>
 
   <div class="note">
     <section>
@@ -340,15 +426,28 @@
       standing on each other, and only the masks keep them from passing through.</p>
     </section>
     <section>
-      <h2>Six joints this save never closed</h2>
+      <h2>Making the cord one cord</h2>
       <p>An OpenStrand file names the strand each arm hangs off, and the import
       now reads it — without that declaration a lace carried up onto a new storey
       is refused at the break, and these 33 strands come apart into <b>27</b>
-      unrelated laces. With it, <b>24</b> of the 30 joints weld. The other six are
-      the block's: this ring's first round starts <b>25</b> to <b>47</b> px past
-      the tip it should leave from, so the three cords still read as <em>nine</em>
-      pieces. That is the save, not the model — re-dial those pairs in the lab and
-      they close.</p>
+      unrelated laces. That closes 24 of the 30 joints. The last six are the
+      block's: this ring was fitted before extension 0 moved from an arm's tip to
+      its <em>weave point</em>, so its first round starts <b>25</b> to <b>47</b> px
+      past the tip it leaves. All six sit exactly on that arm's own line, so the
+      page runs each arm out to meet its round — nothing bends, nothing moves
+      sideways, and the round above keeps the position the fit solved for.
+      <b id="joints">—</b> joints close, <b id="runs">—</b> arms were run out, and
+      the ring stands as <b id="pieces">—</b> cords.</p>
+    </section>
+    <section>
+      <h2>Changing it</h2>
+      <p><em>Move points</em> is the app's own move tool: grab a handle and drag,
+      and every endpoint glued to that one comes with it, so a weld stays welded.
+      The <em>joint</em> row is the same move with its direction fixed — it slides
+      the chosen arm's weld along the arm it leaves, which is the extension the
+      lab dials, and the readout says where it now sits. Step to a storey first
+      and the picker offers that storey's six arms. <em>Copy scene JSON</em> takes
+      the result back to the app or the lab; <em>Reset ring</em> puts it back.</p>
     </section>
   </div>
 
