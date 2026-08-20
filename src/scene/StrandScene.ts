@@ -124,6 +124,28 @@ export const FOLD_BULGE_DEFAULT = 1;
  */
 export const FOLD_FACE_DEFAULT = 0;
 
+/**
+ * How wide the Z part is ACROSS THE CREASE, as a multiple of the lace's width.
+ *
+ * The third direction of the same piece, and the last one to get a control. The
+ * bight has always taken the lace's own width and no more — a hair over it, so
+ * the squared fold sheet is swallowed whole and the runs' side faces are cleared
+ * rather than lain on. That makes the Z part a plate whenever the lace is much
+ * wider than it is thick, which it is: seen from most angles the turn shows a
+ * sliver, however far the bight is made to bow or jut.
+ *
+ * Above 1 the bight overhangs its own runs at both sides. That is a real edge,
+ * not a mistake — a lace pinched round a turn does swell — but it is visible, so
+ * the dial starts where the piece has always been and only widens on being
+ * asked. Below the hair the fold sheet would poke through the sides, so that is
+ * the floor whatever the slider says.
+ */
+export const FOLD_WIDE_DEFAULT = 1;
+
+/** The least the Z part may be, as a multiple of the lace width: a hair over it,
+ *  so the squared fold sheet stays swallowed and the runs' sides stay cleared. */
+const FOLD_WIDE_MIN = 1.015;
+
 // Handle appearance (world-unit radii + colors), tuned against SCALE so the grab
 // dots read clearly at the default framing.
 const END_R = 0.18;
@@ -234,6 +256,11 @@ export interface RenderParams {
    * FOLD_FACE_DEFAULT.
    */
   foldFace: number;
+  /**
+   * How wide the Z part is across the crease, as a multiple of the lace's own
+   * width. See FOLD_WIDE_DEFAULT.
+   */
+  foldWide: number;
   layerGap: number; // base lift between consecutive layers, source units (small)
   widthScale: number; // multiplier applied to every strand width
   outline: boolean; // draw the stroke-colored outline shell
@@ -253,6 +280,7 @@ export const DEFAULT_PARAMS: RenderParams = {
   foldDepth: FOLD_DEPTH_DEFAULT,
   foldBulge: FOLD_BULGE_DEFAULT,
   foldFace: FOLD_FACE_DEFAULT,
+  foldWide: FOLD_WIDE_DEFAULT,
   // Base lift between layers. The weave picks over/under at every CROSSING on its
   // own (adaptive amplitude), so this only needs to separate strands that overlap
   // WITHOUT crossing (a plain parallel stack) — and it's what gives the ordered
@@ -1179,10 +1207,11 @@ export class StrandScene {
       );
       stand.setPosition(p.x, p.y, (zIn + zOut) / 2);
 
-      // A hair WIDER than the lace, not narrower: the squared fold sheet spans
+      // Never narrower than a hair over the lace: the squared fold sheet spans
       // the lace's full width, and the bight must swallow it entirely — its
       // side faces also then clear the runs' own sides instead of lying on them.
-      const rungW = width * 1.015;
+      // Above that the slider takes over and the bight overhangs its runs.
+      const rungW = width * Math.max(FOLD_WIDE_MIN, this.params.foldWide);
       const fillGeom = buildRibbonGeometry(axis, {
         width: rungT,
         thickness: rungW,

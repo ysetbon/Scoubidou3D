@@ -915,6 +915,11 @@ export class Panel {
     pop.appendChild(
       slider('Z bulge', p.foldBulge, 0.2, 2, 0.05, (v) => this.view.setParams({ foldBulge: v })),
     );
+    // The third direction of the same piece: how wide it is ACROSS the crease,
+    // as a multiple of the lace's width. Past 1 it overhangs its own runs.
+    pop.appendChild(
+      slider('Z width', p.foldWide, 1, 3, 0.05, (v) => this.view.setParams({ foldWide: v })),
+    );
     // The fold's own face — the plate standing in the turn, its normal in XY.
     // Flat it is a sheet of nothing; this gives it a body, in thicknesses.
     pop.appendChild(
