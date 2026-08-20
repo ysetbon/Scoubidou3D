@@ -124,3 +124,12 @@ block cores are **identical** to `swirlStitch(1, 2)`'s, and its four continuatio
 masks are exactly the four the rule emits. Where it differs is that its arms bend
 off-axis to meet the continuation, where the twist and the box run them straight
 along their own row or column — which is what the shipped model does.
+
+That column now ships, carried further than the notes above go: **Browse samples
+→ Worked columns → Left hand · swirl 1×2, k = −1 — six storeys, turning**. It is
+a saved scene rather than a generator (`src/model/fitted/swirl-column-1x2-lh.json`,
+loaded by `placedScenes.ts`), because past the block there is nothing to call —
+41 strands, 30 crossings, six storeys with breaks at rows 9, 17, 23, 29 and 35.
+Its ground storey is `swirlStitch(1, 2)`'s block, and every mask of the block and
+the first continuation is one the rule emits; everything above that is placed,
+and its first two continuations are what the three findings are read off.
