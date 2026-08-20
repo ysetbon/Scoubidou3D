@@ -34,6 +34,20 @@ export interface RibbonOptions {
   capStart?: boolean;
   capEnd?: boolean;
   /**
+   * How far a rounded cap reaches past the end, world units. Defaults to half
+   * the WIDTH — the round strand end OSS draws, which is right for a lace lying
+   * flat. A short bar standing on end (the fold rung) wants its own thickness
+   * instead, or the cap is a nose half a lace wide.
+   */
+  capReach?: number;
+  /**
+   * Round a cap in the THICKNESS direction only, leaving the section at full
+   * width right to the last ring: the rounded end of a flat bar rather than a
+   * bullet nose. The cap is then a half-cylinder lying across the width, and
+   * the silhouette turns the corner in one continuous curve instead of stepping.
+   */
+  capFlat?: boolean;
+  /**
    * Leave an end completely open — no dome and no flat cap. Used for the OUTLINE
    * shell at a glued end: two laces meeting end to end would otherwise present
    * two coincident outline caps to each other, which read as a black plate across
@@ -381,7 +395,7 @@ function addDomeCap(
   const sy = tangent.x;
   const tx = tangent.x * dir;
   const ty = tangent.y * dir;
-  const reach = opts.width / 2;
+  const reach = opts.capReach ?? opts.width / 2;
   const domeRings = 4;
 
   // Build shrinking rings from the end cross-section toward a tip. The dome sits
@@ -393,7 +407,7 @@ function addDomeCap(
     const push = Math.sin((f * Math.PI) / 2) * reach; // 0 -> reach
     const ring: number[] = [];
     for (let j = 0; j < m; j++) {
-      const u = section[j].x * scale;
+      const u = section[j].x * (opts.capFlat ? 1 : scale);
       const v = section[j].y * scale;
       const x = center.x + sx * u + tx * push;
       const y = center.y + sy * u + ty * push;

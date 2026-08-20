@@ -1152,7 +1152,13 @@ export class StrandScene {
         thickness: rungT,
         cornerRadius: rungT * 0.48,
         cornerSteps: 3,
-        roundCaps: false,
+        // Rounded in the thickness direction only, by half that thickness: the
+        // silhouette then runs off the upper run's face, round the rung's
+        // corner, down its flat outer face and back onto the lower run in one
+        // continuous curve, instead of stepping at four right angles.
+        roundCaps: true,
+        capFlat: true,
+        capReach: rungT * 0.5,
       });
       fillGeom.applyMatrix4(stand);
       const fillMat = new THREE.MeshStandardMaterial({
@@ -1180,7 +1186,9 @@ export class StrandScene {
           cornerSteps: 3,
           roundCaps: false,
           // Open ends: a closed cap would put a dark plate just past the rung's
-          // end, floating a stroke-width above the run it is buried in.
+          // end, floating a stroke-width above the run it is buried in. A domed
+          // one is no better — the dome's winding comes out inverted here, so it
+          // reads as a black cap sitting on the rung rather than a rim round it.
           openStart: true,
           openEnd: true,
         });
