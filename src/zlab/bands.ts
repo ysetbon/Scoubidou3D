@@ -72,19 +72,53 @@ export function blend(separationDeg: number): number {
 }
 
 /**
- * The direction the band travels in plan, and how far it gets to.
+ * How far the band travels in plan, AS A VECTOR — direction and distance in one,
+ * and deliberately not normalised.
  *
- * `din + dout` is the one axis both runs agree on. Its length is 2 sin(sep/2):
- * nothing at a dead fold-back, where the two cancel and there is no travel to
- * be had, and the full run direction at straight-through. Where it cancels the
- * incoming heading stands in, so the axis is always defined even though the
- * distance along it is zero.
+ * `(din + dout) / 2` is the axis both runs agree on, and its length is
+ * sin(sep/2): nothing at a dead fold-back, where the two headings cancel and
+ * there is nowhere to travel, the full run direction at straight-through.
+ *
+ * Normalising it was a bug, and the visible one. The DIRECTION of that sum is
+ * unstable exactly where its length vanishes — at separation 0 it is the
+ * incoming heading, and half a degree later it has snapped ninety degrees to
+ * the perpendicular:
+ *
+ *     sep     0     0.5     1     5    15
+ *     dir   0.0°   89.8° 89.5° 87.5° 82.5°
+ *
+ * Scaled by a length that was already positive, that snap moved the whole band
+ * sideways the moment the runs parted, which reads as a switch rather than a
+ * blend however gently the weight is eased. Left unnormalised the instability
+ * cannot bite: the vector is multiplied by its own vanishing length, so it
+ * goes smoothly to zero and the direction it points while getting there stops
+ * mattering.
  */
-function through(din: Vec2, dout: Vec2): Vec2 {
+function travel(din: Vec2, dout: Vec2): Vec2 {
   const a = norm(din);
   const b = norm(dout);
-  const sum = { x: a.x + b.x, y: a.y + b.y };
-  return Math.hypot(sum.x, sum.y) < 1e-6 ? a : norm(sum);
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+/**
+ * How far the heading turns from one run to the other, signed and UNWRAPPED.
+ *
+ * The width axis follows the heading, so this is what it must rotate by. Taken
+ * between the two width axes instead and folded into a quarter turn either way
+ * — which is the obvious thing to do, since a rectangle laid the other way up
+ * is the same rectangle — it jumps a half turn as the runs pass square:
+ *
+ *     sep    89     89.9     90     90.1     91
+ *     turn -89.0°  -89.9°  -90.0°  +89.9°  +89.0°
+ *
+ * Read off the headings and left alone it runs 180° down to 0° without a step.
+ * Interpolating through the half turn is safe precisely because the section IS
+ * symmetric: it arrives back on itself.
+ */
+function heading(din: Vec2, dout: Vec2): number {
+  const a = norm(din);
+  const b = norm(dout);
+  return Math.atan2(a.x * b.y - a.y * b.x, a.x * b.x + a.y * b.y);
 }
 
 // ---- section ---------------------------------------------------------------
@@ -197,17 +231,13 @@ export function run(dir: Vec2, len: number, z: number, g: Gauge): THREE.BufferGe
 function bridge(din: Vec2, dout: Vec2, g: Gauge, steps = 14): THREE.BufferGeometry {
   const sec = section(g);
   const a = perp(norm(din));
-  const b = perp(norm(dout));
-  // Walk the shorter way round between the two axes, so the loft never takes
-  // the long way and wrings itself inside out.
-  let turn = Math.atan2(a.x * b.y - a.y * b.x, a.x * b.x + a.y * b.y);
-  if (turn > Math.PI / 2) turn -= Math.PI;
-  if (turn < -Math.PI / 2) turn += Math.PI;
   const a0 = Math.atan2(a.y, a.x);
-  // Opened out, the loft stops climbing in place and travels: the rings walk
-  // along the axis both runs agree on, so a straight-through lace gets a ramp
-  // instead of a collar standing in it.
-  const m = through(din, dout);
+  const turn = heading(din, dout);
+  // Opened out, the loft stops climbing in place and travels along the axis
+  // both runs agree on, so a straight-through lace gets a ramp rather than a
+  // collar standing in it. The travel is a vector, not a direction times a
+  // separate distance — see `travel`.
+  const m = travel(din, dout);
   const spread = g.ramp * g.k;
   const rings: Vec3[][] = [];
   for (let i = 0; i <= steps; i++) {
@@ -310,13 +340,15 @@ let lastDir: Vec2 = { x: 1, y: 0 };
  * joint, and at wide separations the column reads as a peg rather than a turn.
  */
 function cap(din: Vec2, dout: Vec2, g: Gauge, steps = 8): THREE.BufferGeometry {
+  // Half the heading turn, applied to the incoming width axis: the bisector,
+  // reached by rotating rather than by adding two axes that cancel. Adding them
+  // needs a fallback exactly where the answer matters most, and the fallback is
+  // a jump; rotating is continuous everywhere.
   const a = perp(norm(din));
-  const b = perp(norm(dout));
-  let mid: Vec2 = { x: a.x + b.x, y: a.y + b.y };
-  // Antiparallel axes cancel; at a dead fold-back either run's own axis IS the
-  // bisector, so take it rather than dividing by nothing.
-  if (Math.hypot(mid.x, mid.y) < 1e-6) mid = a;
-  const s = norm(mid);
+  const half = heading(din, dout) / 2;
+  const ca = Math.cos(half);
+  const sa = Math.sin(half);
+  const s: Vec2 = { x: a.x * ca - a.y * sa, y: a.x * sa + a.y * ca };
   // The column's section lies in the drawing plane, so its "thickness" runs
   // along Z and its length is the step. Swap the two and stand it up.
   const stood: Gauge = { ...g, thickness: g.width, width: g.thickness };
@@ -324,13 +356,13 @@ function cap(din: Vec2, dout: Vec2, g: Gauge, steps = 8): THREE.BufferGeometry {
   // Opened out, the column lies down along the runs' shared axis rather than
   // standing across them: a stub that stays upright in a straight lace is the
   // peg this blend exists to remove.
-  const m = through(din, dout);
+  const m = travel(din, dout);
   const spread = g.ramp * g.k;
   const rings: Vec3[][] = [];
-  const half = g.step / 2 + g.thickness / 2;
+  const hz = g.step / 2 + g.thickness / 2;
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
-    const z = -half + half * 2 * t;
+    const z = -hz + hz * 2 * t;
     const d = spread * (t - 0.5);
     rings.push(ring({ x: m.x * d, y: m.y * d, z }, s, sec));
   }
