@@ -190,6 +190,88 @@ function ring(p: Vec3, side: Vec2, sec: Vec2[]): Vec3[] {
 }
 
 const perp = (d: Vec2): Vec2 => ({ x: -d.y, y: d.x });
+
+// ---- 3D vector odds and ends, for the swept frame --------------------------
+
+const sub3 = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
+const dot3 = (a: Vec3, b: Vec3): number => a.x * b.x + a.y * b.y + a.z * b.z;
+const cross3 = (a: Vec3, b: Vec3): Vec3 => ({
+  x: a.y * b.z - a.z * b.y,
+  y: a.z * b.x - a.x * b.z,
+  z: a.x * b.y - a.y * b.x,
+});
+const norm3 = (v: Vec3): Vec3 => {
+  const l = Math.hypot(v.x, v.y, v.z) || 1;
+  return { x: v.x / l, y: v.y / l, z: v.z / l };
+};
+
+/** Turn `v` about `axis` (unit) by `ang`. Rodrigues, written out. */
+function rotate3(v: Vec3, axis: Vec3, ang: number): Vec3 {
+  const c = Math.cos(ang);
+  const s = Math.sin(ang);
+  const k = cross3(axis, v);
+  const d = dot3(axis, v) * (1 - c);
+  return {
+    x: v.x * c + k.x * s + axis.x * d,
+    y: v.y * c + k.y * s + axis.y * d,
+    z: v.z * c + k.z * s + axis.z * d,
+  };
+}
+
+/** Place a section at `p` on an arbitrary pair of axes. */
+function ring3(p: Vec3, side: Vec3, up: Vec3, sec: Vec2[]): Vec3[] {
+  return sec.map((q) => ({
+    x: p.x + side.x * q.x + up.x * q.y,
+    y: p.y + side.y * q.x + up.y * q.y,
+    z: p.z + side.z * q.x + up.z * q.y,
+  }));
+}
+
+/**
+ * A frame carried along a curve by PARALLEL TRANSPORT, one sample at a time.
+ *
+ * The obvious frame — width axis from the tangent's shadow in the drawing
+ * plane, thickness always along +Z — is right for a lace lying flat and breaks
+ * completely for one going over a bend. Two ways, both visible at a dead
+ * fold-back with a tall storey step:
+ *
+ *   - the shadow REVERSES through the apex. The lace climbs travelling one way
+ *     in plan and descends travelling the other, so the width axis it implies
+ *     turns a half circle at the top and the tube wrings itself through the
+ *     middle of the turn.
+ *   - the shadow VANISHES at the apex, where the lace is going straight up, and
+ *     a section pinned to +Z there is edge-on to its own path — no thickness
+ *     left, a crease where the surface should be.
+ *
+ * Transporting instead: each frame is the last one turned by exactly the
+ * rotation that takes the last tangent onto this one, which is the smallest
+ * change that keeps it square to the curve. Nothing is derived from a
+ * projection, so nothing reverses and nothing vanishes — and the lace ROLLS
+ * through the bend the way a real one does, arriving at the apex on edge.
+ */
+function transport(pts: Vec3[], side0: Vec3): Array<{ side: Vec3; up: Vec3 }> {
+  const n = pts.length;
+  const tan: Vec3[] = pts.map((_, i) =>
+    norm3(sub3(pts[Math.min(n - 1, i + 1)], pts[Math.max(0, i - 1)])),
+  );
+  const out: Array<{ side: Vec3; up: Vec3 }> = [];
+  let side = side0;
+  for (let i = 0; i < n; i++) {
+    if (i > 0) {
+      const a = tan[i - 1];
+      const b = tan[i];
+      const axis = cross3(a, b);
+      const sin = Math.hypot(axis.x, axis.y, axis.z);
+      if (sin > 1e-9) side = rotate3(side, norm3(axis), Math.atan2(sin, dot3(a, b)));
+    }
+    // Re-square it every step: the rotations are exact but floating point is
+    // not, and drift out of the normal plane shears the section.
+    const t = tan[i];
+    side = norm3(sub3(side, { x: t.x * dot3(side, t), y: t.y * dot3(side, t), z: t.z * dot3(side, t) }));
+    out.push({ side, up: cross3(t, side) });
+  }
+  return out;
+}
 const norm = (d: Vec2): Vec2 => {
   const l = Math.hypot(d.x, d.y) || 1;
   return { x: d.x / l, y: d.y / l };
@@ -304,24 +386,14 @@ function sweep(din: Vec2, dout: Vec2, g: Gauge, steps = 28): THREE.BufferGeometr
     };
   };
   const sec = section(g);
-  const rings: Vec3[][] = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const p = at(t);
-    const q = at(Math.min(1, t + 1e-3));
-    const back = at(Math.max(0, t - 1e-3));
-    // The heading's SHADOW in the drawing plane sets the width axis, so the
-    // lace keeps its face up and never rolls about its own centreline. Where
-    // the shadow vanishes — the top of a dead fold-back, where the lace is
-    // travelling straight up — the previous axis is held instead.
-    let d: Vec2 = { x: q.x - back.x, y: q.y - back.y };
-    if (Math.hypot(d.x, d.y) < 1e-6) d = i > 0 ? lastDir : di;
-    lastDir = norm(d);
-    rings.push(ring(p, perp(lastDir), sec));
-  }
-  return tube(rings);
+  const pts: Vec3[] = [];
+  for (let i = 0; i <= steps; i++) pts.push(at(i / steps));
+  // The run it leaves is flat and horizontal, so the frame starts there: width
+  // across the run in plan, thickness up. Everything after is carried.
+  const s0 = perp(di);
+  const frames = transport(pts, { x: s0.x, y: s0.y, z: 0 });
+  return tube(pts.map((p, i) => ring3(p, frames[i].side, frames[i].up, sec)));
 }
-let lastDir: Vec2 = { x: 1, y: 0 };
 
 // ---- 3. CAP ----------------------------------------------------------------
 
