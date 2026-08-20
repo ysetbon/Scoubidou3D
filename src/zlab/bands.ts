@@ -42,9 +42,50 @@ export interface Gauge {
   round: number;
   /** How far back along each run the bend is allowed to start (SWEEP only). */
   reach: number;
+  /** 0 a dead fold-back, 1 straight through. See `blend`. */
+  k: number;
+  /** How long the ramp gets at straight-through, world units. */
+  ramp: number;
 }
 
 export type BandKind = 'bridge' | 'sweep' | 'cap';
+
+/**
+ * How much the band should behave like a STRAIGHT-THROUGH lace rather than a
+ * dead fold-back, 0..1.
+ *
+ * The two ends of the separation dial want different things and each builder
+ * only ever knew one of them. At 0 the runs lie on top of each other and the
+ * band is a turn: it has to climb the storey in place. At 180 the lace carries
+ * straight on and merely rises, so the band is a RAMP — and a builder that
+ * still climbs in place there leaves a peg standing in an otherwise straight
+ * lace, which is what the first cut of all three did.
+ *
+ * So the character is blended rather than switched. Smoothstep, not a straight
+ * line: the turn holds its shape through the tight angles where it is doing
+ * real work, and gives it up over the open ones where there is nothing left to
+ * turn.
+ */
+export function blend(separationDeg: number): number {
+  const t = Math.min(1, Math.max(0, Math.abs(separationDeg) / 180));
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * The direction the band travels in plan, and how far it gets to.
+ *
+ * `din + dout` is the one axis both runs agree on. Its length is 2 sin(sep/2):
+ * nothing at a dead fold-back, where the two cancel and there is no travel to
+ * be had, and the full run direction at straight-through. Where it cancels the
+ * incoming heading stands in, so the axis is always defined even though the
+ * distance along it is zero.
+ */
+function through(din: Vec2, dout: Vec2): Vec2 {
+  const a = norm(din);
+  const b = norm(dout);
+  const sum = { x: a.x + b.x, y: a.y + b.y };
+  return Math.hypot(sum.x, sum.y) < 1e-6 ? a : norm(sum);
+}
 
 // ---- section ---------------------------------------------------------------
 
@@ -163,12 +204,22 @@ function bridge(din: Vec2, dout: Vec2, g: Gauge, steps = 14): THREE.BufferGeomet
   if (turn > Math.PI / 2) turn -= Math.PI;
   if (turn < -Math.PI / 2) turn += Math.PI;
   const a0 = Math.atan2(a.y, a.x);
+  // Opened out, the loft stops climbing in place and travels: the rings walk
+  // along the axis both runs agree on, so a straight-through lace gets a ramp
+  // instead of a collar standing in it.
+  const m = through(din, dout);
+  const spread = g.ramp * g.k;
   const rings: Vec3[][] = [];
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     const ang = a0 + turn * t;
+    const s = spread * (t - 0.5);
     rings.push(
-      ring({ x: 0, y: 0, z: -g.step / 2 + g.step * t }, { x: Math.cos(ang), y: Math.sin(ang) }, sec),
+      ring(
+        { x: m.x * s, y: m.y * s, z: -g.step / 2 + g.step * t },
+        { x: Math.cos(ang), y: Math.sin(ang) },
+        sec,
+      ),
     );
   }
   return tube(rings);
@@ -198,7 +249,10 @@ function bridge(din: Vec2, dout: Vec2, g: Gauge, steps = 14): THREE.BufferGeomet
 function sweep(din: Vec2, dout: Vec2, g: Gauge, steps = 28): THREE.BufferGeometry {
   const di = norm(din);
   const dO = norm(dout);
-  const r = Math.max(g.reach, 1e-3);
+  // The handles lengthen as the runs open out. Tangency is what keeps the joint
+  // invisible, so the ramp is drawn out by reaching FURTHER along each run
+  // rather than by moving the handles off them.
+  const r = Math.max(g.reach * (1 + g.k * 2), 1e-3);
   const zi = -g.step / 2;
   const zo = g.step / 2;
   // A cubic Bezier from run to run: the handles run along each run's own
@@ -255,7 +309,7 @@ let lastDir: Vec2 = { x: 1, y: 0 };
  * neither end. What it does not do is look like bending: it is honestly a
  * joint, and at wide separations the column reads as a peg rather than a turn.
  */
-function cap(din: Vec2, dout: Vec2, g: Gauge, steps = 2): THREE.BufferGeometry {
+function cap(din: Vec2, dout: Vec2, g: Gauge, steps = 8): THREE.BufferGeometry {
   const a = perp(norm(din));
   const b = perp(norm(dout));
   let mid: Vec2 = { x: a.x + b.x, y: a.y + b.y };
@@ -267,11 +321,18 @@ function cap(din: Vec2, dout: Vec2, g: Gauge, steps = 2): THREE.BufferGeometry {
   // along Z and its length is the step. Swap the two and stand it up.
   const stood: Gauge = { ...g, thickness: g.width, width: g.thickness };
   const sec = section(stood).map((p) => ({ x: p.y, y: p.x }));
+  // Opened out, the column lies down along the runs' shared axis rather than
+  // standing across them: a stub that stays upright in a straight lace is the
+  // peg this blend exists to remove.
+  const m = through(din, dout);
+  const spread = g.ramp * g.k;
   const rings: Vec3[][] = [];
   const half = g.step / 2 + g.thickness / 2;
   for (let i = 0; i <= steps; i++) {
-    const z = -half + (half * 2 * i) / steps;
-    rings.push(ring({ x: 0, y: 0, z }, s, sec));
+    const t = i / steps;
+    const z = -half + half * 2 * t;
+    const d = spread * (t - 0.5);
+    rings.push(ring({ x: m.x * d, y: m.y * d, z }, s, sec));
   }
   return tube(rings);
 }
@@ -286,5 +347,5 @@ export function band(kind: BandKind, din: Vec2, dout: Vec2, g: Gauge): THREE.Buf
 
 /** How far the runs must be cut back for this band to meet them, if at all. */
 export function runTrim(kind: BandKind, g: Gauge): number {
-  return kind === 'sweep' ? Math.max(g.reach, 1e-3) : 0;
+  return kind === 'sweep' ? Math.max(g.reach * (1 + g.k * 2), 1e-3) : 0;
 }

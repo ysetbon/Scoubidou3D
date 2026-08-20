@@ -12,7 +12,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { BandKind, Gauge, band, run, runTrim } from './bands';
+import { BandKind, Gauge, band, blend, run, runTrim } from './bands';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const stage = document.getElementById('stage') as HTMLElement;
@@ -44,6 +44,7 @@ const state = {
   step: 0.5,
   reach: 1.2,
   round: 0.8,
+  ramp: 2.4,
   showRuns: true,
 };
 
@@ -53,6 +54,11 @@ const GAUGE = (): Gauge => ({
   step: state.step,
   round: state.round,
   reach: state.reach,
+  // The one number that carries a builder from its fold-back form to its
+  // straight-through one, and it is read off the separation rather than set:
+  // the two are the same fact.
+  k: blend(state.separation),
+  ramp: state.ramp,
 });
 
 const LACE = new THREE.MeshStandardMaterial({
@@ -195,9 +201,15 @@ function ui(): void {
     host.appendChild(wrap);
   };
 
-  slider('Separation', state.separation, 0, 180, 1, (v) => (state.separation = v), '°');
+  slider('Separation', state.separation, 0, 180, 1, (v) => {
+    state.separation = v;
+    // The blend is derived, so its readout is stale the moment this moves.
+    const r = host.querySelector('.blend');
+    if (r) r.textContent = `Blend ${blend(v).toFixed(2)}`;
+  }, '°');
   slider('Storey step', state.step, 0.05, 1.5, 0.01, (v) => (state.step = v));
   slider('Corner round', state.round, 0, 1, 0.05, (v) => (state.round = v));
+  slider('Ramp length', state.ramp, 0, 6, 0.1, (v) => (state.ramp = v));
   if (state.kind === 'sweep') {
     slider('Bend reach', state.reach, 0.2, 4, 0.05, (v) => (state.reach = v));
   }
@@ -214,6 +226,18 @@ function ui(): void {
   toggle.appendChild(cb);
   toggle.appendChild(document.createTextNode(' Show the runs'));
   host.appendChild(toggle);
+
+  const read = document.createElement('p');
+  read.className = 'note';
+  const badge = document.createElement('b');
+  badge.className = 'blend';
+  badge.textContent = `Blend ${blend(state.separation).toFixed(2)}`;
+  read.appendChild(badge);
+  read.appendChild(document.createTextNode(
+    ' — 0 is the fold-back form, 1 the straight-through ramp. ' +
+    'It follows the separation on a smoothstep, so the turn holds its shape through the tight angles and gives it up over the open ones. Ramp length is how far it draws out at 180°.',
+  ));
+  host.appendChild(read);
 
   const foot = document.createElement('p');
   foot.className = 'note';
