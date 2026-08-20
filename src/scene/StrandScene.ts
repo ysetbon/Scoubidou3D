@@ -1148,7 +1148,6 @@ export class StrandScene {
     group: THREE.Group,
   ): void {
     if (!this.rungsOn()) return; // slider at zero — the bare fold, as it always was
-    const rungT = thickness * this.params.foldDepth;
 
     for (const f of foldsOf(centerline)) {
       const p = centerline[f.index];
@@ -1168,38 +1167,39 @@ export class StrandScene {
       nx /= nl;
       ny /= nl;
 
-      // Swept flat along +X, then stood on end: local X becomes world Z, the
-      // section's width lands along the crease and its thickness along the
-      // outward normal. The basis below maps exactly that, and its determinant
-      // is +1, so the winding — and with it the lighting and the BackSide rim —
-      // survives the standing-up.
-      // Proud by a whole stroke width, not a token hair: the runs wear their
-      // outline as a sleeve grown that far past their surface, and a rung any
-      // shorter has the sleeve's dark inner face poking up through its top.
-      // The arc the lace turns on. Its two ends sit ON the runs' centrelines,
-      // half the gap above and below the fold point, so the bight leaves each
-      // run exactly where that run stops; its apex stands `bulge` half-gaps out
-      // along the turn's normal, which is what makes the outer edge one curve
-      // rather than a corner. An ellipse, not a circle, because the ends are
-      // pinned by the gap and only the reach is the slider's to move.
-      const a = gap / 2;
-      const b = a * Math.max(0.05, this.params.foldBulge);
-      // Carry the sweep PAST each end, on round into the run it meets: the two
-      // ends then finish buried inside solid lace instead of flush against it,
-      // where coincident faces flicker.
-      const over = 0.38;
-      const STEPS = 24;
-      const axis: Vec3[] = [];
-      for (let k = 0; k <= STEPS; k++) {
-        const th = -over + ((Math.PI + over * 2) * k) / STEPS;
-        axis.push({ x: a * Math.cos(th), y: b * Math.sin(th), z: 0 });
-      }
-      // Local X is world Z, local Y the turn's outward normal — so the arc is
-      // swept in the vertical plane it actually bends in — and local Z the
-      // crease, which is where the lace's WIDTH goes. The sweep puts its width
-      // across the axis in the build plane and its thickness out of that plane,
-      // so the two are handed over swapped: `width` here is the lace's depth,
-      // running radially round the bight, and `thickness` is its full width.
+      // The turn is a SOLID, not a strap bent round a hole. A swept ribbon is a
+      // band with the inside of its own U left empty, and no amount of widening,
+      // bowing or thickening a band stops it reading as a band — the void behind
+      // it is what the eye picks up. So the Z part is built as one filled lump
+      // instead: a D in the vertical plane the fold turns in, extruded across the
+      // crease.
+      //
+      // The D's flat back stands where the two runs end, tucked a little inside
+      // them so no faces are left coincident, and its curved front is the outer
+      // edge of the turn — a half-ellipse, because the two ends are pinned by
+      // how far apart the runs sit and only the reach is the bulge's to move.
+      const rungT = thickness * this.params.foldDepth;
+      const A = gap / 2 + rungT / 2; // half the D's height, up the storey
+      const B = (gap / 2) * Math.max(0.05, this.params.foldBulge) + rungT / 2; // its reach
+      const tuck = rungT * 0.5; // how far the flat back sits inside the runs
+
+      const profile = (grow: number): THREE.Shape => {
+        const ga = A + grow;
+        const gb = B + grow;
+        const gt = tuck + grow;
+        const sh = new THREE.Shape();
+        sh.moveTo(-ga, -gt);
+        sh.lineTo(ga, -gt);
+        sh.lineTo(ga, 0);
+        sh.absellipse(0, 0, ga, gb, 0, Math.PI, false);
+        sh.lineTo(-ga, -gt);
+        return sh;
+      };
+
+      // Local X is world Z, local Y the turn's outward normal — so the D stands
+      // in the vertical plane the fold actually turns in — and local Z the
+      // crease, which is the way the extrusion runs. The basis is determinant
+      // one, so the winding, the lighting and the BackSide rim all survive it.
       const stand = new THREE.Matrix4().makeBasis(
         new THREE.Vector3(0, 0, 1),
         new THREE.Vector3(nx, ny, 0),
@@ -1208,18 +1208,31 @@ export class StrandScene {
       stand.setPosition(p.x, p.y, (zIn + zOut) / 2);
 
       // Never narrower than a hair over the lace: the squared fold sheet spans
-      // the lace's full width, and the bight must swallow it entirely — its
-      // side faces also then clear the runs' own sides instead of lying on them.
-      // Above that the slider takes over and the bight overhangs its runs.
+      // the lace's full width, and the lump must swallow it entirely — its side
+      // faces also then clear the runs' own sides instead of lying on them.
+      // Above that the slider takes over and the lump overhangs its runs.
       const rungW = width * Math.max(FOLD_WIDE_MIN, this.params.foldWide);
-      const fillGeom = buildRibbonGeometry(axis, {
-        width: rungT,
-        thickness: rungW,
-        cornerRadius: Math.min(rungT, rungW) * 0.48,
-        cornerSteps: 3,
-        roundCaps: false,
-      });
-      fillGeom.applyMatrix4(stand);
+
+      // Bevelled, not cut square: the lace's own long edges are rounded, and a
+      // lump with sharp arrises beside them reads as a different material.
+      const bevel = Math.min(rungT, rungW) * 0.22;
+      const extrude = (grow: number) => {
+        const depth = rungW + grow * 2 - bevel * 2;
+        const geom = new THREE.ExtrudeGeometry(profile(grow), {
+          depth: Math.max(depth, 1e-4),
+          bevelEnabled: true,
+          bevelThickness: bevel,
+          bevelSize: bevel,
+          bevelSegments: 2,
+          curveSegments: 18,
+        });
+        // Extrusion runs from 0 to depth along local Z; centre it on the crease.
+        geom.translate(0, 0, -(Math.max(depth, 1e-4) / 2));
+        geom.applyMatrix4(stand);
+        return geom;
+      };
+
+      const fillGeom = extrude(0);
       const fillMat = new THREE.MeshStandardMaterial({
         color: threeColor(strand.color),
         roughness: 0.5,
@@ -1238,18 +1251,10 @@ export class StrandScene {
 
       if (this.params.outline && strand.stroke_width > 0) {
         const ow = strand.stroke_width * SCALE;
-        const outlineGeom = buildRibbonGeometry(axis, {
-          width: rungT + ow * 2,
-          thickness: rungW + ow * 2,
-          cornerRadius: (Math.min(rungT, rungW) + ow * 2) * 0.48,
-          cornerSteps: 3,
-          roundCaps: false,
-          // Open ends: a closed cap would put a dark plate just past the bight's
-          // end, floating a stroke-width inside the run it is buried in.
-          openStart: true,
-          openEnd: true,
-        });
-        outlineGeom.applyMatrix4(stand);
+        // The same lump, grown by a stroke width in every direction. Closed, not
+        // open at the ends: an extrusion's winding is outward all the way round,
+        // so BackSide shows nothing but the rim at the silhouette.
+        const outlineGeom = extrude(ow);
         const outlineMat = new THREE.MeshBasicMaterial({
           color: threeColor(strand.stroke_color),
           side: THREE.BackSide,
