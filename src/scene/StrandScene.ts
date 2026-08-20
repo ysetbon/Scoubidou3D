@@ -142,6 +142,24 @@ export const FOLD_FACE_DEFAULT = 0;
  */
 export const FOLD_WIDE_DEFAULT = 1;
 
+/**
+ * How far the Z part's edges are rounded off, 0..1.
+ *
+ * Measured against a reference render of a real lace at a storey turn, seen
+ * from all three sides. Two things in it are not what a bevelled extrusion
+ * gives. Head on, the turn is a rounded RECTANGLE — every corner generously
+ * radiused, not a prism with its arrises knocked off. From above, the nose is a
+ * full semicircle across the lace's width, so the piece reads as a pressed pill
+ * rather than a slab with rounded corners.
+ *
+ * Both come from one number: how much of the available radius the edge rounding
+ * takes. At 0 the lump is cut square. At 1 it takes the whole of it, and the
+ * cross-section closes into a capsule — the reference shape. The floor is the
+ * geometry's own: never more than half the smallest dimension the profile has
+ * to give, or the extruder folds the shape through itself.
+ */
+export const FOLD_ROUND_DEFAULT = 0.44;
+
 /** The least the Z part may be, as a multiple of the lace width: a hair over it,
  *  so the squared fold sheet stays swallowed and the runs' sides stay cleared. */
 const FOLD_WIDE_MIN = 1.015;
@@ -261,6 +279,10 @@ export interface RenderParams {
    * width. See FOLD_WIDE_DEFAULT.
    */
   foldWide: number;
+  /**
+   * How far the Z part's edges are rounded off, 0..1. See FOLD_ROUND_DEFAULT.
+   */
+  foldRound: number;
   layerGap: number; // base lift between consecutive layers, source units (small)
   widthScale: number; // multiplier applied to every strand width
   outline: boolean; // draw the stroke-colored outline shell
@@ -281,6 +303,7 @@ export const DEFAULT_PARAMS: RenderParams = {
   foldBulge: FOLD_BULGE_DEFAULT,
   foldFace: FOLD_FACE_DEFAULT,
   foldWide: FOLD_WIDE_DEFAULT,
+  foldRound: FOLD_ROUND_DEFAULT,
   // Base lift between layers. The weave picks over/under at every CROSSING on its
   // own (adaptive amplitude), so this only needs to separate strands that overlap
   // WITHOUT crossing (a plain parallel stack) — and it's what gives the ordered
@@ -1213,9 +1236,14 @@ export class StrandScene {
       // Above that the slider takes over and the lump overhangs its runs.
       const rungW = width * Math.max(FOLD_WIDE_MIN, this.params.foldWide);
 
-      // Bevelled, not cut square: the lace's own long edges are rounded, and a
-      // lump with sharp arrises beside them reads as a different material.
-      const bevel = Math.min(rungT, rungW) * 0.22;
+      // Rounded, not cut square: the lace's own long edges are rounded, and a
+      // lump with sharp arrises beside them reads as a different material. How
+      // far is the slider's (see FOLD_ROUND_DEFAULT) — at 1 the section closes
+      // into a capsule, which is the shape a real lace pressed round a turn
+      // actually shows. Capped by the profile's own smallest dimension: past
+      // half of it the extruder folds the shape through itself.
+      const round = Math.max(0, Math.min(1, this.params.foldRound));
+      const bevel = Math.min(rungT, rungW, A, B, tuck * 2) * 0.5 * round;
       const extrude = (grow: number) => {
         const depth = rungW + grow * 2 - bevel * 2;
         const geom = new THREE.ExtrudeGeometry(profile(grow), {
@@ -1223,7 +1251,7 @@ export class StrandScene {
           bevelEnabled: true,
           bevelThickness: bevel,
           bevelSize: bevel,
-          bevelSegments: 2,
+          bevelSegments: 4,
           curveSegments: 18,
         });
         // Extrusion runs from 0 to depth along local Z; centre it on the crease.

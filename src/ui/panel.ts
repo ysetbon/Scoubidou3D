@@ -920,6 +920,11 @@ export class Panel {
     pop.appendChild(
       slider('Z width', p.foldWide, 1, 3, 0.05, (v) => this.view.setParams({ foldWide: v })),
     );
+    // Not a dimension — how far the lump's edges are rounded off. At 1 the
+    // section closes into a capsule, the shape a real lace shows at a turn.
+    pop.appendChild(
+      slider('Z round', p.foldRound, 0, 1, 0.05, (v) => this.view.setParams({ foldRound: v })),
+    );
     // The fold's own face — the plate standing in the turn, its normal in XY.
     // Flat it is a sheet of nothing; this gives it a body, in thicknesses.
     pop.appendChild(
