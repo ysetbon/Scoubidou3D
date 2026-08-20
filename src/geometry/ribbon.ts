@@ -48,6 +48,13 @@ export interface RibbonOptions {
    * body's face shows through it, and the rim still runs round the edges.
    */
   openFolds?: boolean;
+  /**
+   * How thick the Z part is — the piece standing between a fold's two runs —
+   * measured in the drawing plane, world units. Its length runs in Z, so its
+   * thickness is an XY dimension, and at zero it has none at all: the turn ends
+   * in a sheet. See where the fold's faces are planned.
+   */
+  foldDepth?: number;
 }
 
 // A cross-section is a closed loop of {u, v} points in the local (side, up)
@@ -219,8 +226,28 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     // the height its own run brought to the joint (already stacked one thickness
     // apart by `easeFolds`), and the band the sweep lays between them becomes the
     // outside of the fold.
-    const pIn = { x: pts[i].x, y: pts[i].y, z: pts[i].zIn ?? pts[i].z };
-    const pOut = { x: pts[i].x, y: pts[i].y, z: pts[i].zOut ?? pts[i].z };
+    // The Z part — the piece standing between the two runs — gets a section of
+    // its own, in the drawing plane.
+    //
+    // Left alone, a fold's two faces sit at ONE point in XY and differ only in
+    // height, so the piece between them is a sheet with no thickness at all: a
+    // flat card closing the end of the turn. It is the one part of a lace with no
+    // substance anywhere, and on a storey turn it is the part most on show.
+    //
+    // Carrying both faces out along the turn gives it one. The runs reach `depth`
+    // further, the face they share goes out with them, and what is left behind is
+    // a block that thickness deep — bounded by the run arriving underneath, the
+    // run leaving over the top, and that face across the end. Its faces stay flat,
+    // which is the point: a fold is creased, not bent, and this is a crease with
+    // a body rather than a crease with none.
+    const dnx = f.din.x - f.dout.x;
+    const dny = f.din.y - f.dout.y;
+    const dnl = Math.hypot(dnx, dny);
+    const depth = dnl < 1e-9 ? 0 : Math.max(0, opts.foldDepth ?? 0) / dnl;
+    const px = pts[i].x + dnx * depth;
+    const py = pts[i].y + dny * depth;
+    const pIn = { x: px, y: py, z: pts[i].zIn ?? pts[i].z };
+    const pOut = { x: px, y: py, z: pts[i].zOut ?? pts[i].z };
     const a = upOf(f.din, runSlope(pts[i - 1], pIn));
     const b = upOf(f.dout, runSlope(pOut, pts[i + 1]));
     let ux = a.x + b.x;

@@ -78,6 +78,18 @@ const SCALE = 0.02;
  */
 export const FOLD_STACK_DEFAULT = 2;
 
+/**
+ * How thick the Z part is, in strand thicknesses — the piece that stands between
+ * a fold's two runs, joining the storey below to the storey above.
+ *
+ * That piece runs along Z, so its section lies in the drawing plane and its
+ * thickness is an XY dimension, not a height. `foldStack` says how TALL it is;
+ * this says how THICK. At zero it is a sheet with no substance — which is what it
+ * was — and the turn ends in a flat card. At one it is the same gauge as the lace
+ * it belongs to, which is the honest reading of a lace doubling back on itself.
+ */
+export const FOLD_DEPTH_DEFAULT = 1;
+
 // Handle appearance (world-unit radii + colors), tuned against SCALE so the grab
 // dots read clearly at the default framing.
 const END_R = 0.18;
@@ -171,6 +183,12 @@ export interface RenderParams {
    * FOLD_STACK_DEFAULT.
    */
   foldStack: number;
+  /**
+   * How thick the Z part is — the piece standing between a fold's two runs — in
+   * strand thicknesses. Its length runs in Z, so this is an XY dimension. See
+   * FOLD_DEPTH_DEFAULT.
+   */
+  foldDepth: number;
   layerGap: number; // base lift between consecutive layers, source units (small)
   widthScale: number; // multiplier applied to every strand width
   outline: boolean; // draw the stroke-colored outline shell
@@ -187,6 +205,7 @@ export interface RenderParams {
 export const DEFAULT_PARAMS: RenderParams = {
   thickness: 26,
   foldStack: FOLD_STACK_DEFAULT,
+  foldDepth: FOLD_DEPTH_DEFAULT,
   // Base lift between layers. The weave picks over/under at every CROSSING on its
   // own (adaptive amplitude), so this only needs to separate strands that overlap
   // WITHOUT crossing (a plain parallel stack) — and it's what gives the ordered
@@ -556,6 +575,9 @@ export class StrandScene {
         cornerRadius: thickness * 0.48,
         cornerSteps: 3,
         roundCaps: false,
+        // The coat has to reach where the body reaches, or a turn's Z part pokes
+        // out through the highlight that is meant to be covering it.
+        foldDepth: thickness * this.params.foldDepth,
       });
       const mesh = new THREE.Mesh(
         geom,
@@ -939,6 +961,7 @@ export class StrandScene {
       roundCaps: this.params.roundCaps,
       capStart,
       capEnd,
+      foldDepth: thickness * this.params.foldDepth,
     });
     const fillMat = new THREE.MeshStandardMaterial({
       color: threeColor(strand.color),
@@ -978,6 +1001,7 @@ export class StrandScene {
         openStart: !freeEnds[0],
         openEnd: !freeEnds[1],
         openFolds: true,
+        foldDepth: thickness * this.params.foldDepth,
       });
       const outlineMat = new THREE.MeshBasicMaterial({
         color: threeColor(strand.stroke_color),

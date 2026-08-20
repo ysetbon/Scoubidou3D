@@ -905,6 +905,11 @@ export class Panel {
     pop.appendChild(
       slider('Fold face', p.foldStack, 0.5, 4, 0.1, (v) => this.view.setParams({ foldStack: v })),
     );
+    // The other dimension of the same piece: Fold face is how TALL the Z part is,
+    // this is how THICK. It stands along Z, so its thickness is an XY one.
+    pop.appendChild(
+      slider('Z part', p.foldDepth, 0, 3, 0.1, (v) => this.view.setParams({ foldDepth: v })),
+    );
     const toggles = el('div', 'check-row');
     toggles.append(
       check('Outline', p.outline, (v) => {
