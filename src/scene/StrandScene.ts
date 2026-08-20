@@ -92,6 +92,27 @@ export const FOLD_STACK_DEFAULT = 2;
  */
 export const FOLD_DEPTH_DEFAULT = 1;
 
+/**
+ * How much of the Z part is CROPPED away where it overlaps the runs, 0..1.
+ *
+ * The rung is centred on the fold point and, left alone, spans the whole height
+ * of both runs plus a proud skin at each end: its top quarter is buried inside
+ * the upper run and its bottom quarter inside the lower one. Those two zones
+ * bridge nothing — the run is already there — but they are what caps the turn,
+ * so removing them is a look, not a correction.
+ *
+ * At 0 the rung is that full slab. At 1 it is cropped back to the CLEAR SPACE
+ * between the runs — `(gap - thickness) / 2` either side of centre — and the
+ * runs' own ends close the turn. In between it is the straight blend, so the
+ * slider walks continuously from one to the other.
+ *
+ * The catch, and the reason this is a dial and not a flag: the clear space is
+ * `(foldStack - 1)` thicknesses. At Fold face 1 the runs touch, and a fully
+ * cropped rung has nothing left to fill — it vanishes. `foldCrop` below 1
+ * always leaves something.
+ */
+export const FOLD_CROP_DEFAULT = 0;
+
 // Handle appearance (world-unit radii + colors), tuned against SCALE so the grab
 // dots read clearly at the default framing.
 const END_R = 0.18;
@@ -191,6 +212,11 @@ export interface RenderParams {
    * FOLD_DEPTH_DEFAULT.
    */
   foldDepth: number;
+  /**
+   * How far the Z part is cropped back off the runs it overlaps, 0..1. See
+   * FOLD_CROP_DEFAULT.
+   */
+  foldCrop: number;
   layerGap: number; // base lift between consecutive layers, source units (small)
   widthScale: number; // multiplier applied to every strand width
   outline: boolean; // draw the stroke-colored outline shell
@@ -208,6 +234,7 @@ export const DEFAULT_PARAMS: RenderParams = {
   thickness: 26,
   foldStack: FOLD_STACK_DEFAULT,
   foldDepth: FOLD_DEPTH_DEFAULT,
+  foldCrop: FOLD_CROP_DEFAULT,
   // Base lift between layers. The weave picks over/under at every CROSSING on its
   // own (adaptive amplitude), so this only needs to separate strands that overlap
   // WITHOUT crossing (a plain parallel stack) — and it's what gives the ordered
@@ -1094,8 +1121,16 @@ export class StrandScene {
       // outline as a sleeve grown that far past their surface, and a rung any
       // shorter has the sleeve's dark inner face poking up through its top.
       const proud = (this.params.outline ? strand.stroke_width * SCALE : 0) + thickness * 0.03;
-      const half = (gap + thickness) / 2 + proud;
-      if (half <= 0) continue;
+      // Two ends of one dial (see FOLD_CROP_DEFAULT): the full slab, which runs
+      // the whole height of both runs and caps the turn, and the crop, which
+      // stops at each run's inner face and fills only the space between them.
+      const full = (gap + thickness) / 2 + proud;
+      const cropped = (gap - thickness) / 2;
+      const crop = Math.max(0, Math.min(1, this.params.foldCrop));
+      const half = full + (cropped - full) * crop;
+      // Fully cropped at Fold face <= 1 leaves nothing to draw — the runs
+      // already touch. Skip rather than sweep an inside-out ring.
+      if (half <= thickness * 0.02) continue;
       const axis: Vec3[] = [
         { x: -half, y: 0, z: 0 },
         { x: 0, y: 0, z: 0 },

@@ -910,6 +910,12 @@ export class Panel {
     pop.appendChild(
       slider('Z part', p.foldDepth, 0, 3, 0.1, (v) => this.view.setParams({ foldDepth: v })),
     );
+    // Not a third dimension — a dial between two ways of ending the same piece.
+    // 0 leaves the Z part spanning both runs and capping the turn; 1 crops it
+    // back to the clear space between them and lets the runs' ends close it.
+    pop.appendChild(
+      slider('Z crop', p.foldCrop, 0, 1, 0.05, (v) => this.view.setParams({ foldCrop: v })),
+    );
     const toggles = el('div', 'check-row');
     toggles.append(
       check('Outline', p.outline, (v) => {
