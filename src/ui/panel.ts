@@ -899,6 +899,12 @@ export class Panel {
     pop.appendChild(
       slider('Width scale', p.widthScale, 0.2, 3, 0.05, (v) => this.view.setParams({ widthScale: v })),
     );
+    // In thicknesses, because that is the unit the fold is actually reasoned in:
+    // 1 is the two runs of a fold touching, 2 is a whole storey. Quoted in
+    // thicknesses it also stays right when Thickness itself is dragged.
+    pop.appendChild(
+      slider('Fold face', p.foldStack, 0.5, 4, 0.1, (v) => this.view.setParams({ foldStack: v })),
+    );
     const toggles = el('div', 'check-row');
     toggles.append(
       check('Outline', p.outline, (v) => {

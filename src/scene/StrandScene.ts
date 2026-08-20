@@ -69,8 +69,14 @@ const SCALE = 0.02;
  * lace actually makes. The face comes out at its true height and the runs into
  * and out of the turn have nothing left to ramp. A fold with a smaller step than
  * this is unaffected: the cap only ever caps.
+ *
+ * This is only the default. It rides on `RenderParams.foldStack` and the Ribbon
+ * panel puts a slider on it, because how tall a turn should read is a judgement
+ * about the lace being drawn rather than a fact about the geometry — a stiff
+ * gimp shows more of its fold than a soft one, and both are worth being able to
+ * ask for.
  */
-const FOLD_STACK = 2;
+export const FOLD_STACK_DEFAULT = 2;
 
 // Handle appearance (world-unit radii + colors), tuned against SCALE so the grab
 // dots read clearly at the default framing.
@@ -159,6 +165,12 @@ const EDIT_NAMES: Record<DragState['kind'], string> = {
 
 export interface RenderParams {
   thickness: number; // default ribbon depth, source units
+  /**
+   * How far apart a fold leaves its two runs AT the crease, in strand
+   * thicknesses — and so the height of the flat face the turn shows. See
+   * FOLD_STACK_DEFAULT.
+   */
+  foldStack: number;
   layerGap: number; // base lift between consecutive layers, source units (small)
   widthScale: number; // multiplier applied to every strand width
   outline: boolean; // draw the stroke-colored outline shell
@@ -174,6 +186,7 @@ export interface RenderParams {
 
 export const DEFAULT_PARAMS: RenderParams = {
   thickness: 26,
+  foldStack: FOLD_STACK_DEFAULT,
   // Base lift between layers. The weave picks over/under at every CROSSING on its
   // own (adaptive amplitude), so this only needs to separate strands that overlap
   // WITHOUT crossing (a plain parallel stack) — and it's what gives the ordered
@@ -702,7 +715,7 @@ export class StrandScene {
       // Settle each fold before sweeping: the lace stacks on itself there, one
       // thickness apart, with the change eased into the runs on either side.
       const thickness = (first.thickness ?? this.params.thickness) * SCALE;
-      easeFolds(line, thickness * FOLD_STACK, thickness * 2);
+      easeFolds(line, thickness * this.params.foldStack, thickness * 2);
       // Then walk up any step left at a gentle joint — a level break between two
       // members of the lace puts one storey's worth of height there, and without a
       // crease to climb at it has to be ramped into the runs instead.
