@@ -49,12 +49,19 @@ export interface RibbonOptions {
    */
   openFolds?: boolean;
   /**
-   * How thick the Z part is — the piece standing between a fold's two runs —
-   * measured in the drawing plane, world units. Its length runs in Z, so its
-   * thickness is an XY dimension, and at zero it has none at all: the turn ends
-   * in a sheet. See where the fold's faces are planned.
+   * Square the two faces of every fold: stand them dead vertical and unsheared,
+   * so the fold's geometry stays exactly in its own vertical plane and nothing
+   * of it reaches past the point where the runs end.
+   *
+   * Left alone, a fold's faces tip with the runs' climb and shear onto the
+   * crease, and that reach past the fold point is visible — a thin fin poking
+   * out of the turn. That is fine when the fold IS the turn's outer surface,
+   * and wrong the moment something else stands in front of it: the fold RUNG
+   * (StrandScene.foldRungs) is a solid piece of lace centred on the fold point,
+   * and the tipped faces poke out through it. Squared, the fold is a flat sheet
+   * fully inside the rung, and the rung is the only thing the eye gets.
    */
-  foldDepth?: number;
+  squareFolds?: boolean;
 }
 
 // A cross-section is a closed loop of {u, v} points in the local (side, up)
@@ -194,6 +201,10 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     up: Vec3; // thickness axis, pitched with the climb
     shear: number; // tips the face over onto the crease
     crease: boolean; // second face of a fold: the section turns over here
+    /** Overrides the width axis for this ring (normally the perpendicular of
+     *  `t`). Squared folds set it to the crease line, so both of a fold's rings
+     *  lie in ONE vertical plane and the fold has no reach at all. */
+    side?: Vec2;
   }
   // The thickness axis for a run heading `t` at gradient `slope`: leant back over
   // the heading just enough to stand square to the climb.
@@ -226,28 +237,8 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     // the height its own run brought to the joint (already stacked one thickness
     // apart by `easeFolds`), and the band the sweep lays between them becomes the
     // outside of the fold.
-    // The Z part — the piece standing between the two runs — gets a section of
-    // its own, in the drawing plane.
-    //
-    // Left alone, a fold's two faces sit at ONE point in XY and differ only in
-    // height, so the piece between them is a sheet with no thickness at all: a
-    // flat card closing the end of the turn. It is the one part of a lace with no
-    // substance anywhere, and on a storey turn it is the part most on show.
-    //
-    // Carrying both faces out along the turn gives it one. The runs reach `depth`
-    // further, the face they share goes out with them, and what is left behind is
-    // a block that thickness deep — bounded by the run arriving underneath, the
-    // run leaving over the top, and that face across the end. Its faces stay flat,
-    // which is the point: a fold is creased, not bent, and this is a crease with
-    // a body rather than a crease with none.
-    const dnx = f.din.x - f.dout.x;
-    const dny = f.din.y - f.dout.y;
-    const dnl = Math.hypot(dnx, dny);
-    const depth = dnl < 1e-9 ? 0 : Math.max(0, opts.foldDepth ?? 0) / dnl;
-    const px = pts[i].x + dnx * depth;
-    const py = pts[i].y + dny * depth;
-    const pIn = { x: px, y: py, z: pts[i].zIn ?? pts[i].z };
-    const pOut = { x: px, y: py, z: pts[i].zOut ?? pts[i].z };
+    const pIn = { x: pts[i].x, y: pts[i].y, z: pts[i].zIn ?? pts[i].z };
+    const pOut = { x: pts[i].x, y: pts[i].y, z: pts[i].zOut ?? pts[i].z };
     const a = upOf(f.din, runSlope(pts[i - 1], pIn));
     const b = upOf(f.dout, runSlope(pOut, pts[i + 1]));
     let ux = a.x + b.x;
@@ -257,9 +248,20 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     ux -= along * f.crease.x;
     uy -= along * f.crease.y;
     const len = Math.hypot(ux, uy, uz) || 1;
-    const up = { x: ux / len, y: uy / len, z: uz / len };
-    plan.push({ p: pIn, t: f.din, up, shear: f.shearIn, crease: false });
-    plan.push({ p: pOut, t: f.dout, up, shear: f.shearOut, crease: true });
+    const up = opts.squareFolds ? { x: 0, y: 0, z: 1 } : { x: ux / len, y: uy / len, z: uz / len };
+    const shearIn = opts.squareFolds ? 0 : f.shearIn;
+    const shearOut = opts.squareFolds ? 0 : f.shearOut;
+    // Squared, both rings take the crease itself as their width axis. Each ring
+    // normally lies square to its own run, and the two runs' headings differ by
+    // whatever the turn falls short of a full reversal — so the rings' corners
+    // swing out of the fold's plane by half that. Aligned to the crease they sit
+    // in one vertical plane, and the whole fold collapses into it. Only the
+    // GEOMETRY is overridden: `t` still carries each run's true heading, because
+    // the mirror bookkeeping below reads headings, and feeding it the crease
+    // would flip the walk twice and wring the tube.
+    const side = opts.squareFolds ? { x: f.crease.x, y: f.crease.y } : undefined;
+    plan.push({ p: pIn, t: f.din, up, shear: shearIn, crease: false, side });
+    plan.push({ p: pOut, t: f.dout, up, shear: shearOut, crease: true, side });
   }
 
   const positions: number[] = [];
@@ -290,8 +292,8 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     const { p, t, up, shear } = plan[i];
     // In-plane side normal (perpendicular to tangent, in XY): (-ty, tx). It stays
     // level whatever the climb, so the lace never rolls about its own axis.
-    const sx = -t.y;
-    const sy = t.x;
+    const sx = plan[i].side ? plan[i].side!.x : -t.y;
+    const sy = plan[i].side ? plan[i].side!.y : t.x;
     const ringIdx: number[] = [];
     for (let j = 0; j < m; j++) {
       const s = section[mirrored[i] ? m - 1 - j : j];

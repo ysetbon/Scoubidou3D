@@ -1,0 +1,40 @@
+import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
+import { writeFileSync } from 'node:fs';
+const OUT='/tmp/claude-0/-home-user-Scoubidou3D/ec338d2d-4cf9-5832-9632-c0212c36be16/scratchpad/rung';
+const browser=await chromium.launch({executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome',args:['--no-sandbox','--use-angle=swiftshader','--disable-gpu-sandbox']});
+const page=await browser.newPage({viewport:{width:640,height:520}});
+await page.goto('http://localhost:5178/Scoubidou3D/app/?sample=box-stitch',{waitUntil:'load'});
+await page.waitForFunction(()=>!!window.__scoubidou?.view?.laceCenterlines?.length,null,{timeout:60000});
+await page.addStyleTag({content:'#toolbar,#panel,#hover-chip,#panel-toggle,.panel-toggle,.dock{display:none!important}#scene{position:fixed;inset:0;width:100vw!important;height:100vh!important}'});
+await page.evaluate(()=>window.dispatchEvent(new Event('resize')));
+await page.waitForTimeout(300);
+for (const [tag, params] of [['no-outline',{foldDepth:1,outline:false}],['no-shadow',{foldDepth:1,outline:true}]]) {
+  const png=await page.evaluate(async ({params, tag})=>{
+    const {view}=window.__scoubidou; view.setTheme('dark');
+    view.setParams(params);
+    if (tag==='no-shadow') view.renderer.shadowMap.enabled=false;
+    const FOLD=Math.PI/3;
+    const turnAt=(p,i)=>{const ax=p[i].x-p[i-1].x,ay=p[i].y-p[i-1].y,bx=p[i+1].x-p[i].x,by=p[i+1].y-p[i].y;
+      const la=Math.hypot(ax,ay),lb=Math.hypot(bx,by); if(la<1e-9||lb<1e-9)return 0;
+      return Math.acos(Math.max(-1,Math.min(1,(ax*bx+ay*by)/(la*lb))));};
+    const L=view.laceCenterlines[0],P=L.line,folds=[];
+    for(let i=1;i<P.length-1;i++) if(turnAt(P,i)>=FOLD) folds.push(i);
+    const p=P[folds[folds.length>>1]];
+    const cam=view.camera,V=cam.position.constructor;
+    cam.fov=45;cam.updateProjectionMatrix();
+    const c=new V(p.x,p.y,p.z);
+    const dist=(L.width*2.2)/(2*Math.tan(22.5*Math.PI/180));
+    const a=160*Math.PI/180,e=30*Math.PI/180;
+    cam.position.set(c.x+dist*Math.cos(e)*Math.sin(a),c.y-dist*Math.cos(e)*Math.cos(a),c.z+dist*Math.sin(e));
+    view.controls.target.copy(c);cam.lookAt(c);view.controls.update();
+    view.renderer.render(view.scene,cam);
+    await new Promise(r=>requestAnimationFrame(r));
+    view.renderer.render(view.scene,cam);
+    const out = view.renderer.domElement.toDataURL('image/png');
+    if (tag==='no-shadow') view.renderer.shadowMap.enabled=true;
+    return out;
+  },{params, tag});
+  writeFileSync(`${OUT}/id-${tag}.png`,Buffer.from(png.split(',')[1],'base64'));
+  console.log('wrote', tag);
+}
+await browser.close();

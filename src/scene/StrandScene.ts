@@ -41,7 +41,7 @@ import {
 import { sampleCenterline } from '../geometry/bezier';
 import { buildRibbonGeometry } from '../geometry/ribbon';
 import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
-import { easeFolds, easeSteps, roundCorners } from '../geometry/polyline';
+import { easeFolds, easeSteps, foldsOf, roundCorners } from '../geometry/polyline';
 import { Anchor, arcLengths, heightField, polylineCrossings } from '../geometry/weave';
 import { Vec2, Vec3 } from '../geometry/vec';
 
@@ -82,11 +82,13 @@ export const FOLD_STACK_DEFAULT = 2;
  * How thick the Z part is, in strand thicknesses — the piece that stands between
  * a fold's two runs, joining the storey below to the storey above.
  *
- * That piece runs along Z, so its section lies in the drawing plane and its
- * thickness is an XY dimension, not a height. `foldStack` says how TALL it is;
- * this says how THICK. At zero it is a sheet with no substance — which is what it
- * was — and the turn ends in a flat card. At one it is the same gauge as the lace
- * it belongs to, which is the honest reading of a lace doubling back on itself.
+ * That piece runs along Z, so its thickness is measured along a NORMAL to Z: an
+ * XY vector, pointing out of the turn. `foldStack` says how TALL the piece is;
+ * this says how THICK. And it is drawn as a piece of lace in its own right (see
+ * `foldRungs`): a short vertical strand with the lace's rounded edges and dark
+ * rim, centred on the point where the two runs end — not a face carried out, and
+ * not a wall. At zero it is omitted and the turn ends in the bare fold sheet, as
+ * it always used to; at one it is the same gauge as the lace it belongs to.
  */
 export const FOLD_DEPTH_DEFAULT = 1;
 
@@ -575,9 +577,9 @@ export class StrandScene {
         cornerRadius: thickness * 0.48,
         cornerSteps: 3,
         roundCaps: false,
-        // The coat has to reach where the body reaches, or a turn's Z part pokes
-        // out through the highlight that is meant to be covering it.
-        foldDepth: thickness * this.params.foldDepth,
+        // The coat squares its folds when the body does, so it goes on hugging
+        // the surface it is meant to be tinting.
+        squareFolds: this.rungsOn(),
       });
       const mesh = new THREE.Mesh(
         geom,
@@ -961,7 +963,7 @@ export class StrandScene {
       roundCaps: this.params.roundCaps,
       capStart,
       capEnd,
-      foldDepth: thickness * this.params.foldDepth,
+      squareFolds: this.rungsOn(),
     });
     const fillMat = new THREE.MeshStandardMaterial({
       color: threeColor(strand.color),
@@ -1001,7 +1003,7 @@ export class StrandScene {
         openStart: !freeEnds[0],
         openEnd: !freeEnds[1],
         openFolds: true,
-        foldDepth: thickness * this.params.foldDepth,
+        squareFolds: this.rungsOn(),
       });
       const outlineMat = new THREE.MeshBasicMaterial({
         color: threeColor(strand.stroke_color),
@@ -1019,7 +1021,147 @@ export class StrandScene {
       group.add(outlineMesh);
     }
 
+    this.foldRungs(strand, centerline, width, thickness, group);
+
     return group;
+  }
+
+  /**
+   * The Z part of every storey turn, drawn as a piece of lace in its own right.
+   *
+   * A fold's two runs end at one point in the drawing plane, a storey apart in
+   * height, and the sweep closes the gap between them with a sheet that has no
+   * substance along the turn's outward direction at all. Everything else in the
+   * model is lace; that one piece was paper.
+   *
+   * So each fold that steps in Z gets a RUNG: a short strand standing on end.
+   * Its axis runs along Z; its cross-section therefore lies in the drawing
+   * plane — the lace's width across the crease line, and `foldDepth` thicknesses
+   * along the turn's outward normal, which is the thickness the Ribbon panel's
+   * "Z part" slider sets. It is centred on the point where the runs end, half
+   * proud of the turn and half buried in it, and it is built by the same sweep
+   * as the lace itself — swept flat, then stood up — so it carries the same
+   * rounded long edges and the same dark rim, and reads as strand, not as
+   * scaffolding.
+   *
+   * Two small offsets keep it honest against the geometry it stands in. Its
+   * ends ride a hair PROUD of the runs' outer faces — flush faces flicker, and
+   * ending short leaves a groove looking down into the joint; proud, the rung
+   * caps the turn the way a wrapped lace does. And it is a hair wider than the
+   * lace, so the squared fold sheet (see `squareFolds` in ribbon.ts) is
+   * swallowed whole and the runs' side faces are cleared.
+   */
+  /** Whether fold rungs are being drawn — the geometry around a fold squares
+   *  itself up when they are, so nothing of the old fold pokes through them. */
+  private rungsOn(): boolean {
+    return this.params.foldDepth > 0.02;
+  }
+
+  private foldRungs(
+    strand: Strand3D,
+    centerline: Vec3[],
+    width: number,
+    thickness: number,
+    group: THREE.Group,
+  ): void {
+    if (!this.rungsOn()) return; // slider at zero — the bare fold, as it always was
+    const rungT = thickness * this.params.foldDepth;
+
+    for (const f of foldsOf(centerline)) {
+      const p = centerline[f.index];
+      const zIn = p.zIn ?? p.z;
+      const zOut = p.zOut ?? p.z;
+      const gap = Math.abs(zOut - zIn);
+      // A fold that steps nowhere (a solo strand doubling back on one storey)
+      // has no Z part to give a body to.
+      if (gap < thickness * 0.05) continue;
+
+      // The turn's outward normal: the way the lace would have carried on had it
+      // not doubled back. Perpendicular to the crease, pointing out of the bight.
+      let nx = f.din.x - f.dout.x;
+      let ny = f.din.y - f.dout.y;
+      const nl = Math.hypot(nx, ny);
+      if (nl < 1e-9) continue;
+      nx /= nl;
+      ny /= nl;
+
+      // Swept flat along +X, then stood on end: local X becomes world Z, the
+      // section's width lands along the crease and its thickness along the
+      // outward normal. The basis below maps exactly that, and its determinant
+      // is +1, so the winding — and with it the lighting and the BackSide rim —
+      // survives the standing-up.
+      // Proud by a whole stroke width, not a token hair: the runs wear their
+      // outline as a sleeve grown that far past their surface, and a rung any
+      // shorter has the sleeve's dark inner face poking up through its top.
+      const proud = (this.params.outline ? strand.stroke_width * SCALE : 0) + thickness * 0.03;
+      const half = (gap + thickness) / 2 + proud;
+      if (half <= 0) continue;
+      const axis: Vec3[] = [
+        { x: -half, y: 0, z: 0 },
+        { x: 0, y: 0, z: 0 },
+        { x: half, y: 0, z: 0 },
+      ];
+      const stand = new THREE.Matrix4().makeBasis(
+        new THREE.Vector3(0, 0, 1),
+        new THREE.Vector3(ny, -nx, 0),
+        new THREE.Vector3(nx, ny, 0),
+      );
+      stand.setPosition(p.x, p.y, (zIn + zOut) / 2);
+
+      // A hair WIDER than the lace, not narrower: the squared fold sheet spans
+      // the lace's full width, and the rung must swallow it entirely — its side
+      // faces also then clear the runs' own sides instead of lying on them.
+      const rungW = width * 1.015;
+      const fillGeom = buildRibbonGeometry(axis, {
+        width: rungW,
+        thickness: rungT,
+        cornerRadius: rungT * 0.48,
+        cornerSteps: 3,
+        roundCaps: false,
+      });
+      fillGeom.applyMatrix4(stand);
+      const fillMat = new THREE.MeshStandardMaterial({
+        color: threeColor(strand.color),
+        roughness: 0.5,
+        metalness: 0.04,
+        side: THREE.DoubleSide,
+      });
+      if (strand.color.a < 255) {
+        fillMat.transparent = true;
+        fillMat.opacity = strand.color.a / 255;
+      }
+      const fillMesh = new THREE.Mesh(fillGeom, fillMat);
+      fillMesh.castShadow = true;
+      fillMesh.receiveShadow = true;
+      fillMesh.userData.strandId = strand.id;
+      group.add(fillMesh);
+
+      if (this.params.outline && strand.stroke_width > 0) {
+        const ow = strand.stroke_width * SCALE;
+        const outlineGeom = buildRibbonGeometry(axis, {
+          width: rungW + ow * 2,
+          thickness: rungT + ow * 2,
+          cornerRadius: (rungT + ow * 2) * 0.48,
+          cornerSteps: 3,
+          roundCaps: false,
+          // Open ends: a closed cap would put a dark plate just past the rung's
+          // end, floating a stroke-width above the run it is buried in.
+          openStart: true,
+          openEnd: true,
+        });
+        outlineGeom.applyMatrix4(stand);
+        const outlineMat = new THREE.MeshBasicMaterial({
+          color: threeColor(strand.stroke_color),
+          side: THREE.BackSide,
+          polygonOffset: true,
+          polygonOffsetFactor: 4,
+          polygonOffsetUnits: 4,
+        });
+        const outlineMesh = new THREE.Mesh(outlineGeom, outlineMat);
+        outlineMesh.renderOrder = -1;
+        group.add(outlineMesh);
+      }
+    }
   }
 
   // ---- coordinate helpers --------------------------------------------------
