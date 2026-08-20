@@ -110,6 +110,20 @@ export const FOLD_DEPTH_DEFAULT = 1;
  */
 export const FOLD_BULGE_DEFAULT = 1;
 
+/**
+ * How thick the fold's own FACE is, in strand thicknesses.
+ *
+ * The face is the flat plate standing at a storey turn — a plane whose normal
+ * lies in XY. Squared (see `squareFolds` in ribbon.ts) it is a sheet of no
+ * thickness at all, and the turn shows a black slit anywhere it is seen near
+ * edge-on. This carries it out along the turn's normal and back, so the plate
+ * becomes a slab with substance behind it.
+ *
+ * It fills the space INSIDE the bight — the hollow of the U — so the two do not
+ * fight for the same room. At 0 the face is the bare sheet it has always been.
+ */
+export const FOLD_FACE_DEFAULT = 0;
+
 // Handle appearance (world-unit radii + colors), tuned against SCALE so the grab
 // dots read clearly at the default framing.
 const END_R = 0.18;
@@ -214,6 +228,12 @@ export interface RenderParams {
    * half-gap. See FOLD_BULGE_DEFAULT.
    */
   foldBulge: number;
+  /**
+   * How thick the fold's own face plate is, in strand thicknesses — the depth it
+   * is carried out along the turn's normal, which is an XY direction. See
+   * FOLD_FACE_DEFAULT.
+   */
+  foldFace: number;
   layerGap: number; // base lift between consecutive layers, source units (small)
   widthScale: number; // multiplier applied to every strand width
   outline: boolean; // draw the stroke-colored outline shell
@@ -232,6 +252,7 @@ export const DEFAULT_PARAMS: RenderParams = {
   foldStack: FOLD_STACK_DEFAULT,
   foldDepth: FOLD_DEPTH_DEFAULT,
   foldBulge: FOLD_BULGE_DEFAULT,
+  foldFace: FOLD_FACE_DEFAULT,
   // Base lift between layers. The weave picks over/under at every CROSSING on its
   // own (adaptive amplitude), so this only needs to separate strands that overlap
   // WITHOUT crossing (a plain parallel stack) — and it's what gives the ordered
@@ -604,6 +625,7 @@ export class StrandScene {
         // The coat squares its folds when the body does, so it goes on hugging
         // the surface it is meant to be tinting.
         squareFolds: this.rungsOn(),
+        foldFaceReach: this.faceReach(thickness),
       });
       const mesh = new THREE.Mesh(
         geom,
@@ -988,6 +1010,7 @@ export class StrandScene {
       capStart,
       capEnd,
       squareFolds: this.rungsOn(),
+      foldFaceReach: this.faceReach(thickness),
     });
     const fillMat = new THREE.MeshStandardMaterial({
       color: threeColor(strand.color),
@@ -1028,6 +1051,7 @@ export class StrandScene {
         openEnd: !freeEnds[1],
         openFolds: true,
         squareFolds: this.rungsOn(),
+        foldFaceReach: this.faceReach(thickness),
       });
       const outlineMat = new THREE.MeshBasicMaterial({
         color: threeColor(strand.stroke_color),
@@ -1079,6 +1103,13 @@ export class StrandScene {
    *  itself up when they are, so nothing of the old fold pokes through them. */
   private rungsOn(): boolean {
     return this.params.foldDepth > 0.02;
+  }
+
+  /** How deep a squared fold's face is carried out, world units. Zero leaves the
+   *  bare sheet; see FOLD_FACE_DEFAULT. Squaring is what makes the face a plane
+   *  worth thickening, so it follows `rungsOn`. */
+  private faceReach(thickness: number): number {
+    return this.rungsOn() ? thickness * Math.max(0, this.params.foldFace) : 0;
   }
 
   private foldRungs(

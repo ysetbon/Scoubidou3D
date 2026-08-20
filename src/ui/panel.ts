@@ -915,6 +915,11 @@ export class Panel {
     pop.appendChild(
       slider('Z bulge', p.foldBulge, 0.2, 2, 0.05, (v) => this.view.setParams({ foldBulge: v })),
     );
+    // The fold's own face — the plate standing in the turn, its normal in XY.
+    // Flat it is a sheet of nothing; this gives it a body, in thicknesses.
+    pop.appendChild(
+      slider('Fold thick', p.foldFace, 0, 3, 0.1, (v) => this.view.setParams({ foldFace: v })),
+    );
     const toggles = el('div', 'check-row');
     toggles.append(
       check('Outline', p.outline, (v) => {
