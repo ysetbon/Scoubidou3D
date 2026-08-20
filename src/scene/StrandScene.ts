@@ -93,25 +93,22 @@ export const FOLD_STACK_DEFAULT = 2;
 export const FOLD_DEPTH_DEFAULT = 1;
 
 /**
- * How much of the Z part is CROPPED away where it overlaps the runs, 0..1.
+ * How far the Z part's arc reaches OUT of the turn, as a multiple of the
+ * natural half-gap.
  *
- * The rung is centred on the fold point and, left alone, spans the whole height
- * of both runs plus a proud skin at each end: its top quarter is buried inside
- * the upper run and its bottom quarter inside the lower one. Those two zones
- * bridge nothing — the run is already there — but they are what caps the turn,
- * so removing them is a look, not a correction.
+ * The Z part is a BIGHT: the lace does not stop at a storey turn and start
+ * again a storey up, it bends round. Its centreline is an arc whose two ends
+ * sit on the runs' centrelines — half the gap above and below the fold point,
+ * which the gap pins — and whose apex stands out along the turn's normal. At 1
+ * that arc is a true semicircle and the bight is the shape a real lace makes.
+ * Below 1 it is squashed flat against the turn; above 1 it is drawn out into a
+ * longer loop.
  *
- * At 0 the rung is that full slab. At 1 it is cropped back to the CLEAR SPACE
- * between the runs — `(gap - thickness) / 2` either side of centre — and the
- * runs' own ends close the turn. In between it is the straight blend, so the
- * slider walks continuously from one to the other.
- *
- * The catch, and the reason this is a dial and not a flag: the clear space is
- * `(foldStack - 1)` thicknesses. At Fold face 1 the runs touch, and a fully
- * cropped rung has nothing left to fill — it vanishes. `foldCrop` below 1
- * always leaves something.
+ * Nothing here changes how far apart the runs are (`foldStack`) or how thick
+ * the lace running round the bight is (`foldDepth`) — only how far the outer
+ * edge bows.
  */
-export const FOLD_CROP_DEFAULT = 0;
+export const FOLD_BULGE_DEFAULT = 1;
 
 // Handle appearance (world-unit radii + colors), tuned against SCALE so the grab
 // dots read clearly at the default framing.
@@ -213,10 +210,10 @@ export interface RenderParams {
    */
   foldDepth: number;
   /**
-   * How far the Z part is cropped back off the runs it overlaps, 0..1. See
-   * FOLD_CROP_DEFAULT.
+   * How far the Z part's arc bows out of the turn, as a multiple of the natural
+   * half-gap. See FOLD_BULGE_DEFAULT.
    */
-  foldCrop: number;
+  foldBulge: number;
   layerGap: number; // base lift between consecutive layers, source units (small)
   widthScale: number; // multiplier applied to every strand width
   outline: boolean; // draw the stroke-colored outline shell
@@ -234,7 +231,7 @@ export const DEFAULT_PARAMS: RenderParams = {
   thickness: 26,
   foldStack: FOLD_STACK_DEFAULT,
   foldDepth: FOLD_DEPTH_DEFAULT,
-  foldCrop: FOLD_CROP_DEFAULT,
+  foldBulge: FOLD_BULGE_DEFAULT,
   // Base lift between layers. The weave picks over/under at every CROSSING on its
   // own (adaptive amplitude), so this only needs to separate strands that overlap
   // WITHOUT crossing (a plain parallel stack) — and it's what gives the ordered
@@ -1120,45 +1117,47 @@ export class StrandScene {
       // Proud by a whole stroke width, not a token hair: the runs wear their
       // outline as a sleeve grown that far past their surface, and a rung any
       // shorter has the sleeve's dark inner face poking up through its top.
-      const proud = (this.params.outline ? strand.stroke_width * SCALE : 0) + thickness * 0.03;
-      // Two ends of one dial (see FOLD_CROP_DEFAULT): the full slab, which runs
-      // the whole height of both runs and caps the turn, and the crop, which
-      // stops at each run's inner face and fills only the space between them.
-      const full = (gap + thickness) / 2 + proud;
-      const cropped = (gap - thickness) / 2;
-      const crop = Math.max(0, Math.min(1, this.params.foldCrop));
-      const half = full + (cropped - full) * crop;
-      // Fully cropped at Fold face <= 1 leaves nothing to draw — the runs
-      // already touch. Skip rather than sweep an inside-out ring.
-      if (half <= thickness * 0.02) continue;
-      const axis: Vec3[] = [
-        { x: -half, y: 0, z: 0 },
-        { x: 0, y: 0, z: 0 },
-        { x: half, y: 0, z: 0 },
-      ];
+      // The arc the lace turns on. Its two ends sit ON the runs' centrelines,
+      // half the gap above and below the fold point, so the bight leaves each
+      // run exactly where that run stops; its apex stands `bulge` half-gaps out
+      // along the turn's normal, which is what makes the outer edge one curve
+      // rather than a corner. An ellipse, not a circle, because the ends are
+      // pinned by the gap and only the reach is the slider's to move.
+      const a = gap / 2;
+      const b = a * Math.max(0.05, this.params.foldBulge);
+      // Carry the sweep PAST each end, on round into the run it meets: the two
+      // ends then finish buried inside solid lace instead of flush against it,
+      // where coincident faces flicker.
+      const over = 0.38;
+      const STEPS = 24;
+      const axis: Vec3[] = [];
+      for (let k = 0; k <= STEPS; k++) {
+        const th = -over + ((Math.PI + over * 2) * k) / STEPS;
+        axis.push({ x: a * Math.cos(th), y: b * Math.sin(th), z: 0 });
+      }
+      // Local X is world Z, local Y the turn's outward normal — so the arc is
+      // swept in the vertical plane it actually bends in — and local Z the
+      // crease, which is where the lace's WIDTH goes. The sweep puts its width
+      // across the axis in the build plane and its thickness out of that plane,
+      // so the two are handed over swapped: `width` here is the lace's depth,
+      // running radially round the bight, and `thickness` is its full width.
       const stand = new THREE.Matrix4().makeBasis(
         new THREE.Vector3(0, 0, 1),
-        new THREE.Vector3(ny, -nx, 0),
         new THREE.Vector3(nx, ny, 0),
+        new THREE.Vector3(-ny, nx, 0),
       );
       stand.setPosition(p.x, p.y, (zIn + zOut) / 2);
 
       // A hair WIDER than the lace, not narrower: the squared fold sheet spans
-      // the lace's full width, and the rung must swallow it entirely — its side
-      // faces also then clear the runs' own sides instead of lying on them.
+      // the lace's full width, and the bight must swallow it entirely — its
+      // side faces also then clear the runs' own sides instead of lying on them.
       const rungW = width * 1.015;
       const fillGeom = buildRibbonGeometry(axis, {
-        width: rungW,
-        thickness: rungT,
-        cornerRadius: rungT * 0.48,
+        width: rungT,
+        thickness: rungW,
+        cornerRadius: Math.min(rungT, rungW) * 0.48,
         cornerSteps: 3,
-        // Rounded in the thickness direction only, by half that thickness: the
-        // silhouette then runs off the upper run's face, round the rung's
-        // corner, down its flat outer face and back onto the lower run in one
-        // continuous curve, instead of stepping at four right angles.
-        roundCaps: true,
-        capFlat: true,
-        capReach: rungT * 0.5,
+        roundCaps: false,
       });
       fillGeom.applyMatrix4(stand);
       const fillMat = new THREE.MeshStandardMaterial({
@@ -1180,15 +1179,13 @@ export class StrandScene {
       if (this.params.outline && strand.stroke_width > 0) {
         const ow = strand.stroke_width * SCALE;
         const outlineGeom = buildRibbonGeometry(axis, {
-          width: rungW + ow * 2,
-          thickness: rungT + ow * 2,
-          cornerRadius: (rungT + ow * 2) * 0.48,
+          width: rungT + ow * 2,
+          thickness: rungW + ow * 2,
+          cornerRadius: (Math.min(rungT, rungW) + ow * 2) * 0.48,
           cornerSteps: 3,
           roundCaps: false,
-          // Open ends: a closed cap would put a dark plate just past the rung's
-          // end, floating a stroke-width above the run it is buried in. A domed
-          // one is no better — the dome's winding comes out inverted here, so it
-          // reads as a black cap sitting on the rung rather than a rim round it.
+          // Open ends: a closed cap would put a dark plate just past the bight's
+          // end, floating a stroke-width inside the run it is buried in.
           openStart: true,
           openEnd: true,
         });
