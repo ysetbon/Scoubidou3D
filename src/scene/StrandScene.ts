@@ -104,9 +104,18 @@ export const FOLD_DEPTH_DEFAULT = 1;
  * Below 1 it is squashed flat against the turn; above 1 it is drawn out into a
  * longer loop.
  *
+ * NEGATIVE dishes it instead: the outer face is scooped back between the runs
+ * rather than bowed past them, and the turn reads as a waist rather than a
+ * nose. The two halves of the dial are the same wall walked the other way, so
+ * the shape stays continuous through zero.
+ *
+ * The floor is the geometry's, not the dial's: the wall may come most of the
+ * way back to the buried edge but never through it, or the profile turns
+ * inside out. Deep negatives therefore stop moving before the slider does.
+ *
  * Nothing here changes how far apart the runs are (`foldStack`) or how thick
- * the lace running round the bight is (`foldDepth`) — only how far the outer
- * edge bows.
+ * the lace running round the turn is (`foldDepth`) — only how far, and which
+ * way, the outer edge goes.
  */
 export const FOLD_BULGE_DEFAULT = 1;
 
@@ -1257,28 +1266,47 @@ export class StrandScene {
       // thickness beyond each centreline — so the top and bottom run on
       // unbroken. Otherwise the slider sets it and a step is possible.
       const A = gap / 2 + (flush ? thickness / 2 : rungT / 2);
-      const B = (gap / 2) * Math.max(0.05, this.params.foldBulge) + rungT / 2; // its reach
       const tuck = flush ? thickness * FLUSH_TUCK : rungT * 0.5;
+      // The reach, and it is SIGNED. Positive stands the wall out of the turn;
+      // negative dishes it in, scooping the outer face back between the runs
+      // instead of bowing it past them. The floor is the back edge: the wall
+      // may come most of the way to it but never through it, or the profile
+      // turns inside out.
+      const reach = (gap / 2) * this.params.foldBulge + rungT / 2;
+      const B = Math.max(reach, -tuck * 0.75);
+      // Which way "outward" is for this wall, so the outline shell grows clear
+      // of the fill on a dished turn as well as a bulging one.
+      const out = B < 0 ? -1 : 1;
 
       // x runs up the storey, y out of the turn. The back edge is flat at -gt
       // in both shapes — it is buried in the runs — and only the outer wall
       // differs (see FOLD_SHAPE_DEFAULT).
       const profile = (grow: number): THREE.Shape => {
         const ga = A + grow;
-        const gb = B + grow;
+        const gb = B + grow * out;
         const gt = tuck + grow;
         const sh = new THREE.Shape();
         sh.moveTo(-ga, -gt);
         sh.lineTo(ga, -gt);
-        if (this.params.foldShape !== 'nose') {
-          const r = Math.min(ga, gb) * SQUARED_CORNER;
-          sh.lineTo(ga, gb - r);
+        // A dished wall always takes the straight form, whatever shape is
+        // chosen. The nose's ellipse runs between the two side tops at y 0, and
+        // scooped BELOW them it leaves a reflex corner at each — a notch the
+        // extruder's bevel offsets straight through itself, which shows as a
+        // crossed, inside-out lump. Dished, the straight wall is the whole top
+        // of the shape and the outline stays convex all the way round.
+        if (this.params.foldShape !== 'nose' || gb < 0) {
+          // Corners are taken off the BACK side of the wall whichever way it
+          // faces, so a dished wall eases into the runs rather than out of them.
+          const r = Math.min(ga, Math.abs(gb)) * SQUARED_CORNER;
+          sh.lineTo(ga, gb - out * r);
           sh.quadraticCurveTo(ga, gb, ga - r, gb);
           sh.lineTo(-ga + r, gb);
-          sh.quadraticCurveTo(-ga, gb, -ga, gb - r);
+          sh.quadraticCurveTo(-ga, gb, -ga, gb - out * r);
         } else {
           sh.lineTo(ga, 0);
-          sh.absellipse(0, 0, ga, gb, 0, Math.PI, false);
+          // Same half-ellipse either way; walked clockwise it puts the apex at
+          // -|gb| instead of +|gb|, which is the scoop.
+          sh.absellipse(0, 0, ga, Math.abs(gb), 0, Math.PI, gb < 0);
         }
         sh.lineTo(-ga, -gt);
         return sh;
@@ -1313,7 +1341,10 @@ export class StrandScene {
       // actually shows. Capped by the profile's own smallest dimension: past
       // half of it the extruder folds the shape through itself.
       const round = Math.max(0, Math.min(1, this.params.foldRound));
-      const bevel = Math.min(rungT, rungW, A, B, tuck * 2) * 0.5 * round;
+      // `tuck + B` is the profile's height where the wall is dished: a shallow
+      // shape has little to give, and a bevel past half of it eats the solid.
+      const bevel =
+        Math.min(rungT, rungW, A, Math.abs(B), tuck * 2, tuck + B) * 0.5 * round;
       const extrude = (grow: number) => {
         const depth = rungW + grow * 2 - bevel * 2;
         const geom = new THREE.ExtrudeGeometry(profile(grow), {

@@ -960,7 +960,7 @@ export class Panel {
     // The third dimension of the same piece: how far the bight bows out of the
     // turn. 1 is a true semicircle — the shape a real lace bending round makes.
     pop.appendChild(
-      slider('Z bulge', p.foldBulge, 0.2, 2, 0.05, (v) => this.view.setParams({ foldBulge: v })),
+      slider('Z bulge', p.foldBulge, -2, 2, 0.05, (v) => this.view.setParams({ foldBulge: v })),
     );
     // The third direction of the same piece: how wide it is ACROSS the crease,
     // as a multiple of the lace's width. Past 1 it overhangs its own runs.
