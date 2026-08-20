@@ -160,6 +160,32 @@ export const FOLD_WIDE_DEFAULT = 1;
  */
 export const FOLD_ROUND_DEFAULT = 0.44;
 
+/**
+ * Which outer wall the Z part turns on.
+ *
+ * Two reference renders of a real lace at a storey turn, each square-on from
+ * three sides, disagree about one thing — and only one thing. Both show a
+ * filled piece with generously rounded edges; they part company at the outer
+ * wall, the face that carries the eye round the turn.
+ *
+ *   'nose'    a half-ellipse, bowing out to a single furthest point. The turn
+ *             reads as a pressed pill.
+ *   'squared'  a straight wall with softly rounded corners — a squared C,
+ *             halfway between a bracket and a full curve. The turn reads as a
+ *             block that has been eased rather than a bend.
+ *
+ * Everything else — the height, the reach, the width across the crease, the
+ * edge rounding — is shared, so the choice can be flipped without any of the
+ * sliders moving.
+ */
+export type FoldShape = 'nose' | 'squared';
+export const FOLD_SHAPE_DEFAULT: FoldShape = 'nose';
+
+/** How much of the squared wall's half-height its corners take. Fixed rather
+ *  than dialled: at 0 the wall is a bare bracket and at 1 it is the nose again,
+ *  and the reference sits squarely between them. */
+const SQUARED_CORNER = 0.45;
+
 /** The least the Z part may be, as a multiple of the lace width: a hair over it,
  *  so the squared fold sheet stays swallowed and the runs' sides stay cleared. */
 const FOLD_WIDE_MIN = 1.015;
@@ -283,6 +309,8 @@ export interface RenderParams {
    * How far the Z part's edges are rounded off, 0..1. See FOLD_ROUND_DEFAULT.
    */
   foldRound: number;
+  /** Which outer wall the Z part turns on. See FOLD_SHAPE_DEFAULT. */
+  foldShape: FoldShape;
   layerGap: number; // base lift between consecutive layers, source units (small)
   widthScale: number; // multiplier applied to every strand width
   outline: boolean; // draw the stroke-colored outline shell
@@ -304,6 +332,7 @@ export const DEFAULT_PARAMS: RenderParams = {
   foldFace: FOLD_FACE_DEFAULT,
   foldWide: FOLD_WIDE_DEFAULT,
   foldRound: FOLD_ROUND_DEFAULT,
+  foldShape: FOLD_SHAPE_DEFAULT,
   // Base lift between layers. The weave picks over/under at every CROSSING on its
   // own (adaptive amplitude), so this only needs to separate strands that overlap
   // WITHOUT crossing (a plain parallel stack) — and it's what gives the ordered
@@ -1206,6 +1235,9 @@ export class StrandScene {
       const B = (gap / 2) * Math.max(0.05, this.params.foldBulge) + rungT / 2; // its reach
       const tuck = rungT * 0.5; // how far the flat back sits inside the runs
 
+      // x runs up the storey, y out of the turn. The back edge is flat at -gt
+      // in both shapes — it is buried in the runs — and only the outer wall
+      // differs (see FOLD_SHAPE_DEFAULT).
       const profile = (grow: number): THREE.Shape => {
         const ga = A + grow;
         const gb = B + grow;
@@ -1213,8 +1245,16 @@ export class StrandScene {
         const sh = new THREE.Shape();
         sh.moveTo(-ga, -gt);
         sh.lineTo(ga, -gt);
-        sh.lineTo(ga, 0);
-        sh.absellipse(0, 0, ga, gb, 0, Math.PI, false);
+        if (this.params.foldShape === 'squared') {
+          const r = Math.min(ga, gb) * SQUARED_CORNER;
+          sh.lineTo(ga, gb - r);
+          sh.quadraticCurveTo(ga, gb, ga - r, gb);
+          sh.lineTo(-ga + r, gb);
+          sh.quadraticCurveTo(-ga, gb, -ga, gb - r);
+        } else {
+          sh.lineTo(ga, 0);
+          sh.absellipse(0, 0, ga, gb, 0, Math.PI, false);
+        }
         sh.lineTo(-ga, -gt);
         return sh;
       };

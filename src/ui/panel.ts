@@ -890,6 +890,28 @@ export class Panel {
   private ribbonCard(): HTMLElement {
     const pop = this.popover('Ribbon', 'global');
     const p = this.view.getParams();
+    // The two shapes the reference renders show, as one press each. They are
+    // presets, not a seventh dimension: each sets the outer wall and the two
+    // dials that reference was drawn at, and the card shuts so it reopens with
+    // every slider showing where the press left it.
+    const shapeRow = el('div', 'pill-row');
+    const preset = (
+      label: string,
+      shape: 'nose' | 'squared',
+      title: string,
+    ): HTMLButtonElement => {
+      const b = pill(label, () => {
+        this.view.setParams({ foldShape: shape, foldDepth: 2, foldRound: 1 });
+        this.commitDock();
+      }, title);
+      if (p.foldShape === shape && p.foldRound >= 1 && p.foldDepth === 2) b.classList.add('coral');
+      return b;
+    };
+    shapeRow.append(
+      preset('New A', 'nose', 'Rounded nose — the turn as a pressed pill'),
+      preset('New B', 'squared', 'Squared C — a straight outer wall, corners eased'),
+    );
+    pop.appendChild(shapeRow);
     pop.appendChild(
       slider('Thickness', p.thickness, 2, 120, 1, (v) => {
         this.view.setParams({ thickness: v });
