@@ -34,7 +34,7 @@
 // Reordering a layer here restacks it in Z — the direct 3D analogue of moving a
 // layer in OpenStrand's layer panel.
 
-import { StrandScene, EditMode } from '../scene/StrandScene';
+import { StrandScene, EditMode, RenderParams } from '../scene/StrandScene';
 import { MaskLink, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, TWIST_FAMILY, TWIST_MAX, makeSample } from '../model/samples';
 import { GAP, HANDS, TWOFAN_COLUMN_FAMILY, TWOFAN_MAX, columnKey } from '../model/twofan';
@@ -897,19 +897,44 @@ export class Panel {
     const shapeRow = el('div', 'pill-row');
     const preset = (
       label: string,
-      shape: 'nose' | 'squared',
       title: string,
+      set: Partial<RenderParams>,
     ): HTMLButtonElement => {
       const b = pill(label, () => {
-        this.view.setParams({ foldShape: shape, foldDepth: 2, foldRound: 1 });
+        this.view.setParams(set);
         this.commitDock();
       }, title);
-      if (p.foldShape === shape && p.foldRound >= 1 && p.foldDepth === 2) b.classList.add('coral');
+      const on = (Object.keys(set) as Array<keyof RenderParams>).every(
+        (k) => (p[k] as unknown) === (set[k] as unknown),
+      );
+      if (on) b.classList.add('coral');
       return b;
     };
     shapeRow.append(
-      preset('New A', 'nose', 'Rounded nose — the turn as a pressed pill'),
-      preset('New B', 'squared', 'Squared C — a straight outer wall, corners eased'),
+      preset('New A', 'Rounded nose — the turn as a pressed pill', {
+        foldShape: 'nose',
+        foldDepth: 2,
+        foldRound: 1,
+      }),
+      preset('New B', 'Squared C — a straight outer wall, corners eased', {
+        foldShape: 'squared',
+        foldDepth: 2,
+        foldRound: 1,
+      }),
+      // C is B sized to continue the runs rather than sit against them, at the
+      // settings it was judged at — the lace's own gauge included, since a turn
+      // that reads as one object with its runs depends on their size too.
+      preset('New C', 'Squared C, continuous with the runs — one object', {
+        foldShape: 'flush',
+        thickness: 22,
+        widthScale: 1.6,
+        foldStack: 1.1,
+        foldDepth: 0.6,
+        foldBulge: 0.2,
+        foldWide: 1,
+        foldRound: 0.85,
+        foldFace: 0,
+      }),
     );
     pop.appendChild(shapeRow);
     pop.appendChild(

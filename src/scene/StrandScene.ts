@@ -173,13 +173,34 @@ export const FOLD_ROUND_DEFAULT = 0.44;
  *   'squared'  a straight wall with softly rounded corners — a squared C,
  *             halfway between a bracket and a full curve. The turn reads as a
  *             block that has been eased rather than a bend.
+ *   'flush'   the squared wall again, but sized to CONTINUE the runs rather
+ *             than to sit against them. See below.
  *
  * Everything else — the height, the reach, the width across the crease, the
  * edge rounding — is shared, so the choice can be flipped without any of the
  * sliders moving.
  */
-export type FoldShape = 'nose' | 'squared';
+export type FoldShape = 'nose' | 'squared' | 'flush';
 export const FOLD_SHAPE_DEFAULT: FoldShape = 'nose';
+
+/**
+ * 'flush' is not a fourth wall — it is the squared one, sized so the turn reads
+ * as ONE OBJECT with the two runs instead of a lump set against them.
+ *
+ * Three things give a separate piece away, and all three are size, not shape.
+ * It is a hair wider than the lace, so a lip runs down each side. Its height
+ * comes off `foldDepth`, so its top and bottom faces sit inside or outside the
+ * runs' own rather than level with them, leaving a step. And its back is tucked
+ * only a little way in, so the seam is close enough to the surface to show.
+ *
+ * Flush answers each: the width is exactly the lace's, so the side faces are
+ * coplanar with the runs'; the height is locked to the runs' outer faces
+ * whatever `foldDepth` says, so top and bottom run on unbroken; and the back is
+ * buried a full thickness, well inside solid lace. `foldDepth` and `foldBulge`
+ * still set the reach — how far the turn stands out — because that is the one
+ * dimension the runs do not pin.
+ */
+const FLUSH_TUCK = 1;
 
 /** How much of the squared wall's half-height its corners take. Fixed rather
  *  than dialled: at 0 the wall is a bare bracket and at 1 it is the nose again,
@@ -1230,10 +1251,14 @@ export class StrandScene {
       // them so no faces are left coincident, and its curved front is the outer
       // edge of the turn — a half-ellipse, because the two ends are pinned by
       // how far apart the runs sit and only the reach is the bulge's to move.
+      const flush = this.params.foldShape === 'flush';
       const rungT = thickness * this.params.foldDepth;
-      const A = gap / 2 + rungT / 2; // half the D's height, up the storey
+      // Flush takes its height from the RUNS — their outer faces, half a
+      // thickness beyond each centreline — so the top and bottom run on
+      // unbroken. Otherwise the slider sets it and a step is possible.
+      const A = gap / 2 + (flush ? thickness / 2 : rungT / 2);
       const B = (gap / 2) * Math.max(0.05, this.params.foldBulge) + rungT / 2; // its reach
-      const tuck = rungT * 0.5; // how far the flat back sits inside the runs
+      const tuck = flush ? thickness * FLUSH_TUCK : rungT * 0.5;
 
       // x runs up the storey, y out of the turn. The back edge is flat at -gt
       // in both shapes — it is buried in the runs — and only the outer wall
@@ -1245,7 +1270,7 @@ export class StrandScene {
         const sh = new THREE.Shape();
         sh.moveTo(-ga, -gt);
         sh.lineTo(ga, -gt);
-        if (this.params.foldShape === 'squared') {
+        if (this.params.foldShape !== 'nose') {
           const r = Math.min(ga, gb) * SQUARED_CORNER;
           sh.lineTo(ga, gb - r);
           sh.quadraticCurveTo(ga, gb, ga - r, gb);
@@ -1274,7 +1299,12 @@ export class StrandScene {
       // the lace's full width, and the lump must swallow it entirely — its side
       // faces also then clear the runs' own sides instead of lying on them.
       // Above that the slider takes over and the lump overhangs its runs.
-      const rungW = width * Math.max(FOLD_WIDE_MIN, this.params.foldWide);
+      // Flush is the exception to the hair: matching the lace exactly is the
+      // whole point, and the fold sheet it would otherwise leave proud is buried
+      // by the deeper tuck instead.
+      const rungW = flush
+        ? width * Math.max(1, this.params.foldWide)
+        : width * Math.max(FOLD_WIDE_MIN, this.params.foldWide);
 
       // Rounded, not cut square: the lace's own long edges are rounded, and a
       // lump with sharp arrises beside them reads as a different material. How
