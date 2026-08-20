@@ -12,7 +12,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { BandKind, Gauge, band, blend, run, runTrim } from './bands';
+import { BandKind, Gauge, band, blend, run } from './bands';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const stage = document.getElementById('stage') as HTMLElement;
@@ -87,20 +87,22 @@ function rebuild(): void {
   const din = { x: 1, y: 0 };
   const dout = { x: -Math.cos(sep), y: Math.sin(sep) };
 
-  const trim = runTrim(state.kind, g);
+  const built = band(state.kind, din, dout, g);
   if (state.showRuns) {
     const LEN = 5;
-    for (const [d, z] of [
-      [din, -g.step / 2],
-      [{ x: -dout.x, y: -dout.y }, g.step / 2],
-    ] as Array<[{ x: number; y: number }, number]>) {
-      const mesh = new THREE.Mesh(run(d, LEN, z, g), LACE);
-      // A swept turn eats into the runs; the others leave them whole.
-      if (trim > 0) mesh.position.set(-d.x * trim, -d.y * trim, 0);
-      group.add(mesh);
-    }
+    // The run going in always meets the band at the joint. The one coming away
+    // is displaced by whatever the band did — an oblique fold slides the strip
+    // along its crease, so the two runs are not end to end.
+    const inMesh = new THREE.Mesh(run(din, LEN, -g.step / 2, g), LACE);
+    group.add(inMesh);
+    const outMesh = new THREE.Mesh(
+      run({ x: -dout.x, y: -dout.y }, LEN, g.step / 2, g),
+      LACE,
+    );
+    outMesh.position.set(built.shiftOut.x, built.shiftOut.y, built.shiftOut.z);
+    group.add(outMesh);
   }
-  group.add(new THREE.Mesh(band(state.kind, din, dout, g), BANDMAT));
+  group.add(new THREE.Mesh(built.geom, BANDMAT));
 }
 
 function frame(): void {
@@ -131,7 +133,7 @@ const NOTES: Record<BandKind, string> = {
   bridge:
     'Lofts straight from one run’s end face to the other’s. Uses nothing but those two faces — no crease, no bisector, no outward normal. Cleanest at a dead fold-back, thinnest near straight-through.',
   sweep:
-    'Bends the lace and sweeps the section round the bend. The only one that is physically what a lace does; the only one that moves the runs, since the last of each is no longer straight.',
+    'Folds the strap about an oblique crease and rolls it a half turn, the way a belt folds. Developable, so nothing stretches or pinches — width and thickness carry straight through, and the two layers come out a storey apart with a slot between them. The crease displaces the outgoing run sideways, as a real oblique fold does.',
   cap: 'Stands a stub of lace on end between the two run faces, on the bisector of their width axes. Needs no outward normal, so it survives a dead fold-back — but it reads as a joint, not as bending.',
 };
 
@@ -151,7 +153,7 @@ function ui(): void {
   row.className = 'kinds';
   (['bridge', 'sweep', 'cap'] as BandKind[]).forEach((k) => {
     const b = document.createElement('button');
-    b.textContent = k;
+    b.textContent = k === 'sweep' ? 'fold' : k;
     if (state.kind === k) b.className = 'on';
     b.onclick = () => {
       state.kind = k;

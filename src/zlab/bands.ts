@@ -190,11 +190,13 @@ function ring(p: Vec3, side: Vec2, sec: Vec2[]): Vec3[] {
 }
 
 const perp = (d: Vec2): Vec2 => ({ x: -d.y, y: d.x });
+const norm = (d: Vec2): Vec2 => {
+  const l = Math.hypot(d.x, d.y) || 1;
+  return { x: d.x / l, y: d.y / l };
+};
 
-// ---- 3D vector odds and ends, for the swept frame --------------------------
+// ---- 3D vector odds and ends, for the fold's frame -------------------------
 
-const sub3 = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
-const dot3 = (a: Vec3, b: Vec3): number => a.x * b.x + a.y * b.y + a.z * b.z;
 const cross3 = (a: Vec3, b: Vec3): Vec3 => ({
   x: a.y * b.z - a.z * b.y,
   y: a.z * b.x - a.x * b.z,
@@ -205,19 +207,6 @@ const norm3 = (v: Vec3): Vec3 => {
   return { x: v.x / l, y: v.y / l, z: v.z / l };
 };
 
-/** Turn `v` about `axis` (unit) by `ang`. Rodrigues, written out. */
-function rotate3(v: Vec3, axis: Vec3, ang: number): Vec3 {
-  const c = Math.cos(ang);
-  const s = Math.sin(ang);
-  const k = cross3(axis, v);
-  const d = dot3(axis, v) * (1 - c);
-  return {
-    x: v.x * c + k.x * s + axis.x * d,
-    y: v.y * c + k.y * s + axis.y * d,
-    z: v.z * c + k.z * s + axis.z * d,
-  };
-}
-
 /** Place a section at `p` on an arbitrary pair of axes. */
 function ring3(p: Vec3, side: Vec3, up: Vec3, sec: Vec2[]): Vec3[] {
   return sec.map((q) => ({
@@ -226,56 +215,6 @@ function ring3(p: Vec3, side: Vec3, up: Vec3, sec: Vec2[]): Vec3[] {
     z: p.z + side.z * q.x + up.z * q.y,
   }));
 }
-
-/**
- * A frame carried along a curve by PARALLEL TRANSPORT, one sample at a time.
- *
- * The obvious frame — width axis from the tangent's shadow in the drawing
- * plane, thickness always along +Z — is right for a lace lying flat and breaks
- * completely for one going over a bend. Two ways, both visible at a dead
- * fold-back with a tall storey step:
- *
- *   - the shadow REVERSES through the apex. The lace climbs travelling one way
- *     in plan and descends travelling the other, so the width axis it implies
- *     turns a half circle at the top and the tube wrings itself through the
- *     middle of the turn.
- *   - the shadow VANISHES at the apex, where the lace is going straight up, and
- *     a section pinned to +Z there is edge-on to its own path — no thickness
- *     left, a crease where the surface should be.
- *
- * Transporting instead: each frame is the last one turned by exactly the
- * rotation that takes the last tangent onto this one, which is the smallest
- * change that keeps it square to the curve. Nothing is derived from a
- * projection, so nothing reverses and nothing vanishes — and the lace ROLLS
- * through the bend the way a real one does, arriving at the apex on edge.
- */
-function transport(pts: Vec3[], side0: Vec3): Array<{ side: Vec3; up: Vec3 }> {
-  const n = pts.length;
-  const tan: Vec3[] = pts.map((_, i) =>
-    norm3(sub3(pts[Math.min(n - 1, i + 1)], pts[Math.max(0, i - 1)])),
-  );
-  const out: Array<{ side: Vec3; up: Vec3 }> = [];
-  let side = side0;
-  for (let i = 0; i < n; i++) {
-    if (i > 0) {
-      const a = tan[i - 1];
-      const b = tan[i];
-      const axis = cross3(a, b);
-      const sin = Math.hypot(axis.x, axis.y, axis.z);
-      if (sin > 1e-9) side = rotate3(side, norm3(axis), Math.atan2(sin, dot3(a, b)));
-    }
-    // Re-square it every step: the rotations are exact but floating point is
-    // not, and drift out of the normal plane shears the section.
-    const t = tan[i];
-    side = norm3(sub3(side, { x: t.x * dot3(side, t), y: t.y * dot3(side, t), z: t.z * dot3(side, t) }));
-    out.push({ side, up: cross3(t, side) });
-  }
-  return out;
-}
-const norm = (d: Vec2): Vec2 => {
-  const l = Math.hypot(d.x, d.y) || 1;
-  return { x: d.x / l, y: d.y / l };
-};
 
 // ---- the runs --------------------------------------------------------------
 
@@ -337,62 +276,97 @@ function bridge(din: Vec2, dout: Vec2, g: Gauge, steps = 14): THREE.BufferGeomet
   return tube(rings);
 }
 
-// ---- 2. SWEEP --------------------------------------------------------------
+// ---- 2. FOLD ---------------------------------------------------------------
 
 /**
- * Let the lace bend, and sweep it round the bend.
+ * Fold the strap back on itself, the way a belt or a paper strip folds.
  *
- * The other two treat the joint as a place where something has to be inserted.
- * This one says there is nothing to insert: a lace bending back on itself is
- * one continuous piece, and the turn is just the part of it that is curved. The
- * centreline leaves the incoming run `reach` back from the joint, curves
- * through, and rejoins the outgoing run `reach` along — and the same section is
- * carried round it.
+ * The build this replaces bent the centreline through the turn and swept the
+ * section round it. At a dead fold-back that looks right, and it is wrong
+ * everywhere else, for a reason worth stating plainly: A FLAT STRAP CANNOT BEND
+ * IN ITS OWN PLANE. It bends about an axis lying across its width — closing a
+ * book — and about no other. Asked to turn a hundred and forty degrees in plan,
+ * as a swept centreline asks at forty degrees of separation, the inner edge has
+ * to travel a shorter path than the outer one and there is no thickness to take
+ * up the difference, so the surface buckles: the pinch, the collapsed waist and
+ * the bulky lump that came with it.
  *
- * At separation 0 the curve is a vertical semicircle: the lace goes up and over,
- * which is what it does in the hand. Nothing is degenerate, because the bend
- * happens in the vertical plane the two runs share and that plane is perfectly
- * well defined however close together they lie.
+ * What a strip actually does is fold about an OBLIQUE CREASE and roll over. The
+ * crease bisects the two headings, and wrapping the strip a half turn about a
+ * cylinder whose axis is that crease sends the incoming heading onto the
+ * outgoing one exactly — the component along the crease is kept, the component
+ * across it reverses:
  *
- * Its cost is that it MOVES THE RUNS: the last `reach` of each is no longer
- * straight, so the turn is not a thing you can switch on and off without the
- * runs noticing. Everything else here leaves them alone.
+ *     sep      0     20     40     90    150
+ *     crease  90°    80°    70°    45°    15°
+ *     error    0      0      0      0      0     (to nine places)
+ *
+ * The surface is then developable, which is the whole point: it is the strip's
+ * own plane rolled onto a cylinder, so nothing stretches, nothing pinches, and
+ * width and thickness are carried through untouched. The outer face of the bend
+ * gets radius R + t/2 and the inner R - t/2 for free, and the two layers come
+ * out a full 2R apart, which is the slot that makes it read as one strip looped
+ * rather than two bars joined.
+ *
+ * R is half the storey step, so the fold delivers the climb by itself.
+ *
+ * The one thing it cannot do is a lace that carries straight on. There the
+ * crease lies ALONG the strip, and a strip creased along its own length does
+ * not fold — it just is not a fold any more. The slide along the crease says so
+ * by diverging (R·π·tan(sep/2), which is 1.1 R at forty degrees and 11.7 R at a
+ * hundred and fifty), so it is capped, and the blend has handed over to the
+ * ramp long before it matters.
  */
-function sweep(din: Vec2, dout: Vec2, g: Gauge, steps = 28): THREE.BufferGeometry {
-  const di = norm(din);
-  const dO = norm(dout);
-  // The handles lengthen as the runs open out. Tangency is what keeps the joint
-  // invisible, so the ramp is drawn out by reaching FURTHER along each run
-  // rather than by moving the handles off them.
-  const r = Math.max(g.reach * (1 + g.k * 2), 1e-3);
-  const zi = -g.step / 2;
-  const zo = g.step / 2;
-  // A cubic Bezier from run to run: the handles run along each run's own
-  // heading, so the curve leaves and arrives tangent and the joint disappears.
-  const p0 = { x: -di.x * r, y: -di.y * r, z: zi };
-  const p1 = { x: 0, y: 0, z: zi };
-  const p2 = { x: 0, y: 0, z: zo };
-  const p3 = { x: dO.x * r, y: dO.y * r, z: zo };
-  const at = (t: number): Vec3 => {
-    const u = 1 - t;
-    const k0 = u * u * u;
-    const k1 = 3 * u * u * t;
-    const k2 = 3 * u * t * t;
-    const k3 = t * t * t;
-    return {
-      x: k0 * p0.x + k1 * p1.x + k2 * p2.x + k3 * p3.x,
-      y: k0 * p0.y + k1 * p1.y + k2 * p2.y + k3 * p3.y,
-      z: k0 * p0.z + k1 * p1.z + k2 * p2.z + k3 * p3.z,
-    };
-  };
+function fold(din: Vec2, dout: Vec2, g: Gauge, steps = 40): { rings: Vec3[][]; slide: Vec3 } {
+  const a = norm(din);
+  const b = norm(dout);
+  // The crease: the bisector of the two headings. Where they are antiparallel —
+  // a dead fold-back — the sum vanishes and the crease is square to the run,
+  // which is the limit the sum approaches anyway.
+  const sum = { x: a.x + b.x, y: a.y + b.y };
+  const c = Math.hypot(sum.x, sum.y) < 1e-9 ? perp(a) : norm(sum);
+  let n = perp(c);
+  const du = a.x * c.x + a.y * c.y;
+  let dv = a.x * n.x + a.y * n.y;
+  // `n` points the way the strip travels into the wrap; flip it if it does not.
+  if (dv < 0) {
+    n = { x: -n.x, y: -n.y };
+    dv = -dv;
+  }
+
+  const R = Math.max(g.step / 2, g.thickness * 0.25);
+  // How far the wrap slides along the crease. An oblique fold displaces the
+  // strip sideways, and the more oblique the further — without bound as the
+  // crease swings onto the strip's own length, which is where it stops being a
+  // fold at all. Capped so a nearly-straight lace cannot throw the run to
+  // infinity while the blend is still handing over.
+  const slideEnd = Math.min(dv < 1e-4 ? Infinity : (Math.PI * R * du) / dv, g.ramp * 4);
+
   const sec = section(g);
-  const pts: Vec3[] = [];
-  for (let i = 0; i <= steps; i++) pts.push(at(i / steps));
-  // The run it leaves is flat and horizontal, so the frame starts there: width
-  // across the run in plan, thickness up. Everything after is carried.
-  const s0 = perp(di);
-  const frames = transport(pts, { x: s0.x, y: s0.y, z: 0 });
-  return tube(pts.map((p, i) => ring3(p, frames[i].side, frames[i].up, sec)));
+  const rings: Vec3[][] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const ang = Math.PI * t; // round the cylinder, tangent plane to tangent plane
+    const u = slideEnd * t;
+    const sin = Math.sin(ang);
+    const cos = Math.cos(ang);
+    // On the cylinder: along the crease by u, out by R at this angle.
+    const p: Vec3 = { x: c.x * u + n.x * R * sin, y: c.y * u + n.y * R * sin, z: -R * cos };
+    // Radial. The section's thickness rides it, so the strip's faces stay
+    // parallel to the cylinder and the fold shows its other side coming out.
+    const rad: Vec3 = { x: n.x * sin, y: n.y * sin, z: -cos };
+    // The unrolled straight line, rolled: constant along the crease, turning
+    // with the wrap across it.
+    const tan = norm3({
+      x: c.x * (slideEnd / (Math.PI * R)) + n.x * cos,
+      y: c.y * (slideEnd / (Math.PI * R)) + n.y * cos,
+      z: sin,
+    });
+    const up = { x: -rad.x, y: -rad.y, z: -rad.z };
+    const side = norm3(cross3(up, tan));
+    rings.push(ring3(p, side, up, sec));
+  }
+  return { rings, slide: { x: c.x * slideEnd, y: c.y * slideEnd, z: 0 } };
 }
 
 // ---- 3. CAP ----------------------------------------------------------------
@@ -443,13 +417,22 @@ function cap(din: Vec2, dout: Vec2, g: Gauge, steps = 8): THREE.BufferGeometry {
 
 // ---- pick ------------------------------------------------------------------
 
-export function band(kind: BandKind, din: Vec2, dout: Vec2, g: Gauge): THREE.BufferGeometry {
-  if (kind === 'bridge') return bridge(din, dout, g);
-  if (kind === 'sweep') return sweep(din, dout, g);
-  return cap(din, dout, g);
-}
-
-/** How far the runs must be cut back for this band to meet them, if at all. */
-export function runTrim(kind: BandKind, g: Gauge): number {
-  return kind === 'sweep' ? Math.max(g.reach * (1 + g.k * 2), 1e-3) : 0;
+/**
+ * A band, and where it leaves the two runs.
+ *
+ * `shiftOut` is not decoration: an oblique fold DISPLACES the strip along its
+ * crease, so the run coming away starts to one side of the one going in. Only
+ * the fold moves anything; the other two meet the runs where they already are.
+ */
+export function band(
+  kind: BandKind,
+  din: Vec2,
+  dout: Vec2,
+  g: Gauge,
+): { geom: THREE.BufferGeometry; shiftOut: Vec3 } {
+  const none = { x: 0, y: 0, z: 0 };
+  if (kind === 'bridge') return { geom: bridge(din, dout, g), shiftOut: none };
+  if (kind === 'cap') return { geom: cap(din, dout, g), shiftOut: none };
+  const f = fold(din, dout, g);
+  return { geom: tube(f.rings), shiftOut: f.slide };
 }
