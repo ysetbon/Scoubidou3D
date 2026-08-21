@@ -42,7 +42,7 @@ const state = {
   separation: 0, // degrees; 0 is a dead fold-back, 180 is straight through
   kind: 'bridge' as BandKind,
   step: 0.5,
-  reach: 1.2,
+  reach: 0.95,
   round: 0.8,
   ramp: 2.4,
   showRuns: true,
@@ -146,7 +146,7 @@ const NOTES: Record<BandKind, string> = {
   bridge:
     'Lofts straight from one run’s end face to the other’s. Uses nothing but those two faces — no crease, no bisector, no outward normal. Cleanest at a dead fold-back, thinnest near straight-through.',
   sweep:
-    'Folds the strap about an oblique crease and rolls it a half turn, the way a belt folds. Developable, so nothing stretches or pinches — width and thickness carry straight through. It rolls onto a bight rather than a plain cylinder: straight out along the run, round the tip, straight back, so the purple is the orange continued and the two layers stay a storey apart with a slot between them. The crease displaces the outgoing run sideways, as a real oblique fold does.',
+    'Folds the strap about an oblique crease and rolls it a half turn, the way a belt folds. Developable, so nothing stretches or pinches — width and thickness carry straight through. It rolls onto a bight rather than a plain cylinder: straight out along the run for the leg length, round the tip, straight back, so the purple is the orange continued and the two layers stay a storey apart with a slot between them. The crease displaces the outgoing run sideways, as a real oblique fold does.',
   cap: 'Stands a stub of lace on end between the two run faces, on the bisector of their width axes. Needs no outward normal, so it survives a dead fold-back — but it reads as a joint, not as bending.',
 };
 
@@ -228,7 +228,7 @@ function ui(): void {
   slider('Corner round', state.round, 0, 1, 0.05, (v) => (state.round = v));
   slider('Ramp length', state.ramp, 0, 6, 0.1, (v) => (state.ramp = v));
   if (state.kind === 'sweep') {
-    slider('Loop depth', state.reach, 0.2, 4, 0.05, (v) => (state.reach = v));
+    slider('Leg length', state.reach, 0, 4, 0.05, (v) => (state.reach = v));
 
     const modes = document.createElement('div');
     modes.className = 'kinds';

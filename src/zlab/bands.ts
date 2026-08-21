@@ -40,7 +40,7 @@ export interface Gauge {
   step: number;
   /** How much of the section's corner is rounded, 0..1. */
   round: number;
-  /** How far the fold reaches out past the joint, world units (FOLD only). */
+  /** How long the fold's straight legs are, world units (FOLD only). */
   reach: number;
   /** 0 a dead fold-back, 1 straight through. See `blend`. */
   k: number;
@@ -351,7 +351,11 @@ function fold(din: Vec2, dout: Vec2, g: Gauge, steps: number): Turn {
   // run, round the tip, straight back — and the two legs are what make it a
   // fold rather than a knuckle. See `bight`.
   const h = Math.max(g.step / 2, 1e-4);
-  const leg = Math.max(0, g.reach - h);
+  // The legs are set directly rather than by a total depth. Depth minus the tip
+  // radius silently gave NO legs whenever the depth was asked for below that
+  // radius, and no legs is exactly the knuckle this is here to avoid — a dial
+  // whose bottom third quietly undoes the shape is a dial set wrong.
+  const leg = Math.max(0, g.reach);
   const tip = Math.PI * h;
   const span = 2 * leg + tip;
   // How far the strip walks along the crease per unit of bight travelled. It is
