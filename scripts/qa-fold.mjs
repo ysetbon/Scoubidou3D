@@ -19,18 +19,18 @@
 //              the gradient at the crease, in degrees. Past ~30 degrees the flat
 //              face of the lace is visibly on edge.
 //   maxSlope   the steepest gradient anywhere on the lace, fold or not.
-//   faceHeight the height of the flat face the fold turns on — the gap its two
-//              runs are left at, in strand thicknesses. This is the whole of what
-//              a turn shows, and it is set by FOLD_STACK in StrandScene. One is
-//              the two runs touching; a fold that also climbs a storey has two
-//              thicknesses of step to place and should show all of it.
+//   faceHeight the gap the fold's two runs are left at, in strand thicknesses —
+//              the storey the built turn has to climb. Capped by TURN_STACK in
+//              StrandScene. One is the two runs touching; a fold that also
+//              climbs a storey has two thicknesses of step to place and should
+//              carry all of it at the turn.
 //   ramped     how much of the step the crease refused and the runs had to carry
 //              instead, in thicknesses. Whatever the cap turns away lands here,
 //              and it is what tips the runs up either side of the turn.
 //
 // To compare two settings, build each with its own tag:
 //
-//   sed -i 's/const FOLD_STACK = 2/const FOLD_STACK = 1/' src/scene/StrandScene.ts
+//   sed -i 's/const TURN_STACK = 2/const TURN_STACK = 1/' src/scene/StrandScene.ts
 //   node scripts/qa-fold.mjs --tag before
 //   git checkout src/scene/StrandScene.ts
 //   node scripts/qa-fold.mjs --tag after
@@ -61,7 +61,7 @@ const TAG = flag('tag', 'now');
 // A `detail` view stands close to ONE turn instead of framing the model: the
 // number of lace widths to fit across the frame, centred on the steepest fold in
 // the scene. Which fold that is comes off the centreline, so two builds that
-// differ only in FOLD_STACK pick the same turn and can be laid side by side.
+// differ only in TURN_STACK pick the same turn and can be laid side by side.
 const VIEWS = [
   { key: 'ring-2x1-k1111-lh', az: 34, el: 14, fill: 0.78, label: 'Fitted ring 2x1 — from the side' },
   { key: 'ring-2x1-k1111-lh', az: 110, el: 12, detail: 3.5, label: 'Fitted ring 2x1 — one turn' },

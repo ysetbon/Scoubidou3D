@@ -129,6 +129,11 @@ function pulse(d: number): number {
 // the un-sharpened pulse so the ribbon still rises and falls smoothly.
 const SHARPNESS = 3;
 
+// Anchors closer together than this share one height rather than fighting over
+// it — two laces crossing at the same point, which is common where three or more
+// meet. As a fraction of the pulse radius.
+const COINCIDENT = 1e-3;
+
 /**
  * The height at each polyline vertex: `base` away from every crossing, easing to
  * the anchored heights across each crossing. `cum` is the cumulative arc-length
@@ -139,6 +144,21 @@ const SHARPNESS = 3;
  * instead of resolving. Blending also gives the right answer for free where
  * several strands cross at one point — the top lace lands at +h, the bottom at
  * -h, and one caught between them settles in the middle.
+ *
+ * The blend is EXACT AT EACH CROSSING, and that is not a nicety. An anchor says
+ * where the lace has to be for the ribbon under it to fit, so a blend that only
+ * heads towards it is a crossing that does not close. A plain weighted average
+ * never arrives: at the anchor's own position it carries the neighbours' heights
+ * too, and where a lace goes over here and under a little further on, the two
+ * pull opposite ways and it reaches neither. Measured on a starting box stitch
+ * that cost up to half a thickness — enough for the two ribbons to lie inside
+ * each other once the swing was no longer twice what it needed to be.
+ *
+ * Dividing the weights by `1 - pulse` fixes it, and cheaply: the weight runs
+ * away as a sample approaches an anchor, so that anchor takes the sample over
+ * completely, while everywhere else the falloff is the one it always was. The
+ * far side of the argument still holds — a crossing halfway between two others
+ * still averages them.
  */
 export function heightField(cum: number[], anchors: Anchor[], base: number): number[] {
   const z = new Array<number>(cum.length).fill(base);
@@ -147,20 +167,32 @@ export function heightField(cum: number[], anchors: Anchor[], base: number): num
     let envelope = 0; // how far off the base plane we are (un-sharpened)
     let weight = 0; // sharpened weights, so the nearest crossing wins
     let target = 0;
+    // A sample sitting ON a crossing takes that crossing's height and no other.
+    // Several of them together — three laces meeting at a point — average, which
+    // is the same answer the runaway weights converge to and avoids dividing by
+    // a zero they would otherwise reach.
+    let onW = 0;
+    let onZ = 0;
     for (const a of anchors) {
       if (a.radius <= 0) continue;
       const p = pulse((cum[k] - a.s) / a.radius);
       if (p <= 0) continue;
       envelope += p;
-      const q = Math.pow(p, SHARPNESS);
+      if (p >= 1 - COINCIDENT) {
+        onW++;
+        onZ += a.z;
+        continue;
+      }
+      const q = Math.pow(p, SHARPNESS) / (1 - p);
       weight += q;
       target += a.z * q;
     }
-    if (weight <= 0) continue; // no crossing nearby — stay on the base plane
+    if (onW === 0 && weight <= 0) continue; // no crossing nearby — stay on the base plane
+    const blended = onW > 0 ? onZ / onW : target / weight;
     // Commit fully to the crossing height once the pulses reach full strength;
     // ease out of the base plane on the way in.
     const t = Math.min(1, envelope);
-    z[k] = base * (1 - t) + (target / weight) * t;
+    z[k] = base * (1 - t) + blended * t;
   }
   return z;
 }

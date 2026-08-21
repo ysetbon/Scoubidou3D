@@ -10,7 +10,7 @@
 // one for this.
 //
 // The two runs differ by whatever was changed between them; qa-fold's own header
-// has the FOLD_STACK recipe.
+// has the TURN_STACK recipe.
 import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 
