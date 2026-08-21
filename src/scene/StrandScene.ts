@@ -209,7 +209,13 @@ export interface RenderParams {
   roundCaps: boolean; // rounded strand ends
   showGrid: boolean;
   weave: boolean; // realise over/under as real depth at crossings
-  weaveDepth: number; // weave amplitude — how far a lace lifts/dips, source units
+  /**
+   * How far apart the two laces are left at a crossing, source units — centre to
+   * centre, not each one's lift. One thickness is the two resting on each other,
+   * which is the floor and the default; more opens the weave up. See
+   * `weaveAmplitude`.
+   */
+  weaveDepth: number;
   weaveSpan: number; // crossing pulse width, as a multiple of the crossing widths
   // OSS `enable_third_control_point`: offer the centre square as a third handle,
   // and let a locked centre bend the curve through itself (bezier.ts).
@@ -230,6 +236,8 @@ export const DEFAULT_PARAMS: RenderParams = {
   roundCaps: true,
   showGrid: true,
   weave: true,
+  // One thickness: the lace riding over resting on the lace ducking under, which
+  // is what a crossing is. `thickness` is 26 above, and the two travel here.
   weaveDepth: 26,
   weaveSpan: 1.3,
   // On, matching the running desktop canvas (strand_drawing_canvas.py sets it
@@ -1157,21 +1165,37 @@ export class StrandScene {
   }
 
   /**
-   * How far a lace lifts/dips at a crossing, in world units.
+   * How far a lace lifts/dips at a crossing, in world units — HALF the distance
+   * between the two, because each of them takes half of it: the one riding over
+   * goes to +h and the one ducking under to -h.
    *
-   * The Depth slider sets it, floored where the two ribbons would otherwise pass
-   * through each other — and, once the scene has storeys, CAPPED so that the
-   * swing still fits inside one. A storey is two thicknesses; a crossing inside
-   * it puts one ribbon above the other, so each can go half a thickness from the
-   * storey's plane and no further. Left uncapped, a generous Depth swings the
-   * laces clean out of their own storey and into the ones above and below, which
-   * is what turns a stacked stitch into a loose spiral with holes in it.
+   * That halving is the whole of what Depth means, and it is why the slider is
+   * read as the SEPARATION rather than as one lace's displacement. Taken as the
+   * displacement — which is what it used to be — the two laces end up `2 × Depth`
+   * apart, and the default of one whole thickness therefore left them two
+   * thicknesses apart when resting on each other is one. Every crossing in every
+   * scene without storeys sat a full lace-thickness of daylight above the lace it
+   * was supposed to be lying on, and no setting of the slider could close it: the
+   * floor was 1.15 × resting, so even Depth 0 held them 15% of a thickness apart.
    *
-   * With no levels in play nothing is capped — Depth means exactly what it did.
+   * The floor is now resting itself. Below that the two ribbons pass through each
+   * other, which is the one thing the weave exists to prevent; at it they touch,
+   * which is what a lace lying over another does.
+   *
+   * Once the scene has storeys the swing is also CAPPED so it still fits inside
+   * one. A storey is two thicknesses; a crossing inside it puts one ribbon above
+   * the other, so each can go half a thickness from the storey's plane and no
+   * further. Left uncapped, a generous Depth swings the laces clean out of their
+   * own storey and into the ones above and below, which is what turns a stacked
+   * stitch into a loose spiral with holes in it. The cap is unchanged, and it
+   * already sat exactly at resting — which is why a levelled scene looked right
+   * while a flat weave did not.
    */
   private weaveAmplitude(thicknessOver: number, thicknessUnder: number): number {
-    const clearance = ((thicknessOver + thicknessUnder) / 2) * 1.15;
-    let h = Math.max(this.params.weaveDepth * SCALE, clearance / 2);
+    // Resting is centre-to-centre `(tOver + tUnder) / 2`, and each lace travels
+    // half of it.
+    const rest = (thicknessOver + thicknessUnder) / 4;
+    let h = Math.max((this.params.weaveDepth * SCALE) / 2, rest);
     if (this.current.levelBreaks.length > 0) {
       const room = (this.levelStepSource() * SCALE - Math.max(thicknessOver, thicknessUnder)) / 2;
       h = Math.min(h, Math.max(room, 0));

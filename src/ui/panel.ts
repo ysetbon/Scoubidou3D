@@ -943,6 +943,10 @@ export class Panel {
       }),
     );
     pop.appendChild(toggles);
+    // How far apart a crossing leaves the two laces, centre to centre — not how
+    // far each one lifts. At the default it is one thickness, which is the two
+    // resting on each other; it cannot go below that without them passing
+    // through each other, so the slider floors there whatever it is dragged to.
     pop.appendChild(slider('Depth', p.weaveDepth, 0, 120, 1, (v) => this.view.setParams({ weaveDepth: v })));
     pop.appendChild(slider('Span', p.weaveSpan, 0.4, 3, 0.05, (v) => this.view.setParams({ weaveSpan: v })));
     pop.appendChild(slider('Layer lift', p.layerGap, 0, 80, 1, (v) => this.view.setParams({ layerGap: v })));
