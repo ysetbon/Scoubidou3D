@@ -40,7 +40,7 @@ export interface Gauge {
   step: number;
   /** How much of the section's corner is rounded, 0..1. */
   round: number;
-  /** How far back along each run the bend is allowed to start (SWEEP only). */
+  /** How far the fold reaches out past the joint, world units (FOLD only). */
   reach: number;
   /** 0 a dead fold-back, 1 straight through. See `blend`. */
   k: number;
@@ -304,11 +304,16 @@ function bridge(din: Vec2, dout: Vec2, g: Gauge, steps = 14): THREE.BufferGeomet
  * The surface is then developable, which is the whole point: it is the strip's
  * own plane rolled onto a cylinder, so nothing stretches, nothing pinches, and
  * width and thickness are carried through untouched. The outer face of the bend
- * gets radius R + t/2 and the inner R - t/2 for free, and the two layers come
- * out a full 2R apart, which is the slot that makes it read as one strip looped
- * rather than two bars joined.
+ * gets the larger radius and the inner face the tighter one for free, and the
+ * two layers come out a full storey apart, which is the slot that makes it read
+ * as one strip looped rather than two bars joined.
  *
- * R is half the storey step, so the fold delivers the climb by itself.
+ * WHAT SHAPE the strip is rolled onto is then a second question, and the first
+ * cut got it wrong by not asking: a plain half-cylinder of radius half a storey
+ * is a knuckle, as deep as the climb and no deeper, and against a strap four
+ * times as wide it reads as a lump between the runs rather than a fold. The
+ * strip is rolled onto a BIGHT instead — out, round, and back — which is deep
+ * because its legs are straight. See `bight`.
  *
  * The one thing it cannot do is a lace that carries straight on. There the
  * crease lies ALONG the strip, and a strip creased along its own length does
@@ -317,7 +322,7 @@ function bridge(din: Vec2, dout: Vec2, g: Gauge, steps = 14): THREE.BufferGeomet
  * hundred and fifty), so it is capped, and the blend has handed over to the
  * ramp long before it matters.
  */
-function fold(din: Vec2, dout: Vec2, g: Gauge, steps = 40): { rings: Vec3[][]; slide: Vec3 } {
+function fold(din: Vec2, dout: Vec2, g: Gauge, arc = 48): { rings: Vec3[][]; slide: Vec3 } {
   const a = norm(din);
   const b = norm(dout);
   // The crease: the bisector of the two headings. Where they are antiparallel —
@@ -328,45 +333,86 @@ function fold(din: Vec2, dout: Vec2, g: Gauge, steps = 40): { rings: Vec3[][]; s
   let n = perp(c);
   const du = a.x * c.x + a.y * c.y;
   let dv = a.x * n.x + a.y * n.y;
-  // `n` points the way the strip travels into the wrap; flip it if it does not.
+  // `n` points the way the strip travels into the bight; flip it if it does not.
   if (dv < 0) {
     n = { x: -n.x, y: -n.y };
     dv = -dv;
   }
 
-  const R = Math.max(g.step / 2, g.thickness * 0.25);
-  // How far the wrap slides along the crease. An oblique fold displaces the
-  // strip sideways, and the more oblique the further — without bound as the
-  // crease swings onto the strip's own length, which is where it stops being a
-  // fold at all. Capped so a nearly-straight lace cannot throw the run to
-  // infinity while the blend is still handing over.
-  const slideEnd = Math.min(dv < 1e-4 ? Infinity : (Math.PI * R * du) / dv, g.ramp * 4);
+  // The bight, drawn in the plane across the crease. Straight out along the
+  // run, round the tip, straight back — and the two legs are what make it a
+  // fold rather than a knuckle. See `bight`.
+  const h = Math.max(g.step / 2, 1e-4);
+  const leg = Math.max(0, g.reach - h);
+  const span = 2 * leg + Math.PI * h;
+  // How far the strip walks along the crease per unit of bight travelled. It is
+  // tan(sep/2), so it diverges as the crease swings onto the strip's own length
+  // — the point where a fold stops being one. Capped there; the blend has long
+  // since handed over to the ramp.
+  const rate = dv < 1e-9 ? Infinity : du / dv;
+  const k = Math.min(rate, (g.ramp * 4) / span);
 
   const sec = section(g);
   const rings: Vec3[][] = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const ang = Math.PI * t; // round the cylinder, tangent plane to tangent plane
-    const u = slideEnd * t;
-    const sin = Math.sin(ang);
-    const cos = Math.cos(ang);
-    // On the cylinder: along the crease by u, out by R at this angle.
-    const p: Vec3 = { x: c.x * u + n.x * R * sin, y: c.y * u + n.y * R * sin, z: -R * cos };
-    // Radial. The section's thickness rides it, so the strip's faces stay
-    // parallel to the cylinder and the fold shows its other side coming out.
-    const rad: Vec3 = { x: n.x * sin, y: n.y * sin, z: -cos };
-    // The unrolled straight line, rolled: constant along the crease, turning
-    // with the wrap across it.
-    const tan = norm3({
-      x: c.x * (slideEnd / (Math.PI * R)) + n.x * cos,
-      y: c.y * (slideEnd / (Math.PI * R)) + n.y * cos,
-      z: sin,
-    });
-    const up = { x: -rad.x, y: -rad.y, z: -rad.z };
-    const side = norm3(cross3(up, tan));
-    rings.push(ring3(p, side, up, sec));
+  const at = (s: number): void => {
+    const q = bight(s, leg, h);
+    const p: Vec3 = { x: c.x * s * k + n.x * q.pn, y: c.y * s * k + n.y * q.pn, z: q.pz };
+    const tan = norm3({ x: c.x * k + n.x * q.tn, y: c.y * k + n.y * q.tn, z: q.tz });
+    // The face normal, square to the crease and to the bight's own tangent. It
+    // is already unit — the bight is walked at unit speed — and it turns right
+    // over as the strip does, which is what shows the other side coming out.
+    const up: Vec3 = { x: -n.x * q.tz, y: -n.y * q.tz, z: q.tn };
+    rings.push(ring3(p, norm3(cross3(up, tan)), up, sec));
+  };
+  if (leg > 0) at(0);
+  for (let i = 0; i <= arc; i++) at(leg + Math.PI * h * (i / arc));
+  if (leg > 0) at(span);
+
+  return { rings, slide: { x: c.x * span * k, y: c.y * span * k, z: 0 } };
+}
+
+/**
+ * The bight itself: where the strip is, and which way it is going, `s` along a
+ * flat strap folded back on itself.
+ *
+ * Two coordinates, both in the plane across the crease — `pn` out from the
+ * joint, `pz` up. It is a stadium: straight out at the lower storey, a half
+ * turn of radius `h` at the tip, straight back at the upper one.
+ *
+ * The LEGS are the whole point, and the reason a half-cylinder on its own was
+ * never going to do. A plane curve that turns exactly half a turn and rises
+ * exactly one storey is pinned to a depth of about half that storey if it turns
+ * at a steady rate — a knuckle, not a fold, and no amount of easing the rate
+ * changes it, because the depth has to be bought with turning that does not
+ * rise. Straight legs are that turning-free depth: they cost no rise at all,
+ * so the tip stays a storey deep while the fold reaches as far out as asked.
+ *
+ * They also cost nothing to justify. A leg is a flat strip carrying straight on
+ * in the run's own direction at the run's own height, which is exactly what the
+ * lace does either side of the fold — the purple is the orange, continued.
+ *
+ * The tip's radius is half the storey step and cannot be anything else: the two
+ * legs have to come out a storey apart or they miss the runs they join. A tight
+ * storey therefore gives a tight tip, which is a fact about the lace and not
+ * about this code.
+ */
+function bight(
+  s: number,
+  leg: number,
+  h: number,
+): { pn: number; pz: number; tn: number; tz: number } {
+  if (s <= leg) return { pn: s, pz: -h, tn: 1, tz: 0 };
+  const round = s - leg;
+  if (round <= Math.PI * h) {
+    const phi = round / h;
+    return {
+      pn: leg + h * Math.sin(phi),
+      pz: -h * Math.cos(phi),
+      tn: Math.cos(phi),
+      tz: Math.sin(phi),
+    };
   }
-  return { rings, slide: { x: c.x * slideEnd, y: c.y * slideEnd, z: 0 } };
+  return { pn: leg - (round - Math.PI * h), pz: h, tn: -1, tz: 0 };
 }
 
 // ---- 3. CAP ----------------------------------------------------------------
