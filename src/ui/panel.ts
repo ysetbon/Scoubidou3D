@@ -35,6 +35,7 @@
 // layer in OpenStrand's layer panel.
 
 import { StrandScene, EditMode } from '../scene/StrandScene';
+import { MATERIAL_PRESETS, MaterialPreset } from '../scene/materials';
 import { MaskLink, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, TWIST_FAMILY, TWIST_MAX, makeSample } from '../model/samples';
 import { GAP, HANDS, TWOFAN_COLUMN_FAMILY, TWOFAN_MAX, columnKey } from '../model/twofan';
@@ -798,7 +799,7 @@ export class Panel {
     const p = this.view.getParams();
 
     const values: Record<DockKey, string> = {
-      ribbon: String(p.thickness),
+      ribbon: MATERIAL_PRESETS[p.materialPreset].label,
       weave: p.weave ? 'on' : 'off',
       view: '',
       scene: shortName(this.scene.name),
@@ -890,6 +891,23 @@ export class Panel {
   private ribbonCard(): HTMLElement {
     const pop = this.popover('Ribbon', 'global');
     const p = this.view.getParams();
+    const materials = el('div', 'material-presets');
+    materials.setAttribute('role', 'group');
+    materials.setAttribute('aria-label', 'Material');
+    (Object.keys(MATERIAL_PRESETS) as MaterialPreset[]).forEach((key) => {
+      const button = pill(MATERIAL_PRESETS[key].label, () => {
+        const thinReference = key === 'leather' || key === 'glass';
+        this.view.setParams({
+          materialPreset: key,
+          ...(thinReference ? { thickness: 2, outline: false } : {}),
+        });
+        if (!this.commitDock()) this.renderDock();
+      });
+      button.classList.toggle('on', p.materialPreset === key);
+      button.setAttribute('aria-pressed', String(p.materialPreset === key));
+      materials.appendChild(button);
+    });
+    pop.appendChild(materials);
     pop.appendChild(
       slider('Thickness', p.thickness, 2, 120, 1, (v) => {
         this.view.setParams({ thickness: v });

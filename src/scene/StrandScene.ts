@@ -44,6 +44,7 @@ import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
 import { easeFolds, easeSteps, roundCorners } from '../geometry/polyline';
 import { Anchor, arcLengths, heightField, polylineCrossings } from '../geometry/weave';
 import { Vec2, Vec3 } from '../geometry/vec';
+import { MATERIAL_PRESETS, MaterialPreset } from './materials';
 
 // Source (pixel) units -> world units. Keeps camera distances comfortable.
 const SCALE = 0.02;
@@ -159,6 +160,7 @@ const EDIT_NAMES: Record<DragState['kind'], string> = {
 
 export interface RenderParams {
   thickness: number; // default ribbon depth, source units
+  materialPreset: MaterialPreset; // shared surface recipe for every ribbon
   layerGap: number; // base lift between consecutive layers, source units (small)
   widthScale: number; // multiplier applied to every strand width
   outline: boolean; // draw the stroke-colored outline shell
@@ -174,6 +176,7 @@ export interface RenderParams {
 
 export const DEFAULT_PARAMS: RenderParams = {
   thickness: 26,
+  materialPreset: 'classic',
   // Base lift between layers. The weave picks over/under at every CROSSING on its
   // own (adaptive amplitude), so this only needs to separate strands that overlap
   // WITHOUT crossing (a plain parallel stack) — and it's what gives the ordered
@@ -193,6 +196,27 @@ export const DEFAULT_PARAMS: RenderParams = {
 
 function threeColor(c: RGBA): THREE.Color {
   return new THREE.Color().setRGB(c.r / 255, c.g / 255, c.b / 255, THREE.SRGBColorSpace);
+}
+
+/** Small deterministic height map: fine irregular pores rather than a repeated
+ *  image, so leather keeps its scale as the ribbon bends and stretches. */
+function makeLeatherGrain(): THREE.DataTexture {
+  const size = 64;
+  const data = new Uint8Array(size * size);
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const broad = Math.sin(x * 1.71 + y * 0.63) * 16;
+      const pores = Math.sin(x * 4.13 - y * 2.37) * 8;
+      const cellular = Math.sin((x * x + y * y) * 0.19) * 5;
+      data[y * size + x] = Math.round(128 + broad + pores + cellular);
+    }
+  }
+  const texture = new THREE.DataTexture(data, size, size, THREE.RedFormat);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(10, 3);
+  texture.needsUpdate = true;
+  return texture;
 }
 
 export class StrandScene {
@@ -231,6 +255,7 @@ export class StrandScene {
   private theme: 'light' | 'dark' = 'light';
   private current: Scene3D = { strands: [], masks: [], levelBreaks: [], name: 'empty' };
   private params: RenderParams = { ...DEFAULT_PARAMS };
+  private leatherGrain = makeLeatherGrain();
   private center: Vec2 = { x: 0, y: 0 };
   private contentRadius = 10;
 
@@ -848,16 +873,7 @@ export class StrandScene {
         cornerSteps: 3,
       });
       if (!geom) continue;
-      const mat = new THREE.MeshStandardMaterial({
-        color: threeColor(strand.color),
-        roughness: 0.5,
-        metalness: 0.04,
-        side: THREE.DoubleSide,
-      });
-      if (strand.color.a < 255) {
-        mat.transparent = true;
-        mat.opacity = strand.color.a / 255;
-      }
+      const mat = this.strandMaterial(strand, thickness);
       const mesh = new THREE.Mesh(geom, mat);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -927,19 +943,7 @@ export class StrandScene {
       capStart,
       capEnd,
     });
-    const fillMat = new THREE.MeshStandardMaterial({
-      color: threeColor(strand.color),
-      roughness: 0.5,
-      metalness: 0.04,
-      // The swept tube's winding yields inward normals; DoubleSide lets Three
-      // flip the normal per back-facing fragment so the body lights correctly
-      // (without it the ribbon shades black). Caps/dome are consistent too.
-      side: THREE.DoubleSide,
-    });
-    if (strand.color.a < 255) {
-      fillMat.transparent = true;
-      fillMat.opacity = strand.color.a / 255;
-    }
+    const fillMat = this.strandMaterial(strand, thickness);
     // The weave tool's glow does NOT live here: a lace of glued strands is one
     // mesh built from its head strand, so glowing it would light every arm of the
     // family instead of the one layer picked. It rides on the per-layer overlays
@@ -983,6 +987,45 @@ export class StrandScene {
     }
 
     return group;
+  }
+
+  /** Build the visible surface without changing the strand's saved colour.
+   *  Leather is deliberately opaque and dry; Glass keeps the same tint but lets
+   *  the folds and the strands beneath show through, like the visual references. */
+  private strandMaterial(
+    strand: Strand3D,
+    physicalThickness: number,
+  ): THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial {
+    const preset = MATERIAL_PRESETS[this.params.materialPreset];
+    const alpha = strand.color.a / 255;
+    if (this.params.materialPreset === 'glass') {
+      return new THREE.MeshPhysicalMaterial({
+        color: threeColor(strand.color),
+        roughness: preset.roughness,
+        metalness: preset.metalness,
+        transmission: preset.transmission,
+        thickness: Math.max(0.01, physicalThickness),
+        ior: preset.ior,
+        transparent: true,
+        opacity: preset.opacity * alpha,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+    }
+
+    const material = new THREE.MeshStandardMaterial({
+      color: threeColor(strand.color),
+      roughness: preset.roughness,
+      metalness: preset.metalness,
+      bumpMap: this.params.materialPreset === 'leather' ? this.leatherGrain : null,
+      bumpScale: this.params.materialPreset === 'leather' ? 0.018 : 1,
+      side: THREE.DoubleSide,
+    });
+    if (alpha < 1) {
+      material.transparent = true;
+      material.opacity = alpha;
+    }
+    return material;
   }
 
   // ---- coordinate helpers --------------------------------------------------

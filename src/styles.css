@@ -755,6 +755,24 @@ button {
   box-shadow: 3px 3px 0 var(--shadow);
 }
 
+.pill.on {
+  color: var(--fill-ink);
+  background: var(--fill);
+  border-color: var(--fill);
+}
+
+.material-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.material-presets .pill {
+  min-width: 0;
+  padding-inline: 8px;
+}
+
 .pill:disabled {
   opacity: 0.4;
   cursor: default;
