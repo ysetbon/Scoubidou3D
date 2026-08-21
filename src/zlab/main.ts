@@ -50,9 +50,34 @@ const state = {
   // rises. Fold and Square are the same builder — they are the two ends of the
   // lean below, and the buttons are presets for it rather than modes of their
   // own.
-  mode: 'turn' as 'turn' | 'carry',
-  lean: 0, // 0 creases on the bisector, 1 square to the strap
+  mode: 'auto' as 'turn' | 'auto' | 'carry',
+  lean: 0, // 0 creases on the bisector, 1 square to the strap; set by hand
+  peak: 90, // degrees; where Auto's phase is fully square
 };
+
+/**
+ * Where in the fold family this separation sits: 0 the crease on the bisector,
+ * 1 the crease square to the strap.
+ *
+ * Set by hand unless Auto is on, and Auto phases it as the separation asks. A
+ * dead fold-back wants the bisector — and it does not matter, since at 0 the
+ * bisector IS square to the strap and both ends of the family are the same
+ * hairpin. The peak wants square, because there the bisector crease is far
+ * enough off square that the tip stands taller than the storey it climbs and
+ * flares into a shell. Straight-through wants the bisector again, where it has
+ * already flattened into a shallow oblique step and is carrying on in all but
+ * name.
+ *
+ * So the lean rises to the peak and falls away, and nothing is ever switched:
+ * every value of it is a real crease angle with a real developable tip.
+ */
+function leanNow(): number {
+  if (state.mode !== 'auto') return state.lean;
+  const p = Math.min(179, Math.max(1, state.peak));
+  const t = state.separation <= p ? state.separation / p : (180 - state.separation) / (180 - p);
+  const u = Math.min(1, Math.max(0, t));
+  return u * u * (3 - 2 * u);
+}
 
 const GAUGE = (): Gauge => ({
   width: 1.1,
@@ -64,7 +89,7 @@ const GAUGE = (): Gauge => ({
   // straight-through one, and it is read off the separation rather than set:
   // the two are the same fact.
   k: blend(state.separation),
-  lean: state.lean,
+  lean: leanNow(),
   carryOn: state.mode === 'carry',
   ramp: state.ramp,
 });
@@ -154,6 +179,15 @@ function turnNote(): string {
       ' large one it pinches, which is what the fold is for.'
     );
   }
+  const lean = leanNow();
+  if (state.mode === 'auto') {
+    return (
+      `Auto — lean ${lean.toFixed(2)} at this separation. The crease swings from the bisector` +
+      ' towards square and back as the runs part, so the turn is an exact fold where that is the' +
+      ' better shape and square where it is not. Nothing switches: every lean between is a real' +
+      ' crease angle with a real developable tip.'
+    );
+  }
   if (state.lean === 0) {
     return (
       'Fold — the crease on the bisector. The tip turns the heading the whole way and the legs' +
@@ -240,9 +274,12 @@ function ui(): void {
 
   slider('Separation', state.separation, 0, 180, 1, (v) => {
     state.separation = v;
-    // The blend is derived, so its readout is stale the moment this moves.
+    // The blend is derived, and so is Auto's lean, so both readouts are stale
+    // the moment this moves.
     const r = host.querySelector('.blend');
     if (r) r.textContent = `Blend ${blend(v).toFixed(2)}`;
+    const w = host.querySelector('.why');
+    if (w) w.textContent = turnNote();
   }, '°');
   slider('Storey step', state.step, 0.05, 1.5, 0.01, (v) => (state.step = v));
   slider('Corner round', state.round, 0, 1, 0.05, (v) => (state.round = v));
@@ -256,8 +293,9 @@ function ui(): void {
       [
         ['Fold', 'turn', 0],
         ['Square', 'turn', 1],
+        ['Auto', 'auto', null],
         ['Carry on', 'carry', null],
-      ] as Array<[string, 'turn' | 'carry', number | null]>
+      ] as Array<[string, 'turn' | 'auto' | 'carry', number | null]>
     ).forEach(([label, m, preset]) => {
       const b = document.createElement('button');
       b.textContent = label;
@@ -282,6 +320,14 @@ function ui(): void {
     why.className = 'note why';
     why.textContent = turnNote();
     host.appendChild(why);
+
+    if (state.mode === 'auto') {
+      slider('Square at', state.peak, 10, 170, 1, (v) => {
+        state.peak = v;
+        const note = host.querySelector('.why');
+        if (note) note.textContent = turnNote();
+      }, '°');
+    }
 
     if (state.mode === 'turn') {
       slider('Lean', state.lean, 0, 1, 0.05, (v) => {
