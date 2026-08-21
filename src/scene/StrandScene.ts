@@ -17,6 +17,8 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MaskLink, Scene3D, Strand3D, RGBA, Point } from '../model/types';
 import {
   collectJunctions,
@@ -193,6 +195,10 @@ export const DEFAULT_PARAMS: RenderParams = {
 
 function threeColor(c: RGBA): THREE.Color {
   return new THREE.Color().setRGB(c.r / 255, c.g / 255, c.b / 255, THREE.SRGBColorSpace);
+}
+
+function strandFamily(id: string): string {
+  return id.includes('_') ? id.slice(0, id.indexOf('_')) : id;
 }
 
 export class StrandScene {
@@ -375,6 +381,57 @@ export class StrandScene {
 
   getScene(): Scene3D {
     return this.current;
+  }
+
+  /** Export the finished craft object — without grid, handles, camera or editor
+   *  lights — as a binary glTF file Blender can import directly. */
+  async exportGlb(): Promise<ArrayBuffer> {
+    this.strandGroup.updateMatrixWorld(true);
+    const byFamily = new Map<string, THREE.Mesh[]>();
+    this.strandGroup.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      const family = object.userData.exportFamily as string | undefined;
+      if (!family) return; // editor outline shells are deliberately not physical exports
+      const meshes = byFamily.get(family) ?? [];
+      meshes.push(object);
+      byFamily.set(family, meshes);
+    });
+
+    const model = new THREE.Group();
+    model.name = this.current.name || 'Scoubidou3D scene';
+    for (const [family, meshes] of byFamily) {
+      const parts = meshes.map((mesh) => mesh.geometry.clone().applyMatrix4(mesh.matrixWorld));
+      const geometry = mergeGeometries(parts, false);
+      for (const part of parts) part.dispose();
+      if (!geometry) throw new Error(`Could not combine Strand ${family}`);
+      const source = meshes[0].material;
+      const material = (Array.isArray(source) ? source[0] : source).clone();
+      material.name = `Strand ${family} Material`;
+      const strand = new THREE.Mesh(geometry, material);
+      strand.name = `Strand ${family}`;
+      strand.userData.scoubidouFamily = family;
+      model.add(strand);
+    }
+    // Scoubidou3D models height on Z; glTF declares Y as its up axis.
+    model.rotation.x = -Math.PI / 2;
+    model.updateMatrixWorld(true);
+
+    try {
+      const result = await new GLTFExporter().parseAsync(model, {
+        binary: true,
+        onlyVisible: true,
+        trs: false,
+      });
+      if (!(result instanceof ArrayBuffer)) throw new Error('GLB exporter returned text data');
+      return result;
+    } finally {
+      model.traverse((object) => {
+        if (!(object instanceof THREE.Mesh)) return;
+        object.geometry.dispose();
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        for (const material of materials) material.dispose();
+      });
+    }
   }
 
   getMode(): EditMode {
@@ -859,6 +916,7 @@ export class StrandScene {
         mat.opacity = strand.color.a / 255;
       }
       const mesh = new THREE.Mesh(geom, mat);
+      mesh.userData.exportFamily = strandFamily(strand.id);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       this.strandGroup.add(mesh);
@@ -948,6 +1006,7 @@ export class StrandScene {
     fillMesh.castShadow = true;
     fillMesh.receiveShadow = true;
     fillMesh.userData.strandId = strand.id;
+    fillMesh.userData.exportFamily = strandFamily(strand.id);
     group.add(fillMesh);
 
     if (this.params.outline && strand.stroke_width > 0) {

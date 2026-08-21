@@ -1064,6 +1064,16 @@ export class Panel {
     );
     pop.appendChild(row);
 
+    const blenderRow = el('div', 'pill-row');
+    blenderRow.appendChild(
+      pill(
+        'Export to Blender',
+        () => void this.exportBlender(),
+        'Download one Blender-ready GLB object per complete strand family',
+      ),
+    );
+    pop.appendChild(blenderRow);
+
     // Naming uses an inline field rather than window.prompt: modal dialogs are
     // blocked inside a sandboxed frame, which is exactly where this page runs when
     // it is published.
@@ -1678,6 +1688,32 @@ export class Panel {
       const code = (e as { code?: string }).code;
       if (code === 'declined') return; // viewer said no; never auto-retry
       this.flash('Download unavailable here — copy the text instead.', true);
+    }
+  }
+
+  /** Download the visible craft as one Blender object per complete strand
+   *  family. Blender imports the resulting GLB through File → Import → glTF 2.0. */
+  private async exportBlender(): Promise<void> {
+    const filename = `${this.scene.name.replace(/[^\w.-]+/g, '-').toLowerCase() || 'scene'}.glb`;
+    try {
+      const data = await this.view.exportGlb();
+      const blob = new Blob([data], { type: 'model/gltf-binary' });
+      const api = window.claude?.downloads;
+      if (api) {
+        await api.save({ filename, data: blob });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+      this.flash(`Exported ${filename} — import it in Blender as glTF 2.0.`);
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === 'declined') return;
+      this.flash('Could not export this scene for Blender: ' + (e as Error).message, true);
     }
   }
 
