@@ -47,9 +47,10 @@ const state = {
   ramp: 2.4,
   showRuns: true,
   // Whether the turn folds the strap back on itself or just carries on and
-  // rises. 'auto' reads it off the separation, which is the setting the other
-  // two exist to argue about.
-  mode: 'fold' as 'fold' | 'carry',
+  // rises. Fold and Square are the same builder — they are the two ends of the
+  // lean below, and the buttons are presets for it rather than modes of their
+  // own.
+  mode: 'turn' as 'turn' | 'carry',
   lean: 0, // 0 creases on the bisector, 1 square to the strap
 };
 
@@ -144,6 +145,33 @@ const NOTES: Record<BandKind, string> = {
   cap: 'Stands a stub of lace on end between the two run faces, on the bisector of their width axes. Needs no outward normal, so it survives a dead fold-back — but it reads as a joint, not as bending.',
 };
 
+/** What the turn is doing right now, in a sentence. */
+function turnNote(): string {
+  if (state.mode === 'carry') {
+    return (
+      'Never folds: the heading swings round in plan and the strip rises while it does. A flat' +
+      ' strap cannot really bend in its own plane — over a small turn nobody can tell, over a' +
+      ' large one it pinches, which is what the fold is for.'
+    );
+  }
+  if (state.lean === 0) {
+    return (
+      'Fold — the crease on the bisector. The tip turns the heading the whole way and the legs' +
+      ' run dead straight, so the strip never bends in its own plane at all.'
+    );
+  }
+  if (state.lean === 1) {
+    return (
+      'Square — the crease square to the strap. The tip stays a clean ⊂ at any separation, and' +
+      ' the legs bend in plan to give back the half turn the runs did not ask for.'
+    );
+  }
+  return (
+    'Between the two: the crease sits part way from the bisector towards square, and the legs' +
+    ' take exactly what the tip does not.'
+  );
+}
+
 function ui(): void {
   host.innerHTML = '';
   const h = document.createElement('h1');
@@ -226,15 +254,23 @@ function ui(): void {
     modes.className = 'kinds';
     (
       [
-        ['fold', 'Fold'],
-        ['carry', 'Carry on'],
-      ] as Array<['fold' | 'carry', string]>
-    ).forEach(([m, label]) => {
+        ['Fold', 'turn', 0],
+        ['Square', 'turn', 1],
+        ['Carry on', 'carry', null],
+      ] as Array<[string, 'turn' | 'carry', number | null]>
+    ).forEach(([label, m, preset]) => {
       const b = document.createElement('button');
       b.textContent = label;
-      if (state.mode === m) b.className = 'on';
+      // Fold and Square light up when the lean is actually sitting on their end
+      // of it, not merely when they were the last thing pressed — the slider can
+      // move it off them, and a lit button that is no longer true is worse than
+      // none lit at all.
+      const on =
+        state.mode !== m ? false : preset === null ? true : state.lean === preset;
+      if (on) b.className = 'on';
       b.onclick = () => {
         state.mode = m;
+        if (preset !== null) state.lean = preset;
         rebuild();
         ui();
       };
@@ -243,20 +279,28 @@ function ui(): void {
     host.appendChild(modes);
 
     const why = document.createElement('p');
-    why.className = 'note';
-    why.textContent =
-      state.mode === 'carry'
-        ? 'Never folds: the heading swings round in plan and the strip rises while it does. A flat strap cannot really bend in its own plane — over a small turn nobody can tell, over a large one it pinches, which is what the fold is for.'
-        : 'Folds the strap back on itself about a crease and rolls it a half turn. The crease angle decides how far the heading turns, so where the crease sits is a range rather than a choice — the Lean slider below runs it.';
+    why.className = 'note why';
+    why.textContent = turnNote();
     host.appendChild(why);
 
-    if (state.mode === 'fold') {
-      slider('Lean', state.lean, 0, 1, 0.05, (v) => (state.lean = v));
+    if (state.mode === 'turn') {
+      slider('Lean', state.lean, 0, 1, 0.05, (v) => {
+        state.lean = v;
+        // The lamps and the note are both claims about the lean, so they go
+        // stale the moment it moves.
+        const row = host.querySelectorAll('.kinds')[1];
+        if (row) {
+          row.children[0].className = v === 0 ? 'on' : '';
+          row.children[1].className = v === 1 ? 'on' : '';
+        }
+        const note = host.querySelector('.why');
+        if (note) note.textContent = turnNote();
+      });
 
       const mix = document.createElement('p');
       mix.className = 'note';
       mix.textContent =
-        'Lean 0 creases on the bisector: the tip turns the heading the whole way and the legs run' +
+        'The two buttons are the ends of this slider, not builds of their own. Lean 0 creases on the bisector: the tip turns the heading the whole way and the legs run' +
         ' dead straight. Developable end to end — and past 2·asin(step/width), 54° at this gauge,' +
         ' the crease is far enough off square that the tip stands taller than the storey it climbs' +
         ' and flares into a shell. Lean 1 creases square to the strap instead: the tip stays a' +
