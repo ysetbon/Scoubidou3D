@@ -58,6 +58,7 @@ export default defineConfig({
         app: page('app/index.html'),
         levels: page('levels/index.html'),
         zlab: page('zlab/index.html'),
+        foldbench: page('foldbench/index.html'),
         twist: page('twist/index.html'),
         mxn: page('mxn/index.html'),
         mxnFast: page('mxn/fast/index.html'),

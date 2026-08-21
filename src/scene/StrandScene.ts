@@ -1273,6 +1273,30 @@ export class StrandScene {
     return this.levelStepSource();
   }
 
+  /**
+   * Which storey each strand rests on, by strand index.
+   *
+   * Read by anything measuring the weave rather than drawing it: two strands on
+   * DIFFERENT levels are deliberately left un-woven — the level break has
+   * already said one passes above the other — so a tool counting crossings has
+   * to know which pairs the weave was ever asked to resolve, or it reports a
+   * storey's separation as a gap that failed to close.
+   */
+  getStrandLevels(): number[] {
+    return [...this.strandLevel];
+  }
+
+  /**
+   * Each strand's woven centreline, by strand index; null where the strand is
+   * hidden. The same measurement surface as `laceCenterlines`, one level down:
+   * that one is per LACE, after the glued members are concatenated, and a lace
+   * whose members sit on different storeys therefore has no single level to
+   * report. Anything asking what the weave did to a crossing needs the strands.
+   */
+  getWovenCenterlines(): Array<Vec3[] | null> {
+    return this.world3D.map((line) => (line ? line.map((p) => ({ ...p })) : null));
+  }
+
   private computeBaseZ(): void {
     const n = this.current.strands.length;
     const root = Array.from({ length: n }, (_, i) => i);
