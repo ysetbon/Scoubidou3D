@@ -49,16 +49,21 @@ const state = {
   // Whether the turn folds the strap back on itself or just carries on and
   // rises. 'auto' reads it off the separation, which is the setting the other
   // two exist to argue about.
-  mode: 'auto' as 'fold' | 'carry' | 'auto',
+  mode: 'auto' as 'fold' | 'square' | 'carry' | 'auto',
   handover: 90, // degrees; the middle of the changeover window in 'auto'
 };
 
-/** Whether this separation gets a fold or a carry-on. */
-function folding(): boolean {
-  if (state.mode === 'fold') return true;
-  if (state.mode === 'carry') return false;
-  return state.separation < state.handover;
+/** Which build this separation gets. */
+function building(): 'fold' | 'square' | 'carry' {
+  if (state.mode !== 'auto') return state.mode;
+  return state.separation < state.handover ? 'fold' : 'carry';
 }
+
+const BUILD_NAME: Record<'fold' | 'square' | 'carry', string> = {
+  fold: 'Folding',
+  square: 'Folding square',
+  carry: 'Carrying on',
+};
 
 const GAUGE = (): Gauge => ({
   width: 1.1,
@@ -70,7 +75,7 @@ const GAUGE = (): Gauge => ({
   // straight-through one, and it is read off the separation rather than set:
   // the two are the same fact.
   k: blend(state.separation),
-  fold: folding(),
+  fold: building(),
   ramp: state.ramp,
 });
 
@@ -222,7 +227,7 @@ function ui(): void {
     const r = host.querySelector('.blend');
     if (r) r.textContent = `Blend ${blend(v).toFixed(2)}`;
     const f = host.querySelector('.mix');
-    if (f) f.textContent = folding() ? 'Folding' : 'Carrying on';
+    if (f) f.textContent = BUILD_NAME[building()];
   }, '°');
   slider('Storey step', state.step, 0.05, 1.5, 0.01, (v) => (state.step = v));
   slider('Corner round', state.round, 0, 1, 0.05, (v) => (state.round = v));
@@ -235,9 +240,10 @@ function ui(): void {
     (
       [
         ['fold', 'Fold'],
+        ['square', 'Square'],
         ['auto', 'Auto'],
         ['carry', 'Carry on'],
-      ] as Array<['fold' | 'auto' | 'carry', string]>
+      ] as Array<['fold' | 'square' | 'auto' | 'carry', string]>
     ).forEach(([m, label]) => {
       const b = document.createElement('button');
       b.textContent = label;
@@ -255,7 +261,9 @@ function ui(): void {
     why.className = 'note';
     why.textContent =
       state.mode === 'fold'
-        ? 'Always folds the strap back on itself, however little the lace is actually turning.'
+        ? 'Always folds the strap back on itself, however little the lace is actually turning. The crease is the exact bisector, so past 2·asin(step/width) — 54° at this gauge — the tip is taller than the storey it climbs and flares into a shell.'
+        : state.mode === 'square'
+          ? 'Creases square to the strap, so the tip stays a clean ⊂ at any separation — the width axis never leaves the horizontal. A square crease reverses the heading exactly, though, and the runs rarely want a half turn: the legs bend in plan to supply the rest, half each. A hybrid, and the legs carry the same objection carrying on does.'
         : state.mode === 'carry'
           ? 'Never folds: the heading swings round in plan and the strip rises while it does. Honest over a small turn, and it pinches over a large one — which is what the fold is for.'
           : 'Folds below the handover angle and carries on above it. A switch, not a mix: both have to leave the band heading exactly along the outgoing run, and only the two exact builds do — anything part-way between them arrives pointing somewhere else. So the two shapes do not meet smoothly at the changeover, and where that seam is least objectionable is the thing to judge.';
@@ -266,7 +274,7 @@ function ui(): void {
         state.handover = v;
         rebuild();
         const r = host.querySelector('.mix');
-        if (r) r.textContent = folding() ? 'Folding' : 'Carrying on';
+        if (r) r.textContent = BUILD_NAME[building()];
       }, '°');
     }
 
@@ -274,7 +282,7 @@ function ui(): void {
     mix.className = 'note';
     const badge = document.createElement('b');
     badge.className = 'mix';
-    badge.textContent = folding() ? 'Folding' : 'Carrying on';
+    badge.textContent = BUILD_NAME[building()];
     mix.appendChild(badge);
     mix.appendChild(
       document.createTextNode(

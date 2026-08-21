@@ -44,8 +44,8 @@ export interface Gauge {
   reach: number;
   /** 0 a dead fold-back, 1 straight through. See `blend`. */
   k: number;
-  /** Whether the turn folds the strap back on itself or carries on. See `turn`. */
-  fold: boolean;
+  /** Which of the three builds the turn uses. See `turn`. */
+  fold: 'fold' | 'square' | 'carry';
   /** How long the ramp gets at straight-through, world units. */
   ramp: number;
 }
@@ -439,6 +439,98 @@ function carry(din: Vec2, dout: Vec2, g: Gauge, steps: number): Turn {
 }
 
 /**
+ * A SQUARE fold: keep the tip square to the strap, and make the legs take the
+ * turn instead.
+ *
+ * This is the answer to a complaint the oblique fold cannot answer. An exact
+ * fold creases on the bisector, so at a wide separation the crease lies well
+ * off square to the strap, the width stands across it, and the tip spans
+ * `width · sin(sep/2)` — taller than the storey it climbs once the separation
+ * passes `2 asin(step / width)`. That is the flared shell: correct paper, and
+ * not what anybody wants to look at.
+ *
+ * Crease square to the strap instead and the tip is a clean bight: the width
+ * axis stays horizontal the whole way round, no skew, no slide, the ⊂ rather
+ * than the C. The price is that a square crease reverses the heading exactly —
+ * half a turn in plan — and the runs rarely want half a turn. Whatever is left
+ * over, the LEGS supply, bending in plan, split evenly between them.
+ *
+ * So this is a hybrid and says so: the tip is an exact developable fold, and
+ * the legs are the same in-plane bend `carry` uses, with the same objection
+ * against them. Spread over a leg it is gentle — at ninety degrees of
+ * separation each leg gives up forty-five over its whole length — where the
+ * swept centreline that started all this asked for a hundred and forty at the
+ * joint. Whether that trade is worth it is a judgement about laces, which is
+ * why it is a button and not a decision.
+ */
+function square(din: Vec2, dout: Vec2, g: Gauge, legSteps = 24, tipSteps = 48): Turn {
+  const a = norm(din);
+  const swing = heading(din, dout);
+  // The fold's own half turn, taken the way the lace is already turning.
+  const half = swing >= 0 ? Math.PI : -Math.PI;
+  const bend = (swing - half) / 2;
+  const len = Math.max(g.reach, 1e-4);
+  const h = Math.max(g.step / 2, 1e-4);
+  const sec = section(g);
+  const rings: Vec3[][] = [];
+
+  const spin = (d: Vec2, ang: number): Vec2 => ({
+    x: d.x * Math.cos(ang) - d.y * Math.sin(ang),
+    y: d.x * Math.sin(ang) + d.y * Math.cos(ang),
+  });
+  // One leg: an arc of `bend` over `len`, flat, at a fixed height. Straight is
+  // the limit rather than a special case, but the radius is 1/0 there.
+  const r = Math.abs(bend) < 1e-6 ? 0 : len / bend;
+  const legAt = (from: Vec2, head: Vec2, t: number): Vec2 => {
+    const m = perp(head);
+    if (!r) return { x: from.x + head.x * len * t, y: from.y + head.y * len * t };
+    const phi = bend * t;
+    const on = r * Math.sin(phi);
+    const off = r * (1 - Math.cos(phi));
+    return { x: from.x + head.x * on + m.x * off, y: from.y + head.y * on + m.y * off };
+  };
+
+  for (let i = 0; i <= legSteps; i++) {
+    const t = i / legSteps;
+    const head = spin(a, bend * t);
+    const q = legAt({ x: 0, y: 0 }, a, t);
+    rings.push(ring({ x: q.x, y: q.y, z: -h }, perp(head), sec));
+  }
+
+  // The tip, creased square to the strap it arrives on. No crease slide, so the
+  // width axis never leaves the horizontal — this is the whole point.
+  const n = spin(a, bend);
+  const base = legAt({ x: 0, y: 0 }, a, 1);
+  for (let i = 1; i <= tipSteps; i++) {
+    const phi = Math.PI * (i / tipSteps);
+    const tn = Math.cos(phi);
+    const tz = Math.sin(phi);
+    const p: Vec3 = {
+      x: base.x + n.x * h * Math.sin(phi),
+      y: base.y + n.y * h * Math.sin(phi),
+      z: -h * Math.cos(phi),
+    };
+    const tan: Vec3 = { x: n.x * tn, y: n.y * tn, z: tz };
+    const up: Vec3 = { x: -n.x * tz, y: -n.y * tz, z: tn };
+    rings.push(ring3(p, norm3(cross3(up, tan)), up, sec));
+  }
+
+  // The leg coming away, upside down as the fold left it, bending the rest of
+  // the way onto the outgoing run.
+  const back: Vec2 = { x: -n.x, y: -n.y };
+  const down: Vec3 = { x: 0, y: 0, z: -1 };
+  for (let i = 1; i <= legSteps; i++) {
+    const t = i / legSteps;
+    const head = spin(back, bend * t);
+    const q = legAt(base, back, t);
+    rings.push(ring3({ x: q.x, y: q.y, z: h }, cross3(down, { x: head.x, y: head.y, z: 0 }), down, sec));
+  }
+
+  const end = legAt(base, back, 1);
+  return { rings, slide: { x: end.x, y: end.y, z: 0 } };
+}
+
+/**
  * The turn: fold the strap back on itself, or carry on and rise.
  *
  * Neither is right across the whole dial. A lace doubling back on itself folds;
@@ -457,7 +549,8 @@ function carry(din: Vec2, dout: Vec2, g: Gauge, steps: number): Turn {
  * collapses to a point half way across. Tried, drawn, and thrown out.
  */
 function turn(din: Vec2, dout: Vec2, g: Gauge, steps = 96): Turn {
-  return g.fold ? fold(din, dout, g, steps) : carry(din, dout, g, steps);
+  if (g.fold === 'square') return square(din, dout, g);
+  return g.fold === 'fold' ? fold(din, dout, g, steps) : carry(din, dout, g, steps);
 }
 
 /**
