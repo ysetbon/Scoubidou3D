@@ -125,7 +125,12 @@ export interface AutoDial {
  * The element is built once and repainted in place rather than replaced, so a
  * drag keeps its pointer capture all the way through.
  */
-export function autoDial(view: AutoView, auto: Auto, onEdit: () => void): AutoDial {
+export function autoDial(
+  view: AutoView,
+  auto: Auto,
+  onEdit: () => void,
+  onSeparation: (deg: number) => void,
+): AutoDial {
   const W = 320;
   const H = view === 'bar' ? 122 : view === 'curve' ? 156 : 182;
   const PAD = 14;
@@ -283,7 +288,7 @@ export function autoDial(view: AutoView, auto: Auto, onEdit: () => void): AutoDi
 
   // The separation the lab is actually showing.
   const nowMark = svgEl('line', { stroke: HOT, 'stroke-width': 1.5, opacity: 0.6 });
-  const nowDot = svgEl('circle', { r: 4.5, fill: HOT });
+  const nowDot = svgEl('circle', { r: 6, fill: HOT, stroke: '#141110', 'stroke-width': 1.5 });
   el.appendChild(nowMark);
   el.appendChild(nowDot);
 
@@ -329,7 +334,10 @@ export function autoDial(view: AutoView, auto: Auto, onEdit: () => void): AutoDi
     g.text.textContent = `${Math.round(deg)}°`;
   };
 
+  let shown = 0; // the separation last painted, so a drag knows what it is near
+
   const paint = (separation: number, step: number, width: number): void => {
+    shown = separation;
     for (const p of paints) p(separation, step, width);
     const lean = autoLean(auto, separation);
 
@@ -385,7 +393,7 @@ export function autoDial(view: AutoView, auto: Auto, onEdit: () => void): AutoDi
 
   // ---- dragging ------------------------------------------------------------
 
-  let held: 'lo' | 'hi' | 'cap' | null = null;
+  let held: 'lo' | 'hi' | 'cap' | 'now' | null = null;
   const local = (e: PointerEvent): [number, number] => {
     const r = el.getBoundingClientRect();
     return [((e.clientX - r.left) / r.width) * W, ((e.clientY - r.top) / r.height) * H];
@@ -394,9 +402,20 @@ export function autoDial(view: AutoView, auto: Auto, onEdit: () => void): AutoDi
   el.addEventListener('pointerdown', (e) => {
     const [x, y] = local(e);
     const deg = view === 'dial' ? dialDeg(x, y) : degOf(x);
-    // The cap is grabbed by the plateau itself, between the two shoulders, so
-    // it needs no handle of its own — there is nowhere else on that line to aim.
-    if (view === 'curve' && deg > Math.min(auto.lo, auto.hi) + 6 && deg < Math.max(auto.lo, auto.hi) - 6) {
+    // The separation marker wins when the pointer is close to it. Being able to
+    // drag it here is the difference between a control that answers and one that
+    // only records: an edit that leaves the lean where it was — a shoulder moved
+    // to the far side of the separation, say — changes nothing on screen and
+    // reads as a dead control, which is exactly what it is not.
+    if (Math.abs(deg - shown) < 7) {
+      held = 'now';
+    } else if (
+      view === 'curve' &&
+      deg > Math.min(auto.lo, auto.hi) + 6 &&
+      deg < Math.max(auto.lo, auto.hi) - 6
+    ) {
+      // The cap is grabbed by the plateau itself: there is nowhere else on that
+      // line to aim, so it needs no handle of its own.
       held = 'cap';
     } else {
       held = Math.abs(deg - auto.lo) <= Math.abs(deg - auto.hi) ? 'lo' : 'hi';
@@ -407,8 +426,16 @@ export function autoDial(view: AutoView, auto: Auto, onEdit: () => void): AutoDi
   });
 
   el.addEventListener('pointermove', (e) => {
+    // A pointerup that never arrives — the pointer leaving on a dropped capture,
+    // a button released off-window — would otherwise leave every later hover
+    // silently editing. The capture is the authority, not the flag.
+    if (held && !el.hasPointerCapture(e.pointerId)) held = null;
     if (!held) return;
     const [x, y] = local(e);
+    if (held === 'now') {
+      onSeparation(Math.round(view === 'dial' ? dialDeg(x, y) : degOf(x)));
+      return;
+    }
     if (held === 'cap') {
       auto.cap = Math.min(1, Math.max(0, (yBase - y) / (yBase - yTop)));
     } else {

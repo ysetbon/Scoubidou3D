@@ -210,6 +210,18 @@ function turnNote(): string {
   );
 }
 
+/** Move a slider that something OTHER than the slider has just changed. */
+function setSliderShown(label: string, value: number, text: string): void {
+  const wrap = [...host.querySelectorAll('label.slider')].find((w) =>
+    w.querySelector('span')?.textContent?.startsWith(label),
+  );
+  if (!wrap) return;
+  const input = wrap.querySelector('input');
+  if (input) input.value = String(value);
+  const read = wrap.querySelector('var');
+  if (read) read.textContent = text;
+}
+
 /** Repaint whichever Auto drawing is on show, if any. */
 let autoPaint: (() => void) | null = null;
 const repaintAuto = (): void => {
@@ -360,12 +372,29 @@ function ui(): void {
       });
       host.appendChild(views);
 
-      const dial = autoDial(state.autoView, state.auto, () => {
-        rebuild();
-        repaintAuto();
-        const note = host.querySelector('.why');
-        if (note) note.textContent = turnNote();
-      });
+      const dial = autoDial(
+        state.autoView,
+        state.auto,
+        () => {
+          rebuild();
+          repaintAuto();
+          const note = host.querySelector('.why');
+          if (note) note.textContent = turnNote();
+        },
+        // The graphic can drive the separation too, so cause and effect are
+        // under one hand. The slider is the same number and has to be told.
+        (deg) => {
+          if (deg === state.separation) return;
+          state.separation = deg;
+          setSliderShown('Separation', deg, `${deg}°`);
+          const r = host.querySelector('.blend');
+          if (r) r.textContent = `Blend ${blend(deg).toFixed(2)}`;
+          rebuild();
+          repaintAuto();
+          const note = host.querySelector('.why');
+          if (note) note.textContent = turnNote();
+        },
+      );
       host.appendChild(dial.el);
       autoPaint = () => dial.paint(state.separation, state.step, LACE_WIDTH);
       autoPaint();
