@@ -801,7 +801,7 @@ export class Panel {
       ribbon: String(p.thickness),
       weave: p.weave ? 'on' : 'off',
       view: '',
-      scene: shortName(this.scene.name),
+      scene: '',
     };
 
     if (this.popHost) this.popHost.innerHTML = '';
