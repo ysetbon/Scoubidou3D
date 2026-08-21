@@ -187,9 +187,14 @@ function turnNote(): string {
   if (state.mode === 'auto') {
     return (
       `Auto — lean ${lean.toFixed(2)} at this separation. Drag the two shoulders to say where the` +
-      ' crease starts and stops swinging towards square; on the curve, drag the plateau to cap how' +
-      ' square it ever gets. The three drawings are views of the same numbers, so switching between' +
-      ' them changes nothing but the picture.'
+      ' crease starts and stops swinging towards square, the red marker to move the separation' +
+      ' itself, and on the curve the plateau to cap how square it ever gets. The three drawings are' +
+      ' views of the same numbers, so switching between them changes nothing but the picture.' +
+      ' The shell angle is NOT one of the settings: it is 2·asin(step ÷ width), read off the storey' +
+      ' step and the lace, and it marks where an exact fold starts standing taller than the storey' +
+      ' it climbs. It goes red when the left shoulder sits to the right of it, because every angle' +
+      ' in between is then getting a fold that flares. Drag that shoulder left to clear it — or' +
+      ' raise the storey step, which moves the shell angle right instead.'
     );
   }
   if (state.lean === 0) {

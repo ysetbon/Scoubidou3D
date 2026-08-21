@@ -132,7 +132,7 @@ export function autoDial(
   onSeparation: (deg: number) => void,
 ): AutoDial {
   const W = 320;
-  const H = view === 'bar' ? 122 : view === 'curve' ? 156 : 182;
+  const H = view === 'bar' ? 138 : view === 'curve' ? 156 : 182;
   const PAD = 14;
   const el = svgEl('svg', {
     viewBox: `0 0 ${W} ${H}`,
@@ -360,13 +360,19 @@ export function autoDial(
       shellMark.setAttribute('x2', String(sx));
       shellMark.setAttribute('y2', String(view === 'curve' ? yBase : 60));
       shellText.setAttribute('x', String(Math.min(W - 4, sx + 5)));
-      shellText.setAttribute('y', String(view === 'curve' ? yBase + 14 : 100));
+      // Below where a dropped shoulder pill can reach, or the warning ends up
+      // reading through it.
+      shellText.setAttribute('y', String(view === 'curve' ? yBase + 14 : 120));
       shellText.setAttribute('text-anchor', 'start');
     }
+    // Naming the band is the whole use of the warning. "Not covered" says
+    // something is wrong without saying what to drag or how far.
     shellText.textContent = covered
-      ? `shell threshold ${Math.round(shell)}°`
-      : `shell threshold ${Math.round(shell)}° — not covered`;
-    shellText.setAttribute('fill', covered ? HOT : '#ff6b5e');
+      ? `shell ${Math.round(shell)}° · covered`
+      : `shell ${Math.round(shell)}° · flares ${Math.round(shell)}–${Math.round(Math.min(auto.lo, auto.hi))}°`;
+    // Red only ever means a problem, so a cleared threshold goes quiet.
+    shellText.setAttribute('fill', covered ? DIM : '#ff6b5e');
+    shellMark.setAttribute('stroke', covered ? DIM : '#ff6b5e');
 
     if (view === 'dial') {
       const [nx, ny] = dialAt(separation);
@@ -388,6 +394,13 @@ export function autoDial(
 
     place(gLo, auto.lo, auto.cap);
     place(gHi, auto.hi, auto.cap);
+    // Shoulders are allowed to meet, so their pills have to get out of each
+    // other's way rather than overprint into an unreadable smear.
+    const apart = Math.abs(xOf(auto.hi) - xOf(auto.lo));
+    const drop = apart < 48 ? 20 : 0;
+    for (const n of [gHi.pill, gHi.text]) {
+      n.setAttribute('y', String(Number(n.getAttribute('y')) + drop));
+    }
     readout.textContent = `now ${Math.round(separation)}° · lean ${lean.toFixed(2)}`;
   };
 
