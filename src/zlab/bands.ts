@@ -44,8 +44,10 @@ export interface Gauge {
   reach: number;
   /** 0 a dead fold-back, 1 straight through. See `blend`. */
   k: number;
-  /** Which of the three builds the turn uses. See `turn`. */
-  fold: 'fold' | 'square' | 'carry';
+  /** 0 an exact fold on the bisector, 1 a square fold. See `foldTurn`. */
+  lean: number;
+  /** Skip the fold family entirely and ramp instead. See `carry`. */
+  carryOn: boolean;
   /** How long the ramp gets at straight-through, world units. */
   ramp: number;
 }
@@ -296,180 +298,56 @@ function bridge(din: Vec2, dout: Vec2, g: Gauge, steps = 14): THREE.BufferGeomet
  * book — and about no other. Asked to turn a hundred and forty degrees in plan,
  * as a swept centreline asks at forty degrees of separation, the inner edge has
  * to travel a shorter path than the outer one and there is no thickness to take
- * up the difference, so the surface buckles: the pinch, the collapsed waist and
- * the bulky lump that came with it.
+ * up the difference, so the surface buckles.
  *
- * What a strip actually does is fold about an OBLIQUE CREASE and roll over. The
- * crease bisects the two headings, and wrapping the strip a half turn about a
- * cylinder whose axis is that crease sends the incoming heading onto the
- * outgoing one exactly — the component along the crease is kept, the component
- * across it reverses:
+ * What a strip does instead is crease and roll over. Wrapping the strip a half
+ * turn about a cylinder whose axis is the crease reverses the component of the
+ * heading across the crease and keeps the component along it, so the crease
+ * angle DECIDES how far the heading turns: a crease at θ to the strap turns it
+ * by 2θ, and a crease square to the strap turns it a full half turn. The
+ * surface is developable either way — the strip's own plane, rolled — so
+ * nothing stretches, nothing pinches, and width and thickness carry through
+ * untouched.
  *
- *     sep      0     20     40     90    150
- *     crease  90°    80°    70°    45°    15°
- *     error    0      0      0      0      0     (to nine places)
+ * That one fact is what makes this a family rather than two builds. There are
+ * two ways to get the runs to line up:
  *
- * The surface is then developable, which is the whole point: it is the strip's
- * own plane rolled onto a cylinder, so nothing stretches, nothing pinches, and
- * width and thickness are carried through untouched. The outer face of the bend
- * gets the larger radius and the inner face the tighter one for free, and the
- * two layers come out a full storey apart, which is the slot that makes it read
- * as one strip looped rather than two bars joined.
+ *   LEAN 0 — crease on the bisector, so the tip alone turns the heading the
+ *     whole way and the legs run dead straight. Exact, developable end to end,
+ *     and the strip never bends in its own plane. Its price is at wide
+ *     separations: the crease sits well off square, the strap's width stands
+ *     across it, and the tip spans width·sin(sep/2) — taller than the storey it
+ *     climbs once the separation passes 2·asin(step/width). That is the flared
+ *     shell. Correct paper, and not a shape anybody wants.
  *
- * WHAT SHAPE the strip is rolled onto is then a second question, and the first
- * cut got it wrong by not asking: a plain half-cylinder of radius half a storey
- * is a knuckle, as deep as the climb and no deeper, and against a strap four
- * times as wide it reads as a lump between the runs rather than a fold. The
- * strip is rolled onto a BIGHT instead — out, round, and back — which is deep
- * because its legs are straight. See `bight`.
+ *   LEAN 1 — crease square to the strap, so the tip is a clean bight with the
+ *     width axis flat the whole way round: the ⊂ rather than the C, at any
+ *     separation. But a square crease turns the heading a full half turn and
+ *     the runs rarely want one, so the LEGS supply the difference, bending in
+ *     plan, half each. That bend is the thing a flat strap cannot really do —
+ *     spread over a leg it is gentle, where the swept centreline wanted it all
+ *     at the joint, but it is the same borrowing.
  *
- * The one thing it cannot do is a lace that carries straight on. There the
- * crease lies ALONG the strip, and a strip creased along its own length does
- * not fold — it just is not a fold any more. The slide along the crease says so
- * by diverging (R·π·tan(sep/2), which is 1.1 R at forty degrees and 11.7 R at a
- * hundred and fifty), so it is capped, and the blend has handed over to the
- * ramp long before it matters.
+ * Anything between is a crease somewhere between the two, with the legs taking
+ * exactly what the tip does not. Nothing is interpolated and nothing is faked:
+ * every lean is a real crease angle with a real developable tip.
+ *
+ * Both ends of the family agree at a dead fold-back — there the bisector IS
+ * square to the strap — so the lean can be swung freely at 0 and only starts to
+ * mean anything as the runs part.
  */
-function fold(din: Vec2, dout: Vec2, g: Gauge, steps: number): Turn {
-  const a = norm(din);
-  const b = norm(dout);
-  // The crease: the bisector of the two headings. Where they are antiparallel —
-  // a dead fold-back — the sum vanishes and the crease is square to the run,
-  // which is the limit the sum approaches anyway.
-  const sum = { x: a.x + b.x, y: a.y + b.y };
-  const c = Math.hypot(sum.x, sum.y) < 1e-9 ? perp(a) : norm(sum);
-  let n = perp(c);
-  const du = a.x * c.x + a.y * c.y;
-  let dv = a.x * n.x + a.y * n.y;
-  // `n` points the way the strip travels into the bight; flip it if it does not.
-  if (dv < 0) {
-    n = { x: -n.x, y: -n.y };
-    dv = -dv;
-  }
-
-  // The bight, drawn in the plane across the crease. Straight out along the
-  // run, round the tip, straight back — and the two legs are what make it a
-  // fold rather than a knuckle. See `bight`.
-  const h = Math.max(g.step / 2, 1e-4);
-  // The legs are set directly rather than by a total depth. Depth minus the tip
-  // radius silently gave NO legs whenever the depth was asked for below that
-  // radius, and no legs is exactly the knuckle this is here to avoid — a dial
-  // whose bottom third quietly undoes the shape is a dial set wrong.
-  const leg = Math.max(0, g.reach);
-  const tip = Math.PI * h;
-  const span = 2 * leg + tip;
-  // How far the strip walks along the crease per unit of bight travelled. It is
-  // tan(sep/2), so it diverges as the crease swings onto the strip's own length
-  // — the point where a fold stops being one. Capped there; the blend has long
-  // since handed over to the ramp.
-  const rate = dv < 1e-9 ? Infinity : du / dv;
-  const k = Math.min(rate, (g.ramp * 4) / span);
-
-  // Half the rings go on the tip whatever the legs are doing, so a long reach
-  // cannot starve the one part of the fold that is actually curved.
-  const along = (t: number): number => {
-    if (leg <= 1e-9) return tip * t;
-    if (t < 0.25) return leg * (t / 0.25);
-    if (t < 0.75) return leg + tip * ((t - 0.25) / 0.5);
-    return leg + tip + leg * ((t - 0.75) / 0.25);
-  };
-
-  const sec = section(g);
-  const rings: Vec3[][] = [];
-  for (let i = 0; i <= steps; i++) {
-    const s = along(i / steps);
-    const q = bight(s, leg, h);
-    const p: Vec3 = { x: c.x * s * k + n.x * q.pn, y: c.y * s * k + n.y * q.pn, z: q.pz };
-    const tan = norm3({ x: c.x * k + n.x * q.tn, y: c.y * k + n.y * q.tn, z: q.tz });
-    // The face normal, square to the crease and to the bight's own tangent. It
-    // is already unit — the bight is walked at unit speed — and it turns right
-    // over as the strip does, which is what shows the other side coming out.
-    const up: Vec3 = { x: -n.x * q.tz, y: -n.y * q.tz, z: q.tn };
-    rings.push(ring3(p, norm3(cross3(up, tan)), up, sec));
-  }
-
-  return { rings, slide: { x: c.x * span * k, y: c.y * span * k, z: 0 } };
-}
-
-/**
- * Carry on in the same direction instead of folding: swing the heading round
- * in plan and rise the storey while doing it.
- *
- * This is what the lace does when it is barely turning at all. It is NOT a
- * fold and does not pretend to be — the strip keeps its face up the whole way
- * and bends in its own plane, which a flat strap cannot really do. Over a small
- * turn nobody can tell and it reads as the natural thing; over a large one the
- * inner edge has to travel a shorter path than the outer, and it pinches. That
- * is the trade the fold exists to take off it, and the reason both are here
- * with a dial between them rather than one being declared correct.
- *
- * It leaves and arrives level, because the runs are level: the climb follows a
- * smoothstep rather than a straight line, so there is no kink at either end.
- */
-function carry(din: Vec2, dout: Vec2, g: Gauge, steps: number): Turn {
-  const a = norm(din);
-  const m = perp(a);
-  const swing = heading(din, dout);
-  const len = Math.max(g.ramp, 1e-3);
-  // A circular arc of that turn and that length. Straight is the limit, not a
-  // special case, but the radius is 1/0 there so it is written out.
-  const r = Math.abs(swing) < 1e-6 ? 0 : len / swing;
-  const plan = (t: number): Vec2 => {
-    const phi = swing * t;
-    if (!r) return { x: a.x * len * t, y: a.y * len * t };
-    const along = r * Math.sin(phi);
-    const across = r * (1 - Math.cos(phi));
-    return { x: a.x * along + m.x * across, y: a.y * along + m.y * across };
-  };
-
-  const sec = section(g);
-  const h = g.step / 2;
-  const rings: Vec3[][] = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const phi = swing * t;
-    const ca = Math.cos(phi);
-    const sa = Math.sin(phi);
-    const head: Vec2 = { x: a.x * ca - a.y * sa, y: a.x * sa + a.y * ca };
-    const q = plan(t);
-    rings.push(ring({ x: q.x, y: q.y, z: -h + g.step * (t * t * (3 - 2 * t)) }, perp(head), sec));
-  }
-  const end = plan(1);
-  return { rings, slide: { x: end.x, y: end.y, z: 0 } };
-}
-
-/**
- * A SQUARE fold: keep the tip square to the strap, and make the legs take the
- * turn instead.
- *
- * This is the answer to a complaint the oblique fold cannot answer. An exact
- * fold creases on the bisector, so at a wide separation the crease lies well
- * off square to the strap, the width stands across it, and the tip spans
- * `width · sin(sep/2)` — taller than the storey it climbs once the separation
- * passes `2 asin(step / width)`. That is the flared shell: correct paper, and
- * not what anybody wants to look at.
- *
- * Crease square to the strap instead and the tip is a clean bight: the width
- * axis stays horizontal the whole way round, no skew, no slide, the ⊂ rather
- * than the C. The price is that a square crease reverses the heading exactly —
- * half a turn in plan — and the runs rarely want half a turn. Whatever is left
- * over, the LEGS supply, bending in plan, split evenly between them.
- *
- * So this is a hybrid and says so: the tip is an exact developable fold, and
- * the legs are the same in-plane bend `carry` uses, with the same objection
- * against them. Spread over a leg it is gentle — at ninety degrees of
- * separation each leg gives up forty-five over its whole length — where the
- * swept centreline that started all this asked for a hundred and forty at the
- * joint. Whether that trade is worth it is a judgement about laces, which is
- * why it is a button and not a decision.
- */
-function square(din: Vec2, dout: Vec2, g: Gauge, legSteps = 24, tipSteps = 48): Turn {
+function foldTurn(din: Vec2, dout: Vec2, g: Gauge, legSteps = 20, tipSteps = 56): Turn {
   const a = norm(din);
   const swing = heading(din, dout);
-  // The fold's own half turn, taken the way the lace is already turning.
-  const half = swing >= 0 ? Math.PI : -Math.PI;
-  const bend = (swing - half) / 2;
-  const len = Math.max(g.reach, 1e-4);
+  // A square crease turns the heading a half turn, taken the way the lace is
+  // already going. Lean says how much of the way there the crease is, and the
+  // legs are left holding the difference.
+  const square = swing >= 0 ? Math.PI : -Math.PI;
+  const lean = Math.max(0, Math.min(1, g.lean));
+  const bend = (lean * (swing - square)) / 2;
+  const tipTurn = swing - 2 * bend;
+
+  const len = Math.max(g.reach, 0);
   const h = Math.max(g.step / 2, 1e-4);
   const sec = section(g);
   const rings: Vec3[][] = [];
@@ -485,116 +363,136 @@ function square(din: Vec2, dout: Vec2, g: Gauge, legSteps = 24, tipSteps = 48): 
     const m = perp(head);
     if (!r) return { x: from.x + head.x * len * t, y: from.y + head.y * len * t };
     const phi = bend * t;
-    const on = r * Math.sin(phi);
-    const off = r * (1 - Math.cos(phi));
-    return { x: from.x + head.x * on + m.x * off, y: from.y + head.y * on + m.y * off };
+    return {
+      x: from.x + head.x * r * Math.sin(phi) + m.x * r * (1 - Math.cos(phi)),
+      y: from.y + head.y * r * Math.sin(phi) + m.y * r * (1 - Math.cos(phi)),
+    };
   };
 
   for (let i = 0; i <= legSteps; i++) {
     const t = i / legSteps;
-    const head = spin(a, bend * t);
     const q = legAt({ x: 0, y: 0 }, a, t);
-    rings.push(ring({ x: q.x, y: q.y, z: -h }, perp(head), sec));
+    rings.push(ring({ x: q.x, y: q.y, z: -h }, perp(spin(a, bend * t)), sec));
   }
 
-  // The tip, creased square to the strap it arrives on. No crease slide, so the
-  // width axis never leaves the horizontal — this is the whole point.
-  const n = spin(a, bend);
+  // The tip. The crease sits at half the turn it has to make, off the heading
+  // the leg brings in — which is the bisector when the legs did nothing, and
+  // square to the strap when they did it all.
+  const inTip = spin(a, bend);
+  const c = spin(inTip, tipTurn / 2);
+  let n = perp(c);
+  const du = inTip.x * c.x + inTip.y * c.y;
+  let dv = inTip.x * n.x + inTip.y * n.y;
+  if (dv < 0) {
+    n = { x: -n.x, y: -n.y };
+    dv = -dv;
+  }
+  // How far the strip walks along the crease per unit of tip travelled. It
+  // diverges as the crease swings onto the strip's own length — the point where
+  // a fold stops being one — so it is capped there.
+  const k = Math.min(dv < 1e-9 ? Infinity : du / dv, (g.ramp * 4) / (Math.PI * h));
   const base = legAt({ x: 0, y: 0 }, a, 1);
   for (let i = 1; i <= tipSteps; i++) {
     const phi = Math.PI * (i / tipSteps);
-    const tn = Math.cos(phi);
-    const tz = Math.sin(phi);
+    const sin = Math.sin(phi);
+    const cos = Math.cos(phi);
+    const walk = h * phi * k; // profile arclength times the crease rate
     const p: Vec3 = {
-      x: base.x + n.x * h * Math.sin(phi),
-      y: base.y + n.y * h * Math.sin(phi),
-      z: -h * Math.cos(phi),
+      x: base.x + c.x * walk + n.x * h * sin,
+      y: base.y + c.y * walk + n.y * h * sin,
+      z: -h * cos,
     };
-    const tan: Vec3 = { x: n.x * tn, y: n.y * tn, z: tz };
-    const up: Vec3 = { x: -n.x * tz, y: -n.y * tz, z: tn };
+    const tan = norm3({ x: c.x * k + n.x * cos, y: c.y * k + n.y * cos, z: sin });
+    // The face normal, square to the crease and to the tip's own tangent. It
+    // turns right over as the strip does, which is what shows the other side
+    // coming out.
+    const up: Vec3 = { x: -n.x * sin, y: -n.y * sin, z: cos };
     rings.push(ring3(p, norm3(cross3(up, tan)), up, sec));
   }
 
-  // The leg coming away, upside down as the fold left it, bending the rest of
+  // The leg coming away, upside down as the tip left it, bending the rest of
   // the way onto the outgoing run.
-  const back: Vec2 = { x: -n.x, y: -n.y };
+  const out = spin(inTip, tipTurn);
+  const tipEnd: Vec2 = { x: base.x + c.x * h * Math.PI * k, y: base.y + c.y * h * Math.PI * k };
   const down: Vec3 = { x: 0, y: 0, z: -1 };
   for (let i = 1; i <= legSteps; i++) {
     const t = i / legSteps;
-    const head = spin(back, bend * t);
-    const q = legAt(base, back, t);
-    rings.push(ring3({ x: q.x, y: q.y, z: h }, cross3(down, { x: head.x, y: head.y, z: 0 }), down, sec));
+    const head = spin(out, bend * t);
+    const q = legAt(tipEnd, out, t);
+    rings.push(
+      ring3({ x: q.x, y: q.y, z: h }, cross3(down, { x: head.x, y: head.y, z: 0 }), down, sec),
+    );
   }
 
-  const end = legAt(base, back, 1);
+  const end = legAt(tipEnd, out, 1);
   return { rings, slide: { x: end.x, y: end.y, z: 0 } };
 }
 
 /**
- * The turn: fold the strap back on itself, or carry on and rise.
+ * Carry on in the same direction instead of folding: swing the heading round
+ * in plan and rise the storey while doing it.
  *
- * Neither is right across the whole dial. A lace doubling back on itself folds;
- * a lace barely deviating carries on, and folding it would put a loop in a
- * nearly straight run. Where the changeover belongs is a question about laces
- * rather than about geometry, which is why the lab hands it to a slider instead
- * of deciding it here.
+ * This is what the lace does when it is barely turning at all. It is NOT a
+ * fold and does not pretend to be — the strip keeps its face up the whole way
+ * and bends in its own plane, which a flat strap cannot really do. Over a small
+ * turn nobody can tell and it reads as the natural thing; over a large one the
+ * inner edge has to travel a shorter path than the outer, and it pinches.
  *
- * It is a SWITCH and not a mix, and that is worth saying because a mix is the
- * obvious thing to reach for. It does not work. Both builders have to leave the
- * band heading exactly along the outgoing run — that is the one thing the runs
- * pin — and only the exact fold and the exact carry do; anything part-way
- * between them arrives pointing somewhere else. Interpolating their sections is
- * worse still: the fold ends with the strap the other way up, so a vertex of
- * one ring pairs with its diagonal opposite on the other and the section
- * collapses to a point half way across. Tried, drawn, and thrown out.
+ * It leaves and arrives level, because the runs are level: the climb follows a
+ * smoothstep rather than a straight line, so there is no kink at either end.
+ *
+ * The fold family reaches this shape on its own at a straight-through lace —
+ * lean 0 there puts the crease along the strip, the tip flattens into a shallow
+ * oblique step and the legs are straight — so this build is kept for comparison
+ * rather than because the phase needs it.
  */
-function turn(din: Vec2, dout: Vec2, g: Gauge, steps = 96): Turn {
-  if (g.fold === 'square') return square(din, dout, g);
-  return g.fold === 'fold' ? fold(din, dout, g, steps) : carry(din, dout, g, steps);
+function carry(din: Vec2, dout: Vec2, g: Gauge, steps = 96): Turn {
+  const a = norm(din);
+  const m = perp(a);
+  const swing = heading(din, dout);
+  const len = Math.max(g.ramp, 1e-3);
+  const r = Math.abs(swing) < 1e-6 ? 0 : len / swing;
+  const plan = (t: number): Vec2 => {
+    const phi = swing * t;
+    if (!r) return { x: a.x * len * t, y: a.y * len * t };
+    return {
+      x: a.x * r * Math.sin(phi) + m.x * r * (1 - Math.cos(phi)),
+      y: a.y * r * Math.sin(phi) + m.y * r * (1 - Math.cos(phi)),
+    };
+  };
+
+  const sec = section(g);
+  const h = g.step / 2;
+  const rings: Vec3[][] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const q = plan(t);
+    rings.push(
+      ring({ x: q.x, y: q.y, z: -h + g.step * (t * t * (3 - 2 * t)) }, perp(spin2(a, swing * t)), sec),
+    );
+  }
+  const end = plan(1);
+  return { rings, slide: { x: end.x, y: end.y, z: 0 } };
 }
 
+const spin2 = (d: Vec2, ang: number): Vec2 => ({
+  x: d.x * Math.cos(ang) - d.y * Math.sin(ang),
+  y: d.x * Math.sin(ang) + d.y * Math.cos(ang),
+});
+
 /**
- * The bight itself: where the strip is, and which way it is going, `s` along a
- * flat strap folded back on itself.
+ * The turn.
  *
- * Two coordinates, both in the plane across the crease — `pn` out from the
- * joint, `pz` up. It is a stadium: straight out at the lower storey, a half
- * turn of radius `h` at the tip, straight back at the upper one.
- *
- * The LEGS are the whole point, and the reason a half-cylinder on its own was
- * never going to do. A plane curve that turns exactly half a turn and rises
- * exactly one storey is pinned to a depth of about half that storey if it turns
- * at a steady rate — a knuckle, not a fold, and no amount of easing the rate
- * changes it, because the depth has to be bought with turning that does not
- * rise. Straight legs are that turning-free depth: they cost no rise at all,
- * so the tip stays a storey deep while the fold reaches as far out as asked.
- *
- * They also cost nothing to justify. A leg is a flat strip carrying straight on
- * in the run's own direction at the run's own height, which is exactly what the
- * lace does either side of the fold — the purple is the orange, continued.
- *
- * The tip's radius is half the storey step and cannot be anything else: the two
- * legs have to come out a storey apart or they miss the runs they join. A tight
- * storey therefore gives a tight tip, which is a fact about the lace and not
- * about this code.
+ * `carryOn` picks the ramp; otherwise it is the fold family, and `lean` says
+ * where in it. The lab's Auto phase swings the lean rather than switching
+ * builds, which is the whole reason the family was written as one thing: at a
+ * dead fold-back both ends of it are the same hairpin, at ninety degrees the
+ * square end is the only one that is not a shell, and at straight-through the
+ * exact end has already flattened into a step. Fold, square, carry on — with
+ * nothing to cross between them.
  */
-function bight(
-  s: number,
-  leg: number,
-  h: number,
-): { pn: number; pz: number; tn: number; tz: number } {
-  if (s <= leg) return { pn: s, pz: -h, tn: 1, tz: 0 };
-  const round = s - leg;
-  if (round <= Math.PI * h) {
-    const phi = round / h;
-    return {
-      pn: leg + h * Math.sin(phi),
-      pz: -h * Math.cos(phi),
-      tn: Math.cos(phi),
-      tz: Math.sin(phi),
-    };
-  }
-  return { pn: leg - (round - Math.PI * h), pz: h, tn: -1, tz: 0 };
+function turn(din: Vec2, dout: Vec2, g: Gauge): Turn {
+  return g.carryOn ? carry(din, dout, g) : foldTurn(din, dout, g);
 }
 
 // ---- 3. CAP ----------------------------------------------------------------

@@ -50,20 +50,33 @@ const state = {
   // rises. 'auto' reads it off the separation, which is the setting the other
   // two exist to argue about.
   mode: 'auto' as 'fold' | 'square' | 'carry' | 'auto',
-  handover: 90, // degrees; the middle of the changeover window in 'auto'
+  peak: 90, // degrees; where Auto's phase is fully square
 };
 
-/** Which build this separation gets. */
-function building(): 'fold' | 'square' | 'carry' {
-  if (state.mode !== 'auto') return state.mode;
-  return state.separation < state.handover ? 'fold' : 'carry';
+/**
+ * Where in the fold family this separation sits: 0 an exact fold on the
+ * bisector, 1 a square fold with the legs taking the turn.
+ *
+ * Auto phases it as the separation asks. A dead fold-back wants the exact
+ * fold — and gets it for free, since at 0 both ends of the family are the same
+ * hairpin. Ninety wants the square one, because the exact crease there is so
+ * far off square that the tip flares into a shell. Straight-through wants the
+ * exact fold again, where it has already flattened into a shallow step and is
+ * carrying on in all but name. So the lean rises to the peak and falls away,
+ * and nothing is ever switched.
+ */
+function lean(): number {
+  if (state.mode === 'fold') return 0;
+  if (state.mode === 'square') return 1;
+  if (state.mode === 'carry') return 0;
+  const p = Math.min(179, Math.max(1, state.peak));
+  const t =
+    state.separation <= p
+      ? state.separation / p
+      : (180 - state.separation) / (180 - p);
+  const u = Math.min(1, Math.max(0, t));
+  return u * u * (3 - 2 * u);
 }
-
-const BUILD_NAME: Record<'fold' | 'square' | 'carry', string> = {
-  fold: 'Folding',
-  square: 'Folding square',
-  carry: 'Carrying on',
-};
 
 const GAUGE = (): Gauge => ({
   width: 1.1,
@@ -75,7 +88,8 @@ const GAUGE = (): Gauge => ({
   // straight-through one, and it is read off the separation rather than set:
   // the two are the same fact.
   k: blend(state.separation),
-  fold: building(),
+  lean: lean(),
+  carryOn: state.mode === 'carry',
   ramp: state.ramp,
 });
 
@@ -227,7 +241,7 @@ function ui(): void {
     const r = host.querySelector('.blend');
     if (r) r.textContent = `Blend ${blend(v).toFixed(2)}`;
     const f = host.querySelector('.mix');
-    if (f) f.textContent = BUILD_NAME[building()];
+    if (f) f.textContent = state.mode === 'carry' ? 'Carrying on' : `Lean ${lean().toFixed(2)}`;
   }, '°');
   slider('Storey step', state.step, 0.05, 1.5, 0.01, (v) => (state.step = v));
   slider('Corner round', state.round, 0, 1, 0.05, (v) => (state.round = v));
@@ -261,20 +275,19 @@ function ui(): void {
     why.className = 'note';
     why.textContent =
       state.mode === 'fold'
-        ? 'Always folds the strap back on itself, however little the lace is actually turning. The crease is the exact bisector, so past 2·asin(step/width) — 54° at this gauge — the tip is taller than the storey it climbs and flares into a shell.'
+        ? 'Lean 0 everywhere: the crease is the exact bisector, the tip turns the heading the whole way and the legs run dead straight. Developable end to end — and past 2·asin(step/width), 54° at this gauge, the tip is taller than the storey it climbs and flares into a shell.'
         : state.mode === 'square'
-          ? 'Creases square to the strap, so the tip stays a clean ⊂ at any separation — the width axis never leaves the horizontal. A square crease reverses the heading exactly, though, and the runs rarely want a half turn: the legs bend in plan to supply the rest, half each. A hybrid, and the legs carry the same objection carrying on does.'
+          ? 'Lean 1 everywhere: the crease is square to the strap, so the tip stays a clean ⊂ at any separation and the width axis never leaves the horizontal. A square crease turns the heading a full half turn, and the runs rarely want one, so the legs bend in plan to supply the rest — half each.'
         : state.mode === 'carry'
-          ? 'Never folds: the heading swings round in plan and the strip rises while it does. Honest over a small turn, and it pinches over a large one — which is what the fold is for.'
-          : 'Folds below the handover angle and carries on above it. A switch, not a mix: both have to leave the band heading exactly along the outgoing run, and only the two exact builds do — anything part-way between them arrives pointing somewhere else. So the two shapes do not meet smoothly at the changeover, and where that seam is least objectionable is the thing to judge.';
+          ? 'Never folds: the heading swings round in plan and the strip rises while it does. Kept for comparison — the fold family reaches this shape on its own at a straight-through lace.'
+          : 'Phases the lean rather than switching builds. Exact fold at a dead fold-back, square at the peak below, and back to the exact fold at straight-through, where it has already flattened into a step and is carrying on in all but name. Every lean in between is a real crease angle with a real developable tip, so there is nothing to cross.';
     host.appendChild(why);
 
     if (state.mode === 'auto') {
-      slider('Handover', state.handover, 0, 180, 1, (v) => {
-        state.handover = v;
-        rebuild();
+      slider('Square at', state.peak, 10, 170, 1, (v) => {
+        state.peak = v;
         const r = host.querySelector('.mix');
-        if (r) r.textContent = BUILD_NAME[building()];
+        if (r) r.textContent = `Lean ${lean().toFixed(2)}`;
       }, '°');
     }
 
@@ -282,12 +295,13 @@ function ui(): void {
     mix.className = 'note';
     const badge = document.createElement('b');
     badge.className = 'mix';
-    badge.textContent = BUILD_NAME[building()];
+    badge.textContent = state.mode === 'carry' ? 'Carrying on' : `Lean ${lean().toFixed(2)}`;
     mix.appendChild(badge);
     mix.appendChild(
       document.createTextNode(
-        ' at this separation. A fold doubles the strap back on itself; carrying on swings the' +
-          ' heading round in plan and rises the storey while it does.',
+        ' — 0 creases on the bisector and keeps the legs straight, 1 creases square to the strap' +
+          ' and makes the legs turn instead. Both are exact folds; they disagree only about which' +
+          ' of the two does the turning.',
       ),
     );
     host.appendChild(mix);
