@@ -916,6 +916,14 @@ export class Panel {
     pop.appendChild(
       slider('Leg length', p.turnLeg, 0, 2, 0.05, (v) => this.view.setParams({ turnLeg: v })),
     );
+    // The one dimension of the turn measured against the LACE rather than the
+    // model. A turn's roll is as wide as the storey it climbs, and a storey is
+    // two thicknesses — so it grows with Thickness while the lace's width stays
+    // put. Below this the roll is left alone; above it the crease carries what
+    // it can and the runs either side ramp the rest.
+    pop.appendChild(
+      slider('Roll cap', p.turnRoll, 0.4, 4, 0.05, (v) => this.view.setParams({ turnRoll: v })),
+    );
     const toggles = el('div', 'check-row');
     toggles.append(
       check('Outline', p.outline, (v) => {

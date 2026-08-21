@@ -106,6 +106,43 @@ export const TURN_RAMP_DEFAULT = 0.5;
  */
 const TURN_STACK = 2;
 
+/**
+ * The widest a turn's roll may get, as a multiple of the LACE'S OWN WIDTH.
+ *
+ * The turn rolls the strap a half turn about its crease, and the roll's diameter
+ * is the storey the turn climbs — so the roll is sized by the model, not by the
+ * lace. That is fine while a storey is about a lace-width. It stops being fine
+ * as soon as it is not: a storey is two thicknesses (`levelStepSource`), so it
+ * grows with Thickness while the width stays where it was put, and at a Thickness
+ * near the width the turn comes out a barrel two and a half times wider than the
+ * lace that made it. Four of those meeting at a starting stitch is not a stitch
+ * any more.
+ *
+ * A real strap does not do that. How tightly it bights is a property of the
+ * STRAP — its own width and stiffness — and when the two runs have to end up
+ * further apart than one bight will carry, the strap does not grow a bigger
+ * bight: it ramps, over the runs either side. `easeFolds` already knows how to
+ * do exactly that; it was only ever being handed a cap in thicknesses, which
+ * grows at the same rate as the problem and so never bites.
+ *
+ * So this is a second cap, in the unit that does not move: how wide the turn is
+ * allowed to MEASURE — the gap its two runs are left at, plus the thickness of
+ * lace either side of it — against the lace's own width.
+ *
+ * The default is set just clear of everything already drawn. Uncapped, the
+ * samples run from 0.92 (a starting box stitch) to 1.61 (a fitted ring, and the
+ * widest turns in a twist stitch), so at 1.7 not one of them moves. It is there
+ * for the gauges where the storey has run away from the strap: a lace 54 wide
+ * and 46 thick makes a turn 2.44 widths across, and four of those at one
+ * stitch is the barrel this exists to stop.
+ *
+ * The price is the price `easeFolds` always charges: what the crease refuses,
+ * the runs carry, and a run carrying height is a run tipped off level. That is
+ * the judgement this slider exists to let the reader make, which is why it is a
+ * slider and not a number in here.
+ */
+export const TURN_ROLL_DEFAULT = 1.7;
+
 // Handle appearance (world-unit radii + colors), tuned against SCALE so the grab
 // dots read clearly at the default framing.
 const END_R = 0.18;
@@ -203,6 +240,10 @@ export interface RenderParams {
    * crease may slide. See TURN_RAMP_DEFAULT.
    */
   turnRamp: number;
+  /**
+   * The widest a turn's roll may get, in lace widths. See TURN_ROLL_DEFAULT.
+   */
+  turnRoll: number;
   layerGap: number; // base lift between consecutive layers, source units (small)
   widthScale: number; // multiplier applied to every strand width
   outline: boolean; // draw the stroke-colored outline shell
@@ -226,6 +267,7 @@ export const DEFAULT_PARAMS: RenderParams = {
   thickness: 26,
   turnLeg: TURN_LEG_DEFAULT,
   turnRamp: TURN_RAMP_DEFAULT,
+  turnRoll: TURN_ROLL_DEFAULT,
   // Base lift between layers. The weave picks over/under at every CROSSING on its
   // own (adaptive amplitude), so this only needs to separate strands that overlap
   // WITHOUT crossing (a plain parallel stack) — and it's what gives the ordered
@@ -758,7 +800,18 @@ export class StrandScene {
       // Settle each fold before sweeping: the lace stacks on itself there, one
       // thickness apart, with the change eased into the runs on either side.
       const thickness = (first.thickness ?? this.params.thickness) * SCALE;
-      easeFolds(line, thickness * TURN_STACK, thickness * 2);
+      // Two caps, in two units, and the smaller wins. Thicknesses says how much
+      // of a storey a crease may carry; lace widths says how big a roll the
+      // strap will actually make. The first grows with the storey and so never
+      // bites on its own — see TURN_ROLL_DEFAULT.
+      //
+      // The roll cap is on what the turn MEASURES, not on the gap: the roll is
+      // the gap across plus a thickness of lace either side of it, and that is
+      // the thing standing next to the lace to be judged against. Never below
+      // one thickness, which is the two runs touching and the least a fold can
+      // be.
+      const roll = Math.max(thickness, width * Math.max(0, this.params.turnRoll) - thickness);
+      easeFolds(line, Math.min(thickness * TURN_STACK, roll), thickness * 2);
       // Then walk up any step left at a gentle joint — a level break between two
       // members of the lace puts one storey's worth of height there, and without a
       // crease to climb at it has to be ramped into the runs instead.
