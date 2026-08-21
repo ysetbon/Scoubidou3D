@@ -13,6 +13,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { BandKind, Gauge, band, blend, run } from './bands';
+import { Auto, AutoView, autoDial, autoLean } from './autoview';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const stage = document.getElementById('stage') as HTMLElement;
@@ -52,8 +53,15 @@ const state = {
   // own.
   mode: 'auto' as 'turn' | 'auto' | 'carry',
   lean: 0, // 0 creases on the bisector, 1 square to the strap; set by hand
-  peak: 90, // degrees; where Auto's phase is fully square
+  // Auto's own numbers, and which of the three drawings of them is on show.
+  // The drawing is a view and nothing else: all three edit this one object, so
+  // switching between them changes what is on screen and not what is built.
+  auto: { lo: 54, hi: 133, cap: 1 } as Auto,
+  autoView: 'curve' as AutoView,
 };
+
+/** The lace's width, in the same units the gauge uses. */
+const LACE_WIDTH = 1.1;
 
 /**
  * Where in the fold family this separation sits: 0 the crease on the bisector,
@@ -72,15 +80,11 @@ const state = {
  * every value of it is a real crease angle with a real developable tip.
  */
 function leanNow(): number {
-  if (state.mode !== 'auto') return state.lean;
-  const p = Math.min(179, Math.max(1, state.peak));
-  const t = state.separation <= p ? state.separation / p : (180 - state.separation) / (180 - p);
-  const u = Math.min(1, Math.max(0, t));
-  return u * u * (3 - 2 * u);
+  return state.mode === 'auto' ? autoLean(state.auto, state.separation) : state.lean;
 }
 
 const GAUGE = (): Gauge => ({
-  width: 1.1,
+  width: LACE_WIDTH,
   thickness: 0.26,
   step: state.step,
   round: state.round,
@@ -182,10 +186,10 @@ function turnNote(): string {
   const lean = leanNow();
   if (state.mode === 'auto') {
     return (
-      `Auto — lean ${lean.toFixed(2)} at this separation. The crease swings from the bisector` +
-      ' towards square and back as the runs part, so the turn is an exact fold where that is the' +
-      ' better shape and square where it is not. Nothing switches: every lean between is a real' +
-      ' crease angle with a real developable tip.'
+      `Auto — lean ${lean.toFixed(2)} at this separation. Drag the two shoulders to say where the` +
+      ' crease starts and stops swinging towards square; on the curve, drag the plateau to cap how' +
+      ' square it ever gets. The three drawings are views of the same numbers, so switching between' +
+      ' them changes nothing but the picture.'
     );
   }
   if (state.lean === 0) {
@@ -205,6 +209,12 @@ function turnNote(): string {
     ' take exactly what the tip does not.'
   );
 }
+
+/** Repaint whichever Auto drawing is on show, if any. */
+let autoPaint: (() => void) | null = null;
+const repaintAuto = (): void => {
+  if (autoPaint) autoPaint();
+};
 
 function ui(): void {
   host.innerHTML = '';
@@ -280,8 +290,14 @@ function ui(): void {
     if (r) r.textContent = `Blend ${blend(v).toFixed(2)}`;
     const w = host.querySelector('.why');
     if (w) w.textContent = turnNote();
+    repaintAuto();
   }, '°');
-  slider('Storey step', state.step, 0.05, 1.5, 0.01, (v) => (state.step = v));
+  slider('Storey step', state.step, 0.05, 1.5, 0.01, (v) => {
+    state.step = v;
+    // The shell threshold is read off the step, so Auto's drawing of it is
+    // stale the moment this moves.
+    repaintAuto();
+  });
   slider('Corner round', state.round, 0, 1, 0.05, (v) => (state.round = v));
   slider('Ramp length', state.ramp, 0, 6, 0.1, (v) => (state.ramp = v));
   if (state.kind === 'sweep') {
@@ -322,11 +338,39 @@ function ui(): void {
     host.appendChild(why);
 
     if (state.mode === 'auto') {
-      slider('Square at', state.peak, 10, 170, 1, (v) => {
-        state.peak = v;
+      const views = document.createElement('div');
+      views.className = 'kinds';
+      (
+        [
+          ['bar', 'Bar'],
+          ['curve', 'Curve'],
+          ['dial', 'Dial'],
+        ] as Array<[AutoView, string]>
+      ).forEach(([v, name]) => {
+        const b = document.createElement('button');
+        b.textContent = name;
+        if (state.autoView === v) b.className = 'on';
+        // Only the drawing changes. `state.auto` is not touched, so the strand
+        // on screen carries straight across the switch.
+        b.onclick = () => {
+          state.autoView = v;
+          ui();
+        };
+        views.appendChild(b);
+      });
+      host.appendChild(views);
+
+      const dial = autoDial(state.autoView, state.auto, () => {
+        rebuild();
+        repaintAuto();
         const note = host.querySelector('.why');
         if (note) note.textContent = turnNote();
-      }, '°');
+      });
+      host.appendChild(dial.el);
+      autoPaint = () => dial.paint(state.separation, state.step, LACE_WIDTH);
+      autoPaint();
+    } else {
+      autoPaint = null;
     }
 
     if (state.mode === 'turn') {
