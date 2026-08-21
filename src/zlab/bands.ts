@@ -44,11 +44,19 @@ export interface Gauge {
   reach: number;
   /** 0 a dead fold-back, 1 straight through. See `blend`. */
   k: number;
+  /** Whether the turn folds the strap back on itself or carries on. See `turn`. */
+  fold: boolean;
   /** How long the ramp gets at straight-through, world units. */
   ramp: number;
 }
 
 export type BandKind = 'bridge' | 'sweep' | 'cap';
+
+/** Rings along the turn, and how far it displaces the run coming away. */
+interface Turn {
+  rings: Vec3[][];
+  slide: Vec3;
+}
 
 /**
  * How much the band should behave like a STRAIGHT-THROUGH lace rather than a
@@ -322,7 +330,7 @@ function bridge(din: Vec2, dout: Vec2, g: Gauge, steps = 14): THREE.BufferGeomet
  * hundred and fifty), so it is capped, and the blend has handed over to the
  * ramp long before it matters.
  */
-function fold(din: Vec2, dout: Vec2, g: Gauge, arc = 48): { rings: Vec3[][]; slide: Vec3 } {
+function fold(din: Vec2, dout: Vec2, g: Gauge, steps: number): Turn {
   const a = norm(din);
   const b = norm(dout);
   // The crease: the bisector of the two headings. Where they are antiparallel —
@@ -344,7 +352,8 @@ function fold(din: Vec2, dout: Vec2, g: Gauge, arc = 48): { rings: Vec3[][]; sli
   // fold rather than a knuckle. See `bight`.
   const h = Math.max(g.step / 2, 1e-4);
   const leg = Math.max(0, g.reach - h);
-  const span = 2 * leg + Math.PI * h;
+  const tip = Math.PI * h;
+  const span = 2 * leg + tip;
   // How far the strip walks along the crease per unit of bight travelled. It is
   // tan(sep/2), so it diverges as the crease swings onto the strip's own length
   // — the point where a fold stops being one. Capped there; the blend has long
@@ -352,9 +361,19 @@ function fold(din: Vec2, dout: Vec2, g: Gauge, arc = 48): { rings: Vec3[][]; sli
   const rate = dv < 1e-9 ? Infinity : du / dv;
   const k = Math.min(rate, (g.ramp * 4) / span);
 
+  // Half the rings go on the tip whatever the legs are doing, so a long reach
+  // cannot starve the one part of the fold that is actually curved.
+  const along = (t: number): number => {
+    if (leg <= 1e-9) return tip * t;
+    if (t < 0.25) return leg * (t / 0.25);
+    if (t < 0.75) return leg + tip * ((t - 0.25) / 0.5);
+    return leg + tip + leg * ((t - 0.75) / 0.25);
+  };
+
   const sec = section(g);
   const rings: Vec3[][] = [];
-  const at = (s: number): void => {
+  for (let i = 0; i <= steps; i++) {
+    const s = along(i / steps);
     const q = bight(s, leg, h);
     const p: Vec3 = { x: c.x * s * k + n.x * q.pn, y: c.y * s * k + n.y * q.pn, z: q.pz };
     const tan = norm3({ x: c.x * k + n.x * q.tn, y: c.y * k + n.y * q.tn, z: q.tz });
@@ -363,12 +382,78 @@ function fold(din: Vec2, dout: Vec2, g: Gauge, arc = 48): { rings: Vec3[][]; sli
     // over as the strip does, which is what shows the other side coming out.
     const up: Vec3 = { x: -n.x * q.tz, y: -n.y * q.tz, z: q.tn };
     rings.push(ring3(p, norm3(cross3(up, tan)), up, sec));
-  };
-  if (leg > 0) at(0);
-  for (let i = 0; i <= arc; i++) at(leg + Math.PI * h * (i / arc));
-  if (leg > 0) at(span);
+  }
 
   return { rings, slide: { x: c.x * span * k, y: c.y * span * k, z: 0 } };
+}
+
+/**
+ * Carry on in the same direction instead of folding: swing the heading round
+ * in plan and rise the storey while doing it.
+ *
+ * This is what the lace does when it is barely turning at all. It is NOT a
+ * fold and does not pretend to be — the strip keeps its face up the whole way
+ * and bends in its own plane, which a flat strap cannot really do. Over a small
+ * turn nobody can tell and it reads as the natural thing; over a large one the
+ * inner edge has to travel a shorter path than the outer, and it pinches. That
+ * is the trade the fold exists to take off it, and the reason both are here
+ * with a dial between them rather than one being declared correct.
+ *
+ * It leaves and arrives level, because the runs are level: the climb follows a
+ * smoothstep rather than a straight line, so there is no kink at either end.
+ */
+function carry(din: Vec2, dout: Vec2, g: Gauge, steps: number): Turn {
+  const a = norm(din);
+  const m = perp(a);
+  const swing = heading(din, dout);
+  const len = Math.max(g.ramp, 1e-3);
+  // A circular arc of that turn and that length. Straight is the limit, not a
+  // special case, but the radius is 1/0 there so it is written out.
+  const r = Math.abs(swing) < 1e-6 ? 0 : len / swing;
+  const plan = (t: number): Vec2 => {
+    const phi = swing * t;
+    if (!r) return { x: a.x * len * t, y: a.y * len * t };
+    const along = r * Math.sin(phi);
+    const across = r * (1 - Math.cos(phi));
+    return { x: a.x * along + m.x * across, y: a.y * along + m.y * across };
+  };
+
+  const sec = section(g);
+  const h = g.step / 2;
+  const rings: Vec3[][] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const phi = swing * t;
+    const ca = Math.cos(phi);
+    const sa = Math.sin(phi);
+    const head: Vec2 = { x: a.x * ca - a.y * sa, y: a.x * sa + a.y * ca };
+    const q = plan(t);
+    rings.push(ring({ x: q.x, y: q.y, z: -h + g.step * (t * t * (3 - 2 * t)) }, perp(head), sec));
+  }
+  const end = plan(1);
+  return { rings, slide: { x: end.x, y: end.y, z: 0 } };
+}
+
+/**
+ * The turn: fold the strap back on itself, or carry on and rise.
+ *
+ * Neither is right across the whole dial. A lace doubling back on itself folds;
+ * a lace barely deviating carries on, and folding it would put a loop in a
+ * nearly straight run. Where the changeover belongs is a question about laces
+ * rather than about geometry, which is why the lab hands it to a slider instead
+ * of deciding it here.
+ *
+ * It is a SWITCH and not a mix, and that is worth saying because a mix is the
+ * obvious thing to reach for. It does not work. Both builders have to leave the
+ * band heading exactly along the outgoing run — that is the one thing the runs
+ * pin — and only the exact fold and the exact carry do; anything part-way
+ * between them arrives pointing somewhere else. Interpolating their sections is
+ * worse still: the fold ends with the strap the other way up, so a vertex of
+ * one ring pairs with its diagonal opposite on the other and the section
+ * collapses to a point half way across. Tried, drawn, and thrown out.
+ */
+function turn(din: Vec2, dout: Vec2, g: Gauge, steps = 96): Turn {
+  return g.fold ? fold(din, dout, g, steps) : carry(din, dout, g, steps);
 }
 
 /**
@@ -479,6 +564,6 @@ export function band(
   const none = { x: 0, y: 0, z: 0 };
   if (kind === 'bridge') return { geom: bridge(din, dout, g), shiftOut: none };
   if (kind === 'cap') return { geom: cap(din, dout, g), shiftOut: none };
-  const f = fold(din, dout, g);
-  return { geom: tube(f.rings), shiftOut: f.slide };
+  const t = turn(din, dout, g);
+  return { geom: tube(t.rings), shiftOut: t.slide };
 }

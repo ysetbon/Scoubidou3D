@@ -46,7 +46,19 @@ const state = {
   round: 0.8,
   ramp: 2.4,
   showRuns: true,
+  // Whether the turn folds the strap back on itself or just carries on and
+  // rises. 'auto' reads it off the separation, which is the setting the other
+  // two exist to argue about.
+  mode: 'auto' as 'fold' | 'carry' | 'auto',
+  handover: 90, // degrees; the middle of the changeover window in 'auto'
 };
+
+/** Whether this separation gets a fold or a carry-on. */
+function folding(): boolean {
+  if (state.mode === 'fold') return true;
+  if (state.mode === 'carry') return false;
+  return state.separation < state.handover;
+}
 
 const GAUGE = (): Gauge => ({
   width: 1.1,
@@ -58,6 +70,7 @@ const GAUGE = (): Gauge => ({
   // straight-through one, and it is read off the separation rather than set:
   // the two are the same fact.
   k: blend(state.separation),
+  fold: folding(),
   ramp: state.ramp,
 });
 
@@ -208,12 +221,68 @@ function ui(): void {
     // The blend is derived, so its readout is stale the moment this moves.
     const r = host.querySelector('.blend');
     if (r) r.textContent = `Blend ${blend(v).toFixed(2)}`;
+    const f = host.querySelector('.mix');
+    if (f) f.textContent = folding() ? 'Folding' : 'Carrying on';
   }, '°');
   slider('Storey step', state.step, 0.05, 1.5, 0.01, (v) => (state.step = v));
   slider('Corner round', state.round, 0, 1, 0.05, (v) => (state.round = v));
   slider('Ramp length', state.ramp, 0, 6, 0.1, (v) => (state.ramp = v));
   if (state.kind === 'sweep') {
     slider('Loop depth', state.reach, 0.2, 4, 0.05, (v) => (state.reach = v));
+
+    const modes = document.createElement('div');
+    modes.className = 'kinds';
+    (
+      [
+        ['fold', 'Fold'],
+        ['auto', 'Auto'],
+        ['carry', 'Carry on'],
+      ] as Array<['fold' | 'auto' | 'carry', string]>
+    ).forEach(([m, label]) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      if (state.mode === m) b.className = 'on';
+      b.onclick = () => {
+        state.mode = m;
+        rebuild();
+        ui();
+      };
+      modes.appendChild(b);
+    });
+    host.appendChild(modes);
+
+    const why = document.createElement('p');
+    why.className = 'note';
+    why.textContent =
+      state.mode === 'fold'
+        ? 'Always folds the strap back on itself, however little the lace is actually turning.'
+        : state.mode === 'carry'
+          ? 'Never folds: the heading swings round in plan and the strip rises while it does. Honest over a small turn, and it pinches over a large one — which is what the fold is for.'
+          : 'Folds below the handover angle and carries on above it. A switch, not a mix: both have to leave the band heading exactly along the outgoing run, and only the two exact builds do — anything part-way between them arrives pointing somewhere else. So the two shapes do not meet smoothly at the changeover, and where that seam is least objectionable is the thing to judge.';
+    host.appendChild(why);
+
+    if (state.mode === 'auto') {
+      slider('Handover', state.handover, 0, 180, 1, (v) => {
+        state.handover = v;
+        rebuild();
+        const r = host.querySelector('.mix');
+        if (r) r.textContent = folding() ? 'Folding' : 'Carrying on';
+      }, '°');
+    }
+
+    const mix = document.createElement('p');
+    mix.className = 'note';
+    const badge = document.createElement('b');
+    badge.className = 'mix';
+    badge.textContent = folding() ? 'Folding' : 'Carrying on';
+    mix.appendChild(badge);
+    mix.appendChild(
+      document.createTextNode(
+        ' at this separation. A fold doubles the strap back on itself; carrying on swings the' +
+          ' heading round in plan and rises the storey while it does.',
+      ),
+    );
+    host.appendChild(mix);
   }
 
   const toggle = document.createElement('label');
