@@ -56,7 +56,7 @@ const state = {
   // Auto's own numbers, and which of the three drawings of them is on show.
   // The drawing is a view and nothing else: all three edit this one object, so
   // switching between them changes what is on screen and not what is built.
-  auto: { lo: 54, hi: 133, carry: 160, cap: 1 } as Auto,
+  auto: { lo: 48, hi: 61, carry: 126, cap: 0.25 } as Auto,
   autoView: 'curve' as AutoView,
 };
 

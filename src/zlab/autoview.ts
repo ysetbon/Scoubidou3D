@@ -68,6 +68,45 @@ export function shellThreshold(step: number, width: number): number {
   return (2 * Math.asin(Math.min(1, step / width)) * 180) / Math.PI;
 }
 
+/**
+ * Which separations actually come out flared, given the lean they are getting.
+ *
+ * The shell angle alone is only the LEAN 0 answer, and reporting the window's
+ * left shoulder against it was the wrong test: it asks where the square window
+ * starts and never asks how much square is in it. A window opening at 48° with
+ * a quarter of an influence barely swings the crease at all, and every angle
+ * inside it still flares — which the panel cheerfully called "covered".
+ *
+ * The real condition falls out of the crease rule. At lean λ the tip turns the
+ * heading by (1-λ)·swing + λ·180, so the crease sits at half of that off the
+ * strap, and the tip's width axis tilts by the complement. Its vertical span is
+ * then `width · sin((1-λ)·sep / 2)`, which is taller than the storey exactly
+ * when
+ *
+ *     (1 - λ(sep)) · sep  >  2 asin(step / width)
+ *
+ * Both ends check out: at λ 0 it is the shell angle itself, at λ 1 the tip never
+ * outgrows anything however wide the runs open. Past the carry angle nothing is
+ * folding, so nothing there can flare.
+ */
+export function flareBand(
+  a: Auto,
+  step: number,
+  width: number,
+): { from: number; to: number } | null {
+  const shell = shellThreshold(step, width);
+  const stop = bounds(a)[2];
+  let from = Infinity;
+  let to = -Infinity;
+  for (let s = 0; s < stop; s++) {
+    if ((1 - autoLean(a, s)) * s > shell + 1e-9) {
+      from = Math.min(from, s);
+      to = Math.max(to, s);
+    }
+  }
+  return from <= to ? { from, to } : null;
+}
+
 // ---- drawing ---------------------------------------------------------------
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -301,8 +340,15 @@ export function autoDial(
   }
 
   const shellMark = svgEl('line', { 'stroke-width': 2, 'stroke-dasharray': '3 3' });
+  // The band that is actually coming out flared, drawn where it is rather than
+  // summarised by one angle somewhere else.
+  const flareMark =
+    view === 'dial'
+      ? svgEl('path', { fill: 'none', stroke: BAD, 'stroke-width': 3.5 })
+      : svgEl('rect', { height: 3.5, rx: 1.75, fill: BAD });
   const shellText = label(0, L.shell, 10.5, HOT);
   el.appendChild(shellMark);
+  el.appendChild(flareMark);
   el.appendChild(shellText);
 
   const nowMark = svgEl('line', { stroke: HOT, 'stroke-width': 1.5, opacity: 0.6 });
@@ -349,7 +395,7 @@ export function autoDial(
     const lean = autoLean(auto, separation);
 
     const shell = shellThreshold(step, width);
-    const covered = shell >= lo - 0.5;
+    const flare = flareBand(auto, step, width);
     if (view === 'dial') {
       const [ix, iy] = dialAt(Math.min(180, shell));
       shellMark.setAttribute('x1', String(ix));
@@ -369,12 +415,32 @@ export function autoDial(
     }
     // Naming the band is the whole use of the warning. "Not covered" says
     // something is wrong without saying what to drag or how far.
-    shellText.textContent = covered
-      ? `shell ${Math.round(shell)}° · covered`
-      : `shell ${Math.round(shell)}° · flares ${Math.round(shell)}–${Math.round(lo)}°`;
+    shellText.textContent = flare
+      ? `shell ${Math.round(shell)}° · flares ${flare.from}–${flare.to}°`
+      : `shell ${Math.round(shell)}° · covered`;
     // Red only ever means a problem, so a cleared threshold goes quiet.
-    shellText.setAttribute('fill', covered ? DIM : BAD);
-    shellMark.setAttribute('stroke', covered ? DIM : BAD);
+    shellText.setAttribute('fill', flare ? BAD : DIM);
+    shellMark.setAttribute('stroke', flare ? BAD : DIM);
+    flareMark.setAttribute('opacity', flare ? '1' : '0');
+    if (flare) {
+      if (view === 'dial') {
+        const rr = R + 16;
+        const arc = (d: number): [number, number] => {
+          const t = (d * Math.PI) / 180;
+          return [CX - rr * Math.cos(t), CY - rr * Math.sin(t)];
+        };
+        const [ax, ay] = arc(flare.from);
+        const [bx, by] = arc(flare.to);
+        flareMark.setAttribute(
+          'd',
+          `M${ax.toFixed(2)} ${ay.toFixed(2)} A${rr} ${rr} 0 0 1 ${bx.toFixed(2)} ${by.toFixed(2)}`,
+        );
+      } else {
+        flareMark.setAttribute('x', String(xOf(flare.from)));
+        flareMark.setAttribute('width', String(Math.max(2, xOf(flare.to) - xOf(flare.from))));
+        flareMark.setAttribute('y', String(view === 'curve' ? yBase + 2 : L.top + L.track + 3));
+      }
+    }
 
     if (view === 'dial') {
       const [nx, ny] = dialAt(separation);
