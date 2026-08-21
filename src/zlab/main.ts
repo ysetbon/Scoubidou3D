@@ -13,7 +13,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { BandKind, Gauge, band, blend, run } from './bands';
-import { Auto, AutoView, autoDial, autoLean } from './autoview';
+import { Auto, AutoView, autoCarries, autoDial, autoLean } from './autoview';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const stage = document.getElementById('stage') as HTMLElement;
@@ -56,7 +56,7 @@ const state = {
   // Auto's own numbers, and which of the three drawings of them is on show.
   // The drawing is a view and nothing else: all three edit this one object, so
   // switching between them changes what is on screen and not what is built.
-  auto: { lo: 54, hi: 133, cap: 1 } as Auto,
+  auto: { lo: 54, hi: 133, carry: 160, cap: 1 } as Auto,
   autoView: 'curve' as AutoView,
 };
 
@@ -83,6 +83,12 @@ function leanNow(): number {
   return state.mode === 'auto' ? autoLean(state.auto, state.separation) : state.lean;
 }
 
+/** Whether this separation is carrying on rather than folding at all. */
+function carryingNow(): boolean {
+  if (state.mode === 'carry') return true;
+  return state.mode === 'auto' && autoCarries(state.auto, state.separation);
+}
+
 const GAUGE = (): Gauge => ({
   width: LACE_WIDTH,
   thickness: 0.26,
@@ -94,7 +100,7 @@ const GAUGE = (): Gauge => ({
   // the two are the same fact.
   k: blend(state.separation),
   lean: leanNow(),
-  carryOn: state.mode === 'carry',
+  carryOn: carryingNow(),
   ramp: state.ramp,
 });
 
@@ -184,17 +190,27 @@ function turnNote(): string {
     );
   }
   const lean = leanNow();
+  if (state.mode === 'auto' && autoCarries(state.auto, state.separation)) {
+    return (
+      `Auto — carrying on at this separation, past the carry angle. The lace has stopped folding:` +
+      ' the heading swings round in plan and the strip rises while it does. The lean is back on the' +
+      ' bisector before the handover, because an exact fold there has already flattened into a' +
+      ' shallow oblique step — which is the closest a fold ever gets to a ramp, and so the smallest' +
+      ' gap to hand over across.'
+    );
+  }
   if (state.mode === 'auto') {
     return (
-      `Auto — lean ${lean.toFixed(2)} at this separation. Drag the two shoulders to say where the` +
-      ' crease starts and stops swinging towards square, the red marker to move the separation' +
-      ' itself, and on the curve the plateau to cap how square it ever gets. The three drawings are' +
-      ' views of the same numbers, so switching between them changes nothing but the picture.' +
-      ' The shell angle is NOT one of the settings: it is 2·asin(step ÷ width), read off the storey' +
-      ' step and the lace, and it marks where an exact fold starts standing taller than the storey' +
-      ' it climbs. It goes red when the left shoulder sits to the right of it, because every angle' +
-      ' in between is then getting a fold that flares. Drag that shoulder left to clear it — or' +
-      ' raise the storey step, which moves the shell angle right instead.'
+      `Auto — lean ${lean.toFixed(2)} at this separation. Three grips on the track: the two` +
+      ' shoulders of the square window, and the angle past which the lace stops folding and carries' +
+      ' on. Drag the red marker to move the separation itself. Square influence below sets how far' +
+      ' towards square the crease ever swings, and the curve view lets you drag the plateau instead.' +
+      ' The three drawings are views of the same numbers, so switching between them changes nothing' +
+      ' but the picture. The shell angle is NOT one of the settings: it is 2·asin(step ÷ width),' +
+      ' read off the storey step and the lace, and it marks where an exact fold starts standing' +
+      ' taller than the storey it climbs. It goes red when the left shoulder sits to the right of' +
+      ' it, because every angle in between is then getting a fold that flares. Drag that shoulder' +
+      ' left to clear it — or raise the storey step, which moves the shell angle right instead.'
     );
   }
   if (state.lean === 0) {
@@ -403,6 +419,16 @@ function ui(): void {
       host.appendChild(dial.el);
       autoPaint = () => dial.paint(state.separation, state.step, LACE_WIDTH);
       autoPaint();
+
+      // How square the crease ever swings, as a control of its own rather than
+      // a gesture hidden inside one of the three drawings. It is the number the
+      // whole panel is really about, and it was reachable in exactly one view.
+      slider('Square influence', state.auto.cap, 0, 1, 0.05, (v) => {
+        state.auto.cap = v;
+        repaintAuto();
+        const note = host.querySelector('.why');
+        if (note) note.textContent = turnNote();
+      });
     } else {
       autoPaint = null;
     }
