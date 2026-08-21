@@ -5,25 +5,22 @@
 // else: whatever the strand is doing carries straight across, because there is
 // no second copy of the state for it to fall out of step with.
 //
+// The numbers themselves, and what they mean, are in
+// `src/geometry/autoFold.ts`: the studio phases its turns off the same four,
+// so a change made here is a change made there.
+//
 // All three also draw the SHELL THRESHOLD, which is computed rather than set.
 // Past `2 asin(step / width)` an exact fold's tip stands taller than the storey
 // it climbs and flares into a shell, so that angle is the constraint the whole
 // setting exists to clear. A control that hides the thing it is for is a
 // control the reader has to be told about; this one says it.
 
-export type AutoView = 'bar' | 'curve' | 'dial';
+import { Auto, autoCarries, autoLean, flareBand, shellThreshold } from '../geometry/autoFold';
 
-/** Where the crease swings towards square, how far, and where folding stops. */
-export interface Auto {
-  /** Degrees: the lean has reached its influence by here. */
-  lo: number;
-  /** Degrees: it starts falling away after here. */
-  hi: number;
-  /** Degrees: past here the lace stops folding and carries on. */
-  carry: number;
-  /** How square the crease ever gets, 0..1. */
-  cap: number;
-}
+export type { Auto };
+export { autoCarries, autoLean, flareBand, shellThreshold };
+
+export type AutoView = 'bar' | 'curve' | 'dial';
 
 const clamp = (v: number, a: number, b: number): number => Math.min(b, Math.max(a, v));
 const smooth = (t: number): number => {
@@ -36,75 +33,6 @@ function bounds(a: Auto): [number, number, number] {
   const lo = clamp(a.lo, 0, 180);
   const hi = clamp(Math.max(a.hi, lo), 0, 180);
   return [lo, hi, clamp(Math.max(a.carry, hi), 0, 180)];
-}
-
-/** Whether this separation has stopped folding altogether. */
-export function autoCarries(a: Auto, separation: number): boolean {
-  return separation >= bounds(a)[2];
-}
-
-/**
- * The lean this separation gets: nothing at a dead fold-back, the influence
- * across the plateau, nothing again by the time folding stops.
- *
- * The two ends are 0 for reasons that are not symmetry. At 0 the bisector IS
- * square to the strap, so both ends of the fold family are the same hairpin and
- * the lean cannot matter. At the carry angle it matters for the opposite
- * reason: the lean has to be back on the bisector BEFORE the builder changes,
- * because an exact fold there has already flattened into a shallow oblique step
- * and a step is the closest a fold ever gets to a ramp. Handing over anywhere
- * else means handing over across a bigger gap than necessary.
- */
-export function autoLean(a: Auto, separation: number): number {
-  const [lo, hi, carry] = bounds(a);
-  if (separation >= carry) return 0;
-  if (separation <= lo) return a.cap * smooth(lo <= 0 ? 1 : separation / lo);
-  if (separation >= hi) return a.cap * smooth(carry <= hi ? 0 : (carry - separation) / (carry - hi));
-  return a.cap;
-}
-
-/** The separation past which an exact fold's tip outgrows its own storey. */
-export function shellThreshold(step: number, width: number): number {
-  return (2 * Math.asin(Math.min(1, step / width)) * 180) / Math.PI;
-}
-
-/**
- * Which separations actually come out flared, given the lean they are getting.
- *
- * The shell angle alone is only the LEAN 0 answer, and reporting the window's
- * left shoulder against it was the wrong test: it asks where the square window
- * starts and never asks how much square is in it. A window opening at 48° with
- * a quarter of an influence barely swings the crease at all, and every angle
- * inside it still flares — which the panel cheerfully called "covered".
- *
- * The real condition falls out of the crease rule. At lean λ the tip turns the
- * heading by (1-λ)·swing + λ·180, so the crease sits at half of that off the
- * strap, and the tip's width axis tilts by the complement. Its vertical span is
- * then `width · sin((1-λ)·sep / 2)`, which is taller than the storey exactly
- * when
- *
- *     (1 - λ(sep)) · sep  >  2 asin(step / width)
- *
- * Both ends check out: at λ 0 it is the shell angle itself, at λ 1 the tip never
- * outgrows anything however wide the runs open. Past the carry angle nothing is
- * folding, so nothing there can flare.
- */
-export function flareBand(
-  a: Auto,
-  step: number,
-  width: number,
-): { from: number; to: number } | null {
-  const shell = shellThreshold(step, width);
-  const stop = bounds(a)[2];
-  let from = Infinity;
-  let to = -Infinity;
-  for (let s = 0; s < stop; s++) {
-    if ((1 - autoLean(a, s)) * s > shell + 1e-9) {
-      from = Math.min(from, s);
-      to = Math.max(to, s);
-    }
-  }
-  return from <= to ? { from, to } : null;
 }
 
 // ---- drawing ---------------------------------------------------------------

@@ -1,9 +1,12 @@
 // Z band lab: one lace, one turn, and the turn built three different ways.
 //
-// The studio's fold is not imported here on purpose. This page exists to ask
-// what the turn IS, and the studio's answer carries seven rounds of correction
-// with it; anything reusing it would inherit the assumptions rather than test
-// them.
+// The FOLD this page found is now the studio's turn as well: both build from
+// `src/geometry/fold.ts`, and both phase the lean off the same `Auto`
+// (`src/geometry/autoFold.ts`). What is still local to this page is the other
+// two builders — the loft and the stub — which exist to be compared against,
+// and the free run of the separation dial, which the studio never gets: a turn
+// has to bend 60° to be a fold at all, so nothing in the model separates by more
+// than 120°.
 //
 // The control that matters is SEPARATION: the angle between the two runs,
 // measured at the joint between the rays they send out from it. Sweep it and
@@ -13,7 +16,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { BandKind, Gauge, band, blend, run } from './bands';
-import { Auto, AutoView, autoCarries, autoDial, autoLean } from './autoview';
+import { AutoView, autoDial } from './autoview';
+import { Auto, AUTO_DEFAULT, autoCarries, autoLean } from '../geometry/autoFold';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const stage = document.getElementById('stage') as HTMLElement;
@@ -56,7 +60,7 @@ const state = {
   // Auto's own numbers, and which of the three drawings of them is on show.
   // The drawing is a view and nothing else: all three edit this one object, so
   // switching between them changes what is on screen and not what is built.
-  auto: { lo: 48, hi: 61, carry: 126, cap: 0.25 } as Auto,
+  auto: { ...AUTO_DEFAULT } as Auto,
   autoView: 'curve' as AutoView,
 };
 
@@ -491,7 +495,7 @@ function ui(): void {
   const foot = document.createElement('p');
   foot.className = 'note';
   foot.textContent =
-    'The band is purple so it can be told from the runs. Drag to orbit. Sweep the separation to 0 — that is the case the studio’s fold cannot place, because at 0 the two runs share one footprint and there is no in-plane outward left to build along.';
+    'The band is purple so it can be told from the runs. Drag to orbit. Sweep the separation to 0 — the dead fold-back, where the two runs share one footprint and there is no in-plane outward left to build along. It is also the commonest turn in the studio: half the folds in a box stitch column are exactly antiparallel.';
   host.appendChild(foot);
 }
 

@@ -34,7 +34,7 @@
 // Reordering a layer here restacks it in Z — the direct 3D analogue of moving a
 // layer in OpenStrand's layer panel.
 
-import { StrandScene, EditMode, RenderParams } from '../scene/StrandScene';
+import { StrandScene, EditMode } from '../scene/StrandScene';
 import { MaskLink, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, TWIST_FAMILY, TWIST_MAX, makeSample } from '../model/samples';
 import { GAP, HANDS, TWOFAN_COLUMN_FAMILY, TWOFAN_MAX, columnKey } from '../model/twofan';
@@ -890,53 +890,6 @@ export class Panel {
   private ribbonCard(): HTMLElement {
     const pop = this.popover('Ribbon', 'global');
     const p = this.view.getParams();
-    // The two shapes the reference renders show, as one press each. They are
-    // presets, not a seventh dimension: each sets the outer wall and the two
-    // dials that reference was drawn at, and the card shuts so it reopens with
-    // every slider showing where the press left it.
-    const shapeRow = el('div', 'pill-row');
-    const preset = (
-      label: string,
-      title: string,
-      set: Partial<RenderParams>,
-    ): HTMLButtonElement => {
-      const b = pill(label, () => {
-        this.view.setParams(set);
-        this.commitDock();
-      }, title);
-      const on = (Object.keys(set) as Array<keyof RenderParams>).every(
-        (k) => (p[k] as unknown) === (set[k] as unknown),
-      );
-      if (on) b.classList.add('coral');
-      return b;
-    };
-    shapeRow.append(
-      preset('New A', 'Rounded nose — the turn as a pressed pill', {
-        foldShape: 'nose',
-        foldDepth: 2,
-        foldRound: 1,
-      }),
-      preset('New B', 'Squared C — a straight outer wall, corners eased', {
-        foldShape: 'squared',
-        foldDepth: 2,
-        foldRound: 1,
-      }),
-      // C is B sized to continue the runs rather than sit against them, at the
-      // settings it was judged at — the lace's own gauge included, since a turn
-      // that reads as one object with its runs depends on their size too.
-      preset('New C', 'Squared C, continuous with the runs — one object', {
-        foldShape: 'flush',
-        thickness: 22,
-        widthScale: 1.6,
-        foldStack: 1.1,
-        foldDepth: 0.6,
-        foldBulge: 0.2,
-        foldWide: 1,
-        foldRound: 0.85,
-        foldFace: 0,
-      }),
-    );
-    pop.appendChild(shapeRow);
     pop.appendChild(
       slider('Thickness', p.thickness, 2, 120, 1, (v) => {
         this.view.setParams({ thickness: v });
@@ -946,36 +899,22 @@ export class Panel {
     pop.appendChild(
       slider('Width scale', p.widthScale, 0.2, 3, 0.05, (v) => this.view.setParams({ widthScale: v })),
     );
-    // In thicknesses, because that is the unit the fold is actually reasoned in:
-    // 1 is the two runs of a fold touching, 2 is a whole storey. Quoted in
-    // thicknesses it also stays right when Thickness itself is dragged.
+    // The turn's two lengths, in world units — the same numbers the Z band lab
+    // is dialled in, because it is the same builder.
+    //
+    // Ramp is a length at the open end of the separation dial and a cap at the
+    // tight one: four times it is the furthest an oblique crease may walk the
+    // strip sideways as it rolls. In the studio nothing ever reaches the open
+    // end, so what it does here is set that cap.
     pop.appendChild(
-      slider('Fold face', p.foldStack, 0.5, 4, 0.1, (v) => this.view.setParams({ foldStack: v })),
+      slider('Ramp length', p.turnRamp, 0, 3, 0.05, (v) => this.view.setParams({ turnRamp: v })),
     );
-    // The other dimension of the same piece: Fold face is how TALL the Z part is,
-    // this is how THICK. It stands along Z, so its thickness is an XY one.
+    // How long the straight legs either side of the tip are. At 0 the turn is
+    // the bare tip — a knuckle exactly as deep as the storey it climbs, which is
+    // as deep as a bight that rises can be. Longer legs buy depth, and give the
+    // lean somewhere to bend.
     pop.appendChild(
-      slider('Z part', p.foldDepth, 0, 3, 0.1, (v) => this.view.setParams({ foldDepth: v })),
-    );
-    // The third dimension of the same piece: how far the bight bows out of the
-    // turn. 1 is a true semicircle — the shape a real lace bending round makes.
-    pop.appendChild(
-      slider('Z bulge', p.foldBulge, -2, 2, 0.05, (v) => this.view.setParams({ foldBulge: v })),
-    );
-    // The third direction of the same piece: how wide it is ACROSS the crease,
-    // as a multiple of the lace's width. Past 1 it overhangs its own runs.
-    pop.appendChild(
-      slider('Z width', p.foldWide, 1, 3, 0.05, (v) => this.view.setParams({ foldWide: v })),
-    );
-    // Not a dimension — how far the lump's edges are rounded off. At 1 the
-    // section closes into a capsule, the shape a real lace shows at a turn.
-    pop.appendChild(
-      slider('Z round', p.foldRound, 0, 1, 0.05, (v) => this.view.setParams({ foldRound: v })),
-    );
-    // The fold's own face — the plate standing in the turn, its normal in XY.
-    // Flat it is a sheet of nothing; this gives it a body, in thicknesses.
-    pop.appendChild(
-      slider('Fold thick', p.foldFace, 0, 3, 0.1, (v) => this.view.setParams({ foldFace: v })),
+      slider('Leg length', p.turnLeg, 0, 2, 0.05, (v) => this.view.setParams({ turnLeg: v })),
     );
     const toggles = el('div', 'check-row');
     toggles.append(
