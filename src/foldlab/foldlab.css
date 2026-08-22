@@ -1,0 +1,170 @@
+/* Fold Lab — what this page adds to the studio's own stylesheet.
+ *
+ * Everything structural is src/styles.css: #app, #scene, #panel, .brandbar,
+ * .stackbar, .stack.from-bottom, .level-bar, .level-group, .level-badge, .row,
+ * .swatch, .row-name, .tag, .pill. This file adds only the two things the studio
+ * has no word for yet — a layer's RESTING PLANE, and the ledger of what that
+ * layer is over and under — and it borrows the studio's tokens to do it, so the
+ * new rows are the same object as the old ones in both themes.
+ */
+
+/* The plane chip: which of the level's three planes this layer rests on. It sits
+   where an inspector chip sits in the studio and is pressed the same way. */
+.plane {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1.5px solid var(--edge2);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.16s, box-shadow 0.16s;
+}
+
+.plane:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 var(--shadow);
+}
+
+/* Bottom / center / top read as one scale, so they take the studio's three
+   colours in height order rather than three arbitrary tints: teal low, gold
+   middle, coral high. */
+.plane[data-plane='bottom'] {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.plane[data-plane='center'] {
+  border-color: var(--edge2);
+}
+
+.plane[data-plane='top'] {
+  border-color: var(--coral);
+  color: var(--coral);
+}
+
+/* ---- the ledger: what this layer is over, and what it is under ------------ */
+/* Hung under its row and indented to the swatch, so it reads as belonging to the
+   row rather than as a row of its own. */
+.ledger {
+  margin: 0 0 2px 26px;
+  padding: 4px 0 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cross {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.cross b {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* OVER and UNDER are the whole point of the line, so they are the loud part. */
+.cross i {
+  flex: 0 0 auto;
+  min-width: 42px;
+  font-style: normal;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.cross.over i {
+  color: var(--coral);
+}
+
+.cross.under i {
+  color: var(--teal);
+}
+
+/* A pair on different storeys with no mask between them: they cross in plan
+   only, and the weave deliberately says nothing about them. */
+.cross.clear i {
+  color: var(--muted);
+}
+
+.cross em {
+  margin-left: auto;
+  font-style: normal;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+/* The gap between the two planes, in thicknesses. One is the weave; anything
+   else is the thing to fix, and says so. */
+.cross em[data-gap='1'] {
+  color: var(--teal);
+}
+
+.cross em[data-gap='0'] {
+  color: var(--danger);
+}
+
+.cross em[data-gap='far'] {
+  color: var(--muted);
+}
+
+.cross em[data-gap='hole'] {
+  color: var(--coral);
+}
+
+.no-cross {
+  font-size: 10px;
+  font-style: italic;
+  color: var(--muted);
+}
+
+/* A mask decided this one, rather than the layer order. Worth marking: it is the
+   only over/under in the scene that a reordering will not change. */
+.masked {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+/* ---- the note under the stack --------------------------------------------- */
+.foot {
+  flex: 0 0 auto;
+  margin-top: 14px;
+  padding: 10px 11px;
+  border: 1.5px solid var(--edge2);
+  background: var(--cream);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.foot b {
+  color: var(--ink);
+}
+
+/* The copied-to-clipboard confirmation, in the stack bar where the button is. */
+.copied {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--teal);
+}

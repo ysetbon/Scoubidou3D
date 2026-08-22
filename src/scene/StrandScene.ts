@@ -91,6 +91,39 @@ const COLOR_OCC = 0x9099a6; // attach-mode occupied endpoint (gray — junction)
 // the site's cream paper, and the warm near-black it inverts to. Only the ground
 // the model sits on changes — the laces keep their own colours, and the handle
 // marks keep OpenStrand's.
+/**
+ * One pair of strands that cross in plan, and what the weave decided about them.
+ *
+ * The decision is made in `weaveCenterlines`, and it is made once — a mask if one
+ * covers the pair, otherwise the higher layer rides over. Anything that wants to
+ * REPORT the weave (the fold lab's layer panel, a check script) must read it from
+ * there rather than re-deriving it, or the report and the picture drift apart the
+ * first time either rule changes.
+ */
+export interface CrossingFact {
+  aIndex: number;
+  bIndex: number;
+  aId: string;
+  bId: string;
+  /** Indices resolved by the same rule the geometry uses. */
+  overIndex: number;
+  underIndex: number;
+  overId: string;
+  underId: string;
+  /** How many times the two centrelines cross in plan. */
+  count: number;
+  /** True when an explicit mask decided it, rather than the layer order. */
+  masked: boolean;
+  /**
+   * False when the two sit on different storeys with no mask between them: they
+   * cross in plan only, one simply passes above the other, and no over/under is
+   * woven. That is the statement a level break makes.
+   */
+  woven: boolean;
+  levelA: number;
+  levelB: number;
+}
+
 const PALETTE = {
   light: { bg: '#f5efdf', gridMajor: 0xcfc6ae, gridMinor: 0xe2dbc6 },
   dark: { bg: '#191410', gridMajor: 0x4a4133, gridMinor: 0x322b21 },
@@ -825,6 +858,7 @@ export class StrandScene {
    *  ordered stack when the weave is switched off. */
   private weaveCenterlines(worldLines: Array<Vec2[] | null>): Array<Vec3[] | null> {
     const strands = this.current.strands;
+    this.crossingFacts = [];
     const span = this.params.weaveSpan;
     const anchors: Anchor[][] = strands.map(() => []);
 
@@ -842,6 +876,17 @@ export class StrandScene {
 
           // Who's over here: a mask if one covers the pair, else the higher layer.
           const masked = this.maskOver(i, j);
+          // Recorded here, at the one place the question is answered, so a report
+          // of the weave can never disagree with the geometry it describes.
+          const factOver = masked ?? j;
+          this.crossingFacts.push({
+            aIndex: i, bIndex: j, aId: strands[i].id, bId: strands[j].id,
+            overIndex: factOver, underIndex: factOver === i ? j : i,
+            overId: strands[factOver].id, underId: strands[factOver === i ? j : i].id,
+            count: crossings.length, masked: masked !== null,
+            woven: masked !== null || this.strandLevel[i] === this.strandLevel[j],
+            levelA: this.strandLevel[i] ?? 0, levelB: this.strandLevel[j] ?? 0,
+          });
           // Two strands on DIFFERENT storeys are already a full level apart, and
           // that separation is the statement the level break makes. Weaving them
           // as well would drag both back toward one shared plane and undo it —
@@ -1500,6 +1545,19 @@ export class StrandScene {
   }
 
   // ---- masks (over/under) --------------------------------------------------
+  private crossingFacts: CrossingFact[] = [];
+
+  /**
+   * Every crossing the last build resolved, and who rode over at it.
+   *
+   * Only populated while the Weave render param is on — with the weave off there
+   * are no crossings to resolve, and the stack order alone decides what covers
+   * what. Read after `rebuild()`.
+   */
+  getCrossings(): CrossingFact[] {
+    return this.crossingFacts;
+  }
+
   getMasks(): MaskLink[] {
     return this.current.masks;
   }

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <link rel="icon" href="../favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" sizes="32x32" href="../icon-32.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="../icon-192.png" />
+  <link rel="apple-touch-icon" href="../icon-180.png" />
+  <title>Fold Lab — every layer, over and under</title>
+  <meta name="robots" content="noindex" />
+  <!-- Same pre-paint theme read as the studio, sharing its key: this page wears
+       the studio's own stylesheet, so a dark-theme visitor would otherwise get a
+       cream flash before the bundle lands. -->
+  <script>
+    try {
+      var t = localStorage.getItem('scoubidou3d-theme');
+    } catch (e) {}
+    document.documentElement.dataset.theme =
+      t || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  </script>
+</head>
+<body>
+  <div id="app">
+    <canvas id="scene"></canvas>
+    <aside id="panel"></aside>
+  </div>
+  <script type="module" src="../src/foldlab/main.ts"></script>
+</body>
+</html>

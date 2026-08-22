@@ -30,6 +30,34 @@ into the round below.
 | `Crossing.dc.html` | the rule at a meeting: Δ planes between two parts → weave, collision or daylight, over the five distinct planes of two shared-seam levels; and the one place a shared plane bites back |
 | `Bight.dc.html` | the C carried over from Bight Lab, re-asked in planes. Same half-roll, same closed forms — but a fold now climbs a *number of planes*, and different folds in one stitch climb different numbers, which is what `FOLD_STACK = 2` cannot express |
 
+## The page itself
+
+This directory is the *drawing*. The page it argues for now exists and is a real
+route: **`/foldlab/`** — `foldlab/index.html` + `src/foldlab/main.ts`, a vite
+entry like every other page here.
+
+```sh
+npm run dev
+# http://localhost:5173/Scoubidou3D/foldlab/
+```
+
+It wears the studio's own stylesheet and mounts the studio's own renderer, so
+the ribbons, the colours, the grid and the layer panel are the real ones. Two
+rounds of box stitch, and every layer row carries the ledger of what it rides
+**over** and what it ducks **under**. Those facts come from
+`StrandScene.getCrossings()`, which reports what `weaveCenterlines` actually
+decided — a mask if one covers the pair, otherwise the higher layer — so the
+list and the picture cannot drift apart.
+
+The plane chips (`bottom` / `center` / `top`) are the part that is **not**
+implemented in the engine. Pressing one changes what the panel reports, not what
+the canvas draws; **Copy ledger** puts the whole assignment on the clipboard as
+plain text. That is the artefact to correct and hand back.
+
+Everything opens on `center`, which is deliberately wrong: with every layer on
+one plane every crossing reads `Δ0 same plane`, and the panel is showing you that
+nothing has been decided yet rather than presenting a guess as a finding.
+
 ## Rebuilding the canvas
 
 `fold-lab.html` is the published payload and is **not** tracked — the `.dc.html`
