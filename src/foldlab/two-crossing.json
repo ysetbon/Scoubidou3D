@@ -1,0 +1,150 @@
+{
+  "format": "scoubidou3d-scene",
+  "version": 2,
+  "name": "Two crossing strands",
+  "strands": [
+    {
+      "id": "2_1",
+      "start": { "x": 412.7889346591501, "y": 190.464801035811 },
+      "end": { "x": 386.5456936405017, "y": 336.04287829042477 },
+      "control_points": [
+        { "x": 412.7889346591501, "y": 190.464801035811 },
+        { "x": 412.7889346591501, "y": 190.464801035811 }
+      ],
+      "control_point_center": null,
+      "control_point_center_locked": false,
+      "triangleHasMoved": false,
+      "cp2Activated": false,
+      "width": 54,
+      "stroke_width": 4,
+      "color": { "r": 245, "g": 200, "b": 55, "a": 255 },
+      "stroke_color": { "r": 30, "g": 30, "b": 30, "a": 255 },
+      "thickness": null,
+      "visible": true,
+      "isMask": false,
+      "hasCircles": [true, true],
+      "parentId": null,
+      "parentSide": null
+    },
+    {
+      "id": "1_1",
+      "start": { "x": 327.7180730598706, "y": 259.2870912627772 },
+      "end": { "x": 464.78480073114355, "y": 265.9791691640431 },
+      "control_points": [
+        { "x": 327.7180730598706, "y": 259.2870912627772 },
+        { "x": 327.7180730598706, "y": 259.2870912627772 }
+      ],
+      "control_point_center": null,
+      "control_point_center_locked": false,
+      "triangleHasMoved": false,
+      "cp2Activated": false,
+      "width": 54,
+      "stroke_width": 4,
+      "color": { "r": 226, "g": 122, "b": 38, "a": 255 },
+      "stroke_color": { "r": 30, "g": 30, "b": 30, "a": 255 },
+      "thickness": null,
+      "visible": true,
+      "isMask": false,
+      "hasCircles": [true, true],
+      "parentId": null,
+      "parentSide": null
+    },
+    {
+      "id": "1_2",
+      "start": { "x": 327.7180730598706, "y": 259.2870912627772 },
+      "end": { "x": 455.3572648426479, "y": 208.9767310045723 },
+      "control_points": [
+        { "x": 327.7180730598706, "y": 259.2870912627772 },
+        { "x": 327.7180730598706, "y": 259.2870912627772 }
+      ],
+      "control_point_center": null,
+      "control_point_center_locked": false,
+      "triangleHasMoved": false,
+      "cp2Activated": false,
+      "width": 54,
+      "stroke_width": 4,
+      "color": { "r": 226, "g": 122, "b": 38, "a": 255 },
+      "stroke_color": { "r": 30, "g": 30, "b": 30, "a": 255 },
+      "thickness": null,
+      "visible": true,
+      "isMask": false,
+      "hasCircles": [true, false],
+      "parentId": "1_1",
+      "parentSide": 0
+    },
+    {
+      "id": "1_3",
+      "start": { "x": 464.78480073114355, "y": 265.9791691640431 },
+      "end": { "x": 343.2169903528325, "y": 314.35412221121095 },
+      "control_points": [
+        { "x": 464.78480073114355, "y": 265.9791691640431 },
+        { "x": 464.78480073114355, "y": 265.9791691640431 }
+      ],
+      "control_point_center": null,
+      "control_point_center_locked": false,
+      "triangleHasMoved": false,
+      "cp2Activated": false,
+      "width": 54,
+      "stroke_width": 4,
+      "color": { "r": 226, "g": 122, "b": 38, "a": 255 },
+      "stroke_color": { "r": 30, "g": 30, "b": 30, "a": 255 },
+      "thickness": null,
+      "visible": true,
+      "isMask": false,
+      "hasCircles": [true, false],
+      "parentId": "1_1",
+      "parentSide": 1
+    },
+    {
+      "id": "2_2",
+      "start": { "x": 386.5456936405017, "y": 336.04287829042477 },
+      "end": { "x": 354.9028438731575, "y": 208.37114156144094 },
+      "control_points": [
+        { "x": 386.5456936405017, "y": 336.04287829042477 },
+        { "x": 386.5456936405017, "y": 336.04287829042477 }
+      ],
+      "control_point_center": null,
+      "control_point_center_locked": false,
+      "triangleHasMoved": false,
+      "cp2Activated": false,
+      "width": 54,
+      "stroke_width": 4,
+      "color": { "r": 245, "g": 200, "b": 55, "a": 255 },
+      "stroke_color": { "r": 30, "g": 30, "b": 30, "a": 255 },
+      "thickness": null,
+      "visible": true,
+      "isMask": false,
+      "hasCircles": [true, false],
+      "parentId": "2_1",
+      "parentSide": 1
+    },
+    {
+      "id": "2_3",
+      "start": { "x": 412.7889346591501, "y": 190.464801035811 },
+      "end": { "x": 446.6394655170435, "y": 319.8593187442756 },
+      "control_points": [
+        { "x": 412.7889346591501, "y": 190.464801035811 },
+        { "x": 412.7889346591501, "y": 190.464801035811 }
+      ],
+      "control_point_center": null,
+      "control_point_center_locked": false,
+      "triangleHasMoved": false,
+      "cp2Activated": false,
+      "width": 54,
+      "stroke_width": 4,
+      "color": { "r": 245, "g": 200, "b": 55, "a": 255 },
+      "stroke_color": { "r": 30, "g": 30, "b": 30, "a": 255 },
+      "thickness": null,
+      "visible": true,
+      "isMask": false,
+      "hasCircles": [true, false],
+      "parentId": "2_1",
+      "parentSide": 0
+    }
+  ],
+  "masks": [
+    { "overId": "1_3", "underId": "2_3" },
+    { "overId": "1_2", "underId": "2_2" }
+  ],
+  "levelBreaks": [6]
+}

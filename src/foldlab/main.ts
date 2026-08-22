@@ -30,7 +30,8 @@ import './foldlab.css';
 
 import { collectJunctions } from '../model/connections';
 import { levelAt } from '../model/levels';
-import { boxStitchRounds } from '../model/samples';
+import { sceneFromFile } from '../model/sceneIO';
+import TWO_CROSSING from './two-crossing.json';
 import { separationOf, turnMode } from '../geometry/zturn';
 import { StrandScene, type CrossingFact } from '../scene/StrandScene';
 import type { Point, RGBA, Scene3D, Strand3D } from '../model/types';
@@ -43,8 +44,6 @@ const PLANES = [
 ] as const;
 type PlaneId = (typeof PLANES)[number]['id'];
 
-/** How many rounds of box stitch to stand up. Two is the case being argued about. */
-const ROUNDS = 2;
 /** Level pitch in planes: two, which is what makes a level's top the next's bottom. */
 const PITCH = 2;
 
@@ -52,8 +51,16 @@ const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const panel = document.getElementById('panel') as HTMLElement;
 
 const view = new StrandScene(canvas);
-const scene: Scene3D = boxStitchRounds(ROUNDS, `Box stitch — ${ROUNDS} levels`);
+// The scene this page argues over, as a saved file rather than a generator: two
+// crossing strands, three arms each. A generated box stitch put four folds in
+// every lace about fourteen samples apart, which is closer together than a turn
+// can be seated — the turns tiled the lace end to end with no run between them.
+// Two folds per lace is the case the C was designed for, and it is the one to
+// get right first.
+const scene: Scene3D = sceneFromFile(TWO_CROSSING, 'Two crossing strands');
 view.setScene(scene);
+/** How many storeys this scene stands up — what the elevation names its planes over. */
+const ROUNDS = Math.max(1, ...scene.strands.map((_, i) => levelAt(scene, i) + 1));
 
 interface Rest {
   /** The plane the run rests on where it leaves its fold. */
@@ -64,37 +71,26 @@ interface Rest {
 /**
  * The assignment the page opens on.
  *
- * This is not a guess and not a derivation — it is the author's own sheet, handed
- * back and kept, so the page opens where the work left off instead of on a blank
- * one that has to be pasted in every reload. Anything not listed falls back to
- * `center`, and nothing here is load-bearing: every value is a chip away, and
- * `Plane from weave` still overwrites the lot.
+ * Anything not listed falls back to `center`, and nothing here is load-bearing:
+ * every value is a chip away, and `Plane from weave` still overwrites the lot.
+ *
+ * Each lace here is a core with an arm glued to either end — `1_2 · 1_1 · 1_3`
+ * and `2_2 · 2_1 · 2_3` — so it has two folds, one at each joint. A fold with
+ * both arms on the same plane has no storey to climb and comes out a kink rather
+ * than a C, so the cores rest low and the arms rest high: every fold then climbs
+ * the full two thicknesses and every C is the same C.
  *
  * `out` is the plane the run settles onto AFTER its C. None is set here, so each
- * run rests at one height for its whole length — which is what the sheet said.
- *
- * Two entries differ from the sheet as first handed over, and deliberately.
- * Round 2's inner arms came in as the MIRROR of round 1's — 2_3 top, 2_4 bottom
- * against 1_3 bottom, 1_4 top — and a fold between two runs at the same absolute
- * height has nothing to climb: 2_4's fold with 2_3 read `climbs 0.00 t` and came
- * out a kink rather than a C, while 2_4's crossings with 1_4 and 1_5 opened to
- * `Δ2 daylight` because the storey they share was empty between them. The other
- * three outer arms all read `climbs 4.00 t`. Squaring round 2 onto round 1's
- * pattern is what makes all four alike, which is what the sheet was asking for.
+ * run rests at one height for its whole length.
  */
 const OPENING: Record<string, PlaneId> = {
-  '1_5': 'top',
-  '2_5': 'top',
-  '1_4': 'top',
-  '2_4': 'top',
-  '2_3': 'bottom',
-  '1_3': 'bottom',
-  '2_2': 'bottom',
-  '1_2': 'bottom',
-  '2_1': 'bottom',
+  '1_2': 'top',
+  '1_3': 'top',
+  '2_2': 'top',
+  '2_3': 'top',
   '1_1': 'bottom',
+  '2_1': 'bottom',
 };
-
 const plane = new Map<string, Rest>(
   scene.strands.map((s) => {
     const p = OPENING[s.id] ?? 'center';
@@ -811,7 +807,7 @@ function build(): void {
 /** The whole panel as plain text — the thing to paste back with corrections. */
 function asText(facts: CrossingFact[], folds: FoldRow[]): string {
   const out: string[] = [
-    `Fold Lab — box stitch, ${ROUNDS} rounds`,
+    `Fold Lab — ${scene.name}, ${ROUNDS} level${ROUNDS === 1 ? '' : 's'}`,
     declared ? 'planes: declared' : 'planes: none declared (studio weave)',
     '',
   ];
