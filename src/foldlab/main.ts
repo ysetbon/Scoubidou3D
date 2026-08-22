@@ -131,6 +131,32 @@ function push(): void {
   );
 }
 
+/**
+ * Show or hide layers, through the studio's own `visible` flag.
+ *
+ * Worth knowing what that flag does, because it is not what "hide" usually
+ * means: a hidden layer still takes part in the WEAVE and is dropped only after
+ * it — a crossing is a fact about two strands, and leaving one out of the solve
+ * straightens the other. So hiding everything but one lace hands back that lace
+ * with all its over/unders intact, rather than a flattened version of it.
+ */
+function setVisible(id: string, on: boolean): void {
+  const st = scene.strands.find((q) => q.id === id);
+  if (!st) return;
+  st.visible = on;
+  view.rebuild();
+}
+
+function soloLayer(id: string): void {
+  const only = scene.strands.every((q) => q.visible === (q.id === id));
+  // Pressing solo on the layer already soloed puts everything back, so the
+  // button is its own undo rather than needing a second control beside it.
+  for (const q of scene.strands) q.visible = only ? true : q.id === id;
+  view.rebuild();
+}
+
+const anyHidden = (): boolean => scene.strands.some((q) => !q.visible);
+
 const el = <K extends keyof HTMLElementTagNameMap>(
   tag: K,
   cls?: string,
@@ -220,19 +246,36 @@ function sideView(id: string, colour: string): SVGElement | null {
   const own = view.getStrandCentrelineWorld(id);
   const rest = view.getRestingWorld(id);
   const t = view.getThicknessWorld();
-  if (!lace || !own || own.length < 2 || !rest || !(t > 0)) return null;
+  if (!own || own.length < 2 || !rest || !(t > 0)) return null;
 
   const W = 320, H = 168, PADX = 8, PADT = 16, PADB = 14, LABEL = 150;
-  const line = lace.line;
+  // Normally this layer is drawn inside its lace, which is where its fold lives.
+  // With the rest of that lace hidden there is no merged centreline to sit in —
+  // a lace of one strand is drawn straight rather than merged — so it falls back
+  // to its own run. The turn is not in that run: a fold belongs to the junction
+  // with the neighbour that is currently hidden, so there is nothing to draw.
+  const line = lace ? lace.line : own;
+  const soloed = !lace;
 
-  // Distance travelled along the lace, which is the honest x-axis for an
-  // elevation: the C doubles back in plan, and plotting against a straight axis
-  // would fold the turn on top of itself.
-  const cum: number[] = [0];
-  for (let k = 1; k < line.length; k++) {
-    cum.push(cum[k - 1] + Math.hypot(line[k].x - line[k - 1].x, line[k].y - line[k - 1].y));
+  // A TRUE elevation: every point projected onto the direction this layer's own
+  // run travels. Plotting against distance travelled instead unrolls the fold —
+  // the turn doubles back in plan, and an unrolled axis lays the return run out
+  // beyond the outward one, so the C comes out as a ramp. Projected, the two runs
+  // overlap where they really do overlap and the turn draws itself as a C.
+  let dx = own[own.length - 1].x - own[0].x;
+  let dy = own[own.length - 1].y - own[0].y;
+  let dl = Math.hypot(dx, dy);
+  if (dl < 1e-9) {
+    // A run that ends where it started has no direction to project onto; fall
+    // back to distance travelled rather than dividing by nothing.
+    dx = 1;
+    dy = 0;
+    dl = 1;
   }
-  const total = cum[cum.length - 1] || 1;
+  dx /= dl;
+  dy /= dl;
+  const cum = line.map((q) => (q.x - own[0].x) * dx + (q.y - own[0].y) * dy);
+  const total = Math.max(...cum) - Math.min(...cum) || 1;
 
   const nearest = (q: { x: number; y: number }): number => {
     let best = 0;
@@ -243,8 +286,8 @@ function sideView(id: string, colour: string): SVGElement | null {
     }
     return best;
   };
-  const a = nearest(own[0]);
-  const b = nearest(own[own.length - 1]);
+  const a = soloed ? 0 : nearest(own[0]);
+  const b = soloed ? own.length - 1 : nearest(own[own.length - 1]);
   const from = Math.min(a, b);
   const to = Math.max(a, b);
 
@@ -252,13 +295,21 @@ function sideView(id: string, colour: string): SVGElement | null {
   // lace, a single arm of a five-arm stitch is a few pixels wide and the drawing
   // stops being about the layer whose card it is on; the margin is what keeps the
   // fold at either end of it in view.
-  const margin = Math.max((cum[to] - cum[from]) * 0.35, total * 0.02);
-  const x0 = Math.max(0, cum[from] - margin);
-  const x1 = Math.min(total, cum[to] + margin);
-  let wLo = 0;
-  let wHi = line.length - 1;
-  while (wLo < from && cum[wLo] < x0) wLo++;
-  while (wHi > to && cum[wHi] > x1) wHi--;
+  // Projected x is NOT monotonic along the lace — that is the whole point, since
+  // the fold comes back on itself — so the window is a value range and the index
+  // range is just this layer's stretch plus a little of its lace either side.
+  let ownLo = Infinity;
+  let ownHi = -Infinity;
+  for (let k = from; k <= to; k++) {
+    ownLo = Math.min(ownLo, cum[k]);
+    ownHi = Math.max(ownHi, cum[k]);
+  }
+  const margin = Math.max((ownHi - ownLo) * 0.18, total * 0.02);
+  const x0 = ownLo - margin;
+  const x1 = ownHi + margin;
+  const context = Math.round(Math.max(8, (to - from) * 0.5));
+  const wLo = Math.max(0, from - context);
+  const wHi = Math.min(line.length - 1, to + context);
 
   let zLo = Infinity;
   let zHi = -Infinity;
@@ -313,6 +364,10 @@ function sideView(id: string, colour: string): SVGElement | null {
     'stroke-width': 1, opacity: 0.5 }));
 
   svg.appendChild(sv('text', { x: X(from) + 2, y: Y(line[from].z) - 7, class: 'arm-id' }, id));
+  if (soloed) {
+    svg.appendChild(sv('text', { x: PADX, y: H - 4, class: 'pl seam' },
+      'lace hidden — its turn is not in this run'));
+  }
   return svg;
 }
 
@@ -421,7 +476,8 @@ function layerCard(i: number, facts: CrossingFact[], folds: FoldRow[]): HTMLElem
 
   const card = el(
     'div',
-    `layer${isOpen ? ' open' : ''}${faults ? ' warn' : ''}${selected === s.id ? ' sel' : ''}`,
+    `layer${isOpen ? ' open' : ''}${faults ? ' warn' : ''}` +
+      `${selected === s.id ? ' sel' : ''}${s.visible ? '' : ' off'}`,
   );
   card.dataset.layer = s.id;
 
@@ -447,6 +503,29 @@ function layerCard(i: number, facts: CrossingFact[], folds: FoldRow[]): HTMLElem
   const chipWrap = el('span', 'head-chip');
   chipWrap.appendChild(chip(s.id, 'in'));
   head.appendChild(chipWrap);
+
+  const eye = el('button', 'icon-btn vis');
+  eye.textContent = s.visible ? '◉' : '○';
+  eye.title = s.visible ? 'Hide this layer' : 'Show this layer';
+  eye.setAttribute('aria-pressed', String(!s.visible));
+  eye.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setVisible(s.id, !s.visible);
+    build();
+  });
+  head.appendChild(eye);
+
+  const solo = el('button', 'icon-btn vis');
+  const isSolo = scene.strands.every((q) => q.visible === (q.id === s.id));
+  solo.textContent = isSolo ? '⦿' : '◎';
+  solo.title = isSolo ? 'Show every layer again' : 'Hide all except this layer';
+  solo.setAttribute('aria-pressed', String(isSolo));
+  solo.addEventListener('click', (e) => {
+    e.stopPropagation();
+    soloLayer(s.id);
+    build();
+  });
+  head.appendChild(solo);
 
   // Collapsed, the one line that matters: is this layer sitting right?
   const sum = el('div', 'layer-sum');
@@ -573,6 +652,17 @@ function build(): void {
     build();
   });
   stackbar.appendChild(all);
+
+  if (anyHidden()) {
+    const showAll = el('button', 'pill');
+    showAll.textContent = 'Show all';
+    showAll.addEventListener('click', () => {
+      for (const q of scene.strands) q.visible = true;
+      view.rebuild();
+      build();
+    });
+    stackbar.appendChild(showAll);
+  }
 
   const paste = el('button', 'pill square');
   paste.textContent = '⇩';

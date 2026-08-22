@@ -464,3 +464,49 @@
   color: var(--muted);
   font-style: italic;
 }
+
+/* ---- showing and hiding layers -------------------------------------------- */
+.icon-btn.vis {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin-left: 4px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.icon-btn.vis:hover {
+  border-color: var(--edge2);
+  color: var(--ink);
+}
+
+.icon-btn.vis[aria-pressed='true'] {
+  border-color: var(--coral);
+  color: var(--coral);
+}
+
+/* A hidden layer keeps its card — it is still a layer, and its planes still
+   count — but says plainly that it is not in the picture. */
+.layer.off .row-name,
+.layer.off .swatch {
+  opacity: 0.4;
+}
+
+.layer.off .layer-sum::after {
+  content: 'hidden';
+  margin-left: auto;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.layer.off .layer-sum .good,
+.layer.off .layer-sum .bad {
+  margin-left: 0;
+}
