@@ -57,6 +57,7 @@ export default defineConfig({
         site: page('index.html'),
         app: page('app/index.html'),
         levels: page('levels/index.html'),
+        zlab: page('zlab/index.html'),
         twist: page('twist/index.html'),
         mxn: page('mxn/index.html'),
         mxnFast: page('mxn/fast/index.html'),

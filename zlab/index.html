@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <link rel="icon" href="../favicon.ico" sizes="any" />
+  <title>Z band lab — Scoubidou3D</title>
+  <style>
+    :root { color-scheme: light dark; }
+    html, body { margin: 0; height: 100%; }
+    body { font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+    #app { position: fixed; inset: 0; display: flex; }
+    /* The canvas is absolutely placed inside a flex item rather than being a
+       flex item itself: sized by the renderer it would feed its own attribute
+       width back into layout and grow without bound. */
+    #stage { flex: 1 1 0; min-width: 0; position: relative; background: #191410; }
+    #scene { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+    #lab {
+      flex: 0 0 320px; overflow-y: auto; padding: 20px 20px 40px;
+      background: #141110; color: #f0e9dd; border-left: 1px solid #3a3430;
+    }
+    #lab h1 { font-size: 20px; margin: 0 0 10px; }
+    #lab .lead { color: #c9c0b6; margin: 0 0 16px; }
+    #lab .note { color: #9a9088; font-size: 13px; margin: 10px 0 18px; }
+    #lab .kinds { display: flex; gap: 6px; margin-bottom: 4px; }
+    #lab .kinds button {
+      flex: 1; min-height: 34px; border: 1.5px solid #3a3430; border-radius: 999px;
+      background: transparent; color: #f0e9dd; font: 700 12px system-ui, sans-serif;
+      text-transform: capitalize; cursor: pointer;
+    }
+    #lab .kinds button.on { background: #e0857a; border-color: #e0857a; color: #171713; }
+    #lab .slider { display: block; margin: 0 0 14px; }
+    #lab .slider span { display: flex; justify-content: space-between; font-weight: 650; }
+    #lab .slider var { font-style: normal; color: #9a9088; }
+    #lab .slider input { width: 100%; margin-top: 4px; accent-color: #e0857a; }
+    #lab .check { display: flex; align-items: center; gap: 8px; margin: 4px 0 4px; }
+    @media (max-width: 720px) {
+      #app { flex-direction: column-reverse; }
+      #lab { flex: 0 0 auto; max-height: 52vh; border-left: 0; border-top: 1px solid #3a3430; }
+    }
+  </style>
+  <script>
+    try {
+      var t = localStorage.getItem('scoubidou3d-theme');
+    } catch (e) {}
+    document.documentElement.dataset.theme =
+      t || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  </script>
+</head>
+<body>
+  <div id="app">
+    <div id="stage"><canvas id="scene"></canvas></div>
+    <aside id="lab"></aside>
+  </div>
+  <script type="module" src="../src/zlab/main.ts"></script>
+</body>
+</html>

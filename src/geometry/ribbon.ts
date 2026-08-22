@@ -34,6 +34,20 @@ export interface RibbonOptions {
   capStart?: boolean;
   capEnd?: boolean;
   /**
+   * How far a rounded cap reaches past the end, world units. Defaults to half
+   * the WIDTH — the round strand end OSS draws, which is right for a lace lying
+   * flat. A short bar standing on end (the fold rung) wants its own thickness
+   * instead, or the cap is a nose half a lace wide.
+   */
+  capReach?: number;
+  /**
+   * Round a cap in the THICKNESS direction only, leaving the section at full
+   * width right to the last ring: the rounded end of a flat bar rather than a
+   * bullet nose. The cap is then a half-cylinder lying across the width, and
+   * the silhouette turns the corner in one continuous curve instead of stepping.
+   */
+  capFlat?: boolean;
+  /**
    * Leave an end completely open — no dome and no flat cap. Used for the OUTLINE
    * shell at a glued end: two laces meeting end to end would otherwise present
    * two coincident outline caps to each other, which read as a black plate across
@@ -48,6 +62,37 @@ export interface RibbonOptions {
    * body's face shows through it, and the rim still runs round the edges.
    */
   openFolds?: boolean;
+  /**
+   * Square the two faces of every fold: stand them dead vertical and unsheared,
+   * so the fold's geometry stays exactly in its own vertical plane and nothing
+   * of it reaches past the point where the runs end.
+   *
+   * Left alone, a fold's faces tip with the runs' climb and shear onto the
+   * crease, and that reach past the fold point is visible — a thin fin poking
+   * out of the turn. That is fine when the fold IS the turn's outer surface,
+   * and wrong the moment something else stands in front of it: the fold RUNG
+   * (StrandScene.foldRungs) is a solid piece of lace centred on the fold point,
+   * and the tipped faces poke out through it. Squared, the fold is a flat sheet
+   * fully inside the rung, and the rung is the only thing the eye gets.
+   */
+  squareFolds?: boolean;
+  /**
+   * Give a squared fold's FACE a body, `foldFaceReach` world units deep.
+   *
+   * The face is the band the sweep lays between a fold's two rings. Squared, both
+   * rings sit at the fold point in one vertical plane, so that band is a sheet of
+   * no thickness at all — a plane whose normal lies in XY, with nothing behind
+   * it. Seen anywhere near edge-on it vanishes, and the turn shows a black slit
+   * where solid lace should be.
+   *
+   * Carried out, the fold gets four rings instead of two: in at the fold point,
+   * out along the turn's normal, across, and back in. The face is then a slab of
+   * that depth standing in the turn — the same plane, with substance behind it.
+   * Only squared folds take it; an unsquared fold's faces are tipped and sheared
+   * onto the crease, and carrying those out would swing the slab out of the
+   * fold's own plane.
+   */
+  foldFaceReach?: number;
 }
 
 // A cross-section is a closed loop of {u, v} points in the local (side, up)
@@ -187,6 +232,15 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     up: Vec3; // thickness axis, pitched with the climb
     shear: number; // tips the face over onto the crease
     crease: boolean; // second face of a fold: the section turns over here
+    /** Overrides the width axis for this ring (normally the perpendicular of
+     *  `t`). Squared folds set it to the crease line, so both of a fold's rings
+     *  lie in ONE vertical plane and the fold has no reach at all. */
+    side?: Vec2;
+    /** A ring carried out to give the fold's face depth (`foldFaceReach`). The
+     *  OUTLINE shell leaves every band touching one of these out, the same way
+     *  and for the same reason it leaves the flat face out: grown outward, the
+     *  slab's own sleeve sits in front of the body's and floods the turn black. */
+    face?: boolean;
   }
   // The thickness axis for a run heading `t` at gradient `slope`: leant back over
   // the heading just enough to stand square to the climb.
@@ -230,9 +284,41 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     ux -= along * f.crease.x;
     uy -= along * f.crease.y;
     const len = Math.hypot(ux, uy, uz) || 1;
-    const up = { x: ux / len, y: uy / len, z: uz / len };
-    plan.push({ p: pIn, t: f.din, up, shear: f.shearIn, crease: false });
-    plan.push({ p: pOut, t: f.dout, up, shear: f.shearOut, crease: true });
+    const up = opts.squareFolds ? { x: 0, y: 0, z: 1 } : { x: ux / len, y: uy / len, z: uz / len };
+    const shearIn = opts.squareFolds ? 0 : f.shearIn;
+    const shearOut = opts.squareFolds ? 0 : f.shearOut;
+    // Squared, both rings take the crease itself as their width axis. Each ring
+    // normally lies square to its own run, and the two runs' headings differ by
+    // whatever the turn falls short of a full reversal — so the rings' corners
+    // swing out of the fold's plane by half that. Aligned to the crease they sit
+    // in one vertical plane, and the whole fold collapses into it. Only the
+    // GEOMETRY is overridden: `t` still carries each run's true heading, because
+    // the mirror bookkeeping below reads headings, and feeding it the crease
+    // would flip the walk twice and wring the tube.
+    const side = opts.squareFolds ? { x: f.crease.x, y: f.crease.y } : undefined;
+
+    // The turn's outward normal: the way the lace would have carried on had it
+    // not doubled back. A face given depth is carried out along this and brought
+    // back, so the slab stands square in the fold's own plane.
+    const reach = opts.squareFolds ? (opts.foldFaceReach ?? 0) : 0;
+    let nx = f.din.x - f.dout.x;
+    let ny = f.din.y - f.dout.y;
+    const nl = Math.hypot(nx, ny);
+    if (reach > 0 && nl > 1e-9) {
+      nx /= nl;
+      ny /= nl;
+      const out = (q: Vec3) => ({ x: q.x + nx * reach, y: q.y + ny * reach, z: q.z });
+      // Four rings, and exactly ONE of them marked `crease`: the walk turns over
+      // where the heading does, and the band before it is still the fold's outer
+      // face — so `openFolds` goes on cutting the right hole for the shell.
+      plan.push({ p: pIn, t: f.din, up, shear: shearIn, crease: false, side });
+      plan.push({ p: out(pIn), t: f.din, up, shear: 0, crease: false, side, face: true });
+      plan.push({ p: out(pOut), t: f.dout, up, shear: 0, crease: true, side, face: true });
+      plan.push({ p: pOut, t: f.dout, up, shear: shearOut, crease: false, side });
+      continue;
+    }
+    plan.push({ p: pIn, t: f.din, up, shear: shearIn, crease: false, side });
+    plan.push({ p: pOut, t: f.dout, up, shear: shearOut, crease: true, side });
   }
 
   const positions: number[] = [];
@@ -263,8 +349,8 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     const { p, t, up, shear } = plan[i];
     // In-plane side normal (perpendicular to tangent, in XY): (-ty, tx). It stays
     // level whatever the climb, so the lace never rolls about its own axis.
-    const sx = -t.y;
-    const sy = t.x;
+    const sx = plan[i].side ? plan[i].side!.x : -t.y;
+    const sy = plan[i].side ? plan[i].side!.y : t.x;
     const ringIdx: number[] = [];
     for (let j = 0; j < m; j++) {
       const s = section[mirrored[i] ? m - 1 - j : j];
@@ -283,7 +369,10 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   const indices: number[] = [];
   // Stitch consecutive rings into a tube.
   for (let i = 0; i < rings.length - 1; i++) {
-    if (opts.openFolds && plan[i + 1].crease) continue; // skip the fold's outer face
+    // Skip the fold's outer face — and, where the face has been given depth, the
+    // two side bands of that slab with it, so the shell leaves ONE hole over the
+    // whole turn rather than wrapping each new band in its own dark sleeve.
+    if (opts.openFolds && (plan[i + 1].crease || plan[i].face || plan[i + 1].face)) continue;
     const a = rings[i];
     const b = rings[i + 1];
     for (let j = 0; j < m; j++) {
@@ -352,7 +441,7 @@ function addDomeCap(
   const sy = tangent.x;
   const tx = tangent.x * dir;
   const ty = tangent.y * dir;
-  const reach = opts.width / 2;
+  const reach = opts.capReach ?? opts.width / 2;
   const domeRings = 4;
 
   // Build shrinking rings from the end cross-section toward a tip. The dome sits
@@ -364,7 +453,7 @@ function addDomeCap(
     const push = Math.sin((f * Math.PI) / 2) * reach; // 0 -> reach
     const ring: number[] = [];
     for (let j = 0; j < m; j++) {
-      const u = section[j].x * scale;
+      const u = section[j].x * (opts.capFlat ? 1 : scale);
       const v = section[j].y * scale;
       const x = center.x + sx * u + tx * push;
       const y = center.y + sy * u + ty * push;

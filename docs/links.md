@@ -13,6 +13,12 @@ change lands there. Paths are relative to the base above.
 | The studio | [`/app/`](https://ysetbon.github.io/Scoubidou3D/app/) | The editor itself — orbit, edit, weave, save |
 | Level gallery | [`/levels/`](https://ysetbon.github.io/Scoubidou3D/levels/) | Every level of every m×n face, rendered. Opens on 1×5 |
 
+## The Z band lab
+
+| Page | Link | What it is |
+| --- | --- | --- |
+| Z band lab | [`/zlab/`](https://ysetbon.github.io/Scoubidou3D/zlab/) | one storey turn on its own, swept from 0° to 180° — Fold, Square, Auto and Carry on, and the numbers Auto settled on — [docs/z-lab.md](z-lab.md) |
+
 ## The MXN Continuation Lab and its tools
 
 One engine, eight pages over it. The first is the one to hand out; the rest are

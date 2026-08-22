@@ -70,6 +70,29 @@ function twoCrossing(): Scene3D {
   };
 }
 
+// 1b) One lace doubling back on itself: 1_1 out, 1_2 glued to its end and
+//     returning alongside. The smallest scene that has a STOREY TURN in it and
+//     nothing else, so the Z part can be looked at without a stitch's worth of
+//     other laces crowding the frame. The return is a hair off parallel — the
+//     end lands at y 239 rather than 250 — because a turn that doubles back
+//     dead straight has no crease direction to read, and every real stitch's
+//     turn is slightly open too.
+function foldPair(): Scene3D {
+  return {
+    name: 'One lace, one turn',
+    masks: [],
+    levelBreaks: [],
+    strands: [
+      mk('1_1', { x: 120, y: 250 }, { x: 680, y: 250 }, ORANGE, { width: 54 }),
+      mk('1_2', { x: 680, y: 250 }, { x: 305.7566431575896, y: 239.24314393184486 }, ORANGE, {
+        width: 54,
+        parentId: '1_1',
+        parentSide: 1,
+      }),
+    ],
+  };
+}
+
 // 2) A basket / woven mat — horizontal and vertical laces that truly interlock.
 //    A checkerboard of masks makes each strand ride OVER some crossings and duck
 //    UNDER others (impossible with layer order alone, since every vertical would
@@ -834,6 +857,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
   ...BOX_COLUMN_SAMPLES,
   ...PLACED_SAMPLES,
   'two-crossing': twoCrossing,
+  'fold-pair': foldPair,
   'box-stitch': boxStitch,
   'box-stitch-10': () => boxStitchRounds(10, 'Box stitch — 10 levels'),
   'box-stitch-15': () => boxStitchRounds(15, 'Box stitch — 15 levels'),
@@ -870,6 +894,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
  */
 export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }> = [
   { key: 'two-crossing', label: 'Two crossing strands', group: 'Basics' },
+  { key: 'fold-pair', label: 'One lace, one turn', group: 'Basics' },
   { key: 'box-stitch', label: 'Box stitch — starting stitch', group: 'Stitches' },
   { key: 'box-stitch-10', label: 'Box stitch — 10 levels', group: 'Stitches' },
   { key: 'box-stitch-15', label: 'Box stitch — 15 levels', group: 'Stitches' },
