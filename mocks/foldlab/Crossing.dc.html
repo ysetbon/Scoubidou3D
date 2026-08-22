@@ -1,0 +1,214 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <style>
+    :root{
+      --ground:#F4F6F4; --panel:#FFFFFF; --panel-2:#ECEFEC; --sunk:#E4E8E5;
+      --ink:#14191B; --ink-2:#454E51; --ink-3:#6E7A7D;
+      --rule:#D3DAD6; --rule-2:#C0C9C4;
+      --bad:#AB4136; --bad-bg:#F7E9E7;
+      --good:#186F60; --good-bg:#E3F0ED;
+      --warn:#9A6B18; --warn-bg:#F6EEDC;
+      --accent:#186F60; --ref:#3A6EA5;
+      --shadow:0 1px 2px rgba(20,25,27,.05), 0 6px 20px -12px rgba(20,25,27,.22);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--ground);color:var(--ink);
+      font:400 15px/1.55 "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:var(--accent)} a:hover{color:#0F4F44}
+  </style>
+</helmet>
+
+<div style="padding:32px 30px 38px">
+
+  <p style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.17em;text-transform:uppercase;color:var(--ink-3);margin:0 0 12px">/foldlab/ · the rule at a meeting</p>
+  <h2 style="font-family:'Archivo',sans-serif;font-weight:700;letter-spacing:-.02em;font-size:32px;margin:0 0 10px">Where two parts meet</h2>
+  <p style="color:var(--ink-2);max-width:78ch;margin:0 0 24px;font-size:15px">Once every part names a plane, an over/under is no longer decided at the crossing — it is already decided, and the only question left is <b style="color:var(--ink)">how many planes apart</b> the two parts are. One is the weave. Everything else is a defect with a name.</p>
+
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:24px;align-items:start">
+
+    <div style="background:var(--panel);border:1px solid var(--rule);border-radius:12px;box-shadow:var(--shadow);padding:20px 22px 22px">
+      <h3 style="font-family:'Archivo',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin:0 0 4px">Plane against plane, over two shared-seam levels</h3>
+      <p style="font-size:12.5px;color:var(--ink-3);margin:0 0 16px">Read down for the part you are following, across for the part it meets.</p>
+
+      <table style="border-collapse:collapse;width:100%;font-family:'IBM Plex Mono',monospace;font-size:11.5px">
+        <thead>
+          <tr>
+            <th style="padding:6px 8px"></th>
+            <sc-for list="{{cols}}" as="c" hint-placeholder-count="5">
+              <th style="{{c.headStyle}}">{{c.short}}</th>
+            </sc-for>
+          </tr>
+        </thead>
+        <tbody>
+          <sc-for list="{{matrix}}" as="row" hint-placeholder-count="5">
+            <tr>
+              <th style="{{row.headStyle}}">{{row.label}}</th>
+              <sc-for list="{{row.cells}}" as="cell" hint-placeholder-count="5">
+                <td style="{{cell.style}}">{{cell.text}}</td>
+              </sc-for>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+
+      <div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:18px">
+        <sc-for list="{{legend}}" as="g" hint-placeholder-count="4">
+          <div style="display:flex;gap:8px;align-items:baseline">
+            <span style="{{g.swatch}}">{{g.key}}</span>
+            <span style="font-size:12.5px;color:var(--ink-2)">{{g.text}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <div style="background:var(--panel);border:1px solid var(--rule);border-radius:12px;box-shadow:var(--shadow);padding:20px">
+        <h3 style="font-family:'Archivo',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--warn);margin:0 0 8px">The crowded plane</h3>
+        <p style="font-size:13.5px;color:var(--ink-2);line-height:1.5;margin:0 0 14px">Sharing a plane between levels is what closes the seam, and it is also the one place two parts are deliberately at <b style="color:var(--ink)">&#916;&#160;0</b>. It only works if the part L0 puts there and the part L1 puts there miss each other <em>in plan</em>. Pick what L1 lays on the seam:</p>
+
+        <div style="display:flex;gap:7px;margin:0 0 16px">
+          <sc-for list="{{choices}}" as="ch" hint-placeholder-count="3">
+            <button onClick="{{ch.pick}}" style="{{ch.style}}">{{ch.label}}</button>
+          </sc-for>
+        </div>
+
+        <div style="position:relative">
+          <svg viewBox="0 0 290 200" role="img" aria-label="Plan of the shared seam plane" style="display:block;width:100%;height:auto;background:var(--sunk);border-radius:8px">
+            <sc-for list="{{seamBars}}" as="b" hint-placeholder-count="2">
+              <rect x="{{b.x}}" y="{{b.y}}" width="{{b.w}}" height="{{b.h}}" rx="3" fill="{{b.fill}}" stroke="{{b.stroke}}" stroke-width="1.4" stroke-dasharray="{{b.dash}}"></rect>
+            </sc-for>
+            <sc-if value="{{clash}}" hint-placeholder-val="{{true}}">
+              <rect x="{{clashBox.x}}" y="{{clashBox.y}}" width="{{clashBox.w}}" height="{{clashBox.h}}" fill="rgba(171,65,54,.28)" stroke="var(--bad)" stroke-width="1.6"></rect>
+            </sc-if>
+          </svg>
+          <sc-for list="{{seamBars}}" as="b" hint-placeholder-count="2">
+            <div style="{{b.labelStyle}}">{{b.label}}</div>
+          </sc-for>
+        </div>
+
+        <p style="{{seamNoteStyle}}">{{seamNote}}</p>
+      </div>
+
+      <div style="background:var(--sunk);border:1px solid var(--rule);border-radius:12px;padding:16px 18px">
+        <h3 style="font-family:'Archivo',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin:0 0 10px">What this replaces</h3>
+        <p style="font-size:13px;color:var(--ink-2);line-height:1.5;margin:0 0 10px">Today a crossing swings each lace off a single storey plane by <code style="font-family:'IBM Plex Mono',monospace;font-size:11.5px">weaveAmplitude</code>, capped at half a thickness once the scene has levels. The swing is per-crossing and local; nothing records where a part <em>rests</em> between its crossings.</p>
+        <p style="font-size:13px;color:var(--ink-2);line-height:1.5;margin:0">A declared plane is the opposite: it holds along the whole run, so two parts that never cross still have a defined relationship — which is exactly the case the seam is made of.</p>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1060,"height":640}}'>
+// Five distinct planes over two shared-seam levels: L0 bottom/center/top, where
+// L0 top is also L1 bottom, then L1 center and L1 top.
+const PLANES = [
+  { z: 0, label: 'L0 bottom', short: 'L0 b' },
+  { z: 1, label: 'L0 center', short: 'L0 c' },
+  { z: 2, label: 'L0 top = L1 bottom', short: 'seam' },
+  { z: 3, label: 'L1 center', short: 'L1 c' },
+  { z: 4, label: 'L1 top', short: 'L1 t' },
+];
+
+class Component extends DCLogic {
+  constructor(props){
+    super(props);
+    this.state = { seamArm: 'B' };
+  }
+
+  renderVals(){
+    const cell = (d) => {
+      if (d === 0) return ['Δ0', 'var(--bad-bg)', 'var(--bad)'];
+      if (d === 1) return ['Δ1', 'var(--good-bg)', 'var(--good)'];
+      if (d === 2) return ['Δ2', 'var(--warn-bg)', 'var(--warn)'];
+      return ['Δ' + d, 'var(--panel-2)', 'var(--ink-3)'];
+    };
+    const head = 'padding:6px 8px;font-weight:500;color:var(--ink-3);border-bottom:1px solid var(--rule);text-align:center;letter-spacing:.04em';
+    const rowHead = 'padding:6px 10px 6px 0;font-weight:600;color:var(--ink-2);text-align:right;white-space:nowrap;border-right:1px solid var(--rule)';
+
+    const cols = PLANES.map((p) => ({ short: p.short, headStyle: head }));
+    const matrix = PLANES.map((p) => ({
+      label: p.label, headStyle: rowHead,
+      cells: PLANES.map((q) => {
+        const [text, bg, fg] = cell(Math.abs(p.z - q.z));
+        return { text, style: 'padding:9px 8px;text-align:center;font-weight:600;background:' + bg + ';color:' + fg + ';border:2px solid var(--panel)' };
+      }),
+    }));
+
+    const sw = (bg, fg) => 'display:inline-block;padding:2px 9px;border-radius:999px;font-family:\'IBM Plex Mono\',monospace;font-size:11px;font-weight:600;background:' + bg + ';color:' + fg;
+    const legend = [
+      { key: 'Δ0', swatch: sw('var(--bad-bg)', 'var(--bad)'), text: 'the same plane — they occupy each other unless they miss in plan' },
+      { key: 'Δ1', swatch: sw('var(--good-bg)', 'var(--good)'), text: 'lying on — the weave' },
+      { key: 'Δ2', swatch: sw('var(--warn-bg)', 'var(--warn)'), text: 'a thickness of daylight — a hole you can see through' },
+      { key: 'Δ3+', swatch: sw('var(--panel-2)', 'var(--ink-3)'), text: 'a level or more apart — one passes above, no weave stated' },
+    ];
+
+    // ---- the seam plane in plan -----------------------------------------
+    // L0 lays D on the seam: a weft bar, running north–south at x = 172.
+    const L0 = { x: 158, y: 26, w: 28, h: 148, label: 'D · L0 top', lx: 172, ly: 188, anchor: 'middle',
+                 stroke: 'var(--accent)', fill: 'rgba(24,111,96,.14)', dash: '0' };
+    const arms = {
+      B: { x: 94, y: 26, w: 28, h: 148, label: 'B · L1 bottom', lx: 108, ly: 18, anchor: 'middle' },
+      D: { x: 158, y: 26, w: 28, h: 148, label: 'D · L1 bottom', lx: 172, ly: 18, anchor: 'middle' },
+      A: { x: 26, y: 86, w: 238, h: 28, label: 'A · L1 bottom', lx: 264, ly: 80, anchor: 'end' },
+    };
+    const pick = arms[this.state.seamArm];
+    const L1 = Object.assign({ stroke: 'var(--ref)', fill: 'rgba(58,110,165,.14)', dash: '5 3' }, pick);
+
+    const ox = Math.max(0, Math.min(L0.x + L0.w, L1.x + L1.w) - Math.max(L0.x, L1.x));
+    const oy = Math.max(0, Math.min(L0.y + L0.h, L1.y + L1.h) - Math.max(L0.y, L1.y));
+    const clash = ox > 0.5 && oy > 0.5;
+    const clashBox = { x: Math.max(L0.x, L1.x), y: Math.max(L0.y, L1.y), w: ox, h: oy };
+
+    const notes = {
+      B: ['good', 'B runs beside D, one bar over. Both live on the seam plane and never touch — the two rounds share a floor and the course line disappears.'],
+      D: ['bad', 'D on D. The same bar in the same plane, the full length of it: the two rounds are trying to be in the same place. This is the case that must never be written.'],
+      A: ['warn', 'A crosses D at right angles, so they meet at one square and that square is Δ 0 — a collision at the crossing even though the rest of both arms is clear. A shared plane can carry parallel parts, not crossing ones.'],
+    };
+    const [cls, text] = notes[this.state.seamArm];
+
+    // HTML overlays, not SVG <text>: a {{hole}} used as SVG text content
+    // resolves to nothing, so the bar names would silently disappear.
+    const place = (b) => Object.assign({}, b, {
+      labelStyle: 'position:absolute;top:' + (b.ly / 200 * 100).toFixed(2) + '%;'
+        + (b.anchor === 'end'
+           ? 'right:' + ((290 - b.lx) / 290 * 100).toFixed(2) + '%;transform:translateY(-50%);'
+           : 'left:' + (b.lx / 290 * 100).toFixed(2) + '%;transform:translate(-50%,-50%);')
+        + 'font:600 11px \'IBM Plex Mono\',monospace;white-space:nowrap;pointer-events:none;color:' + b.stroke + ';',
+    });
+
+    return {
+      cols, matrix, legend,
+      choices: ['B', 'D', 'A'].map((id) => ({
+        label: id,
+        pick: () => this.setState({ seamArm: id }),
+        style: 'flex:1 1 auto;min-height:34px;border-radius:8px;cursor:pointer;font:600 13px \'IBM Plex Mono\',monospace;'
+          + (id === this.state.seamArm
+             ? 'border:1.5px solid var(--ref);background:rgba(58,110,165,.12);color:var(--ref)'
+             : 'border:1px solid var(--rule-2);background:var(--panel-2);color:var(--ink-2)'),
+      })),
+      seamBars: [place(L0), place(L1)], clash, clashBox,
+      seamNote: text,
+      seamNoteStyle: 'margin:14px 0 0;font-size:13px;line-height:1.5;padding:11px 13px;border-radius:9px;border:1px solid '
+        + (cls === 'good' ? 'color-mix(in srgb,var(--good) 40%,transparent);background:var(--good-bg);color:var(--good)'
+         : cls === 'bad' ? 'color-mix(in srgb,var(--bad) 40%,transparent);background:var(--bad-bg);color:var(--bad)'
+         : 'color-mix(in srgb,var(--warn) 45%,transparent);background:var(--warn-bg);color:var(--warn)'),
+    };
+  }
+}
+</script>
+</body>
+</html>
