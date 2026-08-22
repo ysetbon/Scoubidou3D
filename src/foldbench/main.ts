@@ -84,6 +84,8 @@ interface Reading {
   armOff: number;
   /** The same for the crease against `middle`. */
   midOff: number;
+  /** How many of the turns have their two runs on different storeys. */
+  spanning: number;
   /** How uneven the ladder of sub-levels is: the widest rung over the narrowest,
    *  across every plane in the stack. 1 is one pitch throughout. */
   ladder: number;
@@ -180,6 +182,7 @@ function measure(): Reading {
     rungs.length > 1 && Math.min(...rungs) > 1e-9 ? Math.max(...rungs) / Math.min(...rungs) : 1;
   let armOff = 0;
   let midOff = 0;
+  let spanning = 0;
   let tiltMax = 0;
   let steep = 0;
   let segs = 0;
@@ -199,18 +202,36 @@ function measure(): Reading {
       const zOut = P[i].zOut ?? P[i].z;
       rolls.push((Math.abs(zOut - zIn) + L.thickness) / L.width);
       if (planes.length === 0) continue;
-      let near = planes[0];
-      for (const q of planes) {
-        if (Math.abs(q.middle - P[i].z) < Math.abs(near.middle - P[i].z)) near = q;
-      }
       const top = Math.max(zIn, zOut);
       const bottom = Math.min(zIn, zOut);
+      // Measured against whichever reading the C section is set to, so the rows
+      // go to zero when the turn is where the settings say it belongs. Off both
+      // toggles they still read the plain one — the C against a single storey —
+      // which is the diagnosis they exist for.
+      const nearest = (z: number): (typeof planes)[number] =>
+        planes.reduce((a, q) => (Math.abs(q.middle - z) < Math.abs(a.middle - z) ? q : a), planes[0]);
+      const lo = nearest(bottom);
+      const hi = nearest(top);
+      let wantTop: number;
+      let wantBottom: number;
+      let wantMid: number;
+      if (lo.level !== hi.level) spanning++;
+      if (p.turnSpanStoreys && lo.level !== hi.level) {
+        wantBottom = lo.over;
+        wantTop = hi.under;
+        wantMid = (lo.over + hi.under) / 2;
+      } else {
+        const near = nearest(P[i].z);
+        wantBottom = near.under;
+        wantTop = near.over;
+        wantMid = near.middle;
+      }
       armOff = Math.max(
         armOff,
-        Math.abs(top - near.over) / L.thickness,
-        Math.abs(bottom - near.under) / L.thickness,
+        Math.abs(top - wantTop) / L.thickness,
+        Math.abs(bottom - wantBottom) / L.thickness,
       );
-      midOff = Math.max(midOff, Math.abs(P[i].z - near.middle) / L.thickness);
+      midOff = Math.max(midOff, Math.abs(P[i].z - wantMid) / L.thickness);
     }
   }
 
@@ -247,8 +268,13 @@ function measure(): Reading {
   }
   if (p.turnSnapArms && planes.length > 0) {
     const gap = (planes[0].over - planes[0].under) * p.turnOpen;
+    // Loosely, because the two are computed by different routes and land on the
+    // same number with a last-bit difference all the time: a cap that bites by
+    // 1e-16 is not a cap that bites.
     const capped = view.laceCenterlines.some(
-      (L) => Math.min(L.thickness * TURN_STACK, Math.max(L.thickness, L.width * p.turnRoll - L.thickness)) < gap,
+      (L) =>
+        Math.min(L.thickness * TURN_STACK, Math.max(L.thickness, L.width * p.turnRoll - L.thickness)) <
+        gap * (1 - 1e-6),
     );
     if (capped) {
       held.push({
@@ -277,6 +303,7 @@ function measure(): Reading {
     rollMax: rolls.length ? Math.max(...rolls) : 0,
     armOff,
     midOff,
+    spanning,
     ladder,
     tiltMax,
     steepShare: segs ? (100 * steep) / segs : 0,
@@ -404,6 +431,7 @@ let levelRow: HTMLElement | null = null;
 let readBody: HTMLTableSectionElement | null = null;
 let verdictEl: HTMLElement | null = null;
 let hasEl: HTMLElement | null = null;
+let pasteNote: HTMLElement | null = null;
 
 const el = <K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -485,6 +513,89 @@ function check(
 }
 
 const param = (patch: Partial<RenderParams>): void => view.setParams(patch);
+
+// Every knob the bench drives, in one place, so Copy and Paste can never drift
+// apart — the first version of Copy listed nine by hand and silently dropped
+// every Levels and C setting, which made a pasted-back blob a different scene
+// from the one it was copied out of.
+const SETTING_KEYS = [
+  'thickness',
+  'widthScale',
+  'turnRamp',
+  'turnLeg',
+  'turnRoll',
+  'turnSnapArms',
+  'turnSnapCentre',
+  'turnSpanStoreys',
+  'turnSnapAmount',
+  'turnOpen',
+  'weave',
+  'weaveDepth',
+  'weaveSpan',
+  'weaveBias',
+  'weaveCapToStorey',
+  'weaveAcrossLevels',
+  'subLevelsEven',
+  'storeyStep',
+  'layerGap',
+] as const satisfies ReadonlyArray<keyof RenderParams>;
+
+/** The current settings as the blob Copy puts on the clipboard. */
+function settingsText(): string {
+  const q = view.getParams() as unknown as Record<string, unknown>;
+  const out: Record<string, unknown> = { scene: sceneKey || '(imported)' };
+  for (const k of SETTING_KEYS) out[k] = q[k];
+  return JSON.stringify(out, null, 2);
+}
+
+/**
+ * Take a settings blob back in, and say what it did.
+ *
+ * Every field is optional and anything unrecognised is ignored, so a blob from
+ * an older build — or one with a couple of lines deleted — still applies the
+ * parts it does carry rather than failing whole. `scene` switches the sample if
+ * it names one; `(imported)` and unknown names leave the current scene alone,
+ * because the bench cannot reconstruct a file the blob does not contain.
+ */
+function applySettings(text: string): string {
+  let blob: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object');
+    blob = parsed as Record<string, unknown>;
+  } catch (e) {
+    return `Not settings JSON: ${(e as Error).message}`;
+  }
+  const notes: string[] = [];
+  const want = blob.scene;
+  if (typeof want === 'string' && want !== sceneKey) {
+    if (SCENES.some((s) => s.key === want)) {
+      sceneKey = want;
+      view.setScene(makeSample(want));
+      pinned = null;
+      notes.push(`scene → ${want}`);
+    } else if (want !== '(imported)') {
+      notes.push(`no scene named ${want} — kept the current one`);
+    }
+  }
+  const patch: Record<string, unknown> = {};
+  const defaults = view.getParams() as unknown as Record<string, unknown>;
+  let taken = 0;
+  for (const k of SETTING_KEYS) {
+    const v = blob[k];
+    if (v === undefined) continue;
+    if (typeof v !== typeof defaults[k]) {
+      notes.push(`${k} ignored — wanted a ${typeof defaults[k]}`);
+      continue;
+    }
+    patch[k] = v;
+    taken++;
+  }
+  view.setParams(patch as Partial<RenderParams>);
+  build(); // the sliders have to show what was pasted, not what they were
+  notes.unshift(`${taken} setting${taken === 1 ? '' : 's'} applied`);
+  return notes.join(' · ');
+}
 
 function build(): void {
   bench.textContent = '';
@@ -633,9 +744,13 @@ function build(): void {
   const cee = section(bench, 'The C', 'a turn against its sub-levels');
   const ceeNote = el('small', 'note',
     'A turn is a C on its side: the run arriving is one arm, the run leaving the other, the crease ' +
-      'the bend between. Left alone it sits wherever the weave left those two runs — and the weave ' +
-      'knows nothing about storeys, so the C drifts off the one it belongs to and two turns on the ' +
-      'same storey come out at different heights. The storey already says where all three go.');
+      'the bend between. The storey already says where all three go — but there are two readings of ' +
+      'that, and which one applies depends on whether the turn CLIMBS. A turn that doubles back inside ' +
+      'one storey belongs on that storey’s over / middle / under. A turn that changes storey belongs ' +
+      'across two: its lower arm on the storey below’s over, its upper arm on the next storey’s under. ' +
+      'A box stitch is almost all of the second kind, so its C looks wrong against the first reading ' +
+      'while being exactly right — the toggles below pick which one is being asked for, and the C rows ' +
+      'measure against whichever is picked.');
   ceeNote.style.marginLeft = '0';
   cee.appendChild(ceeNote);
   check(cee, 'Arms on over and under', p.turnSnapArms, (v) => param({ turnSnapArms: v }),
@@ -645,6 +760,12 @@ function build(): void {
     'The centre of the C onto the storey’s middle plane. Separate from the arms, because a lace held ' +
       'clear of its storey by Layer lift is up there for a reason, and pulling every turn back down is ' +
       'a different decision from opening it correctly.');
+  check(cee, 'A climbing turn spans its two storeys', p.turnSpanStoreys,
+    (v) => param({ turnSpanStoreys: v }),
+    'Only affects turns whose two runs came off DIFFERENT storeys. On, the lower arm rests on the ' +
+      'lower storey’s over and the upper hangs at the next storey’s under, so the turn keeps the climb ' +
+      'it was making. Off, both arms go on one storey and the climb is ramped away into the runs ' +
+      'instead. A box stitch climbing a round per turn wants this on.');
   slider(cee, 'How far it lands', p.turnSnapAmount, 0, 1, 0.05,
     'How much of the way to the sub-levels a snapped turn actually goes. Drag it from 0 to 1 to see ' +
       'which turns were out, and by how far.',
@@ -689,23 +810,7 @@ function build(): void {
   });
   const copyBtn = el('button', undefined, 'Copy settings');
   copyBtn.addEventListener('click', async () => {
-    const q = view.getParams();
-    const text = JSON.stringify(
-      {
-        scene: sceneKey || '(imported)',
-        thickness: q.thickness,
-        widthScale: q.widthScale,
-        turnRamp: q.turnRamp,
-        turnLeg: q.turnLeg,
-        turnRoll: q.turnRoll,
-        weave: q.weave,
-        weaveDepth: q.weaveDepth,
-        weaveSpan: q.weaveSpan,
-        layerGap: q.layerGap,
-      },
-      null,
-      2,
-    );
+    const text = settingsText();
     try {
       await navigator.clipboard.writeText(text);
       copyBtn.textContent = 'Copied';
@@ -716,6 +821,35 @@ function build(): void {
   });
   acts.append(pinBtn, copyBtn);
   read.appendChild(acts);
+
+  // Paste is the other half of Copy, and the half that makes a settings blob
+  // worth quoting: a number in a message is only a suggestion until the page
+  // it came from can take it back.
+  const pasteRow = el('div', 'row');
+  const pasteBtn = el('button', undefined, 'Paste settings');
+  pasteBtn.addEventListener('click', async () => {
+    // Pre-fill from the clipboard when the browser will hand it over. It is only
+    // a nicety, and it is RACED rather than awaited: where the permission has
+    // not been granted `readText()` does not reject, it simply never settles,
+    // and awaiting it means the prompt below never opens and the button looks
+    // dead. Measured: in a headless Chromium it hangs every time.
+    const text = await Promise.race([
+      navigator.clipboard.readText().catch(() => ''),
+      new Promise<string>((r) => window.setTimeout(() => r(''), 300)),
+    ]);
+    // The prompt is the real path anyway — it is how a blob gets in from a chat
+    // window, where the clipboard is not where it came from.
+    const typed = window.prompt('Paste settings JSON:', text);
+    if (typed === null) return;
+    const said = applySettings(typed);
+    paint();
+    if (pasteNote) pasteNote.textContent = said;
+  });
+  pasteRow.appendChild(pasteBtn);
+  read.appendChild(pasteRow);
+  pasteNote = el('small', 'note');
+  pasteNote.style.marginLeft = '0';
+  read.appendChild(pasteNote);
 
   paint();
 }
@@ -846,11 +980,34 @@ function paint(): void {
         ' over the narrowest: 1.00 is one pitch all the way up the stack. What a turn refuses to carry the runs ramp, so tightening' +
         ' Roll cap pushes the tilt rows up.',
     );
+    if (m.spanning > 0) {
+      line(
+        `${m.spanning} of ${m.folds} turns climb`,
+        ' — their two runs came off different storeys, so the C rows measure them the way the' +
+          ' spanning toggle says: lower arm on the storey below’s over, upper on the next storey’s' +
+          ' under, crease midway. Switch it off to hold every turn inside one storey instead — and' +
+          ' watch the steep rows, because the climb has to go somewhere.',
+      );
+    }
     for (const h of m.held) line(h.lead, h.text);
   }
 }
 
 build();
+
+// A handle for driving the bench from a script — the same reason the studio has
+// `window.__scoubidou`. Dev only: it is how the numbers in this page's own
+// commit messages were taken, and there is no reason to ship it.
+if (import.meta.env.DEV) {
+  (window as unknown as { __bench: unknown }).__bench = {
+    view,
+    applySettings,
+    settingsText,
+    paint,
+    measure,
+    scene: () => sceneKey,
+  };
+}
 
 // The panel is rebuilt on a scene change only to reset the sliders to whatever
 // the new scene's params are; the readouts repaint on their own.

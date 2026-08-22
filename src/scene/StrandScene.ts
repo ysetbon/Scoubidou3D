@@ -258,6 +258,23 @@ export interface RenderParams {
    */
   turnSnapCentre: boolean;
   /**
+   * Let a turn that CLIMBS keep its climb, by spanning the two storeys it joins
+   * instead of being folded into one.
+   *
+   * A turn whose two runs came off different storeys has a second, equally
+   * correct reading of "on the sub-levels": the arm below rests on the lower
+   * storey's `over`, the arm above hangs at the upper storey's `under`, and the
+   * crease sits midway between them. Off — the plain reading — both arms go on
+   * one storey's `over` and `under`, and the climb the turn was making is
+   * ramped away into the runs either side instead.
+   *
+   * Which one is right is a question about the stitch, not about the code, so
+   * it is a switch: a box stitch climbing a round per turn wants the span; a
+   * turn that doubles back inside one round does not, and is unaffected either
+   * way because its two runs are on the same storey.
+   */
+  turnSpanStoreys: boolean;
+  /**
    * How much of the way to the sub-levels a snapped turn actually goes, 0..1.
    * A knob rather than a switch because the interesting reading is the middle:
    * at 0 nothing moves and at 1 it is fully placed, and dragging between the two
@@ -354,6 +371,10 @@ export const DEFAULT_PARAMS: RenderParams = {
   // scene has always done. The sub-levels are a second opinion, not the default.
   turnSnapArms: false,
   turnSnapCentre: false,
+  // On: when the snaps are used at all, this is the reading that does not
+  // destroy a climbing stitch. It changes nothing on its own — with both snaps
+  // off no turn is placed by this at all.
+  turnSpanStoreys: true,
   turnSnapAmount: 1,
   turnOpen: 1,
   // Two thicknesses: a woven round is a lace over a lace, and that is how tall
@@ -1408,20 +1429,40 @@ export class StrandScene {
     if (!arms && !centre) return undefined;
     const planes = this.getLevelPlanes();
     if (planes.length === 0) return undefined;
+    const span = this.params.turnSpanStoreys;
     const t = Math.max(0, Math.min(1, this.params.turnSnapAmount));
     const open = Math.max(0, this.params.turnOpen);
-    return (mid, zIn, zOut) => {
+    const nearest = (z: number): (typeof planes)[number] => {
       let best = planes[0];
       for (const L of planes) {
-        if (Math.abs(L.middle - mid) < Math.abs(best.middle - mid)) best = L;
+        if (Math.abs(L.middle - z) < Math.abs(best.middle - z)) best = L;
       }
+      return best;
+    };
+    return (mid, zIn, zOut) => {
       const wasHalf = (zOut - zIn) / 2;
       // A turn the weave left perfectly flat has no upper arm to preserve. It is
       // also the case the snap most obviously fixes — two runs at one height are
       // two runs inside each other — so it opens upward rather than declining.
       const sign = wasHalf < 0 ? -1 : 1;
-      const wantMid = centre ? best.middle : mid;
-      const wantHalf = arms ? (sign * (best.over - best.under) * open) / 2 : wasHalf;
+
+      // A climbing turn, kept climbing: the lower arm on the storey it came
+      // from, the upper on the storey it is going to.
+      const lo = nearest(Math.min(zIn, zOut));
+      const hi = nearest(Math.max(zIn, zOut));
+      let anchorMid: number;
+      let anchorHalf: number;
+      if (span && lo.level !== hi.level) {
+        anchorMid = (lo.over + hi.under) / 2;
+        anchorHalf = (sign * (hi.under - lo.over) * open) / 2;
+      } else {
+        const best = nearest(mid);
+        anchorMid = best.middle;
+        anchorHalf = (sign * (best.over - best.under) * open) / 2;
+      }
+
+      const wantMid = centre ? anchorMid : mid;
+      const wantHalf = arms ? anchorHalf : wasHalf;
       return { mid: mid + (wantMid - mid) * t, half: wasHalf + (wantHalf - wasHalf) * t };
     };
   }
