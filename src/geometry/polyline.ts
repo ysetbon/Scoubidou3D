@@ -275,11 +275,42 @@ export function zFolds(pts: Vec3[], legLength: number): void {
   const folds = foldsOf(pts);
   if (folds.length === 0) return;
 
-  // Last to first: each splice changes the length, and folds after the one being
-  // replaced would have their indices shifted out from under them.
-  for (let k = folds.length - 1; k >= 0; k--) {
-    const f = folds[k];
-    const p = pts[f.index];
+  // Every measurement below comes from `src`, the line as it was before any turn
+  // was spliced into it, and every span is settled before the first splice. Both
+  // are the fix for the same defect, and it is worth recording what it looked
+  // like, because only ONE arm of each lace came out wrong.
+  //
+  // A turn is not a point. It eats a leg and a tip either side of the crease —
+  // about ten samples each on a box stitch — while the folds themselves sit only
+  // about fourteen apart. Ten and ten do not fit in fourteen, so consecutive
+  // turns overlapped: measured on a two-round box stitch the four turns of one
+  // lace tiled it end to end, 13-61, 62-110, 111-159, 160-208, with no run left
+  // between any of them. Where two butt straight together the line reverses a
+  // half turn in a single step, and the sweep tears there.
+  //
+  // It showed up as a head-versus-tail split because the splices run last-to-
+  // first (a fold's index must not be shifted out from under it): the LAST arm's
+  // turn is the outermost one, with open run beyond it, while the FIRST arm's is
+  // boxed in by every other turn in the lace — and, reading the live array, it
+  // walked its span along turn points, took `dout` off a leg belonging to another
+  // C, and had `restore` sample that C's climb as though it were this run's
+  // weave.
+  //
+  // So: neighbours share the run between them at the midpoint, and each turn's
+  // legs are sized to the room ITS OWN side actually has. Sizing them together
+  // would shorten the outer leg of an outermost fold for no reason and put a
+  // notch where the C should grow smoothly out of the run; sized per side, an
+  // arm's outer leg keeps its full length and only the crowded side gives way.
+  const src = pts.map((q) => ({ ...q }));
+
+  const arc = (from: number, to: number): number => {
+    let d = 0;
+    for (let i = from; i < to; i++) d += Math.hypot(src[i + 1].x - src[i].x, src[i + 1].y - src[i].y);
+    return d;
+  };
+
+  const planned = folds.map((f) => {
+    const p = src[f.index];
     const zIn = p.zIn ?? p.z;
     const zOut = p.zOut ?? p.z;
     const h = Math.max(Math.abs(zOut - zIn) / 2, 1e-4);
@@ -287,29 +318,53 @@ export function zFolds(pts: Vec3[], legLength: number): void {
 
     let lo = f.index;
     for (let d = 0; lo > 0 && d < span; lo--) {
-      d += Math.hypot(pts[lo].x - pts[lo - 1].x, pts[lo].y - pts[lo - 1].y);
+      d += Math.hypot(src[lo].x - src[lo - 1].x, src[lo].y - src[lo - 1].y);
     }
     let hi = f.index;
-    for (let d = 0; hi < pts.length - 1 && d < span; hi++) {
-      d += Math.hypot(pts[hi].x - pts[hi + 1].x, pts[hi].y - pts[hi + 1].y);
+    for (let d = 0; hi < src.length - 1 && d < span; hi++) {
+      d += Math.hypot(src[hi].x - src[hi + 1].x, src[hi].y - src[hi + 1].y);
     }
+    return { f, lo, hi, zIn, zOut, h };
+  });
+
+  for (let k = 0; k < planned.length - 1; k++) {
+    const a = planned[k];
+    const b = planned[k + 1];
+    if (a.hi < b.lo) continue;
+    const mid = Math.floor((a.f.index + b.f.index) / 2);
+    a.hi = Math.min(a.hi, mid);
+    b.lo = Math.max(b.lo, mid + 1);
+  }
+
+  // Last to first: each splice changes the length, and folds after the one being
+  // replaced would have their indices shifted out from under them. The spans are
+  // clear of one another now, so `lo` and `hi` still address the points they did
+  // in `src` when this fold's turn goes in.
+  for (let k = planned.length - 1; k >= 0; k--) {
+    const { f, lo, hi, zIn, zOut, h } = planned[k];
     if (lo >= f.index || hi <= f.index) continue; // no run to seat the legs in
-    if (lo < 1 || hi > pts.length - 2) continue; // and a neighbour each side to read the heading off
+    if (lo < 1 || hi > src.length - 2) continue; // and a neighbour each side to read the heading off
+    // The tip reaches `h` along the run before the leg starts, so what is left
+    // for the leg is whatever this side has beyond that.
+    const legIn = Math.max(0, Math.min(legLength, arc(lo, f.index) - h));
+    const legOut = Math.max(0, Math.min(legLength, arc(f.index, hi) - h));
 
     // Seat the turn on the heading the run ACTUALLY has where it is cut, not on
     // the one it has at the crease. Rounding leaves the last stretch curving
     // slightly, and a leg laid along the crease's heading meets the run at a
     // visible angle — a seam right where the turn is supposed to grow out of it.
-    const din = { x: pts[lo].x - pts[lo - 1].x, y: pts[lo].y - pts[lo - 1].y };
-    const dout = { x: pts[hi + 1].x - pts[hi].x, y: pts[hi + 1].y - pts[hi].y };
+    const din = { x: src[lo].x - src[lo - 1].x, y: src[lo].y - src[lo - 1].y };
+    const dout = { x: src[hi + 1].x - src[hi].x, y: src[hi + 1].y - src[hi].y };
     const legSteps = 10;
     const turn = zTurn({
-      from: { x: pts[lo].x, y: pts[lo].y },
+      from: { x: src[lo].x, y: src[lo].y },
       din: Math.hypot(din.x, din.y) > 1e-9 ? din : f.din,
       dout: Math.hypot(dout.x, dout.y) > 1e-9 ? dout : f.dout,
       zIn,
       zOut,
       leg: legLength,
+      legIn,
+      legOut,
       legSteps,
     });
 
@@ -348,15 +403,15 @@ export function zFolds(pts: Vec3[], legLength: number): void {
       const dl = Math.hypot(dir.x, dir.y) || 1;
       const ux = dir.x / dl;
       const uy = dir.y / dl;
-      const ox = pts[oFrom].x;
-      const oy = pts[oFrom].y;
+      const ox = src[oFrom].x;
+      const oy = src[oFrom].y;
       const along = (q: { x: number; y: number }): number => (q.x - ox) * ux + (q.y - oy) * uy;
 
       const ss: number[] = [];
       const dv: number[] = [];
       for (let o = oFrom; o <= oTo; o++) {
-        ss.push(along(pts[o]));
-        dv.push(pts[o].z - planeZ);
+        ss.push(along(src[o]));
+        dv.push(src[o].z - planeZ);
       }
       if (ss.length > 1 && ss[0] > ss[ss.length - 1]) {
         ss.reverse();

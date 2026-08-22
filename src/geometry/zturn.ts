@@ -110,6 +110,12 @@ export interface TurnOpts {
   zOut: number;
   /** Straight, turning-free depth at each storey. See LEG. */
   leg: number;
+  /** The leg arriving, and the leg leaving, when they cannot be the same.
+   *  A turn seated in a short arm has to give up leg length, and it should give
+   *  it up on the side that is actually crowded: an arm's outermost fold has open
+   *  run beyond it and no reason to shorten there. Default: `leg` for both. */
+  legIn?: number;
+  legOut?: number;
   /** Samples along each leg and around the tip. */
   legSteps?: number;
   tipSteps?: number;
@@ -139,16 +145,20 @@ export function zTurn(o: TurnOpts): Vec3[] {
   const mid = (o.zIn + o.zOut) / 2;
   const h = Math.max(Math.abs(o.zOut - o.zIn) / 2, 1e-4);
   const sign = o.zOut >= o.zIn ? 1 : -1;
-  const len = Math.max(o.leg, 0);
+  const lenIn = Math.max(o.legIn ?? o.leg, 0);
+  const lenOut = Math.max(o.legOut ?? o.leg, 0);
   const legSteps = o.legSteps ?? 10;
   const tipSteps = o.tipSteps ?? 28;
 
   const out: Vec3[] = [];
 
-  // One leg: an arc of `bend` over `len`, flat, at a fixed height. Straight is
-  // the limit rather than a special case, but the radius is 1/0 there.
-  const r = Math.abs(bend) < 1e-6 ? 0 : len / bend;
-  const legAt = (from: Vec2, head: Vec2, t: number): Vec2 => {
+  // One leg: an arc of `bend` over its length, flat, at a fixed height. Straight
+  // is the limit rather than a special case, but the radius is 1/0 there. Both
+  // legs turn through the same `bend` — that is the lean, and it is a property of
+  // the crease, not of how much room each side happens to have — so a shorter leg
+  // is a tighter arc rather than a smaller turn.
+  const legAt = (from: Vec2, head: Vec2, t: number, len: number): Vec2 => {
+    const r = Math.abs(bend) < 1e-6 ? 0 : len / bend;
     const m = perp(head);
     if (!r) return { x: from.x + head.x * len * t, y: from.y + head.y * len * t };
     const phi = bend * t;
@@ -165,7 +175,7 @@ export function zTurn(o: TurnOpts): Vec3[] {
   const DOWN = { x: 0, y: 0, z: -1 };
 
   for (let i = 0; i <= legSteps; i++) {
-    const q = legAt(o.from, a, i / legSteps);
+    const q = legAt(o.from, a, i / legSteps, lenIn);
     out.push({ x: q.x, y: q.y, z: mid - sign * h, up: UP });
   }
 
@@ -187,7 +197,7 @@ export function zTurn(o: TurnOpts): Vec3[] {
   // is the difference between borrowing the lab's angle and adopting its whole
   // build — and at a dead fold-back, which is half of a box stitch's turns, the
   // term is zero anyway.
-  const base = legAt(o.from, a, 1);
+  const base = legAt(o.from, a, 1, lenIn);
   for (let i = 1; i <= tipSteps; i++) {
     const phi = Math.PI * (i / tipSteps);
     const sin = Math.sin(phi);
@@ -206,7 +216,7 @@ export function zTurn(o: TurnOpts): Vec3[] {
   const away = spin(inTip, tipTurn);
   const tipEnd: Vec2 = { x: base.x, y: base.y };
   for (let i = 1; i <= legSteps; i++) {
-    const q = legAt(tipEnd, away, i / legSteps);
+    const q = legAt(tipEnd, away, i / legSteps, lenOut);
     out.push({ x: q.x, y: q.y, z: mid + sign * h, up: DOWN });
   }
 
