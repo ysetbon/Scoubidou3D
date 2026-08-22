@@ -116,6 +116,16 @@ export interface TurnOpts {
    *  run beyond it and no reason to shorten there. Default: `leg` for both. */
   legIn?: number;
   legOut?: number;
+  /**
+   * Which way up the strip ARRIVES: +1 face-up, -1 face-down. Default +1.
+   *
+   * A turn rolls the strap right over, so a lace with more than one fold does
+   * not arrive at the second one the same way up it arrived at the first. The
+   * face alternates down the lace, and a turn that assumes face-up regardless
+   * puts a half turn of roll between itself and its neighbour with no length to
+   * take it in — which is a strip turned inside out in a single step.
+   */
+  face?: number;
   /** Samples along each leg and around the tip. */
   legSteps?: number;
   tipSteps?: number;
@@ -171,8 +181,9 @@ export function zTurn(o: TurnOpts): Vec3[] {
   // The legs lie flat, face up; the tip rolls the strip right over between them,
   // so the leg coming away is upside down. That is not a quirk of the model — it
   // is what a folded strap does, and it is why the other side shows at a turn.
-  const UP = { x: 0, y: 0, z: 1 };
-  const DOWN = { x: 0, y: 0, z: -1 };
+  const face = (o.face ?? 1) >= 0 ? 1 : -1;
+  const UP = { x: 0, y: 0, z: face };
+  const DOWN = { x: 0, y: 0, z: -face };
 
   for (let i = 0; i <= legSteps; i++) {
     const q = legAt(o.from, a, i / legSteps, lenIn);
@@ -208,7 +219,7 @@ export function zTurn(o: TurnOpts): Vec3[] {
       z: mid - sign * h * cos,
       // Square to the crease and to the tip's own tangent, turning over with the
       // strip. Taken from the lab's own ring frame.
-      up: { x: -n.x * sin, y: -n.y * sin, z: cos },
+      up: { x: -n.x * sin * face, y: -n.y * sin * face, z: cos * face },
     });
   }
 

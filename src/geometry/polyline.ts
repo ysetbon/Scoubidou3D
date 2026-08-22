@@ -327,6 +327,10 @@ export function zFolds(pts: Vec3[], legLength: number): void {
     return { f, lo, hi, zIn, zOut, h };
   });
 
+  // Which way up the lace arrives at each fold. It starts face-up and every turn
+  // rolls it over, so the face alternates down the chain — see TurnOpts.face.
+  const face = planned.map((_, k) => (k % 2 === 0 ? 1 : -1));
+
   for (let k = 0; k < planned.length - 1; k++) {
     const a = planned[k];
     const b = planned[k + 1];
@@ -365,6 +369,7 @@ export function zFolds(pts: Vec3[], legLength: number): void {
       leg: legLength,
       legIn,
       legOut,
+      face: face[k],
       legSteps,
     });
 
