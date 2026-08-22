@@ -234,7 +234,23 @@ export interface Fold {
  * storey's worth of step to place, and can carry more of it here rather than ramp
  * it away; see TURN_STACK in StrandScene.
  */
-export function easeFolds(pts: Vec3[], stack: number, reach: number): void {
+/**
+ * Where a fold's crease is to be put, when something other than the incoming
+ * heights decides. `mid` is the height of the crease itself; `half` is the
+ * SIGNED half-step between the two runs, positive when the run leaving the fold
+ * is the upper of the two.
+ */
+export interface FoldPlacement {
+  mid: number;
+  half: number;
+}
+
+export function easeFolds(
+  pts: Vec3[],
+  stack: number,
+  reach: number,
+  place?: (mid: number, zIn: number, zOut: number) => FoldPlacement,
+): void {
   const folds = foldsOf(pts);
   if (folds.length === 0 || reach <= 0) return;
   const was = pts.map((p) => p.z); // read heights from before any easing
@@ -243,8 +259,18 @@ export function easeFolds(pts: Vec3[], stack: number, reach: number): void {
     const i = f.index;
     const zIn = pts[i].zIn ?? was[i];
     const zOut = pts[i].zOut ?? was[i];
-    const mid = (zIn + zOut) / 2;
-    const half = Math.max(-stack, Math.min(stack, zOut - zIn)) / 2;
+    let mid = (zIn + zOut) / 2;
+    let half = Math.max(-stack, Math.min(stack, zOut - zIn)) / 2;
+    // A caller may place the crease itself rather than inherit it from the runs
+    // — the storey's sub-levels are a statement about where a turn belongs, and
+    // the weave that set these heights knows nothing about them. `stack` still
+    // wins: it is what the strap can physically roll to, and a target past it is
+    // a target the lace cannot reach.
+    if (place) {
+      const want = place(mid, zIn, zOut);
+      mid = want.mid;
+      half = Math.max(-stack / 2, Math.min(stack / 2, want.half));
+    }
     const toIn = mid - half;
     const toOut = mid + half;
 
@@ -276,6 +302,57 @@ function rampAway(
     if (travelled >= reach) break;
     pts[k].z = was[k] + delta * (1 - travelled / reach);
   }
+}
+
+/**
+ * Open the two runs of a fold APART, across themselves, over `reach` of length.
+ *
+ * The plan sibling of `rampAway`, and the price of a bight. A half-roll of
+ * radius R that climbs `step` swings `sqrt(4R² - step²)` across the runs on its
+ * way round — geometry, not a choice — so its two ends no longer meet the runs
+ * where the runs are. Without this the turn is built with the offset and placed
+ * as though it had none, and the joins tear open.
+ *
+ * It also removes a degeneracy on the way past. The studio pins both runs of a
+ * dead fold-back on one line, which is exactly where `spliceFolds`'s 2x2 solve
+ * goes singular and has to fall back to a limit. Spread them and the solve is
+ * ordinary again.
+ *
+ * The two runs go opposite ways by half each, so the fold's own vertex stays
+ * where the scene put it. Smoothstepped, because a lace that arrives along a
+ * straight slope with a break at each end is the brace seen from a second angle.
+ */
+export function easeSpread(
+  pts: Vec3[],
+  offsetAt: (fold: Fold, index: number) => number,
+  reach: number,
+): void {
+  const folds = foldsOf(pts);
+  if (folds.length === 0 || reach <= 0) return;
+  const was = pts.map((p) => ({ x: p.x, y: p.y }));
+
+  folds.forEach((f, j) => {
+    const off = offsetAt(f, j);
+    if (Math.abs(off) < 1e-9) return;
+    // Across the crease, which is the direction the roll actually swings in.
+    const ax = -f.crease.y;
+    const ay = f.crease.x;
+    for (const dir of [-1, 1] as const) {
+      const delta = (dir * off) / 2;
+      let travelled = 0;
+      for (let k = f.index + dir; k >= 0 && k < pts.length; k += dir) {
+        travelled += Math.hypot(
+          was[k].x - was[k - dir].x,
+          was[k].y - was[k - dir].y,
+        );
+        if (travelled >= reach) break;
+        const u = 1 - travelled / reach;
+        const w = u * u * (3 - 2 * u);
+        pts[k].x = was[k].x + ax * delta * w;
+        pts[k].y = was[k].y + ay * delta * w;
+      }
+    }
+  });
 }
 
 /**

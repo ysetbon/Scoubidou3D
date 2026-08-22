@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <link rel="icon" href="../favicon.ico" sizes="any" />
+  <title>Fold bench — Scoubidou3D</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; height: 100%; }
+    body { font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+    #app { position: fixed; inset: 0; display: flex; }
+    /* The canvas is absolutely placed inside a flex item rather than being a
+       flex item itself: sized by the renderer it would feed its own attribute
+       width back into layout and grow without bound. */
+    #stage { flex: 1 1 0; min-width: 0; position: relative; background: #191410; }
+    #scene { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+
+    #bench {
+      flex: 0 0 372px; overflow-y: auto; padding: 18px 18px 48px;
+      background: #141110; color: #f0e9dd; border-left: 1px solid #3a3430;
+    }
+    #bench h1 { font-size: 19px; margin: 0 0 6px; }
+    #bench .lead { color: #9a9088; font-size: 13px; margin: 0 0 18px; }
+
+    /* One collapsible group per system, so the bench reads as the systems it
+       is here to hold against each other rather than as one long list. */
+    #bench section { border-top: 1px solid #2b2724; padding: 12px 0 4px; }
+    #bench section > h2 {
+      font: 700 11px/1 system-ui, sans-serif; letter-spacing: 0.14em;
+      text-transform: uppercase; color: #e0857a; margin: 0 0 12px;
+      display: flex; justify-content: space-between; align-items: baseline;
+    }
+    #bench section > h2 em { font-style: normal; color: #6d645d; letter-spacing: 0; text-transform: none; font-weight: 400; }
+
+    .slider { display: block; margin: 0 0 13px; }
+    .slider span { display: flex; justify-content: space-between; font-weight: 650; font-size: 13px; }
+    .slider var { font-style: normal; color: #9a9088; font-variant-numeric: tabular-nums; }
+    .slider input { width: 100%; margin-top: 3px; accent-color: #e0857a; }
+    .slider small { display: block; color: #6d645d; font-size: 11.5px; line-height: 1.45; margin-top: 2px; }
+
+    .check { display: flex; align-items: center; gap: 8px; margin: 0 0 9px; font-size: 13px; }
+    .check input { accent-color: #e0857a; }
+    /* A checkbox's explanation sits under it, not inside the label: in the row it
+       would stretch the tick to the height of the paragraph. */
+    small.note { display: block; color: #6d645d; font-size: 11.5px; line-height: 1.45; margin: -5px 0 11px 22px; }
+
+    .row { display: flex; gap: 6px; margin: 0 0 12px; }
+    .row button {
+      flex: 1; min-height: 32px; border: 1.5px solid #3a3430; border-radius: 999px;
+      background: transparent; color: #f0e9dd; font: 650 12px system-ui, sans-serif; cursor: pointer;
+    }
+    .row button:hover { border-color: #6d645d; }
+    .row button.on { background: #e0857a; border-color: #e0857a; color: #171713; }
+
+    select, .filebtn {
+      width: 100%; min-height: 34px; border: 1.5px solid #3a3430; border-radius: 8px;
+      background: #1b1715; color: #f0e9dd; font: 13px system-ui, sans-serif; padding: 0 8px;
+      margin-bottom: 10px; cursor: pointer;
+    }
+    .filebtn { display: flex; align-items: center; justify-content: center; font-weight: 650; }
+
+    /* What the scene actually contains — the line that says which systems are
+       even in play, so a reading is never taken from a scene that has none. */
+    .has { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 12px; }
+    .has b {
+      font: 600 11px system-ui, sans-serif; padding: 2px 8px; border-radius: 999px;
+      background: #241f1c; color: #9a9088; border: 1px solid #2f2a26;
+    }
+    .has b.live { background: #2c2320; color: #e8b3ab; border-color: #4a3833; }
+
+    table.read { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    table.read th, table.read td { padding: 4px 0; text-align: right; font-variant-numeric: tabular-nums; }
+    table.read th { color: #6d645d; font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+    table.read td:first-child, table.read th:first-child { text-align: left; color: #c9c0b6; font-variant-numeric: normal; }
+    table.read tr.sep td { border-top: 1px solid #2b2724; padding-top: 8px; }
+    .good { color: #8fc79a; }
+    .warn { color: #e0c07a; }
+    .bad  { color: #ff6b5e; }
+    .pin  { color: #7fb6e8; }
+    /* These three match the three planes exactly, so the table teaches which
+       colour is which height without a legend. */
+    .over { color: #e0857a; }
+    .mid  { color: #9a9088; }
+    .under{ color: #5fa8dc; }
+    .verdict { font-size: 12.5px; color: #9a9088; margin: 10px 0 2px; line-height: 1.5; }
+    .verdict b { color: #f0e9dd; font-weight: 600; }
+
+    @media (max-width: 780px) {
+      #app { flex-direction: column-reverse; }
+      #bench { flex: 0 0 auto; max-height: 56vh; border-left: 0; border-top: 1px solid #3a3430; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="stage"><canvas id="scene"></canvas></div>
+    <aside id="bench"></aside>
+  </div>
+  <script type="module" src="../src/foldbench/main.ts"></script>
+</body>
+</html>

@@ -40,10 +40,18 @@ import {
 } from '../model/controlPoints';
 import { sampleCenterline } from '../geometry/bezier';
 import { buildRibbonGeometry, crossSection } from '../geometry/ribbon';
-import { LaceGauge, SplicedLace, mergeGeometry, spliceFolds, tube, turnRings } from '../geometry/fold';
+import {
+  LaceGauge,
+  SplicedLace,
+  SplicedTurn,
+  mergeGeometry,
+  spliceFolds,
+  tube,
+  turnRings,
+} from '../geometry/fold';
 import { AUTO_DEFAULT } from '../geometry/autoFold';
 import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
-import { easeFolds, easeSteps, roundCorners } from '../geometry/polyline';
+import { easeFolds, easeSteps, roundCorners, type FoldPlacement } from '../geometry/polyline';
 import { Anchor, arcLengths, heightField, polylineCrossings } from '../geometry/weave';
 import { Vec2, Vec3 } from '../geometry/vec';
 
@@ -104,7 +112,7 @@ export const TURN_RAMP_DEFAULT = 0.5;
  * a fold with a smaller step than this is untouched, and the weave, which knows
  * nothing of folds, is stopped from turning a crease into a cliff (`easeFolds`).
  */
-const TURN_STACK = 2;
+export const TURN_STACK = 2;
 
 /**
  * The widest a turn's roll may get, as a multiple of the LACE'S OWN WIDTH.
@@ -231,7 +239,10 @@ const EDIT_NAMES: Record<DragState['kind'], string> = {
 export interface RenderParams {
   thickness: number; // default ribbon depth, source units
   /**
-   * How long the straight legs of a turn are, world units. See
+   * How long the straight legs of a turn are, world units. `foldTurn` takes this
+   * signed, and a negative leg — the turn pulled back inside the run rather than
+   * standing off its joint — is a shape the construction can make; the splice
+   * cannot yet place it. See `laceGauge` for what blocks it, and
    * TURN_LEG_DEFAULT.
    */
   turnLeg: number;
@@ -244,6 +255,92 @@ export interface RenderParams {
    * The widest a turn's roll may get, in lace widths. See TURN_ROLL_DEFAULT.
    */
   turnRoll: number;
+  /**
+   * How ROUND a turn's bend is, in lace widths — the bight radius.
+   *
+   * 0 means "whatever the storey gives", which is `step / 2` and is what every
+   * turn has always been. That is not a neutral default but a degenerate one:
+   * with the roll axis horizontal the whole half-roll lies in a vertical plane,
+   * so seen from above the lace runs out to a point and comes straight back.
+   * The plan projection is a cusp, and that cusp is the curly brace.
+   *
+   * Above `step / 2` the axis tilts, the climb stays exactly one storey, the
+   * curvature stays constant and the surface stays developable — measured, the
+   * turn's sideways extent goes from 0.000 to 3.881 lace widths across the
+   * range, tracking `sqrt(4R² - step²)` to three decimals. What it costs is that
+   * the turn's two ends move apart across the runs by exactly that much, which
+   * `easeSpread` walks back into the runs either side.
+   */
+  bightRadius: number;
+  /**
+   * Put the two arms of a turn on the storey's `over` and `under` sub-levels —
+   * the top of the C on one, the bottom on the other — instead of wherever the
+   * weave happened to leave the runs it joins. See `foldPlacement`.
+   */
+  turnSnapArms: boolean;
+  /**
+   * Put the crease of a turn — the centre of the C — on the storey's `middle`
+   * sub-level. Separate from the arms because a lace lifted clear of its storey
+   * by `layerGap` has a good reason to be up there, and dragging every turn back
+   * down to the plane is a different decision from opening it correctly.
+   */
+  turnSnapCentre: boolean;
+  /**
+   * Let a turn that CLIMBS keep its climb, by spanning the two storeys it joins
+   * instead of being folded into one.
+   *
+   * A turn whose two runs came off different storeys has a second, equally
+   * correct reading of "on the sub-levels": the arm below rests on the lower
+   * storey's `over`, the arm above hangs at the upper storey's `under`, and the
+   * crease sits midway between them. Off — the plain reading — both arms go on
+   * one storey's `over` and `under`, and the climb the turn was making is
+   * ramped away into the runs either side instead.
+   *
+   * Which one is right is a question about the stitch, not about the code, so
+   * it is a switch: a box stitch climbing a round per turn wants the span; a
+   * turn that doubles back inside one round does not, and is unaffected either
+   * way because its two runs are on the same storey.
+   */
+  turnSpanStoreys: boolean;
+  /**
+   * How much of the way to the sub-levels a snapped turn actually goes, 0..1.
+   * A knob rather than a switch because the interesting reading is the middle:
+   * at 0 nothing moves and at 1 it is fully placed, and dragging between the two
+   * shows exactly which turns were out and by how far.
+   */
+  turnSnapAmount: number;
+  /**
+   * How far a snapped turn opens, in sub-level gaps. 1 is the C exactly spanning
+   * `under` to `over`, which is the pair resting on each other. The roll cap
+   * still applies: a strap cannot roll wider than its own width allows however
+   * much this asks for.
+   */
+  turnOpen: number;
+  /**
+   * Space the sub-levels EVENLY, so the whole stack is one ladder at one pitch.
+   *
+   * A storey's three planes are `middle` and `middle ± h`, and the next storey's
+   * middle is `step` above. That leaves two different rungs: `h` inside a storey,
+   * and `step - 2h` from one storey's `over` up to the next storey's `under`. At
+   * the usual settings the second is twice the first, which is what makes a
+   * stacked stitch read as tight pairs of planes with an empty band between them
+   * rather than as an even stack.
+   *
+   * Asking the two to be equal — `step - 2h = h` — gives `h = step / 3`, and
+   * every plane in the scene then sits one rung from its neighbour. It BROADENS
+   * the sub-levels rather than lowering the storeys: Depth and the storey cap
+   * both stop mattering while this is on, and Storey height becomes the ladder's
+   * pitch, three rungs to a storey.
+   *
+   * The resting floor still holds. Below it the two laces at a crossing lie
+   * inside each other, which no amount of tidiness is worth.
+   */
+  subLevelsEven: boolean;
+  /**
+   * How tall one storey is, in strand thicknesses — the middle-to-middle
+   * distance between two levels. See `levelStepSource`.
+   */
+  storeyStep: number;
   layerGap: number; // base lift between consecutive layers, source units (small)
   widthScale: number; // multiplier applied to every strand width
   outline: boolean; // draw the stroke-colored outline shell
@@ -258,6 +355,36 @@ export interface RenderParams {
    */
   weaveDepth: number;
   weaveSpan: number; // crossing pulse width, as a multiple of the crossing widths
+  /**
+   * How the two laces at a crossing SHARE the climb between the sub-levels,
+   * -1..+1. At 0 they split it: one rises to `over`, the other sinks to `under`,
+   * each half the gap from `middle`. At +1 the lace ducking under stays on
+   * `middle` and the one riding over does all the travelling; at -1 the reverse.
+   *
+   * The gap between the two is the same at every setting — this only moves where
+   * the pair sits inside its storey. That is worth a knob because a real weave is
+   * rarely symmetric: pull one cord taut and it runs straight while the other
+   * wraps around it, and which of the two gives is what makes a stitch look
+   * pulled tight rather than slack.
+   */
+  weaveBias: number;
+  /**
+   * Keep the swing inside one storey. See `weaveAmplitude`: with storeys in play
+   * a crossing that swings further than the storey is tall climbs into the
+   * storeys above and below, and a stacked stitch opens into a spiral. On is the
+   * behaviour every scene has always had; off is here to SEE that, and to let a
+   * deliberately loose weave out of its box.
+   */
+  weaveCapToStorey: boolean;
+  /**
+   * Weave crossings whose two strands sit on DIFFERENT storeys. Off — the
+   * long-standing behaviour — a level break is taken as the whole statement: one
+   * storey simply passes above the other and the crossing is left alone (an
+   * explicit mask still gets its over/under). On, those crossings weave too,
+   * about the midpoint of the two storeys, which is what a stitch that laces
+   * between rounds actually does.
+   */
+  weaveAcrossLevels: boolean;
   // OSS `enable_third_control_point`: offer the centre square as a third handle,
   // and let a locked centre bend the curve through itself (bezier.ts).
   thirdControlPoint: boolean;
@@ -268,6 +395,22 @@ export const DEFAULT_PARAMS: RenderParams = {
   turnLeg: TURN_LEG_DEFAULT,
   turnRamp: TURN_RAMP_DEFAULT,
   turnRoll: TURN_ROLL_DEFAULT,
+  // 0: take the radius from the storey, exactly as before. Every sample renders
+  // bit-for-bit identically at this value — verified vertex by vertex.
+  bightRadius: 0,
+  // Off: a turn inherits its height from the runs it joins, which is what every
+  // scene has always done. The sub-levels are a second opinion, not the default.
+  turnSnapArms: false,
+  turnSnapCentre: false,
+  // On: when the snaps are used at all, this is the reading that does not
+  // destroy a climbing stitch. It changes nothing on its own — with both snaps
+  // off no turn is placed by this at all.
+  turnSpanStoreys: true,
+  turnSnapAmount: 1,
+  turnOpen: 1,
+  // Two thicknesses: a woven round is a lace over a lace, and that is how tall
+  // it comes out. See `levelStepSource`.
+  storeyStep: 2,
   // Base lift between layers. The weave picks over/under at every CROSSING on its
   // own (adaptive amplitude), so this only needs to separate strands that overlap
   // WITHOUT crossing (a plain parallel stack) — and it's what gives the ordered
@@ -282,6 +425,13 @@ export const DEFAULT_PARAMS: RenderParams = {
   // is what a crossing is. `thickness` is 26 above, and the two travel here.
   weaveDepth: 26,
   weaveSpan: 1.3,
+  // Even split, capped to the storey, storeys left un-woven: between them these
+  // three are exactly the behaviour that predates them, so a scene that never
+  // touches the bench renders as it always did.
+  subLevelsEven: false,
+  weaveBias: 0,
+  weaveCapToStorey: true,
+  weaveAcrossLevels: false,
   // On, matching the running desktop canvas (strand_drawing_canvas.py sets it
   // true even though the settings dialog defaults it off).
   thirdControlPoint: true,
@@ -362,6 +512,19 @@ export class StrandScene {
    * is recoverable from the mesh afterwards.
    */
   laceCenterlines: Array<{ chain: number[]; line: Vec3[]; width: number; thickness: number }> = [];
+
+  /**
+   * Every turn the splice actually built, with the lace gauge it was built at.
+   *
+   * `laceCenterlines` above is the centreline BEFORE the splice cuts it, so it
+   * carries no turn at all — it has a sharp corner where the turn will go. A
+   * tool measuring what a turn is shaped like therefore cannot use it, and until
+   * now there was nothing else: the spliced lace was consumed straight into the
+   * mesh and merged away. `turnRings` on a one-point section reconstructs any of
+   * these as a centreline in world coordinates, which is what the shape rows in
+   * the fold bench are computed from.
+   */
+  splicedTurns: Array<{ turn: SplicedTurn; width: number; thickness: number }> = [];
   // Resting height per strand (see computeBaseZ) and the lowest of them, which the
   // grid sits below.
   private baseZ: number[] = [];
@@ -705,6 +868,7 @@ export class StrandScene {
     const strands = this.current.strands;
     const absorbed = new Set<number>();
     this.laceCenterlines = [];
+    this.splicedTurns = [];
 
     // Which end is glued to which. An end shared by more than two strands is a
     // fork, not a chain, so it is left unlinked and handled by a connector.
@@ -731,6 +895,10 @@ export class StrandScene {
       a.stroke_width === b.stroke_width &&
       sameColor(a.color, b.color) &&
       sameColor(a.stroke_color, b.stroke_color);
+
+    // One placement for the whole pass: it reads the storey planes, which are the
+    // same for every lace in the scene.
+    const place = this.foldPlacement();
 
     const visited = new Set<number>();
     for (let seed = 0; seed < strands.length; seed++) {
@@ -811,7 +979,7 @@ export class StrandScene {
       // one thickness, which is the two runs touching and the least a fold can
       // be.
       const roll = Math.max(thickness, width * Math.max(0, this.params.turnRoll) - thickness);
-      easeFolds(line, Math.min(thickness * TURN_STACK, roll), thickness * 2);
+      easeFolds(line, Math.min(thickness * TURN_STACK, roll), thickness * 2, place);
       // Then walk up any step left at a gentle joint — a level break between two
       // members of the lace puts one storey's worth of height there, and without a
       // crease to climb at it has to be ramped into the runs instead.
@@ -901,7 +1069,12 @@ export class StrandScene {
           // They cross in plan only; in space one simply passes above the other.
           // An explicit mask is the exception: the user asking for an over/under
           // there gets one, woven about the midpoint of the two storeys.
-          if (masked === null && this.strandLevel[i] !== this.strandLevel[j]) continue;
+          if (
+            masked === null &&
+            !this.params.weaveAcrossLevels &&
+            this.strandLevel[i] !== this.strandLevel[j]
+          )
+            continue;
           const over = masked ?? j;
           const under = over === i ? j : i;
           // Half-separation: enough that the two ribbons don't interpenetrate, as
@@ -919,11 +1092,14 @@ export class StrandScene {
           // depend on how far apart the two sit in the layer panel, or a lace
           // masked over several strands ramps instead of riding flat.
           const plane = this.crossingPlaneZ(i, j);
+          // Who does the travelling. The two heights stay `2h` apart whatever the
+          // bias is — it slides the pair as a unit, it does not open or close it.
+          const bias = Math.max(-1, Math.min(1, this.params.weaveBias));
           for (const c of crossings) {
             const sOver = over === i ? c.sA : c.sB;
             const sUnder = under === i ? c.sA : c.sB;
-            anchors[over].push({ s: sOver, radius, z: plane + h });
-            anchors[under].push({ s: sUnder, radius, z: plane - h });
+            anchors[over].push({ s: sOver, radius, z: plane + h * (1 + bias) });
+            anchors[under].push({ s: sUnder, radius, z: plane - h * (1 - bias) });
           }
         }
       }
@@ -1024,8 +1200,19 @@ export class StrandScene {
       width,
       thickness,
       round: 0.96, // the sweep's own corner: 0.48 of the thickness, either side
+      // Clamped to zero even though `foldTurn` now takes a signed reach, because
+      // the SPLICE cannot yet place a turn whose nose sits behind its joint:
+      // `spliceFolds` clamps its solve with `a = Math.max(0, ...)`, so a turn
+      // that wants the run EXTENDED past the joint gets a run that stops at it
+      // instead, and the uncapped join tears open. Driven at leg -0.3 on
+      // box-stitch-4 that shows as flat slabs through the ribbon. Lifting this
+      // means teaching the splice to overlap the runs, not just widening a range.
       reach: Math.max(0, this.params.turnLeg),
       ramp: Math.max(0, this.params.turnRamp),
+      // In lace widths, so a wider lace asks for a proportionally rounder bend —
+      // which is the unit the eye judges a bight in. Zero leaves it to the
+      // storey, which is the shipped behaviour.
+      roll: this.params.bightRadius > 0 ? this.params.bightRadius * width : undefined,
       auto: AUTO_DEFAULT,
     };
   }
@@ -1102,6 +1289,7 @@ export class StrandScene {
     // is — only on the storey it climbs and the crease it turns on — so the two
     // are built off ONE plan and the shell nests exactly over the body.
     const spliced = spliceFolds(centerline, this.laceGauge(width, thickness));
+    for (const t of spliced.turns) this.splicedTurns.push({ turn: t, width, thickness });
 
     const fillGeom = this.laceGeometry(spliced, width, thickness, {
       capStart,
@@ -1214,7 +1402,7 @@ export class StrandScene {
    * bottom round — level 4 sitting no higher than level 3.
    */
   private levelStepSource(): number {
-    return 2 * this.params.thickness;
+    return this.params.storeyStep * this.params.thickness;
   }
 
   /**
@@ -1248,12 +1436,92 @@ export class StrandScene {
     // Resting is centre-to-centre `(tOver + tUnder) / 2`, and each lace travels
     // half of it.
     const rest = (thicknessOver + thicknessUnder) / 4;
+    // One ladder at one pitch: three rungs to a storey. See `subLevelsEven`. It
+    // overrules Depth and the cap both, because it is answering the same
+    // question they are and cannot do it while they also have a say.
+    if (this.params.subLevelsEven && this.current.levelBreaks.length > 0) {
+      return Math.max((this.levelStepSource() * SCALE) / 3, rest);
+    }
     let h = Math.max((this.params.weaveDepth * SCALE) / 2, rest);
-    if (this.current.levelBreaks.length > 0) {
+    if (this.params.weaveCapToStorey && this.current.levelBreaks.length > 0) {
       const room = (this.levelStepSource() * SCALE - Math.max(thicknessOver, thicknessUnder)) / 2;
       h = Math.min(h, Math.max(room, 0));
     }
     return h;
+  }
+
+  /**
+   * Where each turn's crease goes, when the storey's sub-levels are asked rather
+   * than the runs the turn joins — or `undefined`, which leaves the long-standing
+   * behaviour exactly as it was.
+   *
+   * A turn seen from the side is a C: the run arriving is one arm, the run
+   * leaving is the other, and the crease is the bend between them. Left to
+   * itself that C sits wherever the weave left the two runs, and the weave knows
+   * nothing about storeys — so the C drifts off the storey it belongs to, opens
+   * by whatever the two crossings either side of it happened to disagree by, and
+   * two turns on the same storey come out at different heights.
+   *
+   * The storey already says where all three should be. `over` is where the top
+   * arm belongs, `under` where the bottom one does, `middle` where the crease
+   * between them does. Placing the C on those three makes every turn on a storey
+   * the same turn, and makes the height it shows exactly the height the storey
+   * is built around.
+   *
+   * WHICH storey is read off the crease's own height — the nearest `middle` —
+   * rather than off the strand's level. A turn is the one place a lace is most
+   * likely to be changing storeys, and the answer that matters is which storey
+   * it came out at, not which one its strand was filed under.
+   *
+   * The sign is kept: whichever arm was the upper one stays the upper one. The
+   * snap decides how far apart and how high the two sit, never which of them is
+   * on top — that is the weave's call, and overruling it would put a lace under
+   * the one it was masked over.
+   */
+  private foldPlacement():
+    | ((mid: number, zIn: number, zOut: number) => FoldPlacement)
+    | undefined {
+    const arms = this.params.turnSnapArms;
+    const centre = this.params.turnSnapCentre;
+    if (!arms && !centre) return undefined;
+    const planes = this.getLevelPlanes();
+    if (planes.length === 0) return undefined;
+    const span = this.params.turnSpanStoreys;
+    const t = Math.max(0, Math.min(1, this.params.turnSnapAmount));
+    const open = Math.max(0, this.params.turnOpen);
+    const nearest = (z: number): (typeof planes)[number] => {
+      let best = planes[0];
+      for (const L of planes) {
+        if (Math.abs(L.middle - z) < Math.abs(best.middle - z)) best = L;
+      }
+      return best;
+    };
+    return (mid, zIn, zOut) => {
+      const wasHalf = (zOut - zIn) / 2;
+      // A turn the weave left perfectly flat has no upper arm to preserve. It is
+      // also the case the snap most obviously fixes — two runs at one height are
+      // two runs inside each other — so it opens upward rather than declining.
+      const sign = wasHalf < 0 ? -1 : 1;
+
+      // A climbing turn, kept climbing: the lower arm on the storey it came
+      // from, the upper on the storey it is going to.
+      const lo = nearest(Math.min(zIn, zOut));
+      const hi = nearest(Math.max(zIn, zOut));
+      let anchorMid: number;
+      let anchorHalf: number;
+      if (span && lo.level !== hi.level) {
+        anchorMid = (lo.over + hi.under) / 2;
+        anchorHalf = (sign * (hi.under - lo.over) * open) / 2;
+      } else {
+        const best = nearest(mid);
+        anchorMid = best.middle;
+        anchorHalf = (sign * (best.over - best.under) * open) / 2;
+      }
+
+      const wantMid = centre ? anchorMid : mid;
+      const wantHalf = arms ? anchorHalf : wasHalf;
+      return { mid: mid + (wantMid - mid) * t, half: wasHalf + (wantHalf - wasHalf) * t };
+    };
   }
 
   /**
@@ -1271,6 +1539,82 @@ export class StrandScene {
   /** One storey's height in source units, for the layer panel to quote. */
   getLevelStep(): number {
     return this.levelStepSource();
+  }
+
+  /**
+   * Which storey each strand rests on, by strand index.
+   *
+   * Read by anything measuring the weave rather than drawing it: two strands on
+   * DIFFERENT levels are deliberately left un-woven — the level break has
+   * already said one passes above the other — so a tool counting crossings has
+   * to know which pairs the weave was ever asked to resolve, or it reports a
+   * storey's separation as a gap that failed to close.
+   */
+  getStrandLevels(): number[] {
+    return [...this.strandLevel];
+  }
+
+  /**
+   * The three heights each storey is built around, bottom to top.
+   *
+   * A level is not one plane but three. `middle` is the plane the storey weaves
+   * about — where the centre of a lace's thickness sits when it is doing neither
+   * of the other two. `over` is where a lace riding over a crossing goes, `under`
+   * where the one ducking under goes. The two share the climb, evenly unless
+   * `weaveBias` says otherwise, so the pair ends up `over - under` apart — which
+   * is what "resting on each other" means when it equals one thickness.
+   *
+   * Read by anything drawing or measuring the stack rather than building it.
+   */
+  getLevelPlanes(): Array<{ level: number; under: number; middle: number; over: number }> {
+    // The MEDIAN strand's own thickness, not the default. A scene where strands
+    // carry their own thickness had the drawn planes computed from
+    // `params.thickness` while everything measuring against them used each
+    // strand's override, so the two disagreed about what a thickness was and the
+    // sub-level rows quietly measured against planes the weave never used.
+    const own = this.current.strands
+      .map((st) => this.strandThicknessWorld(st))
+      .sort((x, y) => x - y);
+    const t = own.length ? own[Math.floor(own.length / 2)] : this.params.thickness * SCALE;
+    const h = this.weaveAmplitude(t, t);
+    const bias = Math.max(-1, Math.min(1, this.params.weaveBias));
+    return [...this.levelPlaneZ.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([level, middle]) => ({
+        level,
+        under: middle - h * (1 - bias),
+        middle,
+        over: middle + h * (1 + bias),
+      }));
+  }
+
+  /**
+   * Each strand's woven centreline, by strand index; null where the strand is
+   * hidden. The same measurement surface as `laceCenterlines`, one level down:
+   * that one is per LACE, after the glued members are concatenated, and a lace
+   * whose members sit on different storeys therefore has no single level to
+   * report. Anything asking what the weave did to a crossing needs the strands.
+   */
+  /**
+   * Each built turn's own CENTRELINE, in world units, with the gauge it was
+   * built at — the measurement surface for anything asking what shape a turn is
+   * rather than where it sits. Reconstructed on a one-point section, which is
+   * the same probe `spliceFolds` already uses to solve the placement, so this
+   * reports the curve that was actually drawn rather than a second opinion.
+   */
+  getTurnCenterlines(): Array<{ line: Vec3[]; width: number; thickness: number; separation: number; step: number }> {
+    const probe = [{ x: 0, y: 0 }];
+    return this.splicedTurns.map(({ turn: t, width, thickness }) => ({
+      line: turnRings(t, probe).map((r) => r[0]),
+      width,
+      thickness,
+      separation: t.separation,
+      step: t.g.step,
+    }));
+  }
+
+  getWovenCenterlines(): Array<Vec3[] | null> {
+    return this.world3D.map((line) => (line ? line.map((p) => ({ ...p })) : null));
   }
 
   private computeBaseZ(): void {
