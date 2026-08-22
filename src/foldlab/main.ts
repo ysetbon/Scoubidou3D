@@ -72,13 +72,22 @@ interface Rest {
  *
  * `out` is the plane the run settles onto AFTER its C. None is set here, so each
  * run rests at one height for its whole length — which is what the sheet said.
+ *
+ * Two entries differ from the sheet as first handed over, and deliberately.
+ * Round 2's inner arms came in as the MIRROR of round 1's — 2_3 top, 2_4 bottom
+ * against 1_3 bottom, 1_4 top — and a fold between two runs at the same absolute
+ * height has nothing to climb: 2_4's fold with 2_3 read `climbs 0.00 t` and came
+ * out a kink rather than a C, while 2_4's crossings with 1_4 and 1_5 opened to
+ * `Δ2 daylight` because the storey they share was empty between them. The other
+ * three outer arms all read `climbs 4.00 t`. Squaring round 2 onto round 1's
+ * pattern is what makes all four alike, which is what the sheet was asking for.
  */
 const OPENING: Record<string, PlaneId> = {
   '1_5': 'top',
   '2_5': 'top',
   '1_4': 'top',
-  '2_4': 'bottom',
-  '2_3': 'top',
+  '2_4': 'top',
+  '2_3': 'bottom',
   '1_3': 'bottom',
   '2_2': 'bottom',
   '1_2': 'bottom',
