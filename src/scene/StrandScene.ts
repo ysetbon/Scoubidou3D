@@ -101,6 +101,20 @@ const COLOR_OCC = 0x9099a6; // attach-mode occupied endpoint (gray — junction)
  * there rather than re-deriving it, or the report and the picture drift apart the
  * first time either rule changes.
  */
+/**
+ * Where a strand RESTS, in thicknesses off its storey's middle — at the start of
+ * its run and at the end of it.
+ *
+ * Two numbers rather than one because a lace that comes out of a fold does not
+ * have to come out on the plane it went in on: the turn can land it anywhere, and
+ * the run after it then rests somewhere else than the run before. `out` equal to
+ * `in` is the flat case and the common one.
+ */
+export interface Sublevel {
+  in: number;
+  out: number;
+}
+
 export interface CrossingFact {
   aIndex: number;
   bIndex: number;
@@ -314,8 +328,11 @@ export class StrandScene {
   // (both filled by computeBaseZ, read by the weave).
   private strandLevel: number[] = [];
 
+  /** The resting height at the END of each run; see Sublevel. */
+  private baseZOut: number[] = [];
+
   /** See setSublevels. Null is off, and off is the studio's behaviour exactly. */
-  private sublevels: Map<string, number> | null = null;
+  private sublevels: Map<string, Sublevel> | null = null;
   private levelPlaneZ = new Map<number, number>();
   // Half the stack's height in world units — the other half of what the camera
   // has to frame once levels make a scene tall.
@@ -948,7 +965,7 @@ export class StrandScene {
       const line = worldLines[i];
       if (!line) return null;
       const { cum } = arcLengths(line);
-      const z = heightField(cum, anchors[i], this.layerZ(i));
+      const z = heightField(cum, anchors[i], this.restingBase(i, cum, strands[i]));
       return line.map((p, k) => ({ x: p.x, y: p.y, z: z[k] }));
     });
   }
@@ -1226,9 +1243,27 @@ export class StrandScene {
    * the crossings, and the FOLD between two strands on different planes carries
    * the difference at its crease.
    */
-  setSublevels(map: Map<string, number> | null): void {
+  setSublevels(map: Map<string, Sublevel> | null): void {
     this.sublevels = map && map.size > 0 ? new Map(map) : null;
     this.rebuild();
+  }
+
+  /** One strand's own woven centreline in world units, before laces are merged. */
+  getStrandCentrelineWorld(id: string): Vec3[] | null {
+    const i = this.current.strands.findIndex((st) => st.id === id);
+    return i < 0 ? null : this.world3D[i];
+  }
+
+  /** Where a strand actually rests, in world units, at each end of its run. */
+  getRestingWorld(id: string): { in: number; out: number } | null {
+    const i = this.current.strands.findIndex((st) => st.id === id);
+    if (i < 0) return null;
+    return { in: this.baseZ[i] ?? 0, out: this.baseZOut[i] ?? this.baseZ[i] ?? 0 };
+  }
+
+  /** One thickness in world units — the distance between two planes. */
+  getThicknessWorld(): number {
+    return this.params.thickness * SCALE;
   }
 
   hasSublevels(): boolean {
@@ -1276,23 +1311,27 @@ export class StrandScene {
     // the level break it sits inside, because it is a statement about one row.
     const sub = this.params.thickness * SCALE;
     const rest = new Array<number>(n);
+    const restOut = new Array<number>(n);
     const level = new Array<number>(n);
     for (let i = 0; i < n; i++) {
       level[i] = levelAt(this.current, i);
-      const plane = this.sublevels?.get(this.current.strands[i].id) ?? 0;
-      rest[i] = (rankZ.get(find(i)) ?? 0) + level[i] * step + plane * sub;
+      const p = this.sublevels?.get(this.current.strands[i].id);
+      const floor = (rankZ.get(find(i)) ?? 0) + level[i] * step;
+      rest[i] = floor + (p?.in ?? 0) * sub;
+      restOut[i] = floor + (p?.out ?? p?.in ?? 0) * sub;
     }
 
     // Re-centre on z = 0, so adding a level opens the stack up around the grid
     // instead of walking the whole model off it.
     let min = Infinity;
     let max = -Infinity;
-    for (const z of rest) {
+    for (const z of [...rest, ...restOut]) {
       if (z < min) min = z;
       if (z > max) max = z;
     }
     const shift = n ? -(min + max) / 2 : 0;
     this.baseZ = rest.map((z) => z + shift);
+    this.baseZOut = restOut.map((z) => z + shift);
     this.lowestZ = n ? min + shift : 0;
     this.strandLevel = level;
     // How tall the stack itself is, for the camera. A single storey is a flat
@@ -1325,6 +1364,50 @@ export class StrandScene {
     const a = this.levelPlaneZ.get(this.strandLevel[i] ?? 0) ?? 0;
     const b = this.levelPlaneZ.get(this.strandLevel[j] ?? 0) ?? 0;
     return (a + b) / 2;
+  }
+
+/**
+   * The plane this run rests on, per vertex.
+   *
+   * A scalar while the run rests at one height, which is every run in the studio
+   * and most of them here. When a strand comes out of its fold onto a different
+   * plane from the one it went in on, the resting height has to CHANGE along the
+   * run, and how it changes is the whole question — a straight line reads as a
+   * ramp with corners at both ends, which is exactly the join that looked wrong
+   * where the turn met the run.
+   *
+   * So it eases on an arctan: flat where it leaves the fold, flat again where it
+   * settles, and all of the change in the middle. `K` is how steep that middle
+   * is. The lace holds its first plane for a leg's length out of the turn before
+   * any of it happens, because the part being placed is the run AFTER the C, not
+   * the C itself.
+   */
+  private restingBase(i: number, cum: number[], strand: Strand3D): number | number[] {
+    const zIn = this.layerZ(i);
+    const zOut = this.baseZOut[i] ?? zIn;
+    if (Math.abs(zOut - zIn) < 1e-9) return zIn;
+
+    const total = cum[cum.length - 1];
+    if (!(total > 0)) return zIn;
+    const width = strand.width * this.params.widthScale * SCALE;
+    // Hold, then ramp. Squeezed proportionally rather than clipped when the run
+    // is too short to seat both, so a stubby arm still eases instead of stepping.
+    let hold = width * LEG_PER_WIDTH;
+    let ramp = width * 2;
+    if (hold + ramp > total) {
+      const k = total / (hold + ramp);
+      hold *= k;
+      ramp *= k;
+    }
+
+    const K = 3;
+    const span = Math.atan(K) * 2;
+    const ease = (u: number): number => 0.5 + Math.atan(K * (2 * u - 1)) / span;
+
+    return cum.map((c) => {
+      const u = Math.min(1, Math.max(0, (c - hold) / ramp));
+      return zIn + (zOut - zIn) * ease(u);
+    });
   }
 
   private layerZ(layerIndex: number): number {

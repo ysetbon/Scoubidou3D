@@ -55,7 +55,15 @@ const view = new StrandScene(canvas);
 const scene: Scene3D = boxStitchRounds(ROUNDS, `Box stitch — ${ROUNDS} levels`);
 view.setScene(scene);
 
-const plane = new Map<string, PlaneId>(scene.strands.map((s) => [s.id, 'center']));
+interface Rest {
+  /** The plane the run rests on where it leaves its fold. */
+  in: PlaneId;
+  /** …and the plane it settles onto AFTER the C. Usually the same. */
+  out: PlaneId;
+}
+const plane = new Map<string, Rest>(
+  scene.strands.map((s) => [s.id, { in: 'center', out: 'center' }]),
+);
 const open = new Set<string>();
 let declared = false;
 let scrollKeep = 0;
@@ -82,10 +90,17 @@ const indexOfId = new Map(scene.strands.map((s, i) => [s.id, i]));
 const levelOf = (id: string): number => levelAt(scene, indexOfId.get(id) ?? 0);
 
 /** A layer's absolute height in thicknesses: its storey, plus its plane inside it. */
-const heightOf = (id: string): number => levelOf(id) * PITCH + at(plane.get(id) ?? 'center');
+const restOf = (id: string): Rest => plane.get(id) ?? { in: 'center', out: 'center' };
+/** A layer's height in thicknesses, at either end of its run. */
+const heightOf = (id: string, end: 'in' | 'out' = 'in'): number =>
+  levelOf(id) * PITCH + at(restOf(id)[end]);
 
 function push(): void {
-  view.setSublevels(declared ? new Map([...plane].map(([id, p]) => [id, at(p)])) : null);
+  view.setSublevels(
+    declared
+      ? new Map([...plane].map(([id, p]) => [id, { in: at(p.in), out: at(p.out) }]))
+      : null,
+  );
 }
 
 const el = <K extends keyof HTMLElementTagNameMap>(
@@ -157,108 +172,153 @@ function foldRows(): FoldRow[] {
 }
 
 /**
- * The fold in SIDE ELEVATION: both continuing runs, the C between them, and the
- * planes themselves drawn as the rules they are.
+ * This layer in SIDE ELEVATION, drawn from the geometry the renderer actually
+ * built — not a schematic of a C.
  *
- * The whole point is to be able to see which plane each PART went to, so the
- * planes are the frame rather than an annotation: every plane over both storeys
- * is ruled across and named, and the two runs are drawn lying on theirs. Heights
- * come from `heightOf`, the same number the renderer is given, so this is a
- * reading of the model and not a sketch of it.
+ * A stylised C could show the turn and nothing else, so it could not answer the
+ * question that matters once a run has two planes: what does this layer do AFTER
+ * the C? Here the lace's own woven centreline is plotted, height against distance
+ * travelled, with the stretch belonging to THIS layer drawn solid and the rest of
+ * its lace ghosted. The turn appears as what it is — a climb partway along —
+ * rather than as an icon, and the run after it is right there to read.
  *
- * The arms are colinear in plan at a fold-back, so in a true side view they
- * overlap and both come in from the left — which is exactly what the lace does.
+ * The horizontal rules are the planes, stepped a thickness apart off this
+ * layer's own resting height and named by the level and plane they belong to.
  */
-function sideView(f: FoldRow, colour: string): SVGElement {
-  const W = 320, H = 160, PER = 24, TOP = 22, X0 = 8, XC = 138, STRAP = 16;
-  // Every plane over both storeys, high to low, so the picture is the same shape
-  // for every fold and two of them can be compared at a glance.
-  const highest = (ROUNDS - 1) * PITCH + 1;
-  const lowest = -1;
-  const y = (h: number): number => TOP + (highest - h) * PER;
+function sideView(id: string, colour: string): SVGElement | null {
+  const i = indexOfId.get(id);
+  if (i === undefined) return null;
+  const lace = view.laceCenterlines.find((l) => l.chain.includes(i));
+  const own = view.getStrandCentrelineWorld(id);
+  const rest = view.getRestingWorld(id);
+  const t = view.getThicknessWorld();
+  if (!lace || !own || own.length < 2 || !rest || !(t > 0)) return null;
+
+  const W = 320, H = 168, PADX = 8, PADT = 16, PADB = 14, LABEL = 150;
+  const line = lace.line;
+
+  // Distance travelled along the lace, which is the honest x-axis for an
+  // elevation: the C doubles back in plan, and plotting against a straight axis
+  // would fold the turn on top of itself.
+  const cum: number[] = [0];
+  for (let k = 1; k < line.length; k++) {
+    cum.push(cum[k - 1] + Math.hypot(line[k].x - line[k - 1].x, line[k].y - line[k - 1].y));
+  }
+  const total = cum[cum.length - 1] || 1;
+
+  const nearest = (q: { x: number; y: number }): number => {
+    let best = 0;
+    let bd = Infinity;
+    for (let k = 0; k < line.length; k++) {
+      const d = (line[k].x - q.x) ** 2 + (line[k].y - q.y) ** 2;
+      if (d < bd) { bd = d; best = k; }
+    }
+    return best;
+  };
+  const a = nearest(own[0]);
+  const b = nearest(own[own.length - 1]);
+  const from = Math.min(a, b);
+  const to = Math.max(a, b);
+
+  // The x-window is THIS LAYER plus a margin, not the whole lace. Scaled to the
+  // lace, a single arm of a five-arm stitch is a few pixels wide and the drawing
+  // stops being about the layer whose card it is on; the margin is what keeps the
+  // fold at either end of it in view.
+  const margin = Math.max((cum[to] - cum[from]) * 0.35, total * 0.02);
+  const x0 = Math.max(0, cum[from] - margin);
+  const x1 = Math.min(total, cum[to] + margin);
+  let wLo = 0;
+  let wHi = line.length - 1;
+  while (wLo < from && cum[wLo] < x0) wLo++;
+  while (wHi > to && cum[wHi] > x1) wHi--;
+
+  let zLo = Infinity;
+  let zHi = -Infinity;
+  for (let k = wLo; k <= wHi; k++) { zLo = Math.min(zLo, line[k].z); zHi = Math.max(zHi, line[k].z); }
+  const pad = Math.max(t * 0.9, (zHi - zLo) * 0.12);
+  zLo -= pad;
+  zHi += pad;
+
+  const span = x1 - x0 || 1;
+  const X = (k: number): number => PADX + ((cum[k] - x0) / span) * (LABEL - PADX - 4);
+  const Y = (z: number): number => PADT + ((zHi - z) / (zHi - zLo || 1)) * (H - PADT - PADB);
 
   const svg = sv('svg', {
-    viewBox: `0 0 ${W} ${H}`,
-    class: 'side',
-    role: 'img',
-    'aria-label':
-      `Side view of the fold between ${f.hi.id} and ${f.lo.id}: ` +
-      `${f.hi.id} rests on ${plane.get(f.hi.id)}, ${f.lo.id} on ${plane.get(f.lo.id)}, ` +
-      `the turn climbing ${f.climb} thicknesses between them`,
+    viewBox: `0 0 ${W} ${H}`, class: 'side', role: 'img',
+    'aria-label': `${id} in side elevation: height against distance along its lace`,
   });
 
-  for (let h = highest; h >= lowest; h--) {
+  // The planes, stepped off this layer's own resting height.
+  const abs = levelOf(id) * PITCH + at(restOf(id).in);
+  for (let k = -4; k <= 4; k++) {
+    const z = rest.in + k * t;
+    if (z < zLo || z > zHi) continue;
     const names: string[] = [];
     for (let l = 0; l < ROUNDS; l++) {
-      const k = h - l * PITCH;
-      const p = PLANES.find((q) => q.at === k);
-      if (p) names.push(`L${l} ${p.id}`);
+      const q = PLANES.find((x) => x.at === abs + k - l * PITCH);
+      if (q) names.push(`L${l} ${q.id}`);
     }
-    if (names.length === 0) continue;
-    const shared = names.length > 1;
-    const used = h === heightOf(f.hi.id) || h === heightOf(f.lo.id);
-    svg.appendChild(
-      sv('line', {
-        x1: 0, y1: y(h), x2: 168, y2: y(h),
-        stroke: used ? 'var(--edge2)' : 'var(--line)',
-        'stroke-width': used ? 1.4 : 1,
-        'stroke-dasharray': used ? '0' : '3 4',
-        opacity: used ? 0.9 : 0.55,
-      }),
-    );
-    const label = sv('text', { x: 174, y: y(h) + 3.5, class: used ? 'pl on' : 'pl' },
-      names.join(' = '));
-    svg.appendChild(label);
-    if (shared) svg.appendChild(sv('text', { x: 174, y: y(h) + 12, class: 'pl seam' }, 'the seam'));
+    const mine = k === 0 || abs + k === heightOf(id, 'out');
+    svg.appendChild(sv('line', {
+      x1: 0, y1: Y(z), x2: LABEL - 2, y2: Y(z),
+      stroke: mine ? 'var(--edge2)' : 'var(--line)',
+      'stroke-width': mine ? 1.3 : 1,
+      'stroke-dasharray': mine ? '0' : '3 4',
+      opacity: mine ? 0.9 : 0.5,
+    }));
+    if (names.length) {
+      svg.appendChild(sv('text', { x: LABEL + 4, y: Y(z) + 3.4, class: mine ? 'pl on' : 'pl' },
+        names.join(' = ')));
+    }
   }
 
-  // The two continuing runs, each lying on its own plane.
-  for (const s of [f.hi, f.lo]) {
-    const yy = y(heightOf(s.id));
-    svg.appendChild(
-      sv('rect', {
-        x: X0, y: yy - STRAP / 2, width: XC - X0, height: STRAP, rx: 2,
-        fill: colour, opacity: 0.9, stroke: 'var(--edge2)', 'stroke-width': 1.2,
-      }),
-    );
-    svg.appendChild(sv('text', { x: X0 + 6, y: yy + 3.5, class: 'arm-id' }, s.id));
-  }
+  const path = (lo: number, hi: number): string =>
+    line.slice(lo, hi + 1).map((q, n) => `${n ? 'L' : 'M'} ${X(lo + n).toFixed(2)} ${Y(q.z).toFixed(2)}`).join(' ');
 
-  // The C. Its radius is half the gap, which is what makes it a half turn.
-  const yh = y(heightOf(f.hi.id));
-  const yl = y(heightOf(f.lo.id));
-  const r = Math.max(Math.abs(yl - yh) / 2, STRAP / 2);
-  svg.appendChild(
-    sv('path', {
-      d: `M ${XC} ${yh} H ${XC + 8} A ${r} ${r} 0 0 1 ${XC + 8} ${yl} H ${XC}`,
-      fill: 'none', stroke: colour, 'stroke-width': STRAP, 'stroke-linecap': 'butt',
-      opacity: 0.9,
-    }),
-  );
-  svg.appendChild(
-    sv('path', {
-      d: `M ${XC} ${yh} H ${XC + 8} A ${r} ${r} 0 0 1 ${XC + 8} ${yl} H ${XC}`,
-      fill: 'none', stroke: 'var(--edge2)', 'stroke-width': 1.2,
-    }),
-  );
+  // The rest of the lace, ghosted, so this layer is read in its own context.
+  svg.appendChild(sv('path', { d: path(wLo, wHi), fill: 'none',
+    stroke: 'var(--line)', 'stroke-width': 5, 'stroke-linecap': 'round', opacity: 0.5 }));
+  // This layer, at the lace's real thickness.
+  svg.appendChild(sv('path', { d: path(from, to), fill: 'none', stroke: colour,
+    'stroke-width': 7, 'stroke-linecap': 'round' }));
+  svg.appendChild(sv('path', { d: path(from, to), fill: 'none', stroke: 'var(--edge2)',
+    'stroke-width': 1, opacity: 0.5 }));
+
+  svg.appendChild(sv('text', { x: X(from) + 2, y: Y(line[from].z) - 7, class: 'arm-id' }, id));
   return svg;
 }
 
-/** A plane chip. Pressing it cycles bottom → center → top and rebuilds. */
-function chip(id: string, small = false): HTMLButtonElement {
+/** A plane chip for one END of a run. Cycles bottom → center → top. */
+function chip(id: string, end: 'in' | 'out', small = false): HTMLButtonElement {
   const b = el('button', small ? 'plane sm' : 'plane');
-  const p = plane.get(id) ?? 'center';
+  const p = restOf(id)[end];
   b.dataset.plane = p;
   b.textContent = `${PLANES.find((x) => x.id === p)!.mark}  ${p}`;
+  b.title = end === 'in' ? 'Where this run rests' : 'Where it settles after the C';
   b.addEventListener('click', (e) => {
     e.stopPropagation();
-    const now = PLANES.findIndex((x) => x.id === (plane.get(id) ?? 'center'));
-    plane.set(id, PLANES[(now + 1) % PLANES.length].id);
+    const cur = restOf(id);
+    const next = PLANES[(PLANES.findIndex((x) => x.id === cur[end]) + 1) % PLANES.length].id;
+    plane.set(id, { ...cur, [end]: next });
     declared = true;
     push();
     build();
   });
   return b;
+}
+
+/** Read a plane assignment off the weave the renderer already resolved. */
+function fromTheWeave(facts: CrossingFact[]): void {
+  scene.strands.forEach((s, i) => {
+    let score = 0;
+    for (const f of crossingsOf(i, facts)) {
+      if (!f.woven) continue;
+      score += f.overIndex === i ? 1 : -1;
+    }
+    const p: PlaneId = score > 0 ? 'top' : score < 0 ? 'bottom' : 'center';
+    plane.set(s.id, { in: p, out: p });
+  });
+  declared = true;
 }
 
 /**
@@ -292,7 +352,7 @@ function applyLedger(text: string): { applied: number; unknown: string[]; skippe
     let p: PlaneId | null = null;
 
     const full = /^L\d+\s+(\S+)\s+rests\s+on\s+(\w+)/i.exec(line);
-    const short = /^(\S+)\s*[:=]?\s*(bottom|center|centre|top)$/i.exec(line);
+    const short = /^(\S+)\s*[:=]?\s*(bottom|center|centre|top)\b/i.exec(line);
     if (full) {
       id = known.get(full[1].toLowerCase());
       p = planeOf(full[2] === 'centre' ? 'center' : full[2]);
@@ -306,7 +366,10 @@ function applyLedger(text: string): { applied: number; unknown: string[]; skippe
       continue;
     }
     if (!id || !p) continue;
-    next.set(id, p);
+    // A second plane after the arrow, when given: `1_5 top -> bottom`.
+    const after = /(?:->|→|,\s*after(?:\s+the)?\s+C:?)\s*(bottom|center|centre|top)/i.exec(line);
+    const q = after ? planeOf(after[1].toLowerCase() === 'centre' ? 'center' : after[1]) : null;
+    next.set(id, { in: p, out: q ?? p });
     applied++;
   }
 
@@ -315,19 +378,6 @@ function applyLedger(text: string): { applied: number; unknown: string[]; skippe
     declared = true;
   }
   return { applied, unknown, skipped };
-}
-
-/** Read a plane assignment off the weave the renderer already resolved. */
-function fromTheWeave(facts: CrossingFact[]): void {
-  scene.strands.forEach((s, i) => {
-    let score = 0;
-    for (const f of crossingsOf(i, facts)) {
-      if (!f.woven) continue;
-      score += f.overIndex === i ? 1 : -1;
-    }
-    plane.set(s.id, score > 0 ? 'top' : score < 0 ? 'bottom' : 'center');
-  });
-  declared = true;
 }
 
 /** One layer, whole: where it rests, what it crosses, and every fold it is in. */
@@ -367,7 +417,7 @@ function layerCard(i: number, facts: CrossingFact[], folds: FoldRow[]): HTMLElem
   card.appendChild(head);
 
   const chipWrap = el('span', 'head-chip');
-  chipWrap.appendChild(chip(s.id));
+  chipWrap.appendChild(chip(s.id, 'in'));
   head.appendChild(chipWrap);
 
   // Collapsed, the one line that matters: is this layer sitting right?
@@ -377,14 +427,26 @@ function layerCard(i: number, facts: CrossingFact[], folds: FoldRow[]): HTMLElem
       `${mine.length} crossing${mine.length === 1 ? '' : 's'} · ` +
       `${myFolds.length} fold${myFolds.length === 1 ? '' : 's'}`),
   );
+  const ramped = restOf(s.id).in !== restOf(s.id).out;
   const verdict = el('span', faults ? 'bad' : 'good',
-    faults ? `${faults} not Δ1` : 'all Δ1');
+    (faults ? `${faults} not Δ1` : 'all Δ1') + (ramped ? ' at the start' : ''));
   sum.appendChild(verdict);
   card.appendChild(sum);
 
   if (!isOpen) return card;
 
   const body = el('div', 'layer-body');
+
+  body.appendChild(el('h4', undefined, 'This layer, side on'));
+  const drawing = sideView(s.id, css(s.color));
+  if (drawing) body.appendChild(drawing);
+  else body.appendChild(el('div', 'no-cross', 'not built yet'));
+
+  const after = el('div', 'arm');
+  after.appendChild(el('i', undefined, 'after C'));
+  after.appendChild(el('b', undefined, 'settles on'));
+  after.appendChild(chip(s.id, 'out', true));
+  body.appendChild(after);
 
   if (mine.length) {
     body.appendChild(el('h4', undefined, 'Crossings'));
@@ -397,8 +459,15 @@ function layerCard(i: number, facts: CrossingFact[], folds: FoldRow[]): HTMLElem
       if (f.count > 1) line.appendChild(el('span', undefined, `×${f.count}`));
       if (f.masked) line.appendChild(el('span', 'masked', 'MASK'));
       const g = gapOf(heightOf(s.id), heightOf(otherId));
-      const gap = el('em', undefined, g.text);
-      gap.dataset.gap = g.kind;
+      // Read at the START of both runs. Once either of them settles onto a second
+      // plane after its C, its height depends on WHERE along the run the crossing
+      // falls, and this number no longer covers it — so it says so rather than
+      // quietly reporting one end as though it were the whole run.
+      const ramped = restOf(s.id).in !== restOf(s.id).out
+        || restOf(otherId).in !== restOf(otherId).out;
+      const gap = el('em', undefined, ramped ? `${g.text} at the start` : g.text);
+      gap.dataset.gap = ramped ? 'part' : g.kind;
+      if (ramped) gap.title = 'One of these runs changes plane after its C; this is read where the runs begin.';
       line.appendChild(gap);
       body.appendChild(line);
     }
@@ -421,7 +490,7 @@ function layerCard(i: number, facts: CrossingFact[], folds: FoldRow[]): HTMLElem
     meta.appendChild(cl);
     body.appendChild(meta);
 
-    body.appendChild(sideView(f, css(s.color)));
+
 
     for (const [role, st] of [
       ['upper arm', f.hi],
@@ -431,7 +500,7 @@ function layerCard(i: number, facts: CrossingFact[], folds: FoldRow[]): HTMLElem
       arm.appendChild(el('i', undefined, role));
       arm.appendChild(el('b', undefined, st.id === s.id ? `${st.id} (this)` : st.id));
       arm.appendChild(el('span', 'lvl', `L${levelOf(st.id)}`));
-      arm.appendChild(chip(st.id, true));
+      arm.appendChild(chip(st.id, 'in', true));
       body.appendChild(arm);
     }
     if (thisIsUpper) body.appendChild(el('div', 'hintline', 'This layer is the TOP of the C.'));
@@ -614,7 +683,11 @@ function asText(facts: CrossingFact[], folds: FoldRow[]): string {
   ];
   for (let i = scene.strands.length - 1; i >= 0; i--) {
     const s = scene.strands[i];
-    out.push(`L${levelOf(s.id)}  ${s.id}  rests on ${plane.get(s.id)}`);
+    const r = restOf(s.id);
+    out.push(
+      `L${levelOf(s.id)}  ${s.id}  rests on ${r.in}` +
+        (r.out === r.in ? '' : ` -> ${r.out} after the C`),
+    );
     for (const f of crossingsOf(i, facts)) {
       const otherId = f.aIndex === i ? f.bId : f.aId;
       const rel = f.woven ? (f.overIndex === i ? 'over ' : 'under') : 'clear';
@@ -628,8 +701,8 @@ function asText(facts: CrossingFact[], folds: FoldRow[]): string {
       const other = f.a.id === s.id ? f.b : f.a;
       out.push(
         `      fold with ${other.id}: ${f.mode}, separation ${f.sep.toFixed(0)}deg, ` +
-          `climbs ${f.climb}.00 t; upper ${f.hi.id} ${plane.get(f.hi.id)}, ` +
-          `lower ${f.lo.id} ${plane.get(f.lo.id)}`,
+          `climbs ${f.climb}.00 t; upper ${f.hi.id} ${restOf(f.hi.id).in}, ` +
+          `lower ${f.lo.id} ${restOf(f.lo.id).in}`,
       );
     }
   }

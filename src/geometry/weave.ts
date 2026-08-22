@@ -140,8 +140,18 @@ const SHARPNESS = 3;
  * several strands cross at one point — the top lace lands at +h, the bottom at
  * -h, and one caught between them settles in the middle.
  */
-export function heightField(cum: number[], anchors: Anchor[], base: number): number[] {
-  const z = new Array<number>(cum.length).fill(base);
+export function heightField(
+  cum: number[],
+  anchors: Anchor[],
+  base: number | number[],
+): number[] {
+  // The resting plane is per VERTEX now, not per strand: a lace that comes out of
+  // a fold onto a different plane from the one it went in on is resting at two
+  // heights along its own length, with a ramp between them. A scalar is the
+  // common case and stays one.
+  const baseAt = typeof base === 'number' ? () => base : (k: number) => base[k];
+  const z = new Array<number>(cum.length);
+  for (let k = 0; k < cum.length; k++) z[k] = baseAt(k);
   if (anchors.length === 0) return z;
   for (let k = 0; k < cum.length; k++) {
     let envelope = 0; // how far off the base plane we are (un-sharpened)
@@ -160,7 +170,7 @@ export function heightField(cum: number[], anchors: Anchor[], base: number): num
     // Commit fully to the crossing height once the pulses reach full strength;
     // ease out of the base plane on the way in.
     const t = Math.min(1, envelope);
-    z[k] = base * (1 - t) + (target / weight) * t;
+    z[k] = baseAt(k) * (1 - t) + (target / weight) * t;
   }
   return z;
 }

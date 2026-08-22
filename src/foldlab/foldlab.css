@@ -458,3 +458,9 @@
   gap: 7px;
   margin-top: 10px;
 }
+
+/* A gap read at one end of a run that does not stay at one height. */
+.cross em[data-gap='part'] {
+  color: var(--muted);
+  font-style: italic;
+}
