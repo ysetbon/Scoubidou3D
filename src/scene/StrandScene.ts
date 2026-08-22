@@ -40,7 +40,15 @@ import {
 } from '../model/controlPoints';
 import { sampleCenterline } from '../geometry/bezier';
 import { buildRibbonGeometry, crossSection } from '../geometry/ribbon';
-import { LaceGauge, SplicedLace, mergeGeometry, spliceFolds, tube, turnRings } from '../geometry/fold';
+import {
+  LaceGauge,
+  SplicedLace,
+  SplicedTurn,
+  mergeGeometry,
+  spliceFolds,
+  tube,
+  turnRings,
+} from '../geometry/fold';
 import { AUTO_DEFAULT } from '../geometry/autoFold';
 import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
 import { easeFolds, easeSteps, roundCorners, type FoldPlacement } from '../geometry/polyline';
@@ -484,6 +492,19 @@ export class StrandScene {
    * is recoverable from the mesh afterwards.
    */
   laceCenterlines: Array<{ chain: number[]; line: Vec3[]; width: number; thickness: number }> = [];
+
+  /**
+   * Every turn the splice actually built, with the lace gauge it was built at.
+   *
+   * `laceCenterlines` above is the centreline BEFORE the splice cuts it, so it
+   * carries no turn at all — it has a sharp corner where the turn will go. A
+   * tool measuring what a turn is shaped like therefore cannot use it, and until
+   * now there was nothing else: the spliced lace was consumed straight into the
+   * mesh and merged away. `turnRings` on a one-point section reconstructs any of
+   * these as a centreline in world coordinates, which is what the shape rows in
+   * the fold bench are computed from.
+   */
+  splicedTurns: Array<{ turn: SplicedTurn; width: number; thickness: number }> = [];
   // Resting height per strand (see computeBaseZ) and the lowest of them, which the
   // grid sits below.
   private baseZ: number[] = [];
@@ -827,6 +848,7 @@ export class StrandScene {
     const strands = this.current.strands;
     const absorbed = new Set<number>();
     this.laceCenterlines = [];
+    this.splicedTurns = [];
 
     // Which end is glued to which. An end shared by more than two strands is a
     // fork, not a chain, so it is left unlinked and handled by a connector.
@@ -1243,6 +1265,7 @@ export class StrandScene {
     // is — only on the storey it climbs and the crease it turns on — so the two
     // are built off ONE plan and the shell nests exactly over the body.
     const spliced = spliceFolds(centerline, this.laceGauge(width, thickness));
+    for (const t of spliced.turns) this.splicedTurns.push({ turn: t, width, thickness });
 
     const fillGeom = this.laceGeometry(spliced, width, thickness, {
       capStart,
@@ -1540,6 +1563,24 @@ export class StrandScene {
    * whose members sit on different storeys therefore has no single level to
    * report. Anything asking what the weave did to a crossing needs the strands.
    */
+  /**
+   * Each built turn's own CENTRELINE, in world units, with the gauge it was
+   * built at — the measurement surface for anything asking what shape a turn is
+   * rather than where it sits. Reconstructed on a one-point section, which is
+   * the same probe `spliceFolds` already uses to solve the placement, so this
+   * reports the curve that was actually drawn rather than a second opinion.
+   */
+  getTurnCenterlines(): Array<{ line: Vec3[]; width: number; thickness: number; separation: number; step: number }> {
+    const probe = [{ x: 0, y: 0 }];
+    return this.splicedTurns.map(({ turn: t, width, thickness }) => ({
+      line: turnRings(t, probe).map((r) => r[0]),
+      width,
+      thickness,
+      separation: t.separation,
+      step: t.g.step,
+    }));
+  }
+
   getWovenCenterlines(): Array<Vec3[] | null> {
     return this.world3D.map((line) => (line ? line.map((p) => ({ ...p })) : null));
   }
