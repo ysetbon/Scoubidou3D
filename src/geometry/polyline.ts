@@ -323,30 +323,90 @@ export function zFolds(pts: Vec3[], legLength: number): void {
     // flat through the meeting, passing through each other instead of one going
     // under the other.
     //
-    // So each leg point takes the deviation of the nearest original point on ITS
-    // OWN side of the crease. Sides matter: at a dead fold-back the two runs lie
-    // on top of each other in plan, and a nearest-point search over both would
-    // pick from whichever run happened to be closer.
-    const restore = (from: number, to: number, oFrom: number, oTo: number, planeZ: number) => {
+    // So each leg point takes the deviation the weave had at the same place along
+    // ITS OWN side of the crease. Sides matter: at a dead fold-back the two runs
+    // lie on top of each other in plan, and a search over both would draw from
+    // whichever run happened to be nearer.
+    //
+    // Sampled by POSITION and interpolated, not snapped to the nearest original
+    // point. Snapping is a staircase by construction — the turn's points and the
+    // run's points do not line up, so each one took a neighbour's height whole
+    // and the leg came out in visible steps. Catmull-Rom through the samples is
+    // C1: the slope matches across every sample, so no step survives into the
+    // sweep, which reads the gradient to pitch the ribbon.
+    const restore = (
+      from: number,
+      to: number,
+      oFrom: number,
+      oTo: number,
+      planeZ: number,
+      dir: { x: number; y: number },
+      /** 0 at the crease end of this leg, 1 at the end that joins the run. */
+      weight: (k: number) => number,
+    ) => {
       if (oFrom > oTo) return;
-      for (let k = from; k <= to && k < turn.length; k++) {
-        const q = turn[k];
-        let best = -1;
-        let bd = Infinity;
-        for (let o = oFrom; o <= oTo; o++) {
-          const d = (pts[o].x - q.x) ** 2 + (pts[o].y - q.y) ** 2;
-          if (d < bd) {
-            bd = d;
-            best = o;
-          }
-        }
-        if (best >= 0) q.z += pts[best].z - planeZ;
+      const dl = Math.hypot(dir.x, dir.y) || 1;
+      const ux = dir.x / dl;
+      const uy = dir.y / dl;
+      const ox = pts[oFrom].x;
+      const oy = pts[oFrom].y;
+      const along = (q: { x: number; y: number }): number => (q.x - ox) * ux + (q.y - oy) * uy;
+
+      const ss: number[] = [];
+      const dv: number[] = [];
+      for (let o = oFrom; o <= oTo; o++) {
+        ss.push(along(pts[o]));
+        dv.push(pts[o].z - planeZ);
       }
+      if (ss.length > 1 && ss[0] > ss[ss.length - 1]) {
+        ss.reverse();
+        dv.reverse();
+      }
+
+      const devAt = (x: number): number => {
+        const n = ss.length;
+        if (n === 0) return 0;
+        if (n === 1 || x <= ss[0]) return dv[0];
+        if (x >= ss[n - 1]) return dv[n - 1];
+        let j = 0;
+        while (j < n - 2 && ss[j + 1] < x) j++;
+        const t = (x - ss[j]) / (ss[j + 1] - ss[j] || 1);
+        const p0 = dv[Math.max(0, j - 1)];
+        const p1 = dv[j];
+        const p2 = dv[j + 1];
+        const p3 = dv[Math.min(n - 1, j + 2)];
+        return (
+          0.5 *
+          (2 * p1 +
+            (-p0 + p2) * t +
+            (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t +
+            (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t)
+        );
+      };
+
+      for (let k = from; k <= to && k < turn.length; k++) {
+        turn[k].z += devAt(along(turn[k])) * weight(k);
+      }
+    };
+    // Taper to nothing at the crease. The TIP is not adjusted — its height is the
+    // turn's own — so a leg carrying its full deviation right up to the join left
+    // a step between the two: measured at 0.48 of a world unit across a single
+    // 0.10 sample, against a thickness of 0.52. A cliff, and the visible one.
+    //
+    // Tapering is also the truer statement: a crossing's dip belongs to the RUN,
+    // and by the crease the lace has committed to the turn. Smoothstep rather
+    // than a straight fade so the slope matches at both ends and the sweep, which
+    // pitches the ribbon off the gradient, finds nothing to catch on.
+    const smooth = (t: number): number => {
+      const u = Math.min(1, Math.max(0, t));
+      return u * u * (3 - 2 * u);
     };
     // The crease vertex itself is excluded: its `z` is the collapsed mean of the
     // two runs, which is neither leg's height.
-    restore(0, legSteps, lo, f.index - 1, zIn);
-    restore(turn.length - legSteps, turn.length - 1, f.index + 1, hi, zOut);
+    const tail = turn.length - legSteps;
+    restore(0, legSteps, lo, f.index - 1, zIn, din, (k) => smooth(1 - k / legSteps));
+    restore(tail, turn.length - 1, f.index + 1, hi, zOut, dout,
+      (k) => smooth((k - tail) / Math.max(1, legSteps - 1)));
 
     pts.splice(lo, hi - lo + 1, ...turn);
   }

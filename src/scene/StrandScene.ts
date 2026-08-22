@@ -1748,7 +1748,32 @@ export class StrandScene {
     // Non-recursive, and against the OVERLAYS rather than the bodies: three's
     // raycaster ignores `visible`, so an unlit overlay still answers a ray.
     const hit = this.raycaster.intersectObjects(this.weaveGroup.children, false)[0];
-    return (hit?.object.userData.strandId as string | undefined) ?? null;
+    const byOverlay = hit?.object.userData.strandId as string | undefined;
+    if (byOverlay) return byOverlay;
+
+    // The overlays are swept along each strand's OWN run, and a fold's turn is
+    // not in any of them — it is built later, on the merged lace. So a click on
+    // the C itself found nothing at all. Fall back to the bodies and attribute
+    // the point to whichever strand's run passes closest, which hands each half
+    // of a turn to the strand it belongs to: the tip is where the two meet, so
+    // the near half is the near strand's.
+    const body = this.raycaster.intersectObjects(this.strandGroup.children, false)[0];
+    if (!body) return null;
+    const p = body.point;
+    let best: string | null = null;
+    let bd = Infinity;
+    for (let i = 0; i < this.world3D.length; i++) {
+      const line = this.world3D[i];
+      if (!line) continue;
+      for (const q of line) {
+        const d = (q.x - p.x) ** 2 + (q.y - p.y) ** 2 + (q.z - p.z) ** 2;
+        if (d < bd) {
+          bd = d;
+          best = this.current.strands[i].id;
+        }
+      }
+    }
+    return best;
   }
 
   /** Light one layer, or none. */
