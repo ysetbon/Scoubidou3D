@@ -52,10 +52,23 @@ const boards = Object.fromEntries(
   boardKRange().map((k: number) => [`mxnKs${k < 0 ? `m${-k}` : k}`, page(`mxn/ks/${k}/index.html`)]),
 );
 
+const BASE = process.env.BASE_PATH ?? '/Scoubidou3D/';
+
+// Which page `npm run dev` opens. `true` would open the project site root, which
+// is the right landing for a visitor and the wrong one for whoever is actually
+// working — so it follows the work instead, and the work is /foldlab/. Point it
+// somewhere else by setting OPEN, and `OPEN=true` restores the site root:
+//
+//   $env:OPEN = '/Scoubidou3D/app/'; npm run dev      # the studio
+//   $env:OPEN = 'true'; npm run dev                   # the project site
+//
+// Derived from BASE so a build served from another prefix still opens a real URL.
+const OPEN = process.env.OPEN ?? `${BASE}foldlab/`;
+
 export default defineConfig({
-  base: process.env.BASE_PATH ?? '/Scoubidou3D/',
+  base: BASE,
   plugins: [react({ include: ['**/mxn-lab/**', '**/mxn-farm/**', '**/mxn-ks/**', '**/mxn-fit/**'] })],
-  server: { open: true },
+  server: { open: OPEN === 'true' ? true : OPEN },
   build: {
     rollupOptions: {
       input: {
