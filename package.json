@@ -41,6 +41,7 @@
     "mock:shelf": "node scripts/mock-shelf.mjs",
     "shots": "node scripts/site-shots.mjs",
     "icon": "node scripts/icon-shot.mjs",
+    "prospect": "node scripts/prospect-github.mjs",
     "artifact": "node artifacts/build.mjs"
   },
   "devDependencies": {
