@@ -319,3 +319,47 @@
   background: var(--cream);
   border: 1px solid var(--hair);
 }
+
+/* Which of the Z lab's three turns this fold is, and the separation it was read
+   from. Marked as the lab's answer rather than this page's, because it is. */
+.zrow {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 2px 0 5px;
+  font-size: 9.5px;
+  color: var(--muted);
+}
+
+.zrow em {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.mode {
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--edge2);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mode[data-mode='fold'] {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.mode[data-mode='square'] {
+  border-color: var(--coral);
+  color: var(--coral);
+}
+
+.mode[data-mode='carry-on'] {
+  border-color: var(--line);
+}

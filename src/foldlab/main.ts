@@ -33,6 +33,7 @@ import { collectJunctions } from '../model/connections';
 import { levelAt } from '../model/levels';
 import { boxStitchRounds } from '../model/samples';
 import { StrandScene, type CrossingFact } from '../scene/StrandScene';
+import { separationOf, turnMode } from '../geometry/zturn';
 import type { RGBA, Scene3D } from '../model/types';
 
 /** The three resting planes inside one storey, in thicknesses off its middle. */
@@ -341,6 +342,25 @@ function foldsSection(): HTMLElement {
       heightOf(a.id) >= heightOf(b.id) ? [a, b] : [b, a];
     const climb = Math.abs(heightOf(hi.id) - heightOf(lo.id));
 
+    // Which of the lab's three turns this is, from the separation between the two
+    // arms — the one thing here that is /zlab/'s answer rather than ours.
+    // Separation is between the heading ARRIVING at the joint and the one LEAVING
+    // it, so the two arms are read in opposite senses. Read the same way round,
+    // a dead fold-back comes out as 180 — straight through — and every fold in a
+    // box stitch is mislabelled `carry-on`, which is how this was caught.
+    const arrive = (st: typeof a, side: 0 | 1) => {
+      const from = side === 0 ? st.end : st.start;
+      const to = side === 0 ? st.start : st.end;
+      return { x: to.x - from.x, y: to.y - from.y };
+    };
+    const leave = (st: typeof a, side: 0 | 1) => {
+      const from = side === 0 ? st.start : st.end;
+      const to = side === 0 ? st.end : st.start;
+      return { x: to.x - from.x, y: to.y - from.y };
+    };
+    const sep = separationOf(arrive(a, j.parentSide), leave(b, j.childSide));
+    const mode = turnMode(sep);
+
     const card = el('div', 'fold');
     const title = el('div', 'fold-title');
     title.appendChild(el('span', 'fold-c', 'C'));
@@ -349,6 +369,14 @@ function foldsSection(): HTMLElement {
     cl.dataset.climb = climb === 0 ? 'none' : 'yes';
     title.appendChild(cl);
     card.appendChild(title);
+
+    const zrow = el('div', 'zrow');
+    const tag = el('span', 'mode', mode);
+    tag.dataset.mode = mode;
+    zrow.appendChild(tag);
+    zrow.appendChild(el('span', undefined, `separation ${sep.toFixed(0)}°`));
+    zrow.appendChild(el('em', undefined, 'z-lab'));
+    card.appendChild(zrow);
     card.appendChild(cShape(hi.id, lo.id, css(hi.color)));
 
     for (const [label, strand] of [

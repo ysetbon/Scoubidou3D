@@ -1,27 +1,22 @@
-// The storey turn, taken from the Z band lab.
+// The storey turn: our own build, with the Z lab's angle.
 //
-// `/zlab/` (docs/z-lab.md on the z-connection branch) works one storey turn on
-// its own, away from any weave, and settles what shape it should be. This file
-// is the part of that answer the studio needs: the CENTRELINE of the turn. The
-// lab also builds its own ribbon rings, and those are not wanted here — the
-// studio sweeps its own section along whatever centreline it is given.
+// Two separate questions live in a fold, and only one of them is hard:
 //
-// The shape, in the lab's own words:
+//   1. WHICH TURN is this — a fold, a square-ish crease, or no fold at all?
+//      That is a function of the SEPARATION between the two runs, and it is
+//      settled: /zlab/ swept every separation from 0 to 180 with nothing else in
+//      the frame and published the answer. `autoLean` below is that answer, and
+//      its numbers are copied rather than re-derived. See docs/z-lab.md.
 //
-//     leg out at the lower storey, half-turn tip of radius step/2,
-//     leg back at the upper storey
+//   2. WHAT SHAPE does that turn have? Leg out at the lower storey, half-turn
+//      tip of radius step/2, leg back at the upper storey. That is built here,
+//      simply, against the studio's own centrelines — not lifted from the lab,
+//      which builds its own ribbon rings for a single turn standing alone.
 //
-// and the legs are the point. A plane curve that turns exactly half a turn and
-// rises exactly one storey cannot be much deeper than half that storey at a
-// steady turning rate; depth has to be bought with turning that does not rise,
-// and the straight legs are that turning-free depth. A tip on its own is a
-// knuckle, not a bight.
-//
-// The rule underneath the whole family: wrapping a strip a half turn about a
-// crease reverses the heading across the crease and keeps it along it, so a
-// crease at θ to the strap turns the heading by 2θ. The crease position is the
-// entire design parameter, and `lean` is where it sits — 0 an exact fold on the
-// bisector, 1 a square crease.
+// So: the angle comes from the lab, the construction is ours. The lab's rule
+// underneath both — wrapping a strip a half turn about a crease reverses the
+// heading across the crease and keeps it along it, so a crease at θ to the strap
+// turns the heading by 2θ — is why the crease position is the whole parameter.
 
 import { Vec3 } from './vec';
 
@@ -35,6 +30,18 @@ export interface Vec2 {
  * lab rather than guessed, so they are copied rather than re-derived.
  */
 export const AUTO = { lo: 48, hi: 61, carry: 126, cap: 0.25 } as const;
+
+/**
+ * Which of the lab's three the turn is. The buttons in `/zlab/` are Fold, Square
+ * and Carry on, and Fold/Square are the two ends of one number — the lean — so
+ * this is a reading of `autoLean`, not a fourth thing.
+ */
+export type TurnMode = 'fold' | 'square' | 'carry-on';
+
+export function turnMode(separationDeg: number): TurnMode {
+  if (Math.abs(separationDeg) >= AUTO.carry) return 'carry-on';
+  return autoLean(separationDeg) > AUTO.cap / 2 ? 'square' : 'fold';
+}
 
 /** The lab's gauge for the turn itself: Leg length against its lace width. The
  *  studio's laces are any width, so the leg is carried across as a RATIO — the
@@ -168,25 +175,26 @@ export function zTurn(o: TurnOpts): Vec3[] {
   const inTip = spin(a, bend);
   const c = spin(inTip, tipTurn / 2);
   let n = perp(c);
-  const du = inTip.x * c.x + inTip.y * c.y;
   let dv = inTip.x * n.x + inTip.y * n.y;
   if (dv < 0) {
     n = { x: -n.x, y: -n.y };
     dv = -dv;
   }
-  // How far the strip walks along the crease per unit of tip travelled. It
-  // diverges as the crease swings onto the strip's own length — where a fold
-  // stops being one — so it is capped there.
-  const k = Math.min(dv < 1e-9 ? Infinity : du / dv, (len * 4) / (Math.PI * h));
+  // The lab also walks the strip ALONG the crease as the tip turns, which is how
+  // a single turn standing on its own reaches its next storey. Here the runs are
+  // already where the weave put them, so there is nowhere to walk to: the tip
+  // turns in place between two runs the model has already positioned. Dropping it
+  // is the difference between borrowing the lab's angle and adopting its whole
+  // build — and at a dead fold-back, which is half of a box stitch's turns, the
+  // term is zero anyway.
   const base = legAt(o.from, a, 1);
   for (let i = 1; i <= tipSteps; i++) {
     const phi = Math.PI * (i / tipSteps);
-    const walk = h * phi * k; // profile arclength times the crease rate
     const sin = Math.sin(phi);
     const cos = Math.cos(phi);
     out.push({
-      x: base.x + c.x * walk + n.x * h * sin,
-      y: base.y + c.y * walk + n.y * h * sin,
+      x: base.x + n.x * h * sin,
+      y: base.y + n.y * h * sin,
       z: mid - sign * h * cos,
       // Square to the crease and to the tip's own tangent, turning over with the
       // strip. Taken from the lab's own ring frame.
@@ -196,10 +204,7 @@ export function zTurn(o: TurnOpts): Vec3[] {
 
   // The leg coming away, bending the rest of the way onto the outgoing run.
   const away = spin(inTip, tipTurn);
-  const tipEnd: Vec2 = {
-    x: base.x + c.x * h * Math.PI * k,
-    y: base.y + c.y * h * Math.PI * k,
-  };
+  const tipEnd: Vec2 = { x: base.x, y: base.y };
   for (let i = 1; i <= legSteps; i++) {
     const q = legAt(tipEnd, away, i / legSteps);
     out.push({ x: q.x, y: q.y, z: mid + sign * h, up: DOWN });
