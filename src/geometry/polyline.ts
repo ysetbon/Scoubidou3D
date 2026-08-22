@@ -302,6 +302,7 @@ export function zFolds(pts: Vec3[], legLength: number): void {
     // visible angle — a seam right where the turn is supposed to grow out of it.
     const din = { x: pts[lo].x - pts[lo - 1].x, y: pts[lo].y - pts[lo - 1].y };
     const dout = { x: pts[hi + 1].x - pts[hi].x, y: pts[hi + 1].y - pts[hi].y };
+    const legSteps = 10;
     const turn = zTurn({
       from: { x: pts[lo].x, y: pts[lo].y },
       din: Math.hypot(din.x, din.y) > 1e-9 ? din : f.din,
@@ -309,7 +310,44 @@ export function zFolds(pts: Vec3[], legLength: number): void {
       zIn,
       zOut,
       leg: legLength,
+      legSteps,
     });
+
+    // Give the legs back whatever the WEAVE had put in this stretch.
+    //
+    // The turn's legs are flat at their storey by construction, and splicing them
+    // in wholesale threw away every height the weave had already decided here —
+    // including the dip of any crossing that happened to fall inside the length
+    // being replaced. Measured on a two-round box stitch that cost two crossings
+    // their over/under entirely: the two laces came out at the same height, dead
+    // flat through the meeting, passing through each other instead of one going
+    // under the other.
+    //
+    // So each leg point takes the deviation of the nearest original point on ITS
+    // OWN side of the crease. Sides matter: at a dead fold-back the two runs lie
+    // on top of each other in plan, and a nearest-point search over both would
+    // pick from whichever run happened to be closer.
+    const restore = (from: number, to: number, oFrom: number, oTo: number, planeZ: number) => {
+      if (oFrom > oTo) return;
+      for (let k = from; k <= to && k < turn.length; k++) {
+        const q = turn[k];
+        let best = -1;
+        let bd = Infinity;
+        for (let o = oFrom; o <= oTo; o++) {
+          const d = (pts[o].x - q.x) ** 2 + (pts[o].y - q.y) ** 2;
+          if (d < bd) {
+            bd = d;
+            best = o;
+          }
+        }
+        if (best >= 0) q.z += pts[best].z - planeZ;
+      }
+    };
+    // The crease vertex itself is excluded: its `z` is the collapsed mean of the
+    // two runs, which is neither leg's height.
+    restore(0, legSteps, lo, f.index - 1, zIn);
+    restore(turn.length - legSteps, turn.length - 1, f.index + 1, hi, zOut);
+
     pts.splice(lo, hi - lo + 1, ...turn);
   }
 }
