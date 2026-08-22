@@ -61,11 +61,39 @@ interface Rest {
   /** …and the plane it settles onto AFTER the C. Usually the same. */
   out: PlaneId;
 }
+/**
+ * The assignment the page opens on.
+ *
+ * This is not a guess and not a derivation — it is the author's own sheet, handed
+ * back and kept, so the page opens where the work left off instead of on a blank
+ * one that has to be pasted in every reload. Anything not listed falls back to
+ * `center`, and nothing here is load-bearing: every value is a chip away, and
+ * `Plane from weave` still overwrites the lot.
+ *
+ * `out` is the plane the run settles onto AFTER its C. None is set here, so each
+ * run rests at one height for its whole length — which is what the sheet said.
+ */
+const OPENING: Record<string, PlaneId> = {
+  '1_5': 'top',
+  '2_5': 'top',
+  '1_4': 'top',
+  '2_4': 'bottom',
+  '2_3': 'top',
+  '1_3': 'bottom',
+  '2_2': 'bottom',
+  '1_2': 'bottom',
+  '2_1': 'bottom',
+  '1_1': 'bottom',
+};
+
 const plane = new Map<string, Rest>(
-  scene.strands.map((s) => [s.id, { in: 'center', out: 'center' }]),
+  scene.strands.map((s) => {
+    const p = OPENING[s.id] ?? 'center';
+    return [s.id, { in: p, out: p }];
+  }),
 );
 const open = new Set<string>();
-let declared = false;
+let declared = true;
 let scrollKeep = 0;
 let selected: string | null = null;
 let pasting = false;
