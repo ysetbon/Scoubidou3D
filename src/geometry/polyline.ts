@@ -468,6 +468,33 @@ export function zFolds(pts: Vec3[], legLength: number): void {
     restore(tail, turn.length - 1, f.index + 1, hi, zOut, dout,
       (k) => smooth((k - tail) / Math.max(1, legSteps - 1)));
 
+    // Land the turn ON the run it rejoins. The turn is seated exactly where it
+    // starts — from `src[lo]`, on the run's own heading — but where it ENDS is
+    // wherever the legs put it, and without the lab's crease-walk term that is
+    // not on the run: measured 0.29 to 0.37 off, against a run step of ~0.19.
+    // The exit HEADING is right (it is built from `dout`), only the landing
+    // point misses. Where the next thing along the lace is open run the bridge
+    // hides in the first segment; where it is the NEXT TURN'S entry — seated
+    // exactly, like every entry — the two meet in a kink of 60-odd degrees,
+    // which is what a lace with a fold at each end of a short core showed at
+    // its middle, always beside the FIRST fold's C: the lace is walked from
+    // the head arm, so the head turn's exit is the one that lands mid-model.
+    //
+    // So the miss is eased into the second half of the turn, from the apex
+    // out, smoothstepped so the slope matches at both ends. The tip keeps the
+    // lab's shape and the seam at the apex does not move; only the exit half
+    // leans over to arrive at `src[hi]` exactly — in plan, because the run's
+    // heights here belong to the weave and `restore` below owns those.
+    const last = turn.length - 1;
+    const missX = src[hi].x - turn[last].x;
+    const missY = src[hi].y - turn[last].y;
+    const apex = legSteps + Math.ceil((last - 2 * legSteps) / 2);
+    for (let k = apex + 1; k <= last; k++) {
+      const u = (k - apex) / (last - apex);
+      const w = u * u * (3 - 2 * u);
+      turn[k].x += missX * w;
+      turn[k].y += missY * w;
+    }
     pts.splice(lo, hi - lo + 1, ...turn);
   }
 }
