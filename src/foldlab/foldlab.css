@@ -1,17 +1,128 @@
 /* Fold Lab — what this page adds to the studio's own stylesheet.
  *
  * Everything structural is src/styles.css: #app, #scene, #panel, .brandbar,
- * .stackbar, .stack.from-bottom, .level-bar, .level-group, .level-badge, .row,
- * .swatch, .row-name, .tag, .pill. This file adds only the two things the studio
- * has no word for yet — a layer's RESTING PLANE, and the ledger of what that
- * layer is over and under — and it borrows the studio's tokens to do it, so the
- * new rows are the same object as the old ones in both themes.
+ * .stackbar, .stack.from-bottom, .level-bar, .level-group, .level-badge,
+ * .swatch, .row-name, .pill. This file adds the three things the studio has no
+ * word for — a layer's RESTING PLANE, the ledger of what it is over and under,
+ * and the fold drawn in side elevation — and borrows the studio's tokens for
+ * all of them, so the new rows are the same object as the old ones in both
+ * themes.
+ *
+ * The unit is ONE CARD PER LAYER. A layer's details used to be split between a
+ * stack row and a separate folds section, so answering one question about one
+ * layer took two places and a scroll. Everything about a layer now lives in its
+ * own card: where it rests, what it crosses, and every fold it takes part in.
  */
 
-/* The plane chip: which of the level's three planes this layer rests on. It sits
-   where an inspector chip sits in the studio and is pressed the same way. */
-.plane {
+/* ---- the layer card ------------------------------------------------------- */
+.layer {
+  border: 1.5px solid var(--edge2);
+  background: var(--paper);
+}
+
+.layer + .layer {
+  margin-top: 6px;
+}
+
+/* Selected from either end — a click in the canvas or on the card. The canvas
+   lights the same layer in the same coral, so the two views agree. */
+.layer.sel {
+  border-color: var(--coral);
+  box-shadow: 2px 2px 0 var(--coral);
+}
+
+.layer.warn:not(.sel) {
+  border-color: var(--danger);
+}
+
+.layer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.layer-head:hover {
+  background: var(--hover);
+}
+
+.caret {
   flex: 0 0 auto;
+  width: 10px;
+  font-size: 9px;
+  color: var(--muted);
+}
+
+.layer .swatch {
+  flex: 0 0 auto;
+}
+
+.layer .row-name {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.lvl {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.head-chip {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+/* Collapsed, the one line that decides whether this layer needs opening. */
+.layer-sum {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 10px 7px 27px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.layer-sum .good {
+  margin-left: auto;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--teal);
+}
+
+.layer-sum .bad {
+  margin-left: auto;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--danger);
+}
+
+.layer-body {
+  padding: 2px 10px 10px 27px;
+  border-top: 1px solid var(--hair);
+  margin-top: 2px;
+}
+
+.layer-body h4 {
+  margin: 10px 0 5px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ---- the plane chip ------------------------------------------------------- */
+.plane {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -19,7 +130,7 @@
   padding: 0 9px;
   border: 1.5px solid var(--edge2);
   border-radius: 999px;
-  background: transparent;
+  background: var(--paper);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.06em;
@@ -34,9 +145,14 @@
   box-shadow: 2px 2px 0 var(--shadow);
 }
 
+.plane.sm {
+  min-height: 21px;
+  padding: 0 8px;
+  font-size: 9px;
+}
+
 /* Bottom / center / top read as one scale, so they take the studio's three
-   colours in height order rather than three arbitrary tints: teal low, gold
-   middle, coral high. */
+   colours in height order rather than three arbitrary tints. */
 .plane[data-plane='bottom'] {
   border-color: var(--teal);
   color: var(--teal);
@@ -51,23 +167,13 @@
   color: var(--coral);
 }
 
-/* ---- the ledger: what this layer is over, and what it is under ------------ */
-/* Hung under its row and indented to the swatch, so it reads as belonging to the
-   row rather than as a row of its own. */
-.ledger {
-  margin: 0 0 2px 26px;
-  padding: 4px 0 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
+/* ---- what this layer is over, and under ----------------------------------- */
 .cross {
   display: flex;
   align-items: baseline;
   gap: 6px;
+  padding: 2px 0;
   font-size: 10.5px;
-  line-height: 1.35;
   color: var(--muted);
 }
 
@@ -78,14 +184,16 @@
   color: var(--ink);
 }
 
-/* OVER and UNDER are the whole point of the line, so they are the loud part. */
 .cross i {
   flex: 0 0 auto;
-  min-width: 42px;
+  min-width: 50px;
+  /* "clear of" is two words and wrapped at every fixed width worth having; the
+     column is narrow enough that the wrap cost more than the ragged edge does. */
+  white-space: nowrap;
   font-style: normal;
-  font-size: 9.5px;
+  font-size: 9px;
   font-weight: 800;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -97,8 +205,6 @@
   color: var(--teal);
 }
 
-/* A pair on different storeys with no mask between them: they cross in plan
-   only, and the weave deliberately says nothing about them. */
 .cross.clear i {
   color: var(--muted);
 }
@@ -111,8 +217,6 @@
   font-weight: 700;
 }
 
-/* The gap between the two planes, in thicknesses. One is the weave; anything
-   else is the thing to fix, and says so. */
 .cross em[data-gap='1'] {
   color: var(--teal);
 }
@@ -121,12 +225,12 @@
   color: var(--danger);
 }
 
-.cross em[data-gap='far'] {
-  color: var(--muted);
-}
-
 .cross em[data-gap='hole'] {
   color: var(--coral);
+}
+
+.cross em[data-gap='far'] {
+  color: var(--muted);
 }
 
 .no-cross {
@@ -135,210 +239,21 @@
   color: var(--muted);
 }
 
-/* A mask decided this one, rather than the layer order. Worth marking: it is the
-   only over/under in the scene that a reordering will not change. */
 .masked {
-  font-size: 9px;
+  font-size: 8.5px;
   font-weight: 800;
   letter-spacing: 0.08em;
   color: var(--muted);
 }
 
-/* ---- the note under the stack --------------------------------------------- */
-.foot {
-  flex: 0 0 auto;
-  margin-top: 14px;
-  padding: 10px 11px;
-  border: 1.5px solid var(--edge2);
-  background: var(--cream);
-  font-size: 10.5px;
-  line-height: 1.5;
-  color: var(--muted);
-}
-
-.foot b {
-  color: var(--ink);
-}
-
-/* The copied-to-clipboard confirmation, in the stack bar where the button is. */
-.copied {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--teal);
-}
-
-/* ---- before anything is declared ------------------------------------------ */
-.hint {
-  flex: 0 0 auto;
-  margin-bottom: 12px;
-  padding: 9px 11px;
-  border: 1.5px solid var(--coral);
-  background: var(--paper);
-  font-size: 10.5px;
-  line-height: 1.5;
-  color: var(--muted);
-}
-
-.hint b {
-  color: var(--coral);
-}
-
-/* ---- the folds: one card per C -------------------------------------------- */
-/* A fold is not a layer, so it is not a row in the stack — it is the thing that
-   JOINS two of them, and it gets a section of its own under the storeys. */
-.folds {
-  flex: 0 0 auto;
-  margin-top: 18px;
-}
-
-.folds-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 0 2px 8px;
-  border-bottom: 1px solid var(--hair);
-}
-
-.folds-head b {
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.folds-head small {
-  font-size: 9.5px;
-  color: var(--muted);
-}
-
-.fold {
-  margin-top: 8px;
-  padding: 8px 9px;
-  border: 1.5px solid var(--edge2);
-  background: var(--paper);
-}
-
-.fold-title {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-bottom: 7px;
-}
-
-/* The C itself, drawn as the letter rather than an icon: it is what the shape is
-   called throughout this page, and a glyph keeps the row the height of its text. */
-.fold-c {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 auto;
-  border: 1.5px solid var(--edge2);
-  border-radius: 50%;
-  background: var(--teal);
-  color: #fffaf0;
-  font-family: Georgia, serif;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.fold-title b {
-  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.fold-title em {
-  margin-left: auto;
-  font-style: normal;
-  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 9.5px;
-  font-weight: 700;
-}
-
-/* A fold that climbs nothing is a fold doing no work — the two runs are on one
-   plane and the crease has no face at all. Worth seeing at a glance. */
-.fold-title em[data-climb='none'] {
-  color: var(--danger);
-}
-
-.fold-title em[data-climb='yes'] {
-  color: var(--teal);
-}
-
-.arm {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 3px 0;
-}
-
-.arm + .arm {
-  border-top: 1px solid var(--hair);
-}
-
-/* UPPER / LOWER is the whole point of the row, so it leads it. */
-.arm i {
-  flex: 0 0 62px;
-  font-style: normal;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.arm b {
-  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.arm .lvl {
-  margin-left: auto;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-}
-
-.arm .swatch {
-  flex: 0 0 auto;
-}
-
-/* The fold drawn side-on. Sized in the card rather than by its viewBox so the
-   two arms keep the same apparent thickness whatever climb they are showing. */
-.c-shape {
-  display: block;
-  width: 100%;
-  height: auto;
-  margin: 2px 0 7px;
-  background: var(--cream);
-  border: 1px solid var(--hair);
-}
-
-/* Which of the Z lab's three turns this fold is, and the separation it was read
-   from. Marked as the lab's answer rather than this page's, because it is. */
+/* ---- the fold ------------------------------------------------------------- */
 .zrow {
   display: flex;
   align-items: baseline;
   gap: 7px;
-  padding: 2px 0 5px;
+  padding: 0 0 5px;
   font-size: 9.5px;
   color: var(--muted);
-}
-
-.zrow em {
-  margin-left: auto;
-  font-style: normal;
-  font-size: 8.5px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  opacity: 0.7;
 }
 
 .mode {
@@ -362,4 +277,128 @@
 
 .mode[data-mode='carry-on'] {
   border-color: var(--line);
+}
+
+.zrow em {
+  margin-left: auto;
+  font-style: normal;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+.zrow em[data-climb='none'] {
+  color: var(--danger);
+}
+
+.zrow em[data-climb='yes'] {
+  color: var(--teal);
+}
+
+/* The fold in side elevation. The planes are the frame rather than an
+   annotation, so the drawing sits on the cream the scene uses and the rules run
+   the full width of it. */
+.side {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0 0 6px;
+  background: var(--cream);
+  border: 1px solid var(--hair);
+}
+
+.side .pl {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 8.5px;
+  fill: var(--muted);
+}
+
+.side .pl.on {
+  fill: var(--ink);
+  font-weight: 700;
+}
+
+.side .pl.seam {
+  font-size: 7.5px;
+  fill: var(--teal);
+}
+
+.side .arm-id {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  fill: #171713;
+}
+
+.arm {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 0;
+}
+
+.arm + .arm {
+  border-top: 1px solid var(--hair);
+}
+
+.arm i {
+  flex: 0 0 58px;
+  font-style: normal;
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.arm b {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.arm.self b {
+  color: var(--coral);
+}
+
+.arm .lvl {
+  margin-left: auto;
+}
+
+.hintline {
+  margin-top: 5px;
+  font-size: 9.5px;
+  font-style: italic;
+  color: var(--muted);
+}
+
+/* ---- before anything is declared, and the note under the stack ------------ */
+.hint {
+  flex: 0 0 auto;
+  margin-bottom: 12px;
+  padding: 9px 11px;
+  border: 1.5px solid var(--coral);
+  background: var(--paper);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.hint b {
+  color: var(--coral);
+}
+
+.foot {
+  flex: 0 0 auto;
+  margin-top: 14px;
+  padding: 10px 11px;
+  border: 1.5px solid var(--edge2);
+  background: var(--cream);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.foot b {
+  color: var(--ink);
 }

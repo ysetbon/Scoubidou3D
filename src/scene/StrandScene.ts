@@ -619,7 +619,7 @@ export class StrandScene {
    */
   private buildWeaveOverlays(): void {
     this.weaveOverlays.clear();
-    if (this.mode !== 'weave') return;
+    if (this.mode !== 'weave' && !this.layerPicking) return;
 
     this.current.strands.forEach((strand, i) => {
       const line = this.world3D[i];
@@ -673,9 +673,16 @@ export class StrandScene {
     for (const [id, mesh] of this.weaveOverlays) {
       const pending = id === this.weavePendingOverId;
       const hovered = id === this.weaveHoverId && !pending;
-      mesh.visible = pending || hovered;
+      const picked = id === this.selectedStrandId && !pending && !hovered;
+      mesh.visible = pending || hovered || picked;
       if (!mesh.visible) continue;
       const mat = mesh.material as THREE.MeshBasicMaterial;
+      if (picked) {
+        // The studio's own "this one" colour, the coral every active control takes.
+        mat.color.set(0xff5c35);
+        mat.opacity = 0.55;
+        continue;
+      }
       // A hover while a strand is already held previews the UNDER half of the
       // pair; anything else is an over.
       mat.color.set(hovered && this.weavePendingOverId ? 0x2f7bd6 : 0x2fb862);
@@ -1600,6 +1607,55 @@ export class StrandScene {
 
   // ---- masks (over/under) --------------------------------------------------
   private crossingFacts: CrossingFact[] = [];
+
+  /**
+   * Keep the per-strand pick ribbons up outside the weave tool.
+   *
+   * `buildWeaveOverlays` already builds exactly what is needed to answer "which
+   * LAYER is this?" — one ribbon per strand, along that strand's own centreline,
+   * carrying its own id — because a merged lace is one mesh over many strands and
+   * cannot answer it. It was gated on the weave tool because that is the only
+   * place that asked. The fold lab asks the same question, so it opens the same
+   * gate rather than growing a second answer.
+   */
+  private layerPicking = false;
+
+  /** The layer the fold lab has selected, lit in the studio's own pick colour. */
+  private selectedStrandId: string | null = null;
+
+  setLayerPicking(on: boolean): void {
+    if (this.layerPicking === on) return;
+    this.layerPicking = on;
+    this.buildWeaveOverlays();
+  }
+
+  /** Which strand is under this client point, or null. */
+  pickStrandAt(clientX: number, clientY: number): string | null {
+    const rect = this.canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    this.raycaster.setFromCamera(
+      new THREE.Vector2(
+        ((clientX - rect.left) / rect.width) * 2 - 1,
+        -((clientY - rect.top) / rect.height) * 2 + 1,
+      ),
+      this.camera,
+    );
+    // Non-recursive, and against the OVERLAYS rather than the bodies: three's
+    // raycaster ignores `visible`, so an unlit overlay still answers a ray.
+    const hit = this.raycaster.intersectObjects(this.weaveGroup.children, false)[0];
+    return (hit?.object.userData.strandId as string | undefined) ?? null;
+  }
+
+  /** Light one layer, or none. */
+  selectStrand(id: string | null): void {
+    this.selectedStrandId = id;
+    this.applyWeaveHighlight();
+  }
+
+  getSelectedStrand(): string | null {
+    return this.selectedStrandId;
+  }
+
 
   /**
    * Every crossing the last build resolved, and who rode over at it.
