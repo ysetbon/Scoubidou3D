@@ -18,6 +18,7 @@
 // this file, and the sweep that builds it in ribbon.ts.
 
 import { Vec3 } from './vec';
+import { zTurn } from './zturn';
 
 /** Corners gentler than this are left alone — a sampled curve is a polyline of
  *  very slight corners, and rounding those would soften the curve itself. */
@@ -246,6 +247,73 @@ function creaseShear(t: { x: number; y: number }, m: { x: number; y: number }): 
  * storey's worth of step to place, and can carry more of it here rather than ramp
  * it away; see FOLD_STACK in StrandScene.
  */
+/**
+ * Replace a fold's crease with the storey TURN the Z band lab settled on.
+ *
+ * `easeFolds` leaves the crease a crease: the two runs are stepped apart at one
+ * vertex and whatever the step will not carry is ramped back into them. That is
+ * the right shape for a fold with nothing to climb. It is the wrong one the
+ * moment there is a storey to make, because the climb then happens over no
+ * in-plane length at all — a cliff at a point, which reads as a flat Z.
+ *
+ * The lab's answer is three pieces, and the middle one alone is not enough:
+ *
+ *     leg out at the lower storey · half-turn tip of radius step/2 ·
+ *     leg back at the upper storey
+ *
+ * A tip on its own is a knuckle. A plane curve that turns exactly half a turn
+ * and rises exactly one storey cannot be much deeper than half that storey at a
+ * steady turning rate, so the depth has to be bought with turning that does not
+ * rise — and the straight legs are that turning-free depth. See docs/z-lab.md.
+ *
+ * The turn is fitted so its TIP lands where the crease was: the lace keeps the
+ * reach the model gave it, and the turn is cut into the runs either side rather
+ * than added on the end of them. A fold without enough straight run to seat the
+ * legs is left as it was — better a crease than a turn poking through the weave.
+ */
+export function zFolds(pts: Vec3[], legLength: number): void {
+  const folds = foldsOf(pts);
+  if (folds.length === 0) return;
+
+  // Last to first: each splice changes the length, and folds after the one being
+  // replaced would have their indices shifted out from under them.
+  for (let k = folds.length - 1; k >= 0; k--) {
+    const f = folds[k];
+    const p = pts[f.index];
+    const zIn = p.zIn ?? p.z;
+    const zOut = p.zOut ?? p.z;
+    const h = Math.max(Math.abs(zOut - zIn) / 2, 1e-4);
+    const span = legLength + h; // leg, then the tip reaching h further
+
+    let lo = f.index;
+    for (let d = 0; lo > 0 && d < span; lo--) {
+      d += Math.hypot(pts[lo].x - pts[lo - 1].x, pts[lo].y - pts[lo - 1].y);
+    }
+    let hi = f.index;
+    for (let d = 0; hi < pts.length - 1 && d < span; hi++) {
+      d += Math.hypot(pts[hi].x - pts[hi + 1].x, pts[hi].y - pts[hi + 1].y);
+    }
+    if (lo >= f.index || hi <= f.index) continue; // no run to seat the legs in
+    if (lo < 1 || hi > pts.length - 2) continue; // and a neighbour each side to read the heading off
+
+    // Seat the turn on the heading the run ACTUALLY has where it is cut, not on
+    // the one it has at the crease. Rounding leaves the last stretch curving
+    // slightly, and a leg laid along the crease's heading meets the run at a
+    // visible angle — a seam right where the turn is supposed to grow out of it.
+    const din = { x: pts[lo].x - pts[lo - 1].x, y: pts[lo].y - pts[lo - 1].y };
+    const dout = { x: pts[hi + 1].x - pts[hi].x, y: pts[hi + 1].y - pts[hi].y };
+    const turn = zTurn({
+      from: { x: pts[lo].x, y: pts[lo].y },
+      din: Math.hypot(din.x, din.y) > 1e-9 ? din : f.din,
+      dout: Math.hypot(dout.x, dout.y) > 1e-9 ? dout : f.dout,
+      zIn,
+      zOut,
+      leg: legLength,
+    });
+    pts.splice(lo, hi - lo + 1, ...turn);
+  }
+}
+
 export function easeFolds(pts: Vec3[], stack: number, reach: number): void {
   const folds = foldsOf(pts);
   if (folds.length === 0 || reach <= 0) return;

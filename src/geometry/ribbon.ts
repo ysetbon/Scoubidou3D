@@ -179,7 +179,11 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   // face reaches past the crease, so there is no spike; the faces coincide, so
   // there is no notch.
   const folds = new Map<number, Fold>();
-  for (const f of foldsOf(pts)) folds.set(f.index, f);
+  // A vertex that carries its own frame was built as a TURN, not left as a
+  // crease (polyline.ts `zFolds`). In plan it still doubles back, so `foldsOf`
+  // still finds it — but creasing it would drive a seam through the middle of a
+  // smooth half-turn and tear the strip open. It is not a fold any more.
+  for (const f of foldsOf(pts)) if (!pts[f.index].up) folds.set(f.index, f);
 
   interface Section {
     p: Vec3;
@@ -187,6 +191,17 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     up: Vec3; // thickness axis, pitched with the climb
     shear: number; // tips the face over onto the crease
     crease: boolean; // second face of a fold: the section turns over here
+    /**
+     * The across-axis, when the in-plane perpendicular will not do.
+     *
+     * Normally "across" is the perpendicular of the heading in XY, dead level, so
+     * the lace never rolls about its own axis. A half-turn tip is the one place
+     * that fails twice over: the path goes straight up there, so the in-plane
+     * heading degenerates and its perpendicular is noise — and the strip really is
+     * rolling, so a level across-axis is the wrong answer even where it is
+     * defined. A turn therefore hands the sweep the axis square to its own frame.
+     */
+    side?: Vec3;
   }
   // The thickness axis for a run heading `t` at gradient `slope`: leant back over
   // the heading just enough to stand square to the climb.
@@ -203,6 +218,32 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   for (let i = 0; i < pts.length; i++) {
     const f = folds.get(i);
     if (!f) {
+      // An explicit frame wins over the derived one: see Vec3.up.
+      const given = pts[i].up;
+      if (given) {
+        const a = pts[Math.max(0, i - 1)];
+        const b = pts[Math.min(pts.length - 1, i + 1)];
+        const tan = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
+        const tl = Math.hypot(tan.x, tan.y, tan.z) || 1;
+        tan.x /= tl;
+        tan.y /= tl;
+        tan.z /= tl;
+        const sd = {
+          x: given.y * tan.z - given.z * tan.y,
+          y: given.z * tan.x - given.x * tan.z,
+          z: given.x * tan.y - given.y * tan.x,
+        };
+        const sl = Math.hypot(sd.x, sd.y, sd.z) || 1;
+        plan.push({
+          p: pts[i],
+          t: tangents[i],
+          up: given,
+          shear: 0,
+          crease: false,
+          side: { x: sd.x / sl, y: sd.y / sl, z: sd.z / sl },
+        });
+        continue;
+      }
       plan.push({ p: pts[i], t: tangents[i], up: upOf(tangents[i], slopes[i]), shear: 0, crease: false });
       continue;
     }
@@ -255,16 +296,24 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   for (let i = 1; i < plan.length; i++) {
     const prev = plan[i - 1].t;
     const t = plan[i].t;
-    const flipped = plan[i].crease || -t.y * -prev.y + t.x * prev.x < 0;
+    // A point carrying its own across-axis is inside a turn whose frame already
+    // rotates continuously. The in-plane heading reverses somewhere in the middle
+    // of that turn, and flipping the winding there would tear the strip open at
+    // the very place it is meant to be smoothest.
+    const flipped = plan[i].side
+      ? false
+      : plan[i].crease || -t.y * -prev.y + t.x * prev.x < 0;
     mirrored.push(flipped ? !mirrored[i - 1] : mirrored[i - 1]);
   }
 
   for (let i = 0; i < plan.length; i++) {
-    const { p, t, up, shear } = plan[i];
+    const { p, t, up, shear, side } = plan[i];
     // In-plane side normal (perpendicular to tangent, in XY): (-ty, tx). It stays
-    // level whatever the climb, so the lace never rolls about its own axis.
-    const sx = -t.y;
-    const sy = t.x;
+    // level whatever the climb, so the lace never rolls about its own axis —
+    // unless the point brought its own, which a turn does.
+    const sx = side ? side.x : -t.y;
+    const sy = side ? side.y : t.x;
+    const sz = side ? side.z : 0;
     const ringIdx: number[] = [];
     for (let j = 0; j < m; j++) {
       const s = section[mirrored[i] ? m - 1 - j : j];
@@ -273,7 +322,7 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
       const d = shear * u; // slide along the heading to reach the crease line
       const x = p.x + sx * u + t.x * d + up.x * v;
       const y = p.y + sy * u + t.y * d + up.y * v;
-      const z = p.z + up.z * v;
+      const z = p.z + sz * u + up.z * v;
       ringIdx.push(positions.length / 3);
       positions.push(x, y, z);
     }

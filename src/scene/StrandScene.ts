@@ -43,9 +43,10 @@ import {
 import { sampleCenterline } from '../geometry/bezier';
 import { buildRibbonGeometry } from '../geometry/ribbon';
 import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
-import { easeFolds, easeSteps, roundCorners } from '../geometry/polyline';
+import { easeFolds, easeSteps, roundCorners, zFolds } from '../geometry/polyline';
 import { Anchor, arcLengths, heightField, polylineCrossings } from '../geometry/weave';
 import { Vec2, Vec3 } from '../geometry/vec';
+import { LEG_PER_WIDTH } from '../geometry/zturn';
 
 // Source (pixel) units -> world units. Keeps camera distances comfortable.
 const SCALE = 0.02;
@@ -800,19 +801,18 @@ export class StrandScene {
       // is exactly what the sublevel model exposes: a crease that climbs from one
       // named plane to another has a step of its own, and capping it at a global
       // 2t would ramp the difference into the runs and flatten the C.
-      let stack = thickness * FOLD_STACK;
-      if (this.sublevels) {
-        for (const p of line) {
-          if (p.zIn === undefined || p.zOut === undefined) continue;
-          stack = Math.max(stack, Math.abs(p.zOut - p.zIn));
-        }
-      }
-      easeFolds(line, stack, thickness * 2);
+      // With planes declared the crease is replaced by the storey turn from the Z
+      // band lab — but AFTER the corner rounding below, because the turn's points
+      // carry their own sweep frame and rounding would not know to keep it.
+      if (!this.sublevels) easeFolds(line, thickness * FOLD_STACK, thickness * 2);
       // Then walk up any step left at a gentle joint — a level break between two
       // members of the lace puts one storey's worth of height there, and without a
       // crease to climb at it has to be ramped into the runs instead.
       easeSteps(line, width);
       const rounded = roundCorners(line, width * 0.5);
+      // leg, half-turn tip of radius step/2, leg — see docs/z-lab.md. The leg is
+      // a ratio of the lace's width, so the turn is the same shape on any lace.
+      if (this.sublevels) zFolds(rounded, width * LEG_PER_WIDTH);
       this.laceCenterlines.push({ chain: chain.map((m) => m.index), line: rounded, width, thickness });
       const mesh = this.buildStrandMesh(first, rounded, [true, true]);
       if (!mesh) {

@@ -23,6 +23,17 @@ export interface Vec3 {
    */
   zIn?: number;
   zOut?: number;
+  /**
+   * The thickness axis to sweep with HERE, when the point knows better than the
+   * sweep can work out.
+   *
+   * The sweep normally derives "up" from the local gradient, which is right for
+   * a run and undefined for a half-turn tip — there the path goes straight up,
+   * the gradient is infinite and the strip is in the middle of rolling right
+   * over. A turn built by `zTurn` therefore carries its own frame, and the sweep
+   * uses it instead of guessing. Absent everywhere else, so nothing changes.
+   */
+  up?: { x: number; y: number; z: number };
 }
 
 export const vadd = (a: Vec2, b: Vec2): Vec2 => ({ x: a.x + b.x, y: a.y + b.y });
