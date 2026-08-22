@@ -240,16 +240,40 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
         tan.x /= tl;
         tan.y /= tl;
         tan.z /= tl;
+        // Square the given frame to the path before using it. A turn hands over
+        // the frame it was BUILT with, and that frame is only perpendicular to
+        // the path the turn drew: its legs leave zTurn dead flat, so a vertical
+        // thickness axis is right for them. They do not stay flat. `restore`
+        // (polyline.ts) gives the legs back the dips the weave had put in that
+        // stretch, and a leg carrying a crossing climbs — measured at a gradient
+        // of 0.68 while its axis still stood straight up, 47 degrees off square.
+        // `up x tan` then falls to 0.72 of its length and the across-axis it
+        // yields is skew, so the cross-section shears round and the bight funnels
+        // to a point.
+        //
+        // Projecting the tangential component out pitches the axis onto the
+        // slope, which is exactly what `upOf` does for every ordinary run point
+        // — the same rule, applied to a frame that arrived with an opinion about
+        // roll. The roll survives (it is the component across the path, which
+        // this leaves alone), so the tip still turns the strip over.
+        const drift = given.x * tan.x + given.y * tan.y + given.z * tan.z;
+        const sq = {
+          x: given.x - tan.x * drift,
+          y: given.y - tan.y * drift,
+          z: given.z - tan.z * drift,
+        };
+        const ql = Math.hypot(sq.x, sq.y, sq.z);
+        const up = ql > 1e-6 ? { x: sq.x / ql, y: sq.y / ql, z: sq.z / ql } : given;
         const sd = {
-          x: given.y * tan.z - given.z * tan.y,
-          y: given.z * tan.x - given.x * tan.z,
-          z: given.x * tan.y - given.y * tan.x,
+          x: up.y * tan.z - up.z * tan.y,
+          y: up.z * tan.x - up.x * tan.z,
+          z: up.x * tan.y - up.y * tan.x,
         };
         const sl = Math.hypot(sd.x, sd.y, sd.z) || 1;
         plan.push({
           p: pts[i],
           t: tangents[i],
-          up: given,
+          up,
           shear: 0,
           crease: false,
           side: { x: sd.x / sl, y: sd.y / sl, z: sd.z / sl },

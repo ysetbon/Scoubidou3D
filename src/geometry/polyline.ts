@@ -359,7 +359,11 @@ export function zFolds(pts: Vec3[], legLength: number): void {
     // visible angle — a seam right where the turn is supposed to grow out of it.
     const din = { x: src[lo].x - src[lo - 1].x, y: src[lo].y - src[lo - 1].y };
     const dout = { x: src[hi + 1].x - src[hi].x, y: src[hi + 1].y - src[hi].y };
-    const legSteps = 10;
+    // The lab's own sampling: 20 along each leg, 56 round the tip. Half that
+    // left the tip visibly faceted at a lace this wide, and the facets read as
+    // creases in a surface whose whole point is that it is smooth.
+    const legSteps = 20;
+    const tipSteps = 56;
     const turn = zTurn({
       from: { x: src[lo].x, y: src[lo].y },
       din: Math.hypot(din.x, din.y) > 1e-9 ? din : f.din,
@@ -371,6 +375,7 @@ export function zFolds(pts: Vec3[], legLength: number): void {
       legOut,
       face: face[k],
       legSteps,
+      tipSteps,
     });
 
     // Give the legs back whatever the WEAVE had put in this stretch.
@@ -480,17 +485,21 @@ export function zFolds(pts: Vec3[], legLength: number): void {
     // its middle, always beside the FIRST fold's C: the lace is walked from
     // the head arm, so the head turn's exit is the one that lands mid-model.
     //
-    // So the miss is eased into the second half of the turn, from the apex
-    // out, smoothstepped so the slope matches at both ends. The tip keeps the
-    // lab's shape and the seam at the apex does not move; only the exit half
-    // leans over to arrive at `src[hi]` exactly — in plan, because the run's
-    // heights here belong to the weave and `restore` below owns those.
+    // So the residual is eased into the OUTGOING LEG alone, smoothstepped from
+    // the tip's end so the slope matches where it starts. The tip is the lab's
+    // rolled crease and nothing may touch it: an earlier version spread this
+    // from the apex outward, which bent half the bight, and the strip tucked
+    // into itself right at the roll — a flat strap being asked to bend in its
+    // own plane, which is the one thing it cannot do. A leg is where a fold
+    // borrows plan bend by construction (see zturn.ts's LEAN 1), so a leg is
+    // where this belongs. In plan only: the heights along here are the weave's
+    // and `restore` below owns them.
     const last = turn.length - 1;
     const missX = src[hi].x - turn[last].x;
     const missY = src[hi].y - turn[last].y;
-    const apex = legSteps + Math.ceil((last - 2 * legSteps) / 2);
-    for (let k = apex + 1; k <= last; k++) {
-      const u = (k - apex) / (last - apex);
+    const tipEnd = legSteps + tipSteps;
+    for (let k = tipEnd + 1; k <= last; k++) {
+      const u = (k - tipEnd) / (last - tipEnd);
       const w = u * u * (3 - 2 * u);
       turn[k].x += missX * w;
       turn[k].y += missY * w;
