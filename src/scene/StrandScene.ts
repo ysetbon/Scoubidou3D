@@ -244,6 +244,11 @@ export interface RenderParams {
    * The widest a turn's roll may get, in lace widths. See TURN_ROLL_DEFAULT.
    */
   turnRoll: number;
+  /**
+   * How tall one storey is, in strand thicknesses — the middle-to-middle
+   * distance between two levels. See `levelStepSource`.
+   */
+  storeyStep: number;
   layerGap: number; // base lift between consecutive layers, source units (small)
   widthScale: number; // multiplier applied to every strand width
   outline: boolean; // draw the stroke-colored outline shell
@@ -258,6 +263,36 @@ export interface RenderParams {
    */
   weaveDepth: number;
   weaveSpan: number; // crossing pulse width, as a multiple of the crossing widths
+  /**
+   * How the two laces at a crossing SHARE the climb between the sub-levels,
+   * -1..+1. At 0 they split it: one rises to `over`, the other sinks to `under`,
+   * each half the gap from `middle`. At +1 the lace ducking under stays on
+   * `middle` and the one riding over does all the travelling; at -1 the reverse.
+   *
+   * The gap between the two is the same at every setting — this only moves where
+   * the pair sits inside its storey. That is worth a knob because a real weave is
+   * rarely symmetric: pull one cord taut and it runs straight while the other
+   * wraps around it, and which of the two gives is what makes a stitch look
+   * pulled tight rather than slack.
+   */
+  weaveBias: number;
+  /**
+   * Keep the swing inside one storey. See `weaveAmplitude`: with storeys in play
+   * a crossing that swings further than the storey is tall climbs into the
+   * storeys above and below, and a stacked stitch opens into a spiral. On is the
+   * behaviour every scene has always had; off is here to SEE that, and to let a
+   * deliberately loose weave out of its box.
+   */
+  weaveCapToStorey: boolean;
+  /**
+   * Weave crossings whose two strands sit on DIFFERENT storeys. Off — the
+   * long-standing behaviour — a level break is taken as the whole statement: one
+   * storey simply passes above the other and the crossing is left alone (an
+   * explicit mask still gets its over/under). On, those crossings weave too,
+   * about the midpoint of the two storeys, which is what a stitch that laces
+   * between rounds actually does.
+   */
+  weaveAcrossLevels: boolean;
   // OSS `enable_third_control_point`: offer the centre square as a third handle,
   // and let a locked centre bend the curve through itself (bezier.ts).
   thirdControlPoint: boolean;
@@ -268,6 +303,9 @@ export const DEFAULT_PARAMS: RenderParams = {
   turnLeg: TURN_LEG_DEFAULT,
   turnRamp: TURN_RAMP_DEFAULT,
   turnRoll: TURN_ROLL_DEFAULT,
+  // Two thicknesses: a woven round is a lace over a lace, and that is how tall
+  // it comes out. See `levelStepSource`.
+  storeyStep: 2,
   // Base lift between layers. The weave picks over/under at every CROSSING on its
   // own (adaptive amplitude), so this only needs to separate strands that overlap
   // WITHOUT crossing (a plain parallel stack) — and it's what gives the ordered
@@ -282,6 +320,12 @@ export const DEFAULT_PARAMS: RenderParams = {
   // is what a crossing is. `thickness` is 26 above, and the two travel here.
   weaveDepth: 26,
   weaveSpan: 1.3,
+  // Even split, capped to the storey, storeys left un-woven: between them these
+  // three are exactly the behaviour that predates them, so a scene that never
+  // touches the bench renders as it always did.
+  weaveBias: 0,
+  weaveCapToStorey: true,
+  weaveAcrossLevels: false,
   // On, matching the running desktop canvas (strand_drawing_canvas.py sets it
   // true even though the settings dialog defaults it off).
   thirdControlPoint: true,
@@ -901,7 +945,12 @@ export class StrandScene {
           // They cross in plan only; in space one simply passes above the other.
           // An explicit mask is the exception: the user asking for an over/under
           // there gets one, woven about the midpoint of the two storeys.
-          if (masked === null && this.strandLevel[i] !== this.strandLevel[j]) continue;
+          if (
+            masked === null &&
+            !this.params.weaveAcrossLevels &&
+            this.strandLevel[i] !== this.strandLevel[j]
+          )
+            continue;
           const over = masked ?? j;
           const under = over === i ? j : i;
           // Half-separation: enough that the two ribbons don't interpenetrate, as
@@ -919,11 +968,14 @@ export class StrandScene {
           // depend on how far apart the two sit in the layer panel, or a lace
           // masked over several strands ramps instead of riding flat.
           const plane = this.crossingPlaneZ(i, j);
+          // Who does the travelling. The two heights stay `2h` apart whatever the
+          // bias is — it slides the pair as a unit, it does not open or close it.
+          const bias = Math.max(-1, Math.min(1, this.params.weaveBias));
           for (const c of crossings) {
             const sOver = over === i ? c.sA : c.sB;
             const sUnder = under === i ? c.sA : c.sB;
-            anchors[over].push({ s: sOver, radius, z: plane + h });
-            anchors[under].push({ s: sUnder, radius, z: plane - h });
+            anchors[over].push({ s: sOver, radius, z: plane + h * (1 + bias) });
+            anchors[under].push({ s: sUnder, radius, z: plane - h * (1 - bias) });
           }
         }
       }
@@ -1214,7 +1266,7 @@ export class StrandScene {
    * bottom round — level 4 sitting no higher than level 3.
    */
   private levelStepSource(): number {
-    return 2 * this.params.thickness;
+    return this.params.storeyStep * this.params.thickness;
   }
 
   /**
@@ -1249,7 +1301,7 @@ export class StrandScene {
     // half of it.
     const rest = (thicknessOver + thicknessUnder) / 4;
     let h = Math.max((this.params.weaveDepth * SCALE) / 2, rest);
-    if (this.current.levelBreaks.length > 0) {
+    if (this.params.weaveCapToStorey && this.current.levelBreaks.length > 0) {
       const room = (this.levelStepSource() * SCALE - Math.max(thicknessOver, thicknessUnder)) / 2;
       h = Math.min(h, Math.max(room, 0));
     }
@@ -1284,6 +1336,32 @@ export class StrandScene {
    */
   getStrandLevels(): number[] {
     return [...this.strandLevel];
+  }
+
+  /**
+   * The three heights each storey is built around, bottom to top.
+   *
+   * A level is not one plane but three. `middle` is the plane the storey weaves
+   * about — where the centre of a lace's thickness sits when it is doing neither
+   * of the other two. `over` is where a lace riding over a crossing goes, `under`
+   * where the one ducking under goes. The two share the climb, evenly unless
+   * `weaveBias` says otherwise, so the pair ends up `over - under` apart — which
+   * is what "resting on each other" means when it equals one thickness.
+   *
+   * Read by anything drawing or measuring the stack rather than building it.
+   */
+  getLevelPlanes(): Array<{ level: number; under: number; middle: number; over: number }> {
+    const t = this.params.thickness * SCALE;
+    const h = this.weaveAmplitude(t, t);
+    const bias = Math.max(-1, Math.min(1, this.params.weaveBias));
+    return [...this.levelPlaneZ.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([level, middle]) => ({
+        level,
+        under: middle - h * (1 - bias),
+        middle,
+        over: middle + h * (1 + bias),
+      }));
   }
 
   /**

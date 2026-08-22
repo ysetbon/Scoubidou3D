@@ -41,6 +41,9 @@
 
     .check { display: flex; align-items: center; gap: 8px; margin: 0 0 9px; font-size: 13px; }
     .check input { accent-color: #e0857a; }
+    /* A checkbox's explanation sits under it, not inside the label: in the row it
+       would stretch the tick to the height of the paragraph. */
+    small.note { display: block; color: #6d645d; font-size: 11.5px; line-height: 1.45; margin: -5px 0 11px 22px; }
 
     .row { display: flex; gap: 6px; margin: 0 0 12px; }
     .row button {
@@ -75,6 +78,11 @@
     .warn { color: #e0c07a; }
     .bad  { color: #ff6b5e; }
     .pin  { color: #7fb6e8; }
+    /* These three match the three planes exactly, so the table teaches which
+       colour is which height without a legend. */
+    .over { color: #e0857a; }
+    .mid  { color: #9a9088; }
+    .under{ color: #5fa8dc; }
     .verdict { font-size: 12.5px; color: #9a9088; margin: 10px 0 2px; line-height: 1.5; }
     .verdict b { color: #f0e9dd; font-weight: 600; }
 

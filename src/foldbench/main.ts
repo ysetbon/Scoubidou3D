@@ -27,6 +27,7 @@
 // and update live on the drag; and PIN holds a column of them so a change can
 // be judged against where it started rather than against memory.
 
+import * as THREE from 'three';
 import { RenderParams, StrandScene } from '../scene/StrandScene';
 import { makeSample } from '../model/samples';
 import { parseSceneText } from '../model/sceneIO';
@@ -47,6 +48,7 @@ const FOLD_TURN = (60 * Math.PI) / 180;
  * it is opened.
  */
 const SCENES: Array<{ key: string; label: string; has: string }> = [
+  { key: 'box-stitch-4', label: 'Box stitch — 4 levels', has: 'everything, small enough to read' },
   { key: 'two-crossing', label: 'Two crossing strands', has: 'weave' },
   { key: 'woven-mat', label: 'Woven mat', has: 'weave' },
   { key: 'diagonal', label: 'Diagonal basket', has: 'weave' },
@@ -60,7 +62,7 @@ const SCENES: Array<{ key: string; label: string; has: string }> = [
 const view = new StrandScene(canvas);
 view.setTheme('dark');
 
-let sceneKey = 'box-stitch-10';
+let sceneKey = 'box-stitch-4';
 view.setScene(makeSample(sceneKey));
 
 // ---- measuring --------------------------------------------------------------
@@ -77,7 +79,7 @@ interface Reading {
   /** Which knob is currently being overruled by something else, if any. A
    *  reader who drags a control and sees nothing move needs to be told what is
    *  holding it, or the bench has taught them the control is broken. */
-  held: string[];
+  held: Array<{ lead: string; text: string }>;
 }
 
 const median = (xs: number[]): number => (xs.length ? xs[xs.length >> 1] : 0);
@@ -176,18 +178,31 @@ function measure(): Reading {
   // StrandScene — `weaveAmplitude`'s storey cap and `TURN_ROLL_DEFAULT`'s floor —
   // and exist because both of them make a slider go quiet, which is otherwise
   // indistinguishable from a broken one.
-  const held: string[] = [];
-  if (view.getScene().levelBreaks.length > 0 && p.weave && p.weaveDepth > p.thickness) {
-    held.push(
-      'Depth is held at resting by the storey — a crossing has to fit inside one, ' +
-        'so past a thickness the slider stops mattering. Open a scene with no level breaks to see it move.',
-    );
+  const held: Array<{ lead: string; text: string }> = [];
+  const storeyed = view.getScene().levelBreaks.length > 0;
+  if (storeyed && p.weaveCapToStorey && p.weave && p.weaveDepth > p.storeyStep * p.thickness - p.thickness) {
+    held.push({
+      lead: 'Held: ',
+      text:
+        'Depth is held by the storey — a crossing has to fit inside one, so past what the storey ' +
+        'can hold the slider stops mattering. Raise Storey height, or turn the cap off to let it out.',
+    });
+  }
+  if (storeyed && !p.weaveCapToStorey && p.weaveDepth > p.storeyStep * p.thickness - p.thickness) {
+    held.push({
+      lead: 'Out of the storey: ',
+      text:
+        'over and under now reach past the storey above and below, which is what turns a stacked ' +
+        'stitch into a spiral. The planes show where they went.',
+    });
   }
   if (view.laceCenterlines.some((L) => L.width * p.turnRoll - L.thickness < L.thickness)) {
-    held.push(
-      'Roll cap is at its floor — one thickness, the two runs touching, which is the least a fold can be. ' +
+    held.push({
+      lead: 'Held: ',
+      text:
+        'Roll cap is at its floor — one thickness, the two runs touching, which is the least a fold can be. ' +
         'Below this the slider cannot shrink the turn any further.',
-    );
+    });
   }
 
   return {
@@ -203,9 +218,123 @@ function measure(): Reading {
   };
 }
 
+// ---- the three heights of a storey -----------------------------------------
+//
+// A level is not one plane but three, and the model has always had all of them —
+// it just never drew any. `middle` is the plane the storey weaves about, where
+// the centre of a lace's thickness sits when it is doing neither of the other
+// two. `over` is where a lace riding over a crossing goes, `under` where the one
+// ducking under goes.
+//
+// Drawing them is what turns "the weave is capped by the storey" from a sentence
+// into something you can see: drag Depth and watch over and under slide apart
+// until the storey's own height stops them.
+
+const UNDER = 0x5fa8dc;
+const MIDDLE = 0x9a9088;
+const OVER = 0xe0857a;
+
+/** Everything drawn by the bench rather than by the model, so it can all be
+ *  cleared in one go without touching the laces. */
+const marks = new THREE.Group();
+view.scene.add(marks);
+
+let showPlanes = true;
+let focusLevel: number | null = null; // null = every storey at once
+
+function clearMarks(): void {
+  for (const child of [...marks.children]) {
+    marks.remove(child);
+    const m = child as THREE.Mesh;
+    m.geometry?.dispose();
+    (m.material as THREE.Material)?.dispose?.();
+  }
+}
+
+/** The scene's footprint, so a plane is drawn the size of what rests on it. */
+function footprint(): { cx: number; cy: number; r: number } | null {
+  let lo = Infinity;
+  let hi = -Infinity;
+  let loY = Infinity;
+  let hiY = -Infinity;
+  for (const L of view.getWovenCenterlines()) {
+    if (!L) continue;
+    for (const p of L) {
+      lo = Math.min(lo, p.x);
+      hi = Math.max(hi, p.x);
+      loY = Math.min(loY, p.y);
+      hiY = Math.max(hiY, p.y);
+    }
+  }
+  if (!Number.isFinite(lo)) return null;
+  return { cx: (lo + hi) / 2, cy: (loY + hiY) / 2, r: Math.max(hi - lo, hiY - loY) / 2 + 0.6 };
+}
+
+function drawPlanes(): void {
+  clearMarks();
+  if (!showPlanes) return;
+  const foot = footprint();
+  if (!foot) return;
+  const size = foot.r * 2;
+  for (const L of view.getLevelPlanes()) {
+    const focused = focusLevel === null || focusLevel === L.level;
+    // An unfocused storey keeps a hairline so the stack still reads as a stack,
+    // but gives the eye nothing to catch on.
+    for (const [z, colour] of [
+      [L.under, UNDER],
+      [L.middle, MIDDLE],
+      [L.over, OVER],
+    ] as Array<[number, number]>) {
+      const geom = new THREE.PlaneGeometry(size, size);
+      const mat = new THREE.MeshBasicMaterial({
+        color: colour,
+        transparent: true,
+        opacity: focused ? 0.2 : 0.03,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.position.set(foot.cx, foot.cy, z);
+      marks.add(mesh);
+      // A rim, so a plane seen edge-on is still a line rather than nothing.
+      const edge = new THREE.LineSegments(
+        new THREE.EdgesGeometry(geom),
+        new THREE.LineBasicMaterial({
+          color: colour,
+          transparent: true,
+          opacity: focused ? 0.85 : 0.12,
+        }),
+      );
+      edge.position.copy(mesh.position);
+      marks.add(edge as unknown as THREE.Mesh);
+    }
+  }
+  view.renderer.render(view.scene, view.camera);
+}
+
+/** Level with the stack and square to it, so the three planes of a storey read
+ *  as three lines rather than three sheets seen edge-on at a slant. */
+function sideView(): void {
+  const foot = footprint();
+  const planes = view.getLevelPlanes();
+  if (!foot || planes.length === 0) return;
+  const lo = Math.min(...planes.map((p) => p.under));
+  const hi = Math.max(...planes.map((p) => p.over));
+  const cz = (lo + hi) / 2;
+  const cam = view.camera;
+  const span = Math.max(foot.r * 2, hi - lo);
+  const dist = span / (2 * Math.tan((cam.fov * Math.PI) / 360)) * 1.5;
+  cam.position.set(foot.cx, foot.cy - dist, cz + span * 0.06);
+  view.controls.target.set(foot.cx, foot.cy, cz);
+  cam.lookAt(view.controls.target);
+  view.controls.update();
+  view.renderer.render(view.scene, cam);
+}
+
 // ---- the panel --------------------------------------------------------------
 
 let pinned: Reading | null = null;
+let levelRow: HTMLElement | null = null;
 let readBody: HTMLTableSectionElement | null = null;
 let verdictEl: HTMLElement | null = null;
 let hasEl: HTMLElement | null = null;
@@ -270,6 +399,7 @@ function check(
   label: string,
   on: boolean,
   set: (v: boolean) => void,
+  note?: string,
 ): void {
   const wrap = el('label', 'check');
   const input = el('input') as HTMLInputElement;
@@ -283,6 +413,9 @@ function check(
   wrap.appendChild(input);
   wrap.appendChild(el('span', undefined, label));
   host.appendChild(wrap);
+  // Outside the label, not inside it: `.check` is a one-line flex row and a note
+  // in there stretches the tick to the height of the paragraph.
+  if (note) host.appendChild(el('small', 'note', note));
 }
 
 const param = (patch: Partial<RenderParams>): void => view.setParams(patch);
@@ -347,6 +480,9 @@ function build(): void {
   for (const [label, go] of [
     ['Fit', () => view.fitView()],
     ['Top', () => view.topView()],
+    // The storeys are a vertical story, and neither of the other two shows it:
+    // Fit looks down at an angle and Top looks straight through the stack.
+    ['Side', () => sideView()],
   ] as Array<[string, () => void]>) {
     const b = el('button', undefined, label);
     b.addEventListener('click', go);
@@ -384,6 +520,39 @@ function build(): void {
   slider(weave, 'Span', p.weaveSpan, 0.4, 3, 0.05,
     'How far a crossing’s influence reaches along the lace, in crossing widths.',
     (v) => param({ weaveSpan: v }));
+
+  // ---- levels ----
+  const levels = section(bench, 'Levels', 'three heights each');
+  slider(levels, 'Storey height', p.storeyStep, 1, 6, 0.1,
+    'How tall one storey is, in thicknesses — middle to middle. Two is a lace over a lace, which is what a woven round comes to. It also caps the weave: over and under have to fit inside it.',
+    (v) => param({ storeyStep: v }));
+  check(levels, 'Show z sub-levels', showPlanes, (v) => {
+    showPlanes = v;
+  });
+  // Everything below CHANGES the strands against the sub-levels rather than
+  // drawing them: each one moves where a crossing's two laces end up inside
+  // their storey.
+  slider(levels, 'Who climbs', p.weaveBias, -1, 1, 0.05,
+    'How the two laces at a crossing share the climb. 0 splits it — one to over, one to under. ' +
+      '+1 leaves the lace ducking under flat on middle and makes the one riding over do all of it; ' +
+      '−1 the reverse. The gap between them never changes, only where the pair sits.',
+    (v) => param({ weaveBias: v }));
+  check(levels, 'Keep the weave inside its storey', p.weaveCapToStorey,
+    (v) => param({ weaveCapToStorey: v }),
+    'On, over and under are pulled back so the pair fits between this storey and the next — which is ' +
+      'what keeps a stacked stitch stacked. Off, a generous Depth swings them clean through the ' +
+      'storeys above and below.');
+  check(levels, 'Weave across storeys', p.weaveAcrossLevels,
+    (v) => param({ weaveAcrossLevels: v }),
+    'Off, two laces on different storeys are left alone where they cross — the level break has already ' +
+      'said one passes above the other. On, they weave about the midpoint of the two, which drags them ' +
+      'together: watch the air rows go negative on a stitch that was fine without it.');
+  const lvlNote = el('small', undefined,
+    'Every storey is three planes: under (blue) where a lace ducking under goes, middle (grey) where the centre of its thickness sits, over (coral) where a lace riding over goes. Pick one storey to bring its three forward. Inside a storey, Who climbs moves the pair; Storey height and the cap decide how much room they have; Weave across storeys decides whether a crossing between two of them is resolved at all.');
+  lvlNote.style.cssText = 'display:block;color:#6d645d;font-size:11.5px;line-height:1.45;margin:2px 0 10px';
+  levels.appendChild(lvlNote);
+  levelRow = el('div', 'row');
+  levels.appendChild(levelRow);
 
   // ---- layers ----
   const layers = section(bench, 'Layers', 'overlapping, not crossing');
@@ -466,6 +635,30 @@ function row(label: string, now: string, nowCls: string, was: string, sep = fals
   readBody.appendChild(tr);
 }
 
+/** The storey picker, rebuilt on every paint because the count comes from the
+ *  scene: four storeys of box stitch, ten, or none at all. */
+function paintLevels(): void {
+  if (!levelRow) return;
+  levelRow.textContent = '';
+  const planes = view.getLevelPlanes();
+  if (planes.length <= 1) {
+    const only = el('small', undefined, 'This scene has one storey — nothing to step through.');
+    only.style.cssText = 'color:#6d645d;font-size:11.5px';
+    levelRow.appendChild(only);
+    return;
+  }
+  const pick = (label: string, value: number | null): void => {
+    const b = el('button', focusLevel === value ? 'on' : undefined, label);
+    b.addEventListener('click', () => {
+      focusLevel = value;
+      paint();
+    });
+    levelRow!.appendChild(b);
+  };
+  pick('All', null);
+  for (const L of planes) pick(String(L.level + 1), L.level);
+}
+
 function paint(): void {
   const m = measure();
   const P = pinned;
@@ -497,7 +690,29 @@ function paint(): void {
       P ? `${P.tiltMax.toFixed(0)}°` : '—');
     row('run over 30°', `${m.steepShare.toFixed(0)}%`, m.steepShare > 25 ? 'warn' : 'good',
       P ? `${P.steepShare.toFixed(0)}%` : '—');
+    // The storey under the picker, spelled out: the three heights it is built
+    // around and the gap the weave is opening inside it.
+    const planes = view.getLevelPlanes();
+    const L = focusLevel === null ? null : planes.find((q) => q.level === focusLevel);
+    if (L) {
+      const t0 = view.getParams().thickness * SCALE;
+      row(`storey ${L.level + 1} · over`, L.over.toFixed(3), 'over', '—', true);
+      row(`storey ${L.level + 1} · middle`, L.middle.toFixed(3), 'mid', '—');
+      row(`storey ${L.level + 1} · under`, L.under.toFixed(3), 'under', '—');
+      // Who is doing the climbing, in the same units as the gap below: at an
+      // even split these two match, and Who climbs is exactly what parts them.
+      row('middle → over', `${((L.over - L.middle) / t0).toFixed(2)}t`, 'over', '—', true);
+      row('middle → under', `${((L.middle - L.under) / t0).toFixed(2)}t`, 'under', '—');
+      // The one that says whether the weave inside this storey has closed: one
+      // thickness apart is the pair resting on each other.
+      const t = view.getParams().thickness * SCALE;
+      row('over − under', `${(L.over - L.under).toFixed(3)}  (${((L.over - L.under) / t).toFixed(2)}t)`,
+        Math.abs((L.over - L.under) / t - 1) < 0.06 ? 'good' : 'warn', '—');
+    }
   }
+
+  paintLevels();
+  drawPlanes();
 
   if (verdictEl) {
     verdictEl.textContent = '';
@@ -519,7 +734,7 @@ function paint(): void {
         ' inside each other. Widest turn is in lace widths. What a turn refuses to carry the runs ramp,' +
         ' so tightening Roll cap pushes the last two rows up.',
     );
-    for (const h of m.held) line('Held: ', h);
+    for (const h of m.held) line(h.lead, h.text);
   }
 }
 
