@@ -231,7 +231,10 @@ const EDIT_NAMES: Record<DragState['kind'], string> = {
 export interface RenderParams {
   thickness: number; // default ribbon depth, source units
   /**
-   * How long the straight legs of a turn are, world units. See
+   * How long the straight legs of a turn are, world units. `foldTurn` takes this
+   * signed, and a negative leg — the turn pulled back inside the run rather than
+   * standing off its joint — is a shape the construction can make; the splice
+   * cannot yet place it. See `laceGauge` for what blocks it, and
    * TURN_LEG_DEFAULT.
    */
   turnLeg: number;
@@ -1155,6 +1158,13 @@ export class StrandScene {
       width,
       thickness,
       round: 0.96, // the sweep's own corner: 0.48 of the thickness, either side
+      // Clamped to zero even though `foldTurn` now takes a signed reach, because
+      // the SPLICE cannot yet place a turn whose nose sits behind its joint:
+      // `spliceFolds` clamps its solve with `a = Math.max(0, ...)`, so a turn
+      // that wants the run EXTENDED past the joint gets a run that stops at it
+      // instead, and the uncapped join tears open. Driven at leg -0.3 on
+      // box-stitch-4 that shows as flat slabs through the ribbon. Lifting this
+      // means teaching the splice to overlap the runs, not just widening a range.
       reach: Math.max(0, this.params.turnLeg),
       ramp: Math.max(0, this.params.turnRamp),
       auto: AUTO_DEFAULT,

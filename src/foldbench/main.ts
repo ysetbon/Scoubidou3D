@@ -682,7 +682,10 @@ function build(): void {
     'World units. Four times this is the furthest an oblique crease may walk the strip sideways as it rolls.',
     (v) => param({ turnRamp: v }));
   slider(fold, 'Leg length', p.turnLeg, 0, 2, 0.05,
-    'The straight legs either side of the tip. At 0 the turn is the bare knuckle and the crease sits on the bisector whatever the lean says.',
+    'The straight legs either side of the tip. At 0 the turn is the bare knuckle and the crease sits on ' +
+      'the bisector whatever the lean says. It stands the turn OFF its joint; nothing here pulls it back ' +
+      'inside the run, so nothing here moves the nose closer — the roll cap sets how tall a turn is and the ' +
+      'ramp how far its crease may walk, and neither is that.',
     (v) => param({ turnLeg: v }));
   slider(fold, 'Roll cap', p.turnRoll, 0.4, 4, 0.05,
     'The widest a turn may measure, in lace widths. What the crease refuses, the runs ramp — watch the steepest run below.',

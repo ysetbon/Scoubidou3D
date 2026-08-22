@@ -314,14 +314,26 @@ export function foldTurn(
 ): Turn {
   const a = norm(din);
   const swing = heading(din, dout);
-  const len = Math.max(g.reach, 0);
+  // Signed. A POSITIVE leg walks out from the joint before the tip, which is
+  // what a turn with room to spare does. A NEGATIVE one walks back the way the
+  // lace came, so the tip sits BEHIND the joint and the whole turn is pulled
+  // inside the run rather than standing off it — the arc bends the other way
+  // too, since its radius is `len / bend`. Both are the same construction with
+  // the same rings; only the sign of the step differs, so nothing here needs a
+  // second branch.
+  //
+  // It is worth having because a turn that stands off its joint is the one thing
+  // that cannot be tightened by any of the other knobs: the roll cap sets how
+  // TALL the turn is, the ramp how far the crease may walk sideways, and neither
+  // moves the nose. Negative reach is the only control over that distance.
+  const len = g.reach;
   // A leg of no length has nowhere to put a bend, so it cannot hold one: at zero
   // reach the lean is not a choice the geometry can express and the crease goes
   // back on the bisector, where the tip turns the heading the whole way on its
   // own. Left unclamped the legs collapse to a twist in place — rings sharing a
   // centre with their width axes rotating between them, which is a fan of
   // self-crossing slivers rather than a piece of lace.
-  const legOn = len > 1e-9;
+  const legOn = Math.abs(len) > 1e-9;
   const lean = legOn ? Math.max(0, Math.min(1, g.lean)) : 0;
   // A square crease turns the heading a half turn, taken the way the lace is
   // already going. Lean says how much of the way there the crease is, and the
