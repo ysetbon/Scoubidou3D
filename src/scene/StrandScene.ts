@@ -972,6 +972,9 @@ export class StrandScene {
           // nudge off each strand's own resting height: the displacement must not
           // depend on how far apart the two sit in the layer panel, or a lace
           // masked over several strands ramps instead of riding flat.
+          const clearance = ((this.strandThicknessWorld(strands[over]) +
+            this.strandThicknessWorld(strands[under])) / 2) * 1.15;
+          if (this.declaredClears(over, under, clearance)) continue;
           const plane = this.crossingPlaneZ(i, j);
           for (const c of crossings) {
             const sOver = over === i ? c.sA : c.sB;
@@ -1383,9 +1386,38 @@ export class StrandScene {
    *  mask): halfway between them, so the mask still lifts one clear of the other
    *  by the same amount it would anywhere else. */
   private crossingPlaneZ(i: number, j: number): number {
+    // With planes declared they are the statement, so a crossing swings about the
+    // two runs' OWN heights rather than about the storey they happen to share.
+    // Swinging about the storey overrode the declaration: a run was pinned to
+    // `storey ± t/2` at every crossing, and on a stitch whose arms are barely
+    // longer than they are wide the crossings cover the whole run, so the plane
+    // it was supposed to rest on never showed. Measured on two crossing strands:
+    // arms declared `top` and cores `bottom`, two thicknesses apart, came out
+    // resting at ±0.258 against a thickness of 0.52 — half a thickness each side
+    // of the storey, which is the swing and nothing else.
+    if (this.sublevels) {
+      return ((this.baseZ[i] ?? 0) + (this.baseZ[j] ?? 0)) / 2;
+    }
     const a = this.levelPlaneZ.get(this.strandLevel[i] ?? 0) ?? 0;
     const b = this.levelPlaneZ.get(this.strandLevel[j] ?? 0) ?? 0;
     return (a + b) / 2;
+  }
+
+  /**
+   * Does the declared assignment already settle this crossing?
+   *
+   * Two runs whose planes put them a clear thickness apart, the right way up, do
+   * not need weaving: they pass at the heights they were given and the over/under
+   * is already true. Anchoring them anyway would drag both back toward one shared
+   * plane — the swing is half a thickness either side, so a pair declared two
+   * thicknesses apart would be pulled to one — which is the declaration being
+   * overruled by the thing it was supposed to drive.
+   */
+  private declaredClears(over: number, under: number, clearance: number): boolean {
+    if (!this.sublevels) return false;
+    const zOver = this.baseZ[over] ?? 0;
+    const zUnder = this.baseZ[under] ?? 0;
+    return zOver - zUnder >= clearance;
   }
 
 /**
