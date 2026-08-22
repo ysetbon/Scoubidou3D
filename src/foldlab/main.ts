@@ -262,8 +262,13 @@ function sideView(id: string, colour: string): SVGElement | null {
   // the turn doubles back in plan, and an unrolled axis lays the return run out
   // beyond the outward one, so the C comes out as a ramp. Projected, the two runs
   // overlap where they really do overlap and the turn draws itself as a C.
-  let dx = own[own.length - 1].x - own[0].x;
-  let dy = own[own.length - 1].y - own[0].y;
+  // Mirrored deliberately: a strand's START is the end that hangs off its parent,
+  // so the fold is at `own[0]`. Projecting away from it would put the turn on the
+  // left with the run trailing off to the right, which reads backwards — the eye
+  // wants to follow the run IN and arrive at the turn. So x increases toward the
+  // fold and the C lands on the right, as in the drawing this was asked to match.
+  let dx = own[0].x - own[own.length - 1].x;
+  let dy = own[0].y - own[own.length - 1].y;
   let dl = Math.hypot(dx, dy);
   if (dl < 1e-9) {
     // A run that ends where it started has no direction to project onto; fall
@@ -634,7 +639,8 @@ function build(): void {
   stackbar.appendChild(el('span', 'stack-title', 'Layers'));
 
   const derive = el('button', 'pill');
-  derive.textContent = declared ? 'Re-read weave' : 'Plane from weave';
+  derive.textContent = 'Weave';
+  derive.title = 'Re-read every plane from the over/unders the scene resolved';
   derive.addEventListener('click', () => {
     fromTheWeave(view.getCrossings());
     push();
@@ -654,8 +660,9 @@ function build(): void {
   stackbar.appendChild(all);
 
   if (anyHidden()) {
-    const showAll = el('button', 'pill');
-    showAll.textContent = 'Show all';
+    const showAll = el('button', 'pill square');
+    showAll.textContent = '◍';
+    showAll.title = 'Show every layer again';
     showAll.addEventListener('click', () => {
       for (const q of scene.strands) q.visible = true;
       view.rebuild();

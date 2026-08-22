@@ -43,7 +43,7 @@ import {
 import { sampleCenterline } from '../geometry/bezier';
 import { buildRibbonGeometry } from '../geometry/ribbon';
 import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
-import { easeFolds, easeSteps, roundCorners, zFolds } from '../geometry/polyline';
+import { easeFolds, easeSteps, roundCorners, zFolds, zHalfFold } from '../geometry/polyline';
 import { Anchor, arcLengths, heightField, polylineCrossings } from '../geometry/weave';
 import { Vec2, Vec3 } from '../geometry/vec';
 import { LEG_PER_WIDTH } from '../geometry/zturn';
@@ -762,7 +762,10 @@ export class StrandScene {
       const back = new Set<number>([seed]);
       for (;;) {
         const p = partner.get(`${head}:${headIn}`);
-        if (!p || back.has(p.index)) break;
+        // A hidden neighbour ends the chain rather than being walked into: it has
+        // no centreline to merge, and stopping here is what lets the run keep its
+        // own half of the turn (below) instead of losing the fold entirely.
+        if (!p || back.has(p.index) || !this.world3D[p.index]) break;
         back.add(p.index);
         head = p.index;
         headIn = (1 - p.side) as 0 | 1;
@@ -778,12 +781,24 @@ export class StrandScene {
         visited.add(cur);
         chain.push({ index: cur, reversed: inSide === 1 });
         const p = partner.get(`${cur}:${(1 - inSide) as 0 | 1}`);
-        if (!p) break;
+        if (!p || !this.world3D[p.index]) break;
         cur = p.index;
         inSide = p.side;
       }
 
-      if (chain.length < 2) continue;
+      // The two ends of the chain, and whether each one folds onto a strand that
+      // is not being drawn. That is what a half turn hangs off.
+      const tailIndex = chain[chain.length - 1].index;
+      const tailSide = (chain[chain.length - 1].reversed ? 0 : 1) as 0 | 1;
+      const headStub = partner.get(`${chain[0].index}:${headIn}`);
+      const tailStub = partner.get(`${tailIndex}:${tailSide}`);
+      const headHidden = headStub && !this.world3D[headStub.index] ? headStub : null;
+      const tailHidden = tailStub && !this.world3D[tailStub.index] ? tailStub : null;
+
+      // A lone strand is normally left to mesh on its own. It goes through the
+      // lace path instead when it has a turn to carry, because that is where the
+      // turn is built.
+      if (chain.length < 2 && !(this.sublevels && (headHidden || tailHidden))) continue;
       const first = strands[chain[0].index];
       const ok = chain.every((m) => this.world3D[m.index] && sameLook(strands[m.index], first));
       if (!ok) {
@@ -836,7 +851,14 @@ export class StrandScene {
       const rounded = roundCorners(line, width * 0.5);
       // leg, half-turn tip of radius step/2, leg — see docs/z-lab.md. The leg is
       // a ratio of the lace's width, so the turn is the same shape on any lace.
-      if (this.sublevels) zFolds(rounded, width * LEG_PER_WIDTH);
+      if (this.sublevels) {
+        zFolds(rounded, width * LEG_PER_WIDTH);
+        // Half a turn at either end whose partner is hidden: this run climbs to
+        // the apex, where the other one would take over. See zHalfFold.
+        const leg = width * LEG_PER_WIDTH;
+        if (tailHidden) zHalfFold(rounded, 'end', this.baseZ[tailHidden.index] ?? 0, leg);
+        if (headHidden) zHalfFold(rounded, 'start', this.baseZ[headHidden.index] ?? 0, leg);
+      }
       this.laceCenterlines.push({ chain: chain.map((m) => m.index), line: rounded, width, thickness });
       const mesh = this.buildStrandMesh(first, rounded, [true, true]);
       if (!mesh) {

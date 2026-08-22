@@ -510,3 +510,15 @@
 .layer.off .layer-sum .bad {
   margin-left: 0;
 }
+
+/* The bar carries five controls beside the title on a 344px panel, so the title
+   gives way first rather than the buttons wrapping or being clipped. */
+.stackbar .stack-title {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.stackbar .pill.square {
+  min-width: 30px;
+  padding: 0;
+}

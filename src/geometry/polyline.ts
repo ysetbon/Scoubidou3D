@@ -352,6 +352,69 @@ export function zFolds(pts: Vec3[], legLength: number): void {
   }
 }
 
+/**
+ * Half a turn, at a run whose fold partner is not being drawn.
+ *
+ * A fold belongs to two strands, and so does the turn that makes it: the tip is
+ * where they meet, so half the C is this strand's and half is the neighbour's.
+ * Hide the neighbour and the whole turn used to vanish, which is wrong twice
+ * over — this run really does climb to the apex before anything of the other one
+ * begins, and a layer shown on its own should carry the part of the turn that
+ * belongs to it.
+ *
+ * So the run keeps its leg and its quarter-circle up to the apex, and stops
+ * there: at the mid-height between the two planes, which is exactly where the
+ * neighbour would take over. The seam is the truth of the thing rather than a
+ * cut, and `zPartner` is where the hidden run rests, which is still known.
+ */
+export function zHalfFold(
+  pts: Vec3[],
+  end: 'start' | 'end',
+  zPartner: number,
+  legLength: number,
+): void {
+  const n = pts.length;
+  if (n < 3) return;
+  const tip = end === 'end' ? n - 1 : 0;
+  const step = end === 'end' ? -1 : 1;
+  const zIn = pts[tip].z;
+  const h = Math.max(Math.abs(zPartner - zIn) / 2, 1e-4);
+  const span = legLength + h;
+
+  let lo = tip;
+  for (let d = 0; d < span; ) {
+    const next = lo + step;
+    if (next < 0 || next >= n) break;
+    d += Math.hypot(pts[next].x - pts[lo].x, pts[next].y - pts[lo].y);
+    lo = next;
+  }
+  if (Math.abs(lo - tip) < 2) return; // no run to seat a leg in
+
+  const inner = lo + step; // one step further into the run, for the heading
+  if (inner < 0 || inner >= n) return;
+  const din = { x: pts[inner].x - pts[lo].x, y: pts[inner].y - pts[lo].y };
+  if (Math.hypot(din.x, din.y) < 1e-9) return;
+
+  const legSteps = 10;
+  const tipSteps = 28;
+  const turn = zTurn({
+    from: { x: pts[lo].x, y: pts[lo].y },
+    din,
+    dout: { x: -din.x, y: -din.y },
+    zIn,
+    zOut: zPartner,
+    leg: legLength,
+    legSteps,
+    tipSteps,
+  });
+  // Leg, then the tip as far as its apex — half of a half-turn.
+  const half = turn.slice(0, legSteps + 1 + Math.round(tipSteps / 2));
+  if (half.length < 2) return;
+
+  if (end === 'end') pts.splice(lo, n - lo, ...half);
+  else pts.splice(0, tip - lo + 1, ...half.reverse());
+}
+
 export function easeFolds(pts: Vec3[], stack: number, reach: number): void {
   const folds = foldsOf(pts);
   if (folds.length === 0 || reach <= 0) return;
