@@ -32,14 +32,28 @@ before you rely on a row:
 evidence is search-result-level rather than read-off-the-company-site. Where a
 claim rests on an inference rather than a quote, the row says so.
 
-**The verification pass could not check most rows live** — it ran after the search
-budget was spent, so for whole segments it was reduced to refuting candidates from
-internal consistency and prior knowledge rather than from evidence. That turns out
-to be *more* useful than it sounds: reasoning alone killed six leads that looked
-perfect, mostly by noticing that the device in question was knitted, laser-cut, or
-a single wire rather than a braid. But it means **no row here is fact-checked to
-the standard of "someone loaded the page"**. Treat a Tier A row as "worth twenty
-minutes of confirming", not as "ready to send".
+**Only two of the seven segments were verified at all.** The refutation pass ran
+out of session budget partway through. Where it did run it could not fetch pages
+either, so it was reduced to refuting candidates from internal consistency and
+prior knowledge — which turned out to be *more* useful than it sounds: reasoning
+alone killed six leads that looked perfect, mostly by noticing that the device in
+question was knitted, laser-cut, or a single wire rather than a braid.
+
+| segment | verified? |
+| --- | --- |
+| Braiding machinery and composites | yes — reasoning only, no live fetches |
+| Braided medical devices | yes — reasoning only, plus a manual pass on the Israeli rows |
+| Textile CAD and digital fabrication | **no** |
+| Braid and knot mathematics | **no** |
+| Education, museums, craft | **no** |
+| GitHub and open source | **no** |
+| The dedicated Israel sweep | returned nothing — see [below](#what-could-not-be-established) |
+
+So: **no row here is fact-checked to the standard of "someone loaded the page"**,
+and four segments have had no adversarial pass whatever. Treat a Tier A row as
+"worth twenty minutes of confirming", not as "ready to send" — and treat the four
+unverified segments as a list of things to check rather than a list of things
+that are true.
 
 The rule that saved this document: an organisation is only a lead if the thing it
 makes is *many strands crossing over and under each other*. Knitting is loops.
@@ -276,6 +290,18 @@ it should.
   an empty market — the vertical exists everywhere else.
 - **Several medtech fit claims are inferences, not quotes** — Bendit, Ceretrieve
   and EndoStream are flagged inline. Check before writing, not after.
+- **Four of the seven segments were never adversarially checked**, and the
+  completeness critic — the pass whose whole job was to name what the seven
+  segments missed and go find it — never ran. Both stopped on session limits.
+  So the gaps below are *my* enumeration of what looks missing, not a researched
+  finding.
 - **Industries never swept at all:** jewellery and chain-making, hair braiding,
   fencing and mesh, filtration, furniture caning, sports stringing, marine rope,
-  tyre cord, hose reinforcement, architectural façades.
+  tyre cord, hose reinforcement, architectural façades. Each is an interlacement
+  industry; none was searched even once.
+- **Reach routes never enumerated:** which mailing list, Discord, subreddit or
+  LinkedIn group each audience actually reads, and which conference CFPs are open
+  right now with what deadline.
+
+The next run of this workflow should start with those three bullets, not with a
+fresh sweep of the segments that already produced 147 rows.
