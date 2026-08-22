@@ -48,6 +48,18 @@ export interface RibbonOptions {
    * body's face shows through it, and the rim still runs round the edges.
    */
   openFolds?: boolean;
+  /**
+   * Cull quads that have folded through themselves inside a TURN (a point run
+   * carrying its own frame — polyline's zFolds). The outline shell needs this
+   * for the same reason it needs openFolds: it is a ribbon grown a stroke-width
+   * fatter than the body, and inside the tip's concave pocket that extra girth
+   * has less room than its own width — it folds through itself, its reversed
+   * faces land in front of the body, and the rim floods the bight as a black
+   * star. The reversed quads are exactly the fold-through, and the body fills
+   * the pocket they covered. The BODY must not set this: its own tip quads are
+   * legitimate, and the same test would bite a hole in the surface.
+   */
+  cullFoldThrough?: boolean;
 }
 
 // A cross-section is a closed loop of {u, v} points in the local (side, up)
@@ -335,12 +347,37 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     if (opts.openFolds && plan[i + 1].crease) continue; // skip the fold's outer face
     const a = rings[i];
     const b = rings[i + 1];
+    // Inside a turn, cull any quad with a vertex walking BACKWARDS against the
+    // path. A ribbon fatter than the geometry it wraps — the outline shell is
+    // one, inflated a stroke-width past the body — folds through itself in the
+    // tip's concave pocket: its inner edge has less room than its own width,
+    // the reversed faces land in front of the body, and the rim floods the
+    // bight as a black star. A quad with one column reversed is a bowtie and a
+    // quad with both is inside the fold-through; the body fills the pocket
+    // either covers, and the silhouette rim never walks backwards — so both
+    // can go. Only rings carrying a turn frame are tested: everywhere else the
+    // shell is the studio's, and the studio's is left be.
+    // The test is taken IN PLAN, not in 3D: mid-roll the centreline climbs
+    // steeply, and the climb keeps a 3D dot positive even while the quad has
+    // crossed over in plan — which is where the fold-through actually lives.
+    const inTurn = opts.cullFoldThrough && plan[i].side && plan[i + 1].side;
+    const tX = plan[i + 1].p.x - plan[i].p.x;
+    const tY = plan[i + 1].p.y - plan[i].p.y;
     for (let j = 0; j < m; j++) {
       const j2 = (j + 1) % m;
       const v00 = a[j];
       const v01 = a[j2];
       const v10 = b[j];
       const v11 = b[j2];
+      if (inTurn) {
+        const s0 =
+          (positions[v10 * 3] - positions[v00 * 3]) * tX +
+          (positions[v10 * 3 + 1] - positions[v00 * 3 + 1]) * tY;
+        const s1 =
+          (positions[v11 * 3] - positions[v01 * 3]) * tX +
+          (positions[v11 * 3 + 1] - positions[v01 * 3 + 1]) * tY;
+        if (s0 < 0 || s1 < 0) continue;
+      }
       // Wound so face normals point OUTWARD (radially away from the centerline).
       // This matches Three's front-face convention, so MeshStandard lights the
       // outside and the BackSide outline shell reads as a silhouette rim. Where the

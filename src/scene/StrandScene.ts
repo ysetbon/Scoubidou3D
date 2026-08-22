@@ -1133,6 +1133,7 @@ export class StrandScene {
         openStart: !freeEnds[0],
         openEnd: !freeEnds[1],
         openFolds: true,
+        cullFoldThrough: true,
       });
       const outlineMat = new THREE.MeshBasicMaterial({
         color: threeColor(strand.stroke_color),

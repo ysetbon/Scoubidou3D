@@ -39,8 +39,14 @@ export const AUTO = { lo: 48, hi: 61, carry: 126, cap: 0.25 } as const;
 export type TurnMode = 'fold' | 'square' | 'carry-on';
 
 export function turnMode(separationDeg: number): TurnMode {
-  if (Math.abs(separationDeg) >= AUTO.carry) return 'carry-on';
-  return autoLean(separationDeg) > AUTO.cap / 2 ? 'square' : 'fold';
+  const sep = Math.abs(separationDeg);
+  if (sep >= AUTO.carry) return 'carry-on';
+  // The lab's caption: square 48-61. Below the plateau the crease is still
+  // mostly on the bisector and the fold is mostly a fold — a 24-degree
+  // separation leans an eighth of the way and deserves the name 'fold', not
+  // 'square'. Reading 'square' from lean > cap/2 called it square from 24
+  // degrees up, which is not what the lab published.
+  return sep >= AUTO.lo && sep <= AUTO.hi ? 'square' : 'fold';
 }
 
 /** The lab's gauge for the turn itself: Leg length against its lace width. The
@@ -201,21 +207,35 @@ export function zTurn(o: TurnOpts): Vec3[] {
     n = { x: -n.x, y: -n.y };
     dv = -dv;
   }
-  // The lab also walks the strip ALONG the crease as the tip turns, which is how
-  // a single turn standing on its own reaches its next storey. Here the runs are
-  // already where the weave put them, so there is nowhere to walk to: the tip
-  // turns in place between two runs the model has already positioned. Dropping it
-  // is the difference between borrowing the lab's angle and adopting its whole
-  // build — and at a dead fold-back, which is half of a box stitch's turns, the
-  // term is zero anyway.
+  // The strip also WALKS along the crease as the tip rolls — the lab's walk
+  // term, ported whole this time. An earlier port dropped it, reasoning that
+  // the runs are already where the weave put them so there was nowhere to walk
+  // to. That was exactly backwards. The walk is not optional travel bolted on:
+  // an oblique crease HAS to advance the strip along itself as it rolls — only
+  // a crease dead square to the strap (a 0-degree fold-back) rolls in place —
+  // and dropping it left every turn landing short of its outgoing run by
+  // pi*h/tan(tipTurn/2): measured 0.29 to 0.37 against a run step of ~0.19 on
+  // 24-degree folds, exactly this term's value there. The correction that
+  // papered over it bent the exit leg to reach the run, which is the SQUARE
+  // borrowing — legs bending in plan — smeared onto what the lab's own curve
+  // says should be a nearly pure fold at that separation. Fold the walk in and
+  // the legs go back to being straight, which is what 'fold' means.
+  //
+  // `k` is the walk per unit of tip profile, du/dv in the lab's terms. It
+  // diverges as the crease swings onto the strip's own length — where a fold
+  // stops being one — so the lab caps it; the cap is carried across scaled to
+  // the leg, the studio's own reach.
+  const du = inTip.x * c.x + inTip.y * c.y;
+  const k = Math.min(dv < 1e-9 ? Infinity : du / dv, (Math.max(o.leg, h) * 4) / (Math.PI * h));
   const base = legAt(o.from, a, 1, lenIn);
   for (let i = 1; i <= tipSteps; i++) {
     const phi = Math.PI * (i / tipSteps);
     const sin = Math.sin(phi);
     const cos = Math.cos(phi);
+    const walk = h * phi * k; // profile arclength times the crease rate
     out.push({
-      x: base.x + n.x * h * sin,
-      y: base.y + n.y * h * sin,
+      x: base.x + c.x * walk + n.x * h * sin,
+      y: base.y + c.y * walk + n.y * h * sin,
       z: mid - sign * h * cos,
       // Square to the crease and to the tip's own tangent, turning over with the
       // strip. Taken from the lab's own ring frame.
@@ -223,9 +243,10 @@ export function zTurn(o: TurnOpts): Vec3[] {
     });
   }
 
-  // The leg coming away, bending the rest of the way onto the outgoing run.
+  // The leg coming away, bending the rest of the way onto the outgoing run,
+  // from where the walk left the strip.
   const away = spin(inTip, tipTurn);
-  const tipEnd: Vec2 = { x: base.x, y: base.y };
+  const tipEnd: Vec2 = { x: base.x + c.x * h * Math.PI * k, y: base.y + c.y * h * Math.PI * k };
   for (let i = 1; i <= legSteps; i++) {
     const q = legAt(tipEnd, away, i / legSteps, lenOut);
     out.push({ x: q.x, y: q.y, z: mid + sign * h, up: DOWN });
