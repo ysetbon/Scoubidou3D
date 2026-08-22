@@ -402,3 +402,59 @@
 .foot b {
   color: var(--ink);
 }
+
+/* ---- pasting an assignment back in ---------------------------------------- */
+/* The other half of Copy: the sheet takes the panel over rather than sitting
+   beside it, because pasting is a whole-panel act and the stack underneath would
+   be showing the state you are about to replace. */
+.paste {
+  flex: 0 0 auto;
+  padding: 12px 13px;
+  border: 1.5px solid var(--edge2);
+  background: var(--paper);
+}
+
+.paste h4 {
+  margin: 0 0 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.paste p {
+  margin: 0 0 9px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.paste p.note {
+  margin: 9px 0 0;
+  color: var(--coral);
+  font-weight: 600;
+}
+
+.paste textarea {
+  display: block;
+  width: 100%;
+  padding: 8px 9px;
+  border: 1.5px solid var(--edge2);
+  background: var(--cream);
+  color: var(--ink);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.paste textarea:focus {
+  outline: 2px solid var(--coral);
+  outline-offset: 1px;
+}
+
+.paste .pill-row {
+  display: flex;
+  gap: 7px;
+  margin-top: 10px;
+}

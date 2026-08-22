@@ -60,6 +60,8 @@ const open = new Set<string>();
 let declared = false;
 let scrollKeep = 0;
 let selected: string | null = null;
+let pasting = false;
+let pasteNote = '';
 
 /** Select a layer from either end — a click in the canvas or a card in the panel.
  *  The 3D lights it and the panel opens it and scrolls to it, so the two views
@@ -259,6 +261,62 @@ function chip(id: string, small = false): HTMLButtonElement {
   return b;
 }
 
+/**
+ * Adopt a plane assignment from text — the other half of Copy.
+ *
+ * Reads the ledger's own `L1  1_5  rests on center` lines, so whatever Copy
+ * produced can go straight back in. It also takes the short form `1_5 top`, one
+ * per line, because the useful thing to hand back is usually a handful of
+ * corrections rather than the whole sheet — and anything it does not recognise is
+ * ignored rather than guessed at, with a count reported so a typo cannot pass for
+ * a setting silently.
+ *
+ * Only the resting planes are read. Everything else in the sheet — the crossings,
+ * the folds, the gaps — is DERIVED from those planes and the scene, so taking it
+ * as input would let the page assert something the geometry disagreed with.
+ */
+function applyLedger(text: string): { applied: number; unknown: string[]; skipped: number } {
+  const known = new Map(scene.strands.map((st) => [st.id.toLowerCase(), st.id]));
+  const planeOf = (w: string): PlaneId | null =>
+    (PLANES.find((q) => q.id === w.toLowerCase())?.id as PlaneId | undefined) ?? null;
+
+  const next = new Map(plane);
+  const unknown: string[] = [];
+  let applied = 0;
+  let skipped = 0;
+
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    let id: string | undefined;
+    let p: PlaneId | null = null;
+
+    const full = /^L\d+\s+(\S+)\s+rests\s+on\s+(\w+)/i.exec(line);
+    const short = /^(\S+)\s*[:=]?\s*(bottom|center|centre|top)$/i.exec(line);
+    if (full) {
+      id = known.get(full[1].toLowerCase());
+      p = planeOf(full[2] === 'centre' ? 'center' : full[2]);
+      if (!id) unknown.push(full[1]);
+    } else if (short) {
+      id = known.get(short[1].toLowerCase());
+      p = planeOf(short[2].toLowerCase() === 'centre' ? 'center' : short[2]);
+      if (!id) unknown.push(short[1]);
+    } else {
+      skipped++;
+      continue;
+    }
+    if (!id || !p) continue;
+    next.set(id, p);
+    applied++;
+  }
+
+  if (applied > 0) {
+    for (const [k, v] of next) plane.set(k, v);
+    declared = true;
+  }
+  return { applied, unknown, skipped };
+}
+
 /** Read a plane assignment off the weave the renderer already resolved. */
 function fromTheWeave(facts: CrossingFact[]): void {
   scene.strands.forEach((s, i) => {
@@ -419,6 +477,16 @@ function build(): void {
   });
   stackbar.appendChild(all);
 
+  const paste = el('button', 'pill square');
+  paste.textContent = '⇩';
+  paste.title = 'Paste an assignment back in';
+  paste.addEventListener('click', () => {
+    pasting = true;
+    pasteNote = '';
+    build();
+  });
+  stackbar.appendChild(paste);
+
   const copy = el('button', 'pill square');
   copy.textContent = '⧉';
   copy.title = 'Copy the whole assignment as text';
@@ -436,6 +504,56 @@ function build(): void {
 
   const stack = el('div', 'stack from-bottom');
   stack.addEventListener('scroll', () => (scrollKeep = stack.scrollTop));
+
+  if (pasting) {
+    const sheet = el('div', 'paste');
+    sheet.appendChild(el('h4', undefined, 'Paste an assignment'));
+    sheet.appendChild(
+      el('p', undefined,
+        'The ledger from Copy goes straight back in. Or one per line: 1_5 top'),
+    );
+    const ta = el('textarea');
+    ta.setAttribute('rows', '8');
+    ta.setAttribute('spellcheck', 'false');
+    ta.placeholder = 'L1  1_5  rests on center\n2_4 bottom';
+    sheet.appendChild(ta);
+    if (pasteNote) sheet.appendChild(el('p', 'note', pasteNote));
+    const row = el('div', 'pill-row');
+    const apply = el('button', 'pill coral');
+    apply.textContent = 'Apply';
+    apply.addEventListener('click', () => {
+      const r = applyLedger(ta.value);
+      pasteNote = r.applied
+        ? `Set ${r.applied} layer${r.applied === 1 ? '' : 's'}.` +
+          (r.unknown.length ? ` Not in this scene: ${r.unknown.join(', ')}.` : '')
+        : `Nothing recognised in ${r.skipped} line${r.skipped === 1 ? '' : 's'}.` +
+          (r.unknown.length ? ` Not in this scene: ${r.unknown.join(', ')}.` : '');
+      if (r.applied) pasting = false;
+      push();
+      build();
+    });
+    const cancel = el('button', 'pill ghost');
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => {
+      pasting = false;
+      pasteNote = '';
+      build();
+    });
+    row.appendChild(apply);
+    row.appendChild(cancel);
+    sheet.appendChild(row);
+    stack.appendChild(sheet);
+    panel.appendChild(stack);
+    ta.focus();
+    return;
+  }
+
+  if (pasteNote) {
+    const n = el('div', 'hint');
+    n.appendChild(el('b', undefined, 'Pasted. '));
+    n.appendChild(document.createTextNode(pasteNote));
+    stack.appendChild(n);
+  }
 
   if (!declared) {
     const b = el('div', 'hint');
