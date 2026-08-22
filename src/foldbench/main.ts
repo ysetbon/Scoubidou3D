@@ -149,7 +149,13 @@ function measure(): Reading {
     for (let b = a + 1; b < lines.length; b++) {
       const B = lines[b];
       if (!B) continue;
-      if (levels[a] !== levels[b]) continue;
+      // Two laces a storey apart cross in plan and nowhere else, and the weave
+      // is deliberately not asked to resolve them — counting those would report
+      // a storey as a gap that failed to close. UNLESS the user has switched
+      // cross-storey weaving on, in which case the weave IS asked, and skipping
+      // them made the panel's own promise that the toggle moves these rows a
+      // lie: the rows never moved.
+      if (!p.weaveAcrossLevels && levels[a] !== levels[b]) continue;
       for (let i = 1; i < A.length; i++) {
         for (let j = 1; j < B.length; j++) {
           const h = cross(A[i - 1], A[i], B[j - 1], B[j]);

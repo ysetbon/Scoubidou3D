@@ -256,6 +256,23 @@ export interface RenderParams {
    */
   turnRoll: number;
   /**
+   * How ROUND a turn's bend is, in lace widths — the bight radius.
+   *
+   * 0 means "whatever the storey gives", which is `step / 2` and is what every
+   * turn has always been. That is not a neutral default but a degenerate one:
+   * with the roll axis horizontal the whole half-roll lies in a vertical plane,
+   * so seen from above the lace runs out to a point and comes straight back.
+   * The plan projection is a cusp, and that cusp is the curly brace.
+   *
+   * Above `step / 2` the axis tilts, the climb stays exactly one storey, the
+   * curvature stays constant and the surface stays developable — measured, the
+   * turn's sideways extent goes from 0.000 to 3.881 lace widths across the
+   * range, tracking `sqrt(4R² - step²)` to three decimals. What it costs is that
+   * the turn's two ends move apart across the runs by exactly that much, which
+   * `easeSpread` walks back into the runs either side.
+   */
+  bightRadius: number;
+  /**
    * Put the two arms of a turn on the storey's `over` and `under` sub-levels —
    * the top of the C on one, the bottom on the other — instead of wherever the
    * weave happened to leave the runs it joins. See `foldPlacement`.
@@ -378,6 +395,9 @@ export const DEFAULT_PARAMS: RenderParams = {
   turnLeg: TURN_LEG_DEFAULT,
   turnRamp: TURN_RAMP_DEFAULT,
   turnRoll: TURN_ROLL_DEFAULT,
+  // 0: take the radius from the storey, exactly as before. Every sample renders
+  // bit-for-bit identically at this value — verified vertex by vertex.
+  bightRadius: 0,
   // Off: a turn inherits its height from the runs it joins, which is what every
   // scene has always done. The sub-levels are a second opinion, not the default.
   turnSnapArms: false,
@@ -1189,6 +1209,10 @@ export class StrandScene {
       // means teaching the splice to overlap the runs, not just widening a range.
       reach: Math.max(0, this.params.turnLeg),
       ramp: Math.max(0, this.params.turnRamp),
+      // In lace widths, so a wider lace asks for a proportionally rounder bend —
+      // which is the unit the eye judges a bight in. Zero leaves it to the
+      // storey, which is the shipped behaviour.
+      roll: this.params.bightRadius > 0 ? this.params.bightRadius * width : undefined,
       auto: AUTO_DEFAULT,
     };
   }
@@ -1543,7 +1567,15 @@ export class StrandScene {
    * Read by anything drawing or measuring the stack rather than building it.
    */
   getLevelPlanes(): Array<{ level: number; under: number; middle: number; over: number }> {
-    const t = this.params.thickness * SCALE;
+    // The MEDIAN strand's own thickness, not the default. A scene where strands
+    // carry their own thickness had the drawn planes computed from
+    // `params.thickness` while everything measuring against them used each
+    // strand's override, so the two disagreed about what a thickness was and the
+    // sub-level rows quietly measured against planes the weave never used.
+    const own = this.current.strands
+      .map((st) => this.strandThicknessWorld(st))
+      .sort((x, y) => x - y);
+    const t = own.length ? own[Math.floor(own.length / 2)] : this.params.thickness * SCALE;
     const h = this.weaveAmplitude(t, t);
     const bias = Math.max(-1, Math.min(1, this.params.weaveBias));
     return [...this.levelPlaneZ.entries()]

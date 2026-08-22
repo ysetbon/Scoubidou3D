@@ -305,6 +305,57 @@ function rampAway(
 }
 
 /**
+ * Open the two runs of a fold APART, across themselves, over `reach` of length.
+ *
+ * The plan sibling of `rampAway`, and the price of a bight. A half-roll of
+ * radius R that climbs `step` swings `sqrt(4R² - step²)` across the runs on its
+ * way round — geometry, not a choice — so its two ends no longer meet the runs
+ * where the runs are. Without this the turn is built with the offset and placed
+ * as though it had none, and the joins tear open.
+ *
+ * It also removes a degeneracy on the way past. The studio pins both runs of a
+ * dead fold-back on one line, which is exactly where `spliceFolds`'s 2x2 solve
+ * goes singular and has to fall back to a limit. Spread them and the solve is
+ * ordinary again.
+ *
+ * The two runs go opposite ways by half each, so the fold's own vertex stays
+ * where the scene put it. Smoothstepped, because a lace that arrives along a
+ * straight slope with a break at each end is the brace seen from a second angle.
+ */
+export function easeSpread(
+  pts: Vec3[],
+  offsetAt: (fold: Fold, index: number) => number,
+  reach: number,
+): void {
+  const folds = foldsOf(pts);
+  if (folds.length === 0 || reach <= 0) return;
+  const was = pts.map((p) => ({ x: p.x, y: p.y }));
+
+  folds.forEach((f, j) => {
+    const off = offsetAt(f, j);
+    if (Math.abs(off) < 1e-9) return;
+    // Across the crease, which is the direction the roll actually swings in.
+    const ax = -f.crease.y;
+    const ay = f.crease.x;
+    for (const dir of [-1, 1] as const) {
+      const delta = (dir * off) / 2;
+      let travelled = 0;
+      for (let k = f.index + dir; k >= 0 && k < pts.length; k += dir) {
+        travelled += Math.hypot(
+          was[k].x - was[k - dir].x,
+          was[k].y - was[k - dir].y,
+        );
+        if (travelled >= reach) break;
+        const u = 1 - travelled / reach;
+        const w = u * u * (3 - 2 * u);
+        pts[k].x = was[k].x + ax * delta * w;
+        pts[k].y = was[k].y + ay * delta * w;
+      }
+    }
+  });
+}
+
+/**
  * Walk a lace up a height step it meets at a GENTLE joint.
  *
  * Two strands glued end to end can rest on different levels — that is what a

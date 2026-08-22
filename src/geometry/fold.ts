@@ -41,6 +41,23 @@ export interface Gauge {
   round: number;
   /** How long the fold's straight legs are, world units. */
   reach: number;
+  /**
+   * The BIGHT RADIUS: how round the turn's bend is, world units.
+   *
+   * Omitted, it is `step / 2`, which is what the turn has always been — and
+   * that default is not a convenience, it is a degeneracy. A half-roll that
+   * enters level, reverses the heading and leaves level must have its circle in
+   * a vertical plane if its axis is horizontal, and therefore climbs exactly
+   * `2R`; so `R = step / 2` is forced, and the plan projection collapses to a
+   * straight line traversed twice. That cusp is the curly brace.
+   *
+   * Above `step / 2` the axis TILTS out of horizontal by `acos(step / 2R)`, the
+   * climb stays exactly `step`, the curvature stays constant at `1/R`, and the
+   * surface stays an exactly developable cylinder — the bend is still pure
+   * easy-way bending, nothing is stretched. What it costs is that the turn's two
+   * ends move apart across the runs by `sqrt(4R² - step²)`; see `easeSpread`.
+   */
+  roll?: number;
   /** 0 a dead fold-back, 1 straight through. See `blend`. */
   k: number;
   /** 0 an exact fold on the bisector, 1 a square fold. See `foldTurn`. */
@@ -382,28 +399,57 @@ export function foldTurn(
   // a fold stops being one — so it is capped there.
   const k = Math.min(dv < 1e-9 ? Infinity : du / dv, (g.ramp * 4) / (Math.PI * h));
   const base = legAt({ x: 0, y: 0 }, a, 1);
+
+  // The roll, about an axis tilted out of horizontal by `alpha`. The circle lies
+  // in the plane square to that axis, spanned by `n` and `c·sin - z·cos`:
+  //
+  //   P(t) = n·R sin t  +  c·R sinA (cos t - 1)  +  z·R cosA (1 - cos t)
+  //
+  // At alpha = 0 the middle term vanishes and this is exactly the curve the turn
+  // has always been — `n·R sin t` out and back with `z` climbing `2R` — so
+  // `R = step/2` reproduces the old rings term for term rather than merely
+  // closely. Above it the `c` term opens the plan out into a real arc.
+  //
+  // The climb is `2R cosA`, held at `step` by construction, so raising R buys
+  // roundness without changing what the turn is for.
+  const R = Math.max(g.roll ?? h, h);
+  const cosA = Math.min(1, h / R);
+  const sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
   for (let i = 1; i <= tipSteps; i++) {
     const phi = Math.PI * (i / tipSteps);
     const sin = Math.sin(phi);
     const cos = Math.cos(phi);
     const walk = h * phi * k; // profile arclength times the crease rate
+    // How far the roll has swung ACROSS the runs by now — zero at alpha 0.
+    const across = R * sinA * (cos - 1);
     const p: Vec3 = {
-      x: base.x + c.x * walk + n.x * h * sin,
-      y: base.y + c.y * walk + n.y * h * sin,
-      z: -h * cos,
+      x: base.x + c.x * (walk + across) + n.x * R * sin,
+      y: base.y + c.y * (walk + across) + n.y * R * sin,
+      z: -h + R * cosA * (1 - cos),
     };
-    const tan = norm3({ x: c.x * k + n.x * cos, y: c.y * k + n.y * cos, z: sin });
-    // The face normal, square to the crease and to the tip's own tangent. It
-    // turns right over as the strip does, which is what shows the other side
-    // coming out.
-    const up: Vec3 = { x: -n.x * sin, y: -n.y * sin, z: cos };
-    rings.push(ring3(p, norm3(cross3(up, tan)), up, sec));
+    const tan = norm3({
+      x: c.x * (k - R * sinA * sin) + n.x * R * cos,
+      y: c.y * (k - R * sinA * sin) + n.y * R * cos,
+      z: R * cosA * sin,
+    });
+    // The face normal is radial to the cylinder — square to the crease axis and
+    // to the tip's own tangent. It turns right over as the strip does, which is
+    // what shows the other side coming out.
+    const up: Vec3 = {
+      x: -c.x * sinA * cos - n.x * sin,
+      y: -c.y * sinA * cos - n.y * sin,
+      z: cosA * cos,
+    };
+    rings.push(ring3(p, norm3(cross3(norm3(up), tan)), norm3(up), sec));
   }
 
   // The leg coming away, upside down as the tip left it, bending the rest of
   // the way onto the outgoing run.
   const out = spin(inTip, tipTurn);
-  const tipEnd: Vec2 = { x: base.x + c.x * h * Math.PI * k, y: base.y + c.y * h * Math.PI * k };
+  // At phi = pi the roll has swung `2R sinA` across the runs, which is the whole
+  // price of a bight and is exactly `sqrt(4R² - step²)`.
+  const swung = h * Math.PI * k - 2 * R * sinA;
+  const tipEnd: Vec2 = { x: base.x + c.x * swung, y: base.y + c.y * swung };
   const down: Vec3 = { x: 0, y: 0, z: -1 };
   for (let i = 1; i <= legRings; i++) {
     const t = i / legRings;
@@ -516,6 +562,9 @@ export interface LaceGauge {
   reach: number;
   /** Ramp length, world units — and so the cap on a crease's slide, at 4×. */
   ramp: number;
+  /** Bight radius, world units. Omitted leaves it at `step / 2`. See
+   *  `Gauge.roll`. */
+  roll?: number;
   /** Which separation gets which lean. */
   auto: Auto;
 }
@@ -662,6 +711,7 @@ export function spliceFolds(centerline: Vec3[], lg: LaceGauge): SplicedLace {
       lean: autoLean(lg.auto, separation),
       carryOn: autoCarries(lg.auto, separation),
       ramp: lg.ramp,
+      roll: lg.roll,
     };
     const built = turn(din, dout, g, probe);
     // Built the other way round, the slide runs from the outgoing run back to
@@ -670,6 +720,9 @@ export function spliceFolds(centerline: Vec3[], lg: LaceGauge): SplicedLace {
     const det = f.din.x * f.dout.y - f.din.y * f.dout.x;
     let a: number;
     let b: number;
+    // Perpendicular to the runs, and only ever non-zero at a dead fold-back —
+    // everywhere else the 2x2 solve reaches sideways on its own.
+    let across = 0;
     if (Math.abs(det) > 1e-9) {
       a = (S.x * f.dout.y - S.y * f.dout.x) / det;
       b = (f.din.x * S.y - f.din.y * S.x) / det;
@@ -686,6 +739,12 @@ export function spliceFolds(centerline: Vec3[], lg: LaceGauge): SplicedLace {
       const along = S.x * f.din.x + S.y * f.din.y;
       a = (built.length + along) / 2;
       b = (built.length - along) / 2;
+      // What the solve cannot express here, kept rather than dropped. A bight
+      // swings ACROSS the runs on its way round — `sqrt(4R² - step²)` of it —
+      // and with both runs on one line no combination of `a` and `b` can reach
+      // sideways at all. So the perpendicular part is carried separately and
+      // spent on the two cut points below, which is the only place it can go.
+      across = S.x * -f.din.y + S.y * f.din.x;
     }
     // Never past the runs themselves. Two neighbouring turns share the run
     // between them, so neither may take more than its half of it.
@@ -694,8 +753,12 @@ export function spliceFolds(centerline: Vec3[], lg: LaceGauge): SplicedLace {
     a = Math.max(0, Math.min(a, before * 0.45));
     b = Math.max(0, Math.min(b, after * 0.45));
 
-    const E: Vec3 = { x: p.x - f.din.x * a, y: p.y - f.din.y * a, z: zIn };
-    const X: Vec3 = { x: p.x + f.dout.x * b, y: p.y + f.dout.y * b, z: zOut };
+    // Split the sideways swing between the two runs, so the fold's own vertex
+    // stays where the scene drew it and each run gives up half.
+    const mx = -f.din.y * (across / 2);
+    const my = f.din.x * (across / 2);
+    const E: Vec3 = { x: p.x - f.din.x * a - mx, y: p.y - f.din.y * a - my, z: zIn };
+    const X: Vec3 = { x: p.x + f.dout.x * b + mx, y: p.y + f.dout.y * b + my, z: zOut };
     turns.push({
       g,
       din,

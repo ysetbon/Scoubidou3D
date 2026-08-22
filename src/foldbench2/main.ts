@@ -1,4 +1,4 @@
-// The fold bench, second bench: what SHAPE a turn is, rather than where it sits.
+// The fold bench, second bench: the SHAPE of a turn — measured, and driven.
 //
 // The first bench (`src/foldbench/`) holds the five systems that decide a lace's
 // HEIGHT against each other — weave, fold, layers, levels, lace — and it is good
@@ -23,10 +23,20 @@
 // slider on the first bench can change that — which is exactly the thing this
 // page is built to show rather than assert.
 //
-// So every row here is a SHAPE row, most of them taken in plan, and each one
-// carries the reference lanyard's own value beside it. The controls are the
-// first bench's, minus the ones that cannot move a shape row, because a knob
-// with no measurement attached is decoration.
+// BIGHT RADIUS is the control that fixes it, and it is the reason this page is
+// not just an instrument. Above `step / 2` the roll axis tilts out of horizontal
+// by `acos(step / 2R)`: the climb stays exactly one storey, the curvature stays
+// constant at `1/R`, the surface stays an exactly developable cylinder — and the
+// plan opens out into a real arc. At 0 the turn is `step / 2` with a flat axis,
+// which reproduces the shipped geometry vertex for vertex.
+//
+// The price is real and is shown rather than hidden: the turn's two ends move
+// apart across the runs by `sqrt(4R² - step²)`, which `spliceFolds` now spends
+// on the two run cut points instead of discarding. So a bight costs plan room,
+// and the ARM OFFSET row says how much.
+//
+// Every other row here is a shape row, most of them taken in plan, and each one
+// carries the reference lanyard's own value beside it.
 
 import * as THREE from 'three';
 import { RenderParams, StrandScene } from '../scene/StrandScene';
@@ -110,8 +120,16 @@ interface Reading {
   /** The strap's inner edge distance from its own roll axis, thicknesses. At or
    *  below 0 the inner half sweeps through the axis. */
   inner: number;
-  /** Span over rise, median — translation-free, so no width-vs-thickness call. */
+  /** Span over rise, median — translation-free, so no width-vs-thickness call.
+   *  The lanyard reads 2.13, and it is the row a bight radius is tuned onto. */
   spanRise: number;
+  /** How far the turn's two ends move apart across the runs, worst, lace widths
+   *  — the whole price of a bight. */
+  offset: number;
+  /** The shortest run between two folds, lace widths. A bight has to FIT: it
+   *  needs about 2R of run plus its own offset, and the sample stitches are
+   *  small. */
+  shortestRun: number;
   held: Array<{ lead: string; text: string }>;
 }
 
@@ -143,6 +161,36 @@ function measure(): Reading {
   // roll floor of ONE thickness drives to exactly zero.
   const inner = shapes.map((x) => (x.s.radius3D - x.t / 2) / x.t);
   const spanRise = shapes.map((x) => (x.s.rise > 1e-9 ? x.s.spanPlan / x.s.rise : 0));
+  // sqrt(4R^2 - step^2) per turn, in lace widths, taken from what was built.
+  const offset = shapes.map((x) => {
+    const R = Math.max(x.s.radius3D, x.step / 2);
+    return Math.sqrt(Math.max(0, 4 * R * R - x.step * x.step)) / x.w;
+  });
+  // The run each turn has to live in: the plan distance between consecutive
+  // folds along a lace. A bight needs roughly 2R of it plus its own offset, and
+  // the sample stitches are not large — so this is the row that says whether the
+  // scene can hold the turn being asked for.
+  const FOLD_TURN = (150 * Math.PI) / 180;
+  let shortest = Infinity;
+  for (const L of view.laceCenterlines) {
+    const P = L.line;
+    let last = 0;
+    let run = 0;
+    for (let i = 1; i < P.length; i++) {
+      run += Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y);
+      if (i < P.length - 1) {
+        const ax = P[i].x - P[i - 1].x, ay = P[i].y - P[i - 1].y;
+        const bx = P[i + 1].x - P[i].x, by = P[i + 1].y - P[i].y;
+        const la = Math.hypot(ax, ay), lb = Math.hypot(bx, by);
+        if (la < 1e-9 || lb < 1e-9) continue;
+        const ang = Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by) / (la * lb))));
+        if (ang >= FOLD_TURN) {
+          if (last > 0) shortest = Math.min(shortest, (run - last) / L.width);
+          last = run;
+        }
+      }
+    }
+  }
 
   const held: Array<{ lead: string; text: string }> = [];
   if (shapes.length > 0) {
@@ -184,6 +232,8 @@ function measure(): Reading {
     flips: shapes.length ? Math.max(...flips) : 0,
     inner: shapes.length ? Math.min(...inner) : 0,
     spanRise: median(spanRise),
+    offset: shapes.length ? Math.max(...offset) : 0,
+    shortestRun: Number.isFinite(shortest) ? shortest : 0,
     held,
   };
 }
@@ -438,6 +488,12 @@ function build(): void {
 
   // ---- the turn ----
   const turn = section(bench, 'Turn', 'what the bend is made of');
+  slider(turn, 'Bight radius', p.bightRadius, 0, 2, 0.02,
+    'How ROUND the bend is, in lace widths — the control the turn never had. At 0 the radius is whatever ' +
+      'the storey gives (step ÷ 2) with a flat roll axis, which is the shipped geometry exactly and is also ' +
+      'the cusp. Above it the axis tilts, the climb stays one storey, and the plan opens into a real arc. ' +
+      'Watch plan bulge and span ÷ rise: this is the only slider that moves them.',
+    (v) => param({ bightRadius: v }));
   slider(turn, 'Roll cap', p.turnRoll, 0.4, 4, 0.05,
     'The widest a turn may measure, in lace widths. It caps the roll’s HEIGHT — and its floor of one ' +
       'thickness is exactly where the strap’s inner edge reaches its own axis, so the bottom of this range ' +
@@ -558,7 +614,11 @@ function paint(): void {
       // its two ends at the same place in plan, so the span is zero however far
       // it climbed.
       row('span ÷ rise', m.spanRise.toFixed(2),
-        m.spanRise < 0.05 ? 'bad' : m.spanRise < 1 ? 'warn' : 'good', '2.13', true);
+        Math.abs(m.spanRise - 2.13) < 0.35 ? 'good' : m.spanRise < 0.05 ? 'bad' : 'warn', '2.13', true);
+      // The price, and whether the scene can pay it.
+      row('arm offset', m.offset.toFixed(2) + ' w', m.offset < 0.01 ? 'good' : 'warn', '—', true);
+      row('shortest run', m.shortestRun.toFixed(2) + ' w',
+        m.shortestRun > m.offset + 0.2 ? 'good' : 'bad', 'must exceed the offset');
       row('storey height', view.getParams().storeyStep.toFixed(2) + ' t',
         Math.abs(view.getParams().storeyStep - REF.storey) < 0.15 ? 'good' : 'warn',
         REF.storey.toFixed(2) + ' t');
