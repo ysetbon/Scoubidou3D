@@ -7,6 +7,7 @@ Scoubidou3D, and a place to keep what it finds. The researched target list is
 | file | what it is |
 | --- | --- |
 | [targets.md](targets.md) | the standing target list: named organisations, why each one, what to ask |
+| [contacts.md](contacts.md) | the twelve to write to first — real addresses, named people, opening lines |
 | [pipeline.csv](pipeline.csv) | every lead and its status. Machine-appended, human-owned |
 | [prospect.json](prospect.json) | the GitHub sweep's queries, vocabulary and boosts |
 | [`scripts/prospect-github.mjs`](../../scripts/prospect-github.mjs) | the sweep — `node scripts/prospect-github.mjs --people` |
