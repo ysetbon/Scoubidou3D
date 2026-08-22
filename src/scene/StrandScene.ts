@@ -312,6 +312,9 @@ export class StrandScene {
   // Which storey each strand rests on, and the plane each storey weaves about
   // (both filled by computeBaseZ, read by the weave).
   private strandLevel: number[] = [];
+
+  /** See setSublevels. Null is off, and off is the studio's behaviour exactly. */
+  private sublevels: Map<string, number> | null = null;
   private levelPlaneZ = new Map<number, number>();
   // Half the stack's height in world units — the other half of what the camera
   // has to frame once levels make a scene tall.
@@ -792,7 +795,19 @@ export class StrandScene {
       // Settle each fold before sweeping: the lace stacks on itself there, one
       // thickness apart, with the change eased into the runs on either side.
       const thickness = (first.thickness ?? this.params.thickness) * SCALE;
-      easeFolds(line, thickness * FOLD_STACK, thickness * 2);
+      // How much step this lace's folds actually carry. FOLD_STACK is the right
+      // cap for a whole-level fold and the wrong one for every other size, which
+      // is exactly what the sublevel model exposes: a crease that climbs from one
+      // named plane to another has a step of its own, and capping it at a global
+      // 2t would ramp the difference into the runs and flatten the C.
+      let stack = thickness * FOLD_STACK;
+      if (this.sublevels) {
+        for (const p of line) {
+          if (p.zIn === undefined || p.zOut === undefined) continue;
+          stack = Math.max(stack, Math.abs(p.zOut - p.zIn));
+        }
+      }
+      easeFolds(line, stack, thickness * 2);
       // Then walk up any step left at a gentle joint — a level break between two
       // members of the lace puts one storey's worth of height there, and without a
       // crease to climb at it has to be ramped into the runs instead.
@@ -1179,6 +1194,40 @@ export class StrandScene {
     this.updateGrid();
   }
 
+  /**
+   * SUBLEVELS — a resting plane inside a storey, per strand, in thicknesses.
+   *
+   * `-1` bottom, `0` centre, `+1` top. Off by default (`null`), and the studio
+   * never turns it on: with no map the arithmetic below collapses to exactly what
+   * it was, which is the only reason this can live in the shared renderer.
+   *
+   * A storey is `2 · thickness`, so level L's three planes land on
+   * `L·2t + {-t, 0, +t}` — and level L's TOP (`L·2t + t`) is the same height as
+   * level L+1's BOTTOM (`(L+1)·2t - t`). The shared seam is not a special case
+   * bolted on; it is what a three-plane storey at this pitch already does.
+   *
+   * A sublevel sets where a strand RESTS; it does not replace the crossing swing,
+   * and the first draft of this was wrong to try. The swing has to stay because a
+   * plane is per STRAND while over/under varies ALONG one: a box-stitch arm rides
+   * over one lace and ducks under the next within a single run, and no single
+   * resting plane can say both. Suppress the swing and the weave flattens into
+   * parallel slabs — which is what it did.
+   *
+   * So the two compose, and they compose in the right order: `heightField` rests
+   * a run at its own plane and pulls it to `plane ± h` only where it actually
+   * crosses something. The plane governs the long stretches, the swing governs
+   * the crossings, and the FOLD between two strands on different planes carries
+   * the difference at its crease.
+   */
+  setSublevels(map: Map<string, number> | null): void {
+    this.sublevels = map && map.size > 0 ? new Map(map) : null;
+    this.rebuild();
+  }
+
+  hasSublevels(): boolean {
+    return this.sublevels !== null;
+  }
+
   /** One storey's height in source units, for the layer panel to quote. */
   getLevelStep(): number {
     return this.levelStepSource();
@@ -1215,11 +1264,16 @@ export class StrandScene {
       .sort((a, b) => a[1] - b[1])
       .forEach(([r], k) => rankZ.set(r, k * gap));
 
+    // A sublevel is a plane INSIDE the storey, so it is added on top of the
+    // storey's own height rather than replacing it — and it is per STRAND, like
+    // the level break it sits inside, because it is a statement about one row.
+    const sub = this.params.thickness * SCALE;
     const rest = new Array<number>(n);
     const level = new Array<number>(n);
     for (let i = 0; i < n; i++) {
       level[i] = levelAt(this.current, i);
-      rest[i] = (rankZ.get(find(i)) ?? 0) + level[i] * step;
+      const plane = this.sublevels?.get(this.current.strands[i].id) ?? 0;
+      rest[i] = (rankZ.get(find(i)) ?? 0) + level[i] * step + plane * sub;
     }
 
     // Re-centre on z = 0, so adding a level opens the stack up around the grid

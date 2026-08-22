@@ -168,3 +168,154 @@
   text-transform: uppercase;
   color: var(--teal);
 }
+
+/* ---- before anything is declared ------------------------------------------ */
+.hint {
+  flex: 0 0 auto;
+  margin-bottom: 12px;
+  padding: 9px 11px;
+  border: 1.5px solid var(--coral);
+  background: var(--paper);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.hint b {
+  color: var(--coral);
+}
+
+/* ---- the folds: one card per C -------------------------------------------- */
+/* A fold is not a layer, so it is not a row in the stack — it is the thing that
+   JOINS two of them, and it gets a section of its own under the storeys. */
+.folds {
+  flex: 0 0 auto;
+  margin-top: 18px;
+}
+
+.folds-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 2px 8px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.folds-head b {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.folds-head small {
+  font-size: 9.5px;
+  color: var(--muted);
+}
+
+.fold {
+  margin-top: 8px;
+  padding: 8px 9px;
+  border: 1.5px solid var(--edge2);
+  background: var(--paper);
+}
+
+.fold-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+}
+
+/* The C itself, drawn as the letter rather than an icon: it is what the shape is
+   called throughout this page, and a glyph keeps the row the height of its text. */
+.fold-c {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  border: 1.5px solid var(--edge2);
+  border-radius: 50%;
+  background: var(--teal);
+  color: #fffaf0;
+  font-family: Georgia, serif;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.fold-title b {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.fold-title em {
+  margin-left: auto;
+  font-style: normal;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+/* A fold that climbs nothing is a fold doing no work — the two runs are on one
+   plane and the crease has no face at all. Worth seeing at a glance. */
+.fold-title em[data-climb='none'] {
+  color: var(--danger);
+}
+
+.fold-title em[data-climb='yes'] {
+  color: var(--teal);
+}
+
+.arm {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 0;
+}
+
+.arm + .arm {
+  border-top: 1px solid var(--hair);
+}
+
+/* UPPER / LOWER is the whole point of the row, so it leads it. */
+.arm i {
+  flex: 0 0 62px;
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.arm b {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.arm .lvl {
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.arm .swatch {
+  flex: 0 0 auto;
+}
+
+/* The fold drawn side-on. Sized in the card rather than by its viewBox so the
+   two arms keep the same apparent thickness whatever climb they are showing. */
+.c-shape {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 2px 0 7px;
+  background: var(--cream);
+  border: 1px solid var(--hair);
+}
