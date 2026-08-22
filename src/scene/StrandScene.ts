@@ -43,7 +43,7 @@ import { buildRibbonGeometry, crossSection } from '../geometry/ribbon';
 import { LaceGauge, SplicedLace, mergeGeometry, spliceFolds, tube, turnRings } from '../geometry/fold';
 import { AUTO_DEFAULT } from '../geometry/autoFold';
 import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
-import { easeFolds, easeSteps, roundCorners } from '../geometry/polyline';
+import { easeFolds, easeSteps, roundCorners, type FoldPlacement } from '../geometry/polyline';
 import { Anchor, arcLengths, heightField, polylineCrossings } from '../geometry/weave';
 import { Vec2, Vec3 } from '../geometry/vec';
 
@@ -104,7 +104,7 @@ export const TURN_RAMP_DEFAULT = 0.5;
  * a fold with a smaller step than this is untouched, and the weave, which knows
  * nothing of folds, is stopped from turning a crease into a cliff (`easeFolds`).
  */
-const TURN_STACK = 2;
+export const TURN_STACK = 2;
 
 /**
  * The widest a turn's roll may get, as a multiple of the LACE'S OWN WIDTH.
@@ -245,6 +245,33 @@ export interface RenderParams {
    */
   turnRoll: number;
   /**
+   * Put the two arms of a turn on the storey's `over` and `under` sub-levels —
+   * the top of the C on one, the bottom on the other — instead of wherever the
+   * weave happened to leave the runs it joins. See `foldPlacement`.
+   */
+  turnSnapArms: boolean;
+  /**
+   * Put the crease of a turn — the centre of the C — on the storey's `middle`
+   * sub-level. Separate from the arms because a lace lifted clear of its storey
+   * by `layerGap` has a good reason to be up there, and dragging every turn back
+   * down to the plane is a different decision from opening it correctly.
+   */
+  turnSnapCentre: boolean;
+  /**
+   * How much of the way to the sub-levels a snapped turn actually goes, 0..1.
+   * A knob rather than a switch because the interesting reading is the middle:
+   * at 0 nothing moves and at 1 it is fully placed, and dragging between the two
+   * shows exactly which turns were out and by how far.
+   */
+  turnSnapAmount: number;
+  /**
+   * How far a snapped turn opens, in sub-level gaps. 1 is the C exactly spanning
+   * `under` to `over`, which is the pair resting on each other. The roll cap
+   * still applies: a strap cannot roll wider than its own width allows however
+   * much this asks for.
+   */
+  turnOpen: number;
+  /**
    * How tall one storey is, in strand thicknesses — the middle-to-middle
    * distance between two levels. See `levelStepSource`.
    */
@@ -303,6 +330,12 @@ export const DEFAULT_PARAMS: RenderParams = {
   turnLeg: TURN_LEG_DEFAULT,
   turnRamp: TURN_RAMP_DEFAULT,
   turnRoll: TURN_ROLL_DEFAULT,
+  // Off: a turn inherits its height from the runs it joins, which is what every
+  // scene has always done. The sub-levels are a second opinion, not the default.
+  turnSnapArms: false,
+  turnSnapCentre: false,
+  turnSnapAmount: 1,
+  turnOpen: 1,
   // Two thicknesses: a woven round is a lace over a lace, and that is how tall
   // it comes out. See `levelStepSource`.
   storeyStep: 2,
@@ -776,6 +809,10 @@ export class StrandScene {
       sameColor(a.color, b.color) &&
       sameColor(a.stroke_color, b.stroke_color);
 
+    // One placement for the whole pass: it reads the storey planes, which are the
+    // same for every lace in the scene.
+    const place = this.foldPlacement();
+
     const visited = new Set<number>();
     for (let seed = 0; seed < strands.length; seed++) {
       if (visited.has(seed) || !this.world3D[seed]) continue;
@@ -855,7 +892,7 @@ export class StrandScene {
       // one thickness, which is the two runs touching and the least a fold can
       // be.
       const roll = Math.max(thickness, width * Math.max(0, this.params.turnRoll) - thickness);
-      easeFolds(line, Math.min(thickness * TURN_STACK, roll), thickness * 2);
+      easeFolds(line, Math.min(thickness * TURN_STACK, roll), thickness * 2, place);
       // Then walk up any step left at a gentle joint — a level break between two
       // members of the lace puts one storey's worth of height there, and without a
       // crease to climb at it has to be ramped into the runs instead.
@@ -1306,6 +1343,60 @@ export class StrandScene {
       h = Math.min(h, Math.max(room, 0));
     }
     return h;
+  }
+
+  /**
+   * Where each turn's crease goes, when the storey's sub-levels are asked rather
+   * than the runs the turn joins — or `undefined`, which leaves the long-standing
+   * behaviour exactly as it was.
+   *
+   * A turn seen from the side is a C: the run arriving is one arm, the run
+   * leaving is the other, and the crease is the bend between them. Left to
+   * itself that C sits wherever the weave left the two runs, and the weave knows
+   * nothing about storeys — so the C drifts off the storey it belongs to, opens
+   * by whatever the two crossings either side of it happened to disagree by, and
+   * two turns on the same storey come out at different heights.
+   *
+   * The storey already says where all three should be. `over` is where the top
+   * arm belongs, `under` where the bottom one does, `middle` where the crease
+   * between them does. Placing the C on those three makes every turn on a storey
+   * the same turn, and makes the height it shows exactly the height the storey
+   * is built around.
+   *
+   * WHICH storey is read off the crease's own height — the nearest `middle` —
+   * rather than off the strand's level. A turn is the one place a lace is most
+   * likely to be changing storeys, and the answer that matters is which storey
+   * it came out at, not which one its strand was filed under.
+   *
+   * The sign is kept: whichever arm was the upper one stays the upper one. The
+   * snap decides how far apart and how high the two sit, never which of them is
+   * on top — that is the weave's call, and overruling it would put a lace under
+   * the one it was masked over.
+   */
+  private foldPlacement():
+    | ((mid: number, zIn: number, zOut: number) => FoldPlacement)
+    | undefined {
+    const arms = this.params.turnSnapArms;
+    const centre = this.params.turnSnapCentre;
+    if (!arms && !centre) return undefined;
+    const planes = this.getLevelPlanes();
+    if (planes.length === 0) return undefined;
+    const t = Math.max(0, Math.min(1, this.params.turnSnapAmount));
+    const open = Math.max(0, this.params.turnOpen);
+    return (mid, zIn, zOut) => {
+      let best = planes[0];
+      for (const L of planes) {
+        if (Math.abs(L.middle - mid) < Math.abs(best.middle - mid)) best = L;
+      }
+      const wasHalf = (zOut - zIn) / 2;
+      // A turn the weave left perfectly flat has no upper arm to preserve. It is
+      // also the case the snap most obviously fixes — two runs at one height are
+      // two runs inside each other — so it opens upward rather than declining.
+      const sign = wasHalf < 0 ? -1 : 1;
+      const wantMid = centre ? best.middle : mid;
+      const wantHalf = arms ? (sign * (best.over - best.under) * open) / 2 : wasHalf;
+      return { mid: mid + (wantMid - mid) * t, half: wasHalf + (wantHalf - wasHalf) * t };
+    };
   }
 
   /**

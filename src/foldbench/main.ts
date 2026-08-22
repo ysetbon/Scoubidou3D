@@ -28,7 +28,7 @@
 // be judged against where it started rather than against memory.
 
 import * as THREE from 'three';
-import { RenderParams, StrandScene } from '../scene/StrandScene';
+import { RenderParams, StrandScene, TURN_STACK } from '../scene/StrandScene';
 import { makeSample } from '../model/samples';
 import { parseSceneText } from '../model/sceneIO';
 import { Vec3 } from '../geometry/vec';
@@ -79,6 +79,11 @@ interface Reading {
   /** Which knob is currently being overruled by something else, if any. A
    *  reader who drags a control and sees nothing move needs to be told what is
    *  holding it, or the bench has taught them the control is broken. */
+  /** How far a turn's two arms sit from the `over`/`under` of the storey it is
+   *  on, worst case, in thicknesses. */
+  armOff: number;
+  /** The same for the crease against `middle`. */
+  midOff: number;
   held: Array<{ lead: string; text: string }>;
 }
 
@@ -153,6 +158,14 @@ function measure(): Reading {
   air.sort((x, y) => x - y);
 
   const rolls: number[] = [];
+  // The C against the three heights of the storey it is on. `over` is where the
+  // top arm belongs, `under` the bottom one, `middle` the crease — so these two
+  // numbers say, in thicknesses, how far the turn is from the storey it is
+  // supposedly part of. Which storey is read off the crease's own height, the
+  // same way `foldPlacement` reads it.
+  const planes = view.getLevelPlanes();
+  let armOff = 0;
+  let midOff = 0;
   let tiltMax = 0;
   let steep = 0;
   let segs = 0;
@@ -171,6 +184,19 @@ function measure(): Reading {
       const zIn = P[i].zIn ?? P[i].z;
       const zOut = P[i].zOut ?? P[i].z;
       rolls.push((Math.abs(zOut - zIn) + L.thickness) / L.width);
+      if (planes.length === 0) continue;
+      let near = planes[0];
+      for (const q of planes) {
+        if (Math.abs(q.middle - P[i].z) < Math.abs(near.middle - P[i].z)) near = q;
+      }
+      const top = Math.max(zIn, zOut);
+      const bottom = Math.min(zIn, zOut);
+      armOff = Math.max(
+        armOff,
+        Math.abs(top - near.over) / L.thickness,
+        Math.abs(bottom - near.under) / L.thickness,
+      );
+      midOff = Math.max(midOff, Math.abs(P[i].z - near.middle) / L.thickness);
     }
   }
 
@@ -196,6 +222,20 @@ function measure(): Reading {
         'stitch into a spiral. The planes show where they went.',
     });
   }
+  if (p.turnSnapArms && planes.length > 0) {
+    const gap = (planes[0].over - planes[0].under) * p.turnOpen;
+    const capped = view.laceCenterlines.some(
+      (L) => Math.min(L.thickness * TURN_STACK, Math.max(L.thickness, L.width * p.turnRoll - L.thickness)) < gap,
+    );
+    if (capped) {
+      held.push({
+        lead: 'Held: ',
+        text:
+          'C opening is past what the strap can roll to — the roll cap wins, so the arms stop short ' +
+          'of over and under and the arms row will not reach 0. Widen the lace, raise Roll cap, or ask for less.',
+      });
+    }
+  }
   if (view.laceCenterlines.some((L) => L.width * p.turnRoll - L.thickness < L.thickness)) {
     held.push({
       lead: 'Held: ',
@@ -212,6 +252,8 @@ function measure(): Reading {
     airMax: air[air.length - 1] ?? 0,
     folds: rolls.length,
     rollMax: rolls.length ? Math.max(...rolls) : 0,
+    armOff,
+    midOff,
     tiltMax,
     steepShare: segs ? (100 * steep) / segs : 0,
     held,
@@ -554,6 +596,34 @@ function build(): void {
   levelRow = el('div', 'row');
   levels.appendChild(levelRow);
 
+  // ---- the C ----
+  //
+  // A turn seen from the side is a C, and the storey it is on already names all
+  // three of its heights. This section is what makes it land on them.
+  const cee = section(bench, 'The C', 'a turn against its sub-levels');
+  const ceeNote = el('small', 'note',
+    'A turn is a C on its side: the run arriving is one arm, the run leaving the other, the crease ' +
+      'the bend between. Left alone it sits wherever the weave left those two runs — and the weave ' +
+      'knows nothing about storeys, so the C drifts off the one it belongs to and two turns on the ' +
+      'same storey come out at different heights. The storey already says where all three go.');
+  ceeNote.style.marginLeft = '0';
+  cee.appendChild(ceeNote);
+  check(cee, 'Arms on over and under', p.turnSnapArms, (v) => param({ turnSnapArms: v }),
+    'The top of the C to the storey’s over plane, the bottom to under — so the turn opens by exactly ' +
+      'the gap the storey is built around. Which arm is on top is left alone: that is the weave’s call.');
+  check(cee, 'Crease on middle', p.turnSnapCentre, (v) => param({ turnSnapCentre: v }),
+    'The centre of the C onto the storey’s middle plane. Separate from the arms, because a lace held ' +
+      'clear of its storey by Layer lift is up there for a reason, and pulling every turn back down is ' +
+      'a different decision from opening it correctly.');
+  slider(cee, 'How far it lands', p.turnSnapAmount, 0, 1, 0.05,
+    'How much of the way to the sub-levels a snapped turn actually goes. Drag it from 0 to 1 to see ' +
+      'which turns were out, and by how far.',
+    (v) => param({ turnSnapAmount: v }));
+  slider(cee, 'C opening', p.turnOpen, 0, 2, 0.05,
+    'How wide the C opens, in sub-level gaps. 1 is exactly under to over — the two runs resting on ' +
+      'each other. Roll cap still wins: a strap cannot roll wider than its own width allows.',
+    (v) => param({ turnOpen: v }));
+
   // ---- layers ----
   const layers = section(bench, 'Layers', 'overlapping, not crossing');
   slider(layers, 'Layer lift', p.layerGap, 0, 80, 1,
@@ -686,6 +756,12 @@ function paint(): void {
     row('air, loosest', f2(m.airMax), airClass(m.airMax), P ? f2(P.airMax) : '—');
     row('widest turn', m.rollMax.toFixed(2), m.rollMax > 1.8 ? 'warn' : 'good',
       P ? P.rollMax.toFixed(2) : '—', true);
+    row('C arms off', m.folds ? `${m.armOff.toFixed(2)}t` : '—',
+      m.armOff < 0.05 ? 'good' : m.armOff < 0.5 ? 'warn' : 'bad',
+      P ? (P.folds ? `${P.armOff.toFixed(2)}t` : '—') : '—');
+    row('C crease off', m.folds ? `${m.midOff.toFixed(2)}t` : '—',
+      m.midOff < 0.05 ? 'good' : m.midOff < 0.5 ? 'warn' : 'bad',
+      P ? (P.folds ? `${P.midOff.toFixed(2)}t` : '—') : '—');
     row('steepest run', `${m.tiltMax.toFixed(0)}°`, m.tiltMax > 45 ? 'warn' : 'good',
       P ? `${P.tiltMax.toFixed(0)}°` : '—');
     row('run over 30°', `${m.steepShare.toFixed(0)}%`, m.steepShare > 25 ? 'warn' : 'good',
@@ -726,13 +802,15 @@ function paint(): void {
       line('No crossings here', ' — the air rows say nothing about this scene.');
     }
     if (m.folds === 0) {
-      line('No turns here', ' — widest turn says nothing about this scene.');
+      line('No turns here', ' — widest turn and the two C rows say nothing about this scene.');
     }
     line(
       'Air is in thicknesses',
       ': 0 is a lace resting on the one under it, + is daylight between them, − is the two lying' +
-        ' inside each other. Widest turn is in lace widths. What a turn refuses to carry the runs ramp,' +
-        ' so tightening Roll cap pushes the last two rows up.',
+        ' inside each other. Widest turn is in lace widths. The two C rows are how far the worst turn' +
+        ' sits from the over/under and middle of the storey it is on, also in thicknesses — 0 is a turn' +
+        ' landed exactly on its sub-levels. What a turn refuses to carry the runs ramp, so tightening' +
+        ' Roll cap pushes the tilt rows up.',
     );
     for (const h of m.held) line(h.lead, h.text);
   }

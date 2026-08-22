@@ -234,7 +234,23 @@ export interface Fold {
  * storey's worth of step to place, and can carry more of it here rather than ramp
  * it away; see TURN_STACK in StrandScene.
  */
-export function easeFolds(pts: Vec3[], stack: number, reach: number): void {
+/**
+ * Where a fold's crease is to be put, when something other than the incoming
+ * heights decides. `mid` is the height of the crease itself; `half` is the
+ * SIGNED half-step between the two runs, positive when the run leaving the fold
+ * is the upper of the two.
+ */
+export interface FoldPlacement {
+  mid: number;
+  half: number;
+}
+
+export function easeFolds(
+  pts: Vec3[],
+  stack: number,
+  reach: number,
+  place?: (mid: number, zIn: number, zOut: number) => FoldPlacement,
+): void {
   const folds = foldsOf(pts);
   if (folds.length === 0 || reach <= 0) return;
   const was = pts.map((p) => p.z); // read heights from before any easing
@@ -243,8 +259,18 @@ export function easeFolds(pts: Vec3[], stack: number, reach: number): void {
     const i = f.index;
     const zIn = pts[i].zIn ?? was[i];
     const zOut = pts[i].zOut ?? was[i];
-    const mid = (zIn + zOut) / 2;
-    const half = Math.max(-stack, Math.min(stack, zOut - zIn)) / 2;
+    let mid = (zIn + zOut) / 2;
+    let half = Math.max(-stack, Math.min(stack, zOut - zIn)) / 2;
+    // A caller may place the crease itself rather than inherit it from the runs
+    // — the storey's sub-levels are a statement about where a turn belongs, and
+    // the weave that set these heights knows nothing about them. `stack` still
+    // wins: it is what the strap can physically roll to, and a target past it is
+    // a target the lace cannot reach.
+    if (place) {
+      const want = place(mid, zIn, zOut);
+      mid = want.mid;
+      half = Math.max(-stack / 2, Math.min(stack / 2, want.half));
+    }
     const toIn = mid - half;
     const toOut = mid + half;
 
