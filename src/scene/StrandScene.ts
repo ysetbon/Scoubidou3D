@@ -272,6 +272,26 @@ export interface RenderParams {
    */
   turnOpen: number;
   /**
+   * Space the sub-levels EVENLY, so the whole stack is one ladder at one pitch.
+   *
+   * A storey's three planes are `middle` and `middle ± h`, and the next storey's
+   * middle is `step` above. That leaves two different rungs: `h` inside a storey,
+   * and `step - 2h` from one storey's `over` up to the next storey's `under`. At
+   * the usual settings the second is twice the first, which is what makes a
+   * stacked stitch read as tight pairs of planes with an empty band between them
+   * rather than as an even stack.
+   *
+   * Asking the two to be equal — `step - 2h = h` — gives `h = step / 3`, and
+   * every plane in the scene then sits one rung from its neighbour. It BROADENS
+   * the sub-levels rather than lowering the storeys: Depth and the storey cap
+   * both stop mattering while this is on, and Storey height becomes the ladder's
+   * pitch, three rungs to a storey.
+   *
+   * The resting floor still holds. Below it the two laces at a crossing lie
+   * inside each other, which no amount of tidiness is worth.
+   */
+  subLevelsEven: boolean;
+  /**
    * How tall one storey is, in strand thicknesses — the middle-to-middle
    * distance between two levels. See `levelStepSource`.
    */
@@ -356,6 +376,7 @@ export const DEFAULT_PARAMS: RenderParams = {
   // Even split, capped to the storey, storeys left un-woven: between them these
   // three are exactly the behaviour that predates them, so a scene that never
   // touches the bench renders as it always did.
+  subLevelsEven: false,
   weaveBias: 0,
   weaveCapToStorey: true,
   weaveAcrossLevels: false,
@@ -1337,6 +1358,12 @@ export class StrandScene {
     // Resting is centre-to-centre `(tOver + tUnder) / 2`, and each lace travels
     // half of it.
     const rest = (thicknessOver + thicknessUnder) / 4;
+    // One ladder at one pitch: three rungs to a storey. See `subLevelsEven`. It
+    // overrules Depth and the cap both, because it is answering the same
+    // question they are and cannot do it while they also have a say.
+    if (this.params.subLevelsEven && this.current.levelBreaks.length > 0) {
+      return Math.max((this.levelStepSource() * SCALE) / 3, rest);
+    }
     let h = Math.max((this.params.weaveDepth * SCALE) / 2, rest);
     if (this.params.weaveCapToStorey && this.current.levelBreaks.length > 0) {
       const room = (this.levelStepSource() * SCALE - Math.max(thicknessOver, thicknessUnder)) / 2;

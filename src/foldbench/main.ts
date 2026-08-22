@@ -84,6 +84,9 @@ interface Reading {
   armOff: number;
   /** The same for the crease against `middle`. */
   midOff: number;
+  /** How uneven the ladder of sub-levels is: the widest rung over the narrowest,
+   *  across every plane in the stack. 1 is one pitch throughout. */
+  ladder: number;
   held: Array<{ lead: string; text: string }>;
 }
 
@@ -164,6 +167,17 @@ function measure(): Reading {
   // supposedly part of. Which storey is read off the crease's own height, the
   // same way `foldPlacement` reads it.
   const planes = view.getLevelPlanes();
+  // Every gap between two neighbouring planes, bottom to top. Inside a storey
+  // there are two (under→middle, middle→over); between two storeys there is one
+  // more (over of the lower to under of the upper). An even ladder is all of
+  // them the same, so the widest over the narrowest is the number to read.
+  const rungs: number[] = [];
+  for (let i = 0; i < planes.length; i++) {
+    rungs.push(planes[i].middle - planes[i].under, planes[i].over - planes[i].middle);
+    if (i + 1 < planes.length) rungs.push(planes[i + 1].under - planes[i].over);
+  }
+  const ladder =
+    rungs.length > 1 && Math.min(...rungs) > 1e-9 ? Math.max(...rungs) / Math.min(...rungs) : 1;
   let armOff = 0;
   let midOff = 0;
   let tiltMax = 0;
@@ -206,7 +220,16 @@ function measure(): Reading {
   // indistinguishable from a broken one.
   const held: Array<{ lead: string; text: string }> = [];
   const storeyed = view.getScene().levelBreaks.length > 0;
-  if (storeyed && p.weaveCapToStorey && p.weave && p.weaveDepth > p.storeyStep * p.thickness - p.thickness) {
+  if (storeyed && p.subLevelsEven) {
+    held.push({
+      lead: 'Held: ',
+      text:
+        'Even ladder is setting the sub-level gap — a third of a storey, so all three rungs match — ' +
+        'so Depth and the storey cap have nothing left to decide. Storey height is the ladder’s pitch ' +
+        'while it is on.',
+    });
+  }
+  if (storeyed && !p.subLevelsEven && p.weaveCapToStorey && p.weave && p.weaveDepth > p.storeyStep * p.thickness - p.thickness) {
     held.push({
       lead: 'Held: ',
       text:
@@ -214,7 +237,7 @@ function measure(): Reading {
         'can hold the slider stops mattering. Raise Storey height, or turn the cap off to let it out.',
     });
   }
-  if (storeyed && !p.weaveCapToStorey && p.weaveDepth > p.storeyStep * p.thickness - p.thickness) {
+  if (storeyed && !p.subLevelsEven && !p.weaveCapToStorey && p.weaveDepth > p.storeyStep * p.thickness - p.thickness) {
     held.push({
       lead: 'Out of the storey: ',
       text:
@@ -254,6 +277,7 @@ function measure(): Reading {
     rollMax: rolls.length ? Math.max(...rolls) : 0,
     armOff,
     midOff,
+    ladder,
     tiltMax,
     steepShare: segs ? (100 * steep) / segs : 0,
     held,
@@ -571,6 +595,12 @@ function build(): void {
   check(levels, 'Show z sub-levels', showPlanes, (v) => {
     showPlanes = v;
   });
+  check(levels, 'Even sub-level ladder', p.subLevelsEven, (v) => param({ subLevelsEven: v }),
+    'Broaden the sub-levels until every plane in the stack sits one rung from its neighbour. A storey ' +
+      'normally leaves two different gaps — a narrow one inside it and a wide empty band up to the next ' +
+      'storey’s under. Making them equal works out at a gap of a third of a storey, so this overrules ' +
+      'Depth and the cap and turns Storey height into the ladder’s pitch. Watch the ladder row go to 1.00.');
+
   // Everything below CHANGES the strands against the sub-levels rather than
   // drawing them: each one moves where a crossing's two laces end up inside
   // their storey.
@@ -756,6 +786,9 @@ function paint(): void {
     row('air, loosest', f2(m.airMax), airClass(m.airMax), P ? f2(P.airMax) : '—');
     row('widest turn', m.rollMax.toFixed(2), m.rollMax > 1.8 ? 'warn' : 'good',
       P ? P.rollMax.toFixed(2) : '—', true);
+    row('ladder', m.ladder.toFixed(2),
+      m.ladder < 1.02 ? 'good' : m.ladder < 1.5 ? 'warn' : 'bad',
+      P ? P.ladder.toFixed(2) : '—', true);
     row('C arms off', m.folds ? `${m.armOff.toFixed(2)}t` : '—',
       m.armOff < 0.05 ? 'good' : m.armOff < 0.5 ? 'warn' : 'bad',
       P ? (P.folds ? `${P.armOff.toFixed(2)}t` : '—') : '—');
@@ -809,7 +842,8 @@ function paint(): void {
       ': 0 is a lace resting on the one under it, + is daylight between them, − is the two lying' +
         ' inside each other. Widest turn is in lace widths. The two C rows are how far the worst turn' +
         ' sits from the over/under and middle of the storey it is on, also in thicknesses — 0 is a turn' +
-        ' landed exactly on its sub-levels. What a turn refuses to carry the runs ramp, so tightening' +
+        ' landed exactly on its sub-levels. Ladder is the widest gap between two neighbouring planes' +
+        ' over the narrowest: 1.00 is one pitch all the way up the stack. What a turn refuses to carry the runs ramp, so tightening' +
         ' Roll cap pushes the tilt rows up.',
     );
     for (const h of m.held) line(h.lead, h.text);
