@@ -239,7 +239,7 @@ function boxStitch(): Scene3D {
 //     and that one contradicts the stacking, so it takes exactly ONE mask per
 //     round. Rounds don't interlock with each other at all; they rest on each
 //     other, which is what the LEVEL BREAK between them says (levels.ts).
-function boxStitchRounds(rounds: number, name: string, spiral = false): Scene3D {
+export function boxStitchRounds(rounds: number, name: string, spiral = false): Scene3D {
   const w = 54;
   const cx = 400;
   const cy = 268;

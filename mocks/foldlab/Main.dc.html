@@ -1,0 +1,363 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <style>
+    :root{
+      --ground:#F4F6F4; --panel:#FFFFFF; --panel-2:#ECEFEC; --sunk:#E4E8E5;
+      --ink:#14191B; --ink-2:#454E51; --ink-3:#6E7A7D;
+      --rule:#D3DAD6; --rule-2:#C0C9C4;
+      --bad:#AB4136; --bad-bg:#F7E9E7;
+      --good:#186F60; --good-bg:#E3F0ED;
+      --warn:#9A6B18; --warn-bg:#F6EEDC;
+      --accent:#186F60; --ref:#3A6EA5;
+      --shadow:0 1px 2px rgba(20,25,27,.05), 0 6px 20px -12px rgba(20,25,27,.22);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--ground);color:var(--ink);
+      font:400 15px/1.55 "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:var(--accent)} a:hover{color:#0F4F44}
+    .sl{font-family:"IBM Plex Mono",monospace;font-size:12px;fill:var(--ink-3)}
+    .slb{font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600}
+    .sll{font-family:"IBM Plex Mono",monospace;font-size:12.5px;fill:var(--ink-2)}
+  </style>
+</helmet>
+
+<div style="padding:34px 30px 40px">
+
+  <header style="border-bottom:1px solid var(--rule);padding-bottom:22px;margin-bottom:24px">
+    <p style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.17em;text-transform:uppercase;color:var(--ink-3);margin:0 0 12px">Scoubidou3D · proposal for /foldlab/</p>
+    <h1 style="font-family:'Archivo',sans-serif;font-weight:700;letter-spacing:-.025em;line-height:1.03;font-size:46px;margin:0 0 14px;text-wrap:balance">Fold Lab</h1>
+    <p style="color:var(--ink-2);max-width:74ch;margin:0;font-size:16px">Bight Lab asked how one turn climbs. This asks where every part of every strand <b style="color:var(--ink);font-weight:600">rests</b>. A level stops being one plane with a swing on it and becomes three named planes — <b style="color:var(--ink);font-weight:600">bottom</b>, <b style="color:var(--ink);font-weight:600">center</b>, <b style="color:var(--ink);font-weight:600">top</b> — one strand thickness apart. Every part declares its plane at every level; the fold is what carries it between them.</p>
+  </header>
+
+  <div style="display:grid;grid-template-columns:318px minmax(0,1fr);gap:22px;align-items:start">
+
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <div style="background:var(--panel);border:1px solid var(--rule);border-radius:12px;box-shadow:var(--shadow);padding:20px">
+        <h2 style="font-family:'Archivo',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin:0 0 6px">How the levels meet</h2>
+        <p style="font-size:12.5px;color:var(--ink-3);line-height:1.45;margin:0 0 14px">The one decision the rest hangs off.</p>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <sc-for list="{{models}}" as="m" hint-placeholder-count="3">
+            <button onClick="{{m.pick}}" style="{{m.style}}">
+              <span style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+                <span style="font-weight:600;font-size:13.5px">{{m.label}}</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;opacity:.75">{{m.pitchText}}</span>
+              </span>
+              <span style="display:block;font-weight:400;font-size:12px;line-height:1.4;opacity:.8;margin-top:3px">{{m.note}}</span>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="background:var(--panel);border:1px solid var(--rule);border-radius:12px;box-shadow:var(--shadow);padding:20px">
+        <h2 style="font-family:'Archivo',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin:0 0 16px">Measures</h2>
+
+        <div style="margin:0 0 18px">
+          <label for="s" style="display:flex;justify-content:space-between;align-items:baseline;font-weight:600;font-size:13.5px;gap:10px;margin-bottom:5px">Sublevel pitch
+            <output style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--accent);font-variant-numeric:tabular-nums;font-weight:500">{{sText}}</output></label>
+          <input type="range" id="s" min="0.6" max="1.6" step="0.01" value="{{s}}" onInput="{{onS}}" style="width:100%;accent-color:var(--accent);margin:0">
+          <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-3);margin-top:3px"><span>0.60</span><span>1.00 touching</span><span>1.60</span></div>
+          <small style="display:block;font-size:12px;color:var(--ink-3);line-height:1.45;margin-top:5px">The gap between one plane and the next. At <b>1.00</b> a ribbon on the plane above lies exactly ON the one below — the distance the whole model is built around.</small>
+        </div>
+
+        <div style="margin:0 0 18px">
+          <label for="a" style="display:flex;justify-content:space-between;align-items:baseline;font-weight:600;font-size:13.5px;gap:10px;margin-bottom:5px">Aspect w / t
+            <output style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--accent);font-variant-numeric:tabular-nums;font-weight:500">{{aText}}</output></label>
+          <input type="range" id="a" min="1" max="4" step="0.01" value="{{a}}" onInput="{{onA}}" style="width:100%;accent-color:var(--accent);margin:0">
+          <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-3);margin-top:3px"><span>1.00 round</span><span>2.08 sample</span><span>4.00</span></div>
+        </div>
+
+        <div style="margin:0">
+          <label for="d" style="display:flex;justify-content:space-between;align-items:baseline;font-weight:600;font-size:13.5px;gap:10px;margin-bottom:5px">Fold climb to test
+            <output style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--accent);font-variant-numeric:tabular-nums;font-weight:500">{{dText}}</output></label>
+          <input type="range" id="d" min="1" max="4" step="1" value="{{d}}" onInput="{{onD}}" style="width:100%;accent-color:var(--accent);margin:0">
+          <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-3);margin-top:3px"><span>1</span><span>2</span><span>3</span><span>4</span></div>
+          <small style="display:block;font-size:12px;color:var(--ink-3);line-height:1.45;margin-top:5px">How many planes one crease is asked to carry. <code style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:var(--panel-2);border:1px solid var(--rule);padding:.06em .32em;border-radius:4px">FOLD_STACK</code> is a global 2 today.</small>
+        </div>
+      </div>
+
+      <div style="background:var(--sunk);border:1px solid var(--rule);border-radius:12px;padding:16px 18px">
+        <h2 style="font-family:'Archivo',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin:0 0 10px">What the crease carries</h2>
+        <p style="margin:0 0 8px;font-size:13px;color:var(--ink-2);line-height:1.5">{{foldVerdict}}</p>
+        <p style="margin:0;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--ink-3)">{{foldMath}}</p>
+      </div>
+
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <div style="background:var(--panel);border:1px solid var(--rule);border-radius:12px;box-shadow:var(--shadow);overflow:hidden">
+        <h3 style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-family:'Archivo',sans-serif;font-size:13px;font-weight:600;margin:0;padding:13px 18px;border-bottom:1px solid var(--rule);background:var(--panel-2)">
+          <span>Section — two levels of a 1&#215;1 box, looking along the warp</span>
+          <em style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-style:normal;color:var(--ink-3)">{{planeCountText}}</em>
+        </h3>
+        <div style="position:relative;background:var(--panel)">
+          <svg viewBox="0 0 1180 452" role="img" aria-label="Section through two levels showing every resting plane" style="display:block;width:100%;height:auto">
+            <sc-for list="{{planes}}" as="p" hint-placeholder-count="5">
+              <line x1="{{p.x1}}" y1="{{p.y}}" x2="{{p.x2}}" y2="{{p.y}}" stroke="{{p.stroke}}" stroke-width="{{p.sw}}" stroke-dasharray="{{p.dash}}"></line>
+            </sc-for>
+            <sc-for list="{{sections}}" as="r" hint-placeholder-count="8">
+              <rect x="{{r.x}}" y="{{r.y}}" width="{{r.w}}" height="{{r.h}}" rx="{{r.rx}}" fill="{{r.fill}}" stroke="{{r.stroke}}" stroke-width="1.2"></rect>
+            </sc-for>
+            <sc-for list="{{marks}}" as="k" hint-placeholder-count="1">
+              <g>
+                <line x1="{{k.x}}" y1="{{k.y1}}" x2="{{k.x}}" y2="{{k.y2}}" stroke="{{k.stroke}}" stroke-width="1.4"></line>
+                <line x1="{{k.xa}}" y1="{{k.y1}}" x2="{{k.xb}}" y2="{{k.y1}}" stroke="{{k.stroke}}" stroke-width="1.4"></line>
+                <line x1="{{k.xa}}" y1="{{k.y2}}" x2="{{k.xb}}" y2="{{k.y2}}" stroke="{{k.stroke}}" stroke-width="1.4"></line>
+              </g>
+            </sc-for>
+          </svg>
+          <sc-for list="{{labels}}" as="l" hint-placeholder-count="14">
+            <div style="{{l.style}}">{{l.text}}</div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="background:var(--panel);border:1px solid var(--rule);border-radius:12px;box-shadow:var(--shadow);overflow:hidden">
+        <h3 style="font-family:'Archivo',sans-serif;font-size:13px;font-weight:600;margin:0;padding:13px 18px;border-bottom:1px solid var(--rule);background:var(--panel-2)">Does it read seamless?</h3>
+        <table style="width:100%;border-collapse:collapse;font-size:13.5px">
+          <thead>
+            <tr>
+              <th style="text-align:left;padding:9px 18px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:500;border-bottom:1px solid var(--rule)">Measure</th>
+              <th style="text-align:left;padding:9px 12px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:500;border-bottom:1px solid var(--rule)">This model</th>
+              <th style="text-align:left;padding:9px 12px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:500;border-bottom:1px solid var(--rule)">Wanted</th>
+              <th style="text-align:left;padding:9px 18px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:500;border-bottom:1px solid var(--rule)">Verdict</th>
+            </tr>
+          </thead>
+          <tbody>
+            <sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+              <tr>
+                <td style="padding:9px 18px;border-bottom:1px solid var(--rule)">{{r.name}}</td>
+                <td style="padding:9px 12px;border-bottom:1px solid var(--rule);font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-variant-numeric:tabular-nums">{{r.now}}</td>
+                <td style="padding:9px 12px;border-bottom:1px solid var(--rule);font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--ink-3);font-variant-numeric:tabular-nums">{{r.want}}</td>
+                <td style="padding:9px 18px;border-bottom:1px solid var(--rule)"><span style="{{r.pillStyle}}">{{r.pill}}</span></td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="{{verdictStyle}}">
+        <p style="margin:0"><b>{{verdictHead}}</b> {{verdictBody}}</p>
+      </div>
+
+    </div>
+  </div>
+
+  <p style="margin:26px 0 0;font-size:12.5px;color:var(--ink-3);line-height:1.6;max-width:100ch">Heights are strand thicknesses <code style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:var(--panel-2);border:1px solid var(--rule);padding:.06em .32em;border-radius:4px">t</code>, measured to the ribbon&#39;s centre. Today the studio computes <code style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:var(--panel-2);border:1px solid var(--rule);padding:.06em .32em;border-radius:4px">restZ = rank&#183;layerGap + level&#183;2t</code> and lets a crossing swing &#177;t/2 about its storey plane — two planes a level, arrived at by accident, with nothing between them. Naming three and letting consecutive levels share one is the whole proposal.</p>
+
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":1300}}'>
+class Component extends DCLogic {
+  constructor(props){
+    super(props);
+    this.state = { model: 'shared', s: 1, a: 2.08, d: 2 };
+  }
+
+  spec(){
+    return {
+      shared: { label: 'Shared seam', pitch: 2, offsets: [[0,'bottom'],[1,'center'],[2,'top']],
+                note: "level L's top IS level L+1's bottom", pitchText: 'pitch 2s' },
+      butt:   { label: 'Butt seam',   pitch: 3, offsets: [[0,'bottom'],[1,'center'],[2,'top']],
+                note: 'each level keeps all three planes to itself', pitchText: 'pitch 3s' },
+      legacy: { label: "Today's model", pitch: 2, offsets: [[0,'bottom'],[2,'top']],
+                note: 'the crossing swing, ±t/2, and no plane between', pitchText: 'pitch 2s' },
+    };
+  }
+
+  planeTable(){
+    const sp = this.spec()[this.state.model];
+    const s = this.state.s;
+    const by = new Map();
+    for (let l = 0; l < 2; l++){
+      for (const [k, role] of sp.offsets){
+        const z = Math.round((l * sp.pitch + k) * s * 1e4) / 1e4;
+        const key = z.toFixed(4);
+        const e = by.get(key) || { z, roles: [] };
+        e.roles.push({ level: l, role });
+        by.set(key, e);
+      }
+    }
+    return { sp, planes: [...by.values()].sort((p, q) => p.z - q.z) };
+  }
+
+  renderVals(){
+    const S = this.state;
+    const { sp, planes } = this.planeTable();
+    const s = S.s, t = 1, w = S.a;
+
+    // ---- section drawing ------------------------------------------------
+    const H = 452, top = 30, bot = 34;
+    const lo = planes[0].z - 1.35, hi = planes[planes.length - 1].z + 1.35;
+    const k = Math.min((H - top - bot) / (hi - lo), 44, 128 / w);
+    const y = (z) => H - bot - (z - lo) * k;
+    const px = { warpA: 190, weftB: 320, warpC: 450, weftD: 580 };
+    const tone = ['var(--accent)', 'var(--ref)'];
+    const wash = ['rgba(24,111,96,.14)', 'rgba(58,110,165,.14)'];
+
+    const seamZ = planes.filter((p) => p.roles.length > 1).map((p) => p.z);
+
+    // Every label in this drawing is an HTML overlay, positioned as a
+    // percentage of the SVG's own box: a {{hole}} used as the text content of
+    // an SVG <text> resolves to nothing, so the numbers would silently vanish.
+    const labels = [];
+    const lab = (o) => 'position:absolute;top:' + (o.y / H * 100).toFixed(3) + '%;'
+      + (o.right !== undefined
+         ? 'right:' + ((1180 - o.right) / 1180 * 100).toFixed(3) + '%;transform:translateY(-50%);'
+         : 'left:' + (o.x / 1180 * 100).toFixed(3) + '%;transform:translate(' + (o.center ? '-50%' : '0') + ',-50%);')
+      + 'font-family:\'IBM Plex Mono\',monospace;font-size:' + (o.size || 12) + 'px;'
+      + 'font-weight:' + (o.weight || 600) + ';white-space:nowrap;pointer-events:none;'
+      + 'letter-spacing:.01em;color:' + o.colour + ';';
+
+    const planeRows = planes.map((p) => {
+      const shared = p.roles.length > 1;
+      const yy = y(p.z);
+      const text = p.roles.map((r) => 'L' + r.level + ' ' + r.role).join('  =  ');
+      const colour = shared ? 'var(--accent)' : 'var(--ink-3)';
+      labels.push({ text: (p.z >= 0 ? '+' : '') + p.z.toFixed(2) + ' t',
+                    style: lab({ right: 74, y: yy, colour }) });
+      labels.push({ text: shared ? text + '   \u2190 the seam' : text,
+                    style: lab({ x: 810, y: yy, colour, weight: shared ? 600 : 400, size: 12.5 }) });
+      return {
+        y: yy.toFixed(1), x1: 84, x2: 640,
+        stroke: shared ? 'var(--accent)' : 'var(--rule-2)',
+        sw: shared ? 1.8 : 1, dash: shared ? '0' : '4 5',
+      };
+    });
+
+    // one round per level: B on bottom, A and C on center, D on top.
+    const parts = [['bottom','B',px.weftB], ['center','A',px.warpA], ['center','C',px.warpC], ['top','D',px.weftD]];
+    const sections = [];
+    const orphans = [];
+    for (let l = 0; l < 2; l++){
+      for (const [role, name, cx] of parts){
+        const off = sp.offsets.find((o) => o[1] === role);
+        if (!off){ orphans.push(name + ' on L' + l); continue; }
+        const z = (l * sp.pitch + off[0]) * s;
+        const pw = w * k, ph = t * k;
+        sections.push({
+          x: (cx - pw / 2).toFixed(1), y: (y(z) - ph / 2).toFixed(1),
+          w: pw.toFixed(1), h: ph.toFixed(1), rx: Math.min(3, ph / 3).toFixed(1),
+          fill: wash[l], stroke: tone[l],
+        });
+        labels.push({ text: name + ' \u00b7 L' + l,
+                      style: lab({ x: cx, y: y(z), centre: true, center: true,
+                                   colour: tone[l], size: 11.5 }) });
+      }
+    }
+
+    // the interlock dimension, where the two level spans overlap
+    const span = (l) => {
+      const zs = sp.offsets.map((o) => (l * sp.pitch + o[0]) * s);
+      return [Math.min(...zs) - t / 2, Math.max(...zs) + t / 2];
+    };
+    const [lo0, hi0] = span(0), [lo1] = span(1);
+    const overlap = Math.round((hi0 - lo1) * 1e4) / 1e4;
+    const marks = [];
+    if (Math.abs(overlap) > 1e-6){
+      const a = Math.min(hi0, lo1), b = Math.max(hi0, lo1);
+      const col = overlap > 0 ? 'var(--good)' : 'var(--bad)';
+      marks.push({ x: 660, xa: 656, xb: 664, y1: y(b).toFixed(1), y2: y(a).toFixed(1), stroke: col });
+      labels.push({ text: (overlap > 0 ? 'interlock ' : 'daylight ') + Math.abs(overlap).toFixed(2) + ' t',
+                    style: lab({ x: 672, y: (y(a) + y(b)) / 2, colour: col, size: 12 }) });
+    }
+
+    // ---- readouts -------------------------------------------------------
+    const pill = (c) => 'display:inline-block;padding:2px 9px;border-radius:999px;font-family:\'IBM Plex Mono\',monospace;font-size:11px;font-weight:600;letter-spacing:.02em;' +
+      (c === 'good' ? 'background:var(--good-bg);color:var(--good)'
+       : c === 'bad' ? 'background:var(--bad-bg);color:var(--bad)'
+       : 'background:var(--warn-bg);color:var(--warn)');
+
+    const perLevel = sp.offsets.length;
+    const hasCenter = sp.offsets.some((o) => o[1] === 'center');
+    const contact = Math.abs(s - 1) < 1e-6;
+
+    const rows = [
+      { name: 'Planes in a level', now: String(perLevel), want: '3',
+        pill: perLevel === 3 ? ['good','bottom · center · top'] : ['bad','no plane between'] },
+      { name: 'A plane between over and under', now: hasCenter ? 'yes' : 'no', want: 'yes',
+        pill: hasCenter ? ['good','somewhere to rest'] : ['bad','the arm has no home'] },
+      { name: 'Level pitch', now: (sp.pitch * s).toFixed(2) + ' t', want: '2.00 t',
+        pill: Math.abs(sp.pitch * s - 2) < 1e-6 ? ['good','matches levelStepSource'] : ['warn','changes restZ'] },
+      { name: 'Planes shared between levels', now: String(seamZ.length), want: '1',
+        pill: seamZ.length === 1 ? ['good','the rounds interlock'] : seamZ.length === 0 ? ['bad','the rounds only touch'] : ['warn','more than one'] },
+      { name: 'Span overlap', now: (overlap >= 0 ? '+' : '') + overlap.toFixed(2) + ' t', want: '+1.00 t',
+        pill: overlap > 0.99 ? ['good','a thickness of bite'] : overlap > 0 ? ['warn','shallow'] : ['bad','butt joint'] },
+      { name: 'Plane spacing', now: s.toFixed(2) + ' t', want: '1.00 t',
+        pill: contact ? ['good','lying on, not through'] : s < 1 ? ['bad','ribbons interpenetrate'] : ['warn','a gap opens'] },
+    ].map((r) => ({ name: r.name, now: r.now, want: r.want, pill: r.pill[1], pillStyle: pill(r.pill[0]) }));
+
+    const seamless = perLevel === 3 && seamZ.length === 1 && overlap > 0.99 && contact;
+    const vBase = 'border-radius:12px;padding:16px 20px;font-size:14.5px;line-height:1.55;border:1px solid ';
+    const verdictStyle = vBase + (seamless
+      ? 'color-mix(in srgb,var(--good) 40%,transparent);background:var(--good-bg);color:var(--good)'
+      : 'color-mix(in srgb,var(--bad) 40%,transparent);background:var(--bad-bg);color:var(--bad)');
+
+    let head, body;
+    if (seamless){
+      head = 'Seamless.';
+      body = 'Every level owns three planes a thickness apart, and the plane at ' + seamZ[0].toFixed(2) +
+             ' t belongs to both rounds — L0 puts its top there and L1 puts its bottom there. The round above bites ' +
+             overlap.toFixed(2) + ' t into the round below instead of resting on its lid, which is what makes a real box stitch continuous.';
+    } else if (!hasCenter){
+      head = 'This is what the studio does now.';
+      body = 'Two planes a level and nothing between them, so an arm that should pass between the lace riding over and the lace ducking under has nowhere to be — it gets pushed onto one of the two and the round reads as a pair, not a weave. Add the centre plane.';
+    } else if (seamZ.length === 0){
+      head = 'The rounds butt.';
+      body = 'Three planes a level is right, but L0 tops out at ' + hi0.toFixed(2) + ' t and L1 starts at ' + lo1.toFixed(2) +
+             ' t, so no plane carries both. They meet on a flat face — a visible course line all the way round. Share a plane.';
+    } else {
+      head = 'Close, but the spacing is off.';
+      body = 'Planes are ' + s.toFixed(2) + ' t apart. ' + (s < 1
+        ? 'Below one thickness the ribbons occupy the same space and the edge of one surfaces through the face of the other.'
+        : 'Above one thickness they stop touching and the weave opens up.');
+    }
+
+    // ---- the fold -------------------------------------------------------
+    const climb = S.d * s;
+    const Rmin = climb / 2;
+    const foldMath = 'climb = ' + S.d + ' × ' + s.toFixed(2) + ' t = ' + climb.toFixed(2) +
+      ' t · needs R ≥ ' + Rmin.toFixed(2) + ' t (' + (Rmin / w).toFixed(2) + ' w)';
+    const foldVerdict = S.d === 2
+      ? 'Two planes is a whole level, and FOLD_STACK = 2 is already exactly right for it — that is the fold that carries a round up onto the next.'
+      : S.d === 1
+        ? 'One plane is a shift inside a level — bottom to centre, or centre to top. The global FOLD_STACK = 2 overshoots it by a thickness and the crease shows a face twice the step it really makes.'
+        : 'More than a level in one crease. FOLD_STACK caps it at 2 and ramps the rest into the runs either side, tipping them off level.';
+
+    return {
+      models: Object.entries(this.spec()).map(([id, m]) => ({
+        label: m.label, note: m.note, pitchText: m.pitchText,
+        pick: () => this.setState({ model: id }),
+        style: 'text-align:left;width:100%;padding:10px 12px;border-radius:9px;cursor:pointer;font:400 13px "IBM Plex Sans",sans-serif;' +
+          (id === S.model
+            ? 'border:1.5px solid var(--accent);background:var(--good-bg);color:var(--good)'
+            : 'border:1px solid var(--rule-2);background:var(--panel-2);color:var(--ink)'),
+      })),
+      s: String(S.s), a: String(S.a), d: String(S.d),
+      sText: S.s.toFixed(2) + ' t', aText: S.a.toFixed(2),
+      dText: S.d + (S.d === 1 ? ' plane' : ' planes'),
+      onS: (e) => this.setState({ s: parseFloat(e.target.value) }),
+      onA: (e) => this.setState({ a: parseFloat(e.target.value) }),
+      onD: (e) => this.setState({ d: parseFloat(e.target.value) }),
+      planes: planeRows, sections, marks, labels,
+      planeCountText: planes.length + ' distinct planes' + (orphans.length ? ' · ' + orphans.length + ' parts homeless' : ''),
+      rows, verdictStyle, verdictHead: head, verdictBody: body,
+      foldMath, foldVerdict,
+    };
+  }
+}
+</script>
+</body>
+</html>

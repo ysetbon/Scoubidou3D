@@ -20,3 +20,8 @@ __pycache__/
 # npm writes one here on any `npm install` in worker-api/; the project has
 # never tracked it, and a diagnostic run should not be the thing that starts.
 worker-api/package-lock.json
+
+# The seeded design-canvas payload for mocks/foldlab/ — ~2 MB of vendored
+# editor, regenerated from the .dc.html artboards beside it (see
+# mocks/foldlab/README.md). The artboards are the source; this is the build.
+mocks/foldlab/fold-lab.html

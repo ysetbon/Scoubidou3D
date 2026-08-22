@@ -1,0 +1,239 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <style>
+    :root{
+      --ground:#F4F6F4; --panel:#FFFFFF; --panel-2:#ECEFEC; --sunk:#E4E8E5;
+      --ink:#14191B; --ink-2:#454E51; --ink-3:#6E7A7D;
+      --rule:#D3DAD6; --rule-2:#C0C9C4;
+      --bad:#AB4136; --bad-bg:#F7E9E7;
+      --good:#186F60; --good-bg:#E3F0ED;
+      --warn:#9A6B18; --warn-bg:#F6EEDC;
+      --accent:#186F60; --ref:#3A6EA5;
+      --shadow:0 1px 2px rgba(20,25,27,.05), 0 6px 20px -12px rgba(20,25,27,.22);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--ground);color:var(--ink);
+      font:400 15px/1.55 "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:var(--accent)} a:hover{color:#0F4F44}
+    td,th{border-bottom:1px solid var(--rule)}
+  </style>
+</helmet>
+
+<div style="padding:32px 30px 38px">
+
+  <p style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.17em;text-transform:uppercase;color:var(--ink-3);margin:0 0 12px">/foldlab/ · the sheet you dictate into</p>
+  <h2 style="font-family:'Archivo',sans-serif;font-weight:700;letter-spacing:-.02em;font-size:32px;margin:0 0 10px">Two levels of a 1&#215;1 box, part by part</h2>
+  <p style="color:var(--ink-2);max-width:80ch;margin:0 0 8px;font-size:15px">Four arms — <b style="color:var(--ink)">A</b> and <b style="color:var(--ink)">C</b> one lace, <b style="color:var(--ink)">B</b> and <b style="color:var(--ink)">D</b> the other — worked twice. Each row says which of the level&#39;s three planes that arm rests on, and the fold column says what its crease has to carry to reach the same arm one round up.</p>
+  <p style="color:var(--ink-3);max-width:80ch;margin:0 0 22px;font-size:13.5px"><b style="color:var(--warn)">The plane chips below are a first guess, not a finding.</b> Click one to cycle it — <span style="font-family:'IBM Plex Mono',monospace">bottom → center → top</span> — and the fold climbs, the crossing gaps and the verdicts all recompute underneath.</p>
+
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) 296px;gap:22px;align-items:start">
+
+    <div style="background:var(--panel);border:1px solid var(--rule);border-radius:12px;box-shadow:var(--shadow);overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:13.5px">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:10px 16px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:500;background:var(--panel-2)">Round</th>
+            <th style="text-align:left;padding:10px 10px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:500;background:var(--panel-2)">Arm</th>
+            <th style="text-align:left;padding:10px 10px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:500;background:var(--panel-2)">Rests on</th>
+            <th style="text-align:right;padding:10px 10px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:500;background:var(--panel-2)">z</th>
+            <th style="text-align:left;padding:10px 10px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:500;background:var(--panel-2)">Against the other lace</th>
+            <th style="text-align:left;padding:10px 16px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:500;background:var(--panel-2)">Fold to the next round</th>
+          </tr>
+        </thead>
+        <tbody>
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="9">
+            <tr style="{{r.rowStyle}}">
+              <td style="{{r.cellPad}}">{{r.round}}</td>
+              <td style="{{r.armCell}}">{{r.arm}}</td>
+              <td style="padding:7px 10px">
+                <button onClick="{{r.cycle}}" style="{{r.chipStyle}}">{{r.chip}}</button>
+              </td>
+              <td style="{{r.zCell}}">{{r.z}}</td>
+              <td style="{{r.cellPad}}"><span style="{{r.crossStyle}}">{{r.cross}}</span></td>
+              <td style="padding:7px 16px 7px 10px"><span style="{{r.foldStyle}}">{{r.fold}}</span></td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div style="background:var(--panel);border:1px solid var(--rule);border-radius:12px;box-shadow:var(--shadow);padding:18px">
+        <h3 style="font-family:'Archivo',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin:0 0 12px">Plan — where they cross</h3>
+        <div style="position:relative">
+          <svg viewBox="0 0 250 250" role="img" aria-label="Plan of a 1 by 1 box block, four arms lettered A to D" style="display:block;width:100%;height:auto">
+            <sc-for list="{{bars}}" as="b" hint-placeholder-count="4">
+              <rect x="{{b.x}}" y="{{b.y}}" width="{{b.w}}" height="{{b.h}}" rx="3" fill="{{b.fill}}" stroke="{{b.stroke}}" stroke-width="1.3"></rect>
+            </sc-for>
+            <sc-for list="{{knots}}" as="c" hint-placeholder-count="4">
+              <circle cx="{{c.x}}" cy="{{c.y}}" r="5.5" fill="{{c.fill}}" stroke="{{c.stroke}}" stroke-width="1.4"></circle>
+            </sc-for>
+          </svg>
+          <sc-for list="{{bars}}" as="b" hint-placeholder-count="4">
+            <div style="{{b.labelStyle}}">{{b.label}}</div>
+          </sc-for>
+        </div>
+        <p style="margin:12px 0 0;font-size:12.5px;color:var(--ink-3);line-height:1.45">Four crossings in the block. Each dot is coloured by the gap between the two arms meeting there.</p>
+      </div>
+
+      <div style="background:var(--sunk);border:1px solid var(--rule);border-radius:12px;padding:16px 18px">
+        <h3 style="font-family:'Archivo',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin:0 0 10px">Reading the gaps</h3>
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;line-height:1.45">
+          <div style="display:flex;gap:9px;align-items:baseline"><span style="display:inline-block;padding:2px 8px;border-radius:999px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;background:var(--bad-bg);color:var(--bad);flex:0 0 auto">&#916; 0</span><span style="color:var(--ink-2)">same plane — they occupy each other</span></div>
+          <div style="display:flex;gap:9px;align-items:baseline"><span style="display:inline-block;padding:2px 8px;border-radius:999px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;background:var(--good-bg);color:var(--good);flex:0 0 auto">&#916; 1</span><span style="color:var(--ink-2)">lying on — this is the weave</span></div>
+          <div style="display:flex;gap:9px;align-items:baseline"><span style="display:inline-block;padding:2px 8px;border-radius:999px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;background:var(--warn-bg);color:var(--warn);flex:0 0 auto">&#916; 2</span><span style="color:var(--ink-2)">a thickness of daylight between them</span></div>
+          <div style="display:flex;gap:9px;align-items:baseline"><span style="display:inline-block;padding:2px 8px;border-radius:999px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;background:var(--panel-2);color:var(--ink-3);flex:0 0 auto">&#916; 3+</span><span style="color:var(--ink-2)">a level apart — one simply passes above</span></div>
+        </div>
+      </div>
+
+      <div style="{{summaryStyle}}">
+        <p style="margin:0;font-size:13.5px;line-height:1.5">{{summary}}</p>
+      </div>
+
+      <button onClick="{{reset}}" style="width:100%;min-height:36px;padding:0 12px;border-radius:8px;cursor:pointer;border:1px solid var(--rule-2);background:var(--panel-2);color:var(--ink);font:600 13px 'IBM Plex Sans',sans-serif">Back to the first guess</button>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1120,"height":720}}'>
+const PLANES = ['bottom', 'center', 'top'];
+const GUESS = { 'L0:A':'center', 'L0:B':'bottom', 'L0:C':'center', 'L0:D':'top',
+                'L1:A':'center', 'L1:B':'bottom', 'L1:C':'center', 'L1:D':'top' };
+// The shared-seam model from the section artboard: three planes a level, and
+// level L's top is level L+1's bottom, so the pitch is two planes, not three.
+const PITCH = 2;
+
+class Component extends DCLogic {
+  constructor(props){
+    super(props);
+    this.state = { at: Object.assign({}, GUESS) };
+  }
+
+  zOf(level, arm){
+    return level * PITCH + PLANES.indexOf(this.state.at['L' + level + ':' + arm]);
+  }
+
+  renderVals(){
+    const arms = ['A', 'B', 'C', 'D'];
+    const lace = { A: 'A–C', B: 'B–D', C: 'A–C', D: 'B–D' };
+    // In the block, a warp arm meets both weft arms and vice versa.
+    const meets = { A: ['B', 'D'], B: ['A', 'C'], C: ['B', 'D'], D: ['A', 'C'] };
+
+    const pillOf = (d) => d === 0 ? ['bad', 'Δ 0 · occupied']
+      : d === 1 ? ['good', 'Δ 1 · lying on']
+      : d === 2 ? ['warn', 'Δ 2 · daylight']
+      : ['flat', 'Δ ' + d + ' · a level clear'];
+    const pillStyle = (c) => 'display:inline-block;padding:2px 9px;border-radius:999px;font-family:\'IBM Plex Mono\',monospace;font-size:11px;font-weight:600;'
+      + (c === 'good' ? 'background:var(--good-bg);color:var(--good)'
+       : c === 'bad'  ? 'background:var(--bad-bg);color:var(--bad)'
+       : c === 'warn' ? 'background:var(--warn-bg);color:var(--warn)'
+       : 'background:var(--panel-2);color:var(--ink-3)');
+
+    const chipStyle = (plane) => {
+      const tint = plane === 'top' ? 'var(--ref)' : plane === 'bottom' ? 'var(--accent)' : 'var(--ink-2)';
+      return 'min-width:104px;text-align:left;padding:5px 10px;border-radius:7px;cursor:pointer;'
+        + 'font:600 12.5px \'IBM Plex Mono\',monospace;border:1px solid ' + tint + ';'
+        + 'background:var(--panel);color:' + tint;
+    };
+    const arrow = { bottom: '▼', center: '●', top: '▲' };
+
+    const rows = [];
+    let worst = 3, faults = 0;
+    for (let l = 0; l < 2; l++){
+      for (const arm of arms){
+        const plane = this.state.at['L' + l + ':' + arm];
+        const z = this.zOf(l, arm);
+        const gaps = meets[arm].map((o) => Math.abs(z - this.zOf(l, o)));
+        const d = Math.min(...gaps);
+        if (d !== 1) faults++;
+        worst = Math.min(worst, d);
+        const [cls, txt] = pillOf(d);
+
+        const climb = l === 0 ? this.zOf(1, arm) - z : null;
+        const foldTxt = climb === null
+          ? 'last round — the arm ends here'
+          : climb + (Math.abs(climb) === 1 ? ' plane' : ' planes') + ' · '
+            + climb.toFixed(2) + ' t at the crease';
+        const foldCls = climb === null ? 'flat' : climb === 2 ? 'good' : climb <= 0 ? 'bad' : 'warn';
+
+        rows.push({
+          round: arm === 'A' ? 'L' + l : '',
+          arm: arm + '  ' + lace[arm],
+          chip: arrow[plane] + '  ' + plane,
+          chipStyle: chipStyle(plane),
+          cycle: () => {
+            const next = PLANES[(PLANES.indexOf(plane) + 1) % 3];
+            this.setState({ at: Object.assign({}, this.state.at, { ['L' + l + ':' + arm]: next }) });
+          },
+          z: '+' + z.toFixed(2) + ' t',
+          cross: txt, crossStyle: pillStyle(cls),
+          fold: foldTxt, foldStyle: pillStyle(foldCls),
+          cellPad: 'padding:7px 10px;color:var(--ink-2)',
+          armCell: 'padding:7px 10px;font-family:\'IBM Plex Mono\',monospace;font-size:12.5px;font-weight:600',
+          zCell: 'padding:7px 10px;text-align:right;font-family:\'IBM Plex Mono\',monospace;font-size:12.5px;color:var(--ink-3);font-variant-numeric:tabular-nums',
+          rowStyle: l === 1 ? 'background:var(--sunk)' : '',
+        });
+      }
+    }
+
+    // ---- plan of the block ---------------------------------------------
+    const colOf = (arm) => {
+      const z = this.zOf(0, arm);
+      const d = Math.min(...meets[arm].map((o) => Math.abs(z - this.zOf(0, o))));
+      return d === 1 ? 'var(--good)' : d === 0 ? 'var(--bad)' : 'var(--warn)';
+    };
+    const wash = { 'var(--good)': 'rgba(24,111,96,.12)', 'var(--bad)': 'rgba(171,65,54,.12)', 'var(--warn)': 'rgba(154,107,24,.12)' };
+    const bars = [
+      { x: 30,  y: 78,  w: 214, h: 30, lx: 14,  ly: 93,  label: 'A', arm: 'A' },
+      { x: 30,  y: 142, w: 214, h: 30, lx: 14,  ly: 157, label: 'C', arm: 'C' },
+      { x: 78,  y: 30,  w: 30,  h: 214, lx: 93,  ly: 14,  label: 'B', arm: 'B' },
+      { x: 142, y: 30,  w: 30,  h: 214, lx: 157, ly: 14,  label: 'D', arm: 'D' },
+    ].map((b) => {
+      const stroke = colOf(b.arm);
+      // An HTML overlay, not an SVG <text>: a {{hole}} used as SVG text content
+      // resolves to nothing, so the letter would silently disappear.
+      const labelStyle = 'position:absolute;left:' + (b.lx / 250 * 100).toFixed(2) + '%;'
+        + 'top:' + (b.ly / 250 * 100).toFixed(2) + '%;transform:translate(-50%,-50%);'
+        + 'font:600 12px \'IBM Plex Mono\',monospace;pointer-events:none;color:' + stroke + ';';
+      return { ...b, stroke, fill: wash[stroke], labelStyle };
+    });
+
+    const knots = [];
+    for (const wArm of ['A', 'C']) for (const fArm of ['B', 'D']){
+      const d = Math.abs(this.zOf(0, wArm) - this.zOf(0, fArm));
+      const [cls] = pillOf(d);
+      const col = cls === 'good' ? 'var(--good)' : cls === 'bad' ? 'var(--bad)' : cls === 'warn' ? 'var(--warn)' : 'var(--ink-3)';
+      knots.push({
+        x: fArm === 'B' ? 93 : 157, y: wArm === 'A' ? 93 : 157,
+        stroke: col, fill: wash[col] || 'var(--panel)',
+      });
+    }
+
+    const clean = faults === 0;
+    return {
+      rows, bars, knots,
+      summary: clean
+        ? 'Every crossing in both rounds is exactly one plane — each arm lies ON the one it meets, never through it and never above it with a gap. That is the condition for a seamless weave.'
+        : faults + ' of 8 arm placements do not sit one plane from the lace they cross. Fix those and the weave closes.',
+      summaryStyle: 'border-radius:12px;padding:14px 16px;border:1px solid '
+        + (clean ? 'color-mix(in srgb,var(--good) 40%,transparent);background:var(--good-bg);color:var(--good)'
+                 : 'color-mix(in srgb,var(--warn) 45%,transparent);background:var(--warn-bg);color:var(--warn)'),
+      reset: () => this.setState({ at: Object.assign({}, GUESS) }),
+    };
+  }
+}
+</script>
+</body>
+</html>
