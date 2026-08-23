@@ -179,13 +179,28 @@ export interface CrossPoint {
   woven: boolean;
 }
 
-/** One storey's three resting heights — see setPlaneGuides. */
-export interface SublevelLadder {
-  floor: number;
-  bottom: number;
-  middle: number;
-  top: number;
+/**
+ * One height a layer can be put on, in world units — see setPlaneGuides.
+ *
+ * `step` is how many thicknesses it sits off the storey middle it belongs to, so
+ * an ODD step is a seam: a storey's ceiling and the next one's floor are one
+ * height under two names, which is what `PITCH = 2` means and the reason the
+ * panel's nine names are seven rungs.
+ */
+export interface SublevelPlane {
+  z: number;
+  step: number;
+  seam: boolean;
 }
+
+/**
+ * How far the panel's ladder reaches, in thicknesses off a layer's storey middle.
+ * Three storeys — the one below, its own, the one above — which is `2 · PITCH`
+ * either side plus the seam, so ±3. The panel's rungs and this MUST agree; they
+ * did not once, and the canvas quietly drew four fewer shelves than there were
+ * rungs to press.
+ */
+const SUBLEVEL_REACH = 3;
 
 const PALETTE = {
   light: { bg: '#f5efdf', gridMajor: 0xcfc6ae, gridMinor: 0xe2dbc6 },
@@ -2522,81 +2537,102 @@ export class StrandScene {
   private updatePlaneGuides(): void {
     this.disposePlaneGuides();
     if (!this.showPlanes) return;
-    const ladders = this.sublevelLadders();
-    if (!ladders.length) return;
-
     const focusIndex = this.planeFocusId
       ? this.current.strands.findIndex((st) => st.id === this.planeFocusId)
       : -1;
-    const focusFloor = focusIndex >= 0 ? this.baseFloorZ[focusIndex] : null;
+    const planes = this.sublevelPlanes(focusIndex);
+    if (!planes.length) return;
 
     const group = new THREE.Group();
     // The model's own footprint and a margin. `contentRadius` is already a half
     // diagonal, so the diameter is twice it — a shelf the size of the whole
     // viewport is not a shelf, it is a tint over everything behind it.
     const size = this.contentRadius * 2.1;
-    // Six translucent sheets stacked in the eye add up fast. With nothing
-    // selected they all read at once, so each has to be fainter than it would be
-    // on its own; picking a row lifts its three clear of the rest.
-    const anyFocus = focusFloor !== null;
-    // Floor, middle, ceiling. Coloured the way the Planes view's own marks are
-    // ordered, so the picture in the panel and the sheet in the scene agree.
-    const SHADES: Array<[keyof SublevelLadder, number]> = [
-      ['bottom', 0x5fa8dc],
-      ['middle', 0x9a9088],
-      ['top', 0xe0857a],
-    ];
-    for (const ladder of ladders) {
-      const lit = focusFloor === null || Math.abs(ladder.floor - focusFloor) < 1e-6;
-      for (const [which, colour] of SHADES) {
-        const z = ladder[which] as number;
-        const geom = new THREE.PlaneGeometry(size, size);
-        const mesh = new THREE.Mesh(
-          geom,
-          new THREE.MeshBasicMaterial({
-            color: colour,
-            transparent: true,
-            opacity: lit ? (anyFocus ? 0.15 : 0.055) : 0.015,
-            side: THREE.DoubleSide,
-            depthWrite: false, // a guide never hides a ribbon
-          }),
-        );
-        mesh.position.set(0, 0, z);
-        mesh.renderOrder = -1;
-        group.add(mesh);
-        // A rim, so a plane seen edge-on is a line rather than nothing at all —
-        // and edge-on is exactly how you look at a stack to judge its heights.
-        const edge = new THREE.LineSegments(
-          new THREE.EdgesGeometry(geom),
-          new THREE.LineBasicMaterial({
-            color: colour,
-            transparent: true,
-            opacity: lit ? (anyFocus ? 0.8 : 0.4) : 0.08,
-          }),
-        );
-        edge.position.copy(mesh.position);
-        edge.renderOrder = -1;
-        group.add(edge as unknown as THREE.Mesh);
-      }
+    // Translucent sheets stacked in the eye add up fast. With nothing picked out
+    // they all read at once, so each has to be fainter than it would be alone;
+    // picking a layer lifts its own storey clear of the reach either side.
+    const anyFocus = focusIndex >= 0;
+    // A SEAM is a shelf two storeys share — the one you rest something ON — so it
+    // is the loud one. A storey's middle is where a layer sits when it is doing
+    // neither of the other two, and stays quiet. Two colours rather than three,
+    // because there are only two kinds of height once the ladder runs past one
+    // storey: the same coral/blue pair the panel's own rungs use.
+    const SEAM = 0xe0857a;
+    const MIDDLE = 0x5fa8dc;
+    for (const plane of planes) {
+      // Its own storey is the part being placed into; the reach either side is
+      // context, and reads as context.
+      const near = Math.abs(plane.step) <= 1;
+      const strength = anyFocus ? (near ? 1 : 0.45) : 0.5;
+      const geom = new THREE.PlaneGeometry(size, size);
+      const mesh = new THREE.Mesh(
+        geom,
+        new THREE.MeshBasicMaterial({
+          color: plane.seam ? SEAM : MIDDLE,
+          transparent: true,
+          opacity: 0.14 * strength,
+          side: THREE.DoubleSide,
+          depthWrite: false, // a guide never hides a ribbon
+        }),
+      );
+      mesh.position.set(0, 0, plane.z);
+      mesh.renderOrder = -1;
+      group.add(mesh);
+      // A rim, so a plane seen edge-on is a line rather than nothing at all —
+      // and edge-on is exactly how you look at a stack to judge its heights.
+      const edge = new THREE.LineSegments(
+        new THREE.EdgesGeometry(geom),
+        new THREE.LineBasicMaterial({
+          color: plane.seam ? SEAM : MIDDLE,
+          transparent: true,
+          opacity: (plane.seam ? 0.85 : 0.5) * strength,
+        }),
+      );
+      edge.position.copy(mesh.position);
+      edge.renderOrder = -1;
+      group.add(edge as unknown as THREE.Mesh);
     }
     this.planeGroup = group;
     this.scene.add(group);
   }
 
   /**
-   * Every ladder in the scene: one per distinct storey floor, with the three
-   * heights a layer can rest on. Deduped, because a lace's members share a floor
-   * and there is one shelf there, not six.
+   * The heights a layer can be put on, drawn.
+   *
+   * WHICH heights depends on whether one is picked out, and the difference is
+   * the whole reason this takes an argument. Measured before it did: the panel
+   * offered seven rungs — the storey below, this one, the one above — and the
+   * canvas drew three. Four of the seven had no shelf under them, so placing a
+   * layer at `+2` put it above everything drawn and the picture stopped
+   * explaining the control.
+   *
+   *   * Nobody picked out: each storey the scene actually HAS, and its three
+   *     heights. Bounded by the number of levels, so a twenty-storey box stitch
+   *     stays a stack rather than a fog.
+   *   * A layer picked out: every height ITS ladder can reach — all seven — so
+   *     each rung in the panel has a shelf in the scene, which is the promise
+   *     the two make to each other.
    */
-  sublevelLadders(): SublevelLadder[] {
+  sublevelPlanes(focusIndex = -1): SublevelPlane[] {
     const t = this.params.thickness * SCALE;
-    const seen = new Map<number, SublevelLadder>();
-    this.baseFloorZ.forEach((floor) => {
-      const kkey = Math.round(floor * 1e6);
-      if (seen.has(kkey)) return;
-      seen.set(kkey, { floor, bottom: floor - t, middle: floor, top: floor + t });
-    });
-    return [...seen.values()].sort((a, b) => a.floor - b.floor);
+    if (!(t > 0)) return [];
+    const seen = new Map<number, SublevelPlane>();
+    const add = (middle: number, step: number): void => {
+      const z = middle + step * t;
+      const key = Math.round(z * 1e6);
+      if (seen.has(key)) return;
+      // Odd steps off a storey's middle are the seams — and a seam reached from
+      // one storey is the same height as the one reached from its neighbour, so
+      // the dedupe above is what keeps it a single shelf.
+      seen.set(key, { z, step, seam: Math.abs(step % 2) === 1 });
+    };
+    const focusFloor = focusIndex >= 0 ? this.baseFloorZ[focusIndex] : undefined;
+    if (focusFloor !== undefined) {
+      for (let k = -SUBLEVEL_REACH; k <= SUBLEVEL_REACH; k++) add(focusFloor, k);
+      return [...seen.values()].sort((a, b) => a.z - b.z);
+    }
+    for (const middle of this.baseFloorZ) for (const k of [-1, 0, 1]) add(middle, k);
+    return [...seen.values()].sort((a, b) => a.z - b.z);
   }
 
   /** Frame the content: point the camera at the center and back off to fit.
