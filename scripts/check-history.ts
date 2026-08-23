@@ -11,7 +11,7 @@
 import { History, SceneState } from '../src/model/history';
 import { sceneToJson } from '../src/model/sceneIO';
 import { makeSample } from '../src/model/samples';
-import { addLevelBreak, removeStrandAt } from '../src/model/levels';
+import { addLevelBreak, isStacked, removeStrandAt } from '../src/model/levels';
 import { resetControlPoints } from '../src/model/controlPoints';
 import { Scene3D } from '../src/model/types';
 
@@ -173,6 +173,37 @@ const rich = (): Scene3D => makeSample('box-stitch-10');
     `a recording holds exactly the scene and nothing else (${fields})`,
   );
   ok(h.record(state(scene), 'orbit the camera') === false, 'so a look from elsewhere is no step');
+}
+
+// ---- a level nobody has put anything on is not a stacked scene -------------
+//
+// `isStacked` is what caps the weave swing so a crossing stays inside its
+// storey. Testing the BREAKS instead of the storeys, "add a level" — which
+// stores a break at the top of the stack, with nothing above it — halved the
+// swing at every crossing in the scene, and a carefully placed flat scene
+// rearranged itself the moment a level was added that nothing was on yet.
+{
+  // `rich()` already carries breaks; this is about a scene that has none yet.
+  const scene = rich();
+  scene.levelBreaks = [];
+  const n = scene.strands.length;
+  ok(!isStacked(scene), 'a scene with no breaks is not stacked');
+
+  addLevelBreak(scene);
+  ok(
+    scene.levelBreaks.join() === String(n),
+    `the button's own default puts the break above every strand (${scene.levelBreaks.join()})`,
+  );
+  ok(!isStacked(scene), 'and a break with nothing above it is STILL not stacked');
+
+  addLevelBreak(scene, 0);
+  ok(!isStacked(scene), 'nor is one at 0, which lifts the whole stack together');
+
+  addLevelBreak(scene, n - 1);
+  ok(isStacked(scene), 'a break with a strand on either side of it IS stacked');
+
+  removeStrandAt(scene, n - 1);
+  ok(!isStacked(scene), 'and taking that last strand away un-stacks it again');
 }
 
 console.log(bad ? `\n${bad} failed` : '\nall good');
