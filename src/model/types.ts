@@ -116,6 +116,27 @@ export interface Scene3D {
    * See docs/layer-levels.md.
    */
   levelBreaks: number[];
+  /**
+   * WHERE EACH LAYER'S RUN RESTS, by strand id, as a RUNG: `-2` the floor of its
+   * storey, `0` the middle, `+2` the ceiling, and `±3` one rung past those into
+   * the storey next door. A rung is half a thickness, so two rungs apart is one
+   * thickness — which is what "resting on" means.
+   *
+   * Absent, or absent for a given layer, is the default: the scene rests it
+   * where the layer stack falls. That is not the same as `0`, because declaring
+   * anything at all turns the fold easing off; see Panel.pushPlanes.
+   */
+  planes?: Record<string, number>;
+  /**
+   * The same, for ONE passage rather than a whole run: keyed
+   * `${aId}|${bId}|${n}|${strandId}` — the crossing's own key from
+   * `StrandScene.CrossPoint`, plus which of the two strands is being placed.
+   *
+   * Separate from `planes` because a run and a crossing are different things to
+   * place: an arm rides over one lace and under the next inside a single run, so
+   * no one resting height can say both.
+   */
+  crossPlanes?: Record<string, number>;
   name: string;
 }
 

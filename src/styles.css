@@ -243,10 +243,14 @@ button {
    statement here as everywhere else, and neither theme needs a colour of its
    own. Grid rather than flex so the halves stay equal whatever the labels
    measure, which is what lets the thumb be a plain 50%. */
+/* Three tabs in the room two words used to take. The tabs are no longer equal
+   widths — the selected one shows its word and the others are marks — so the
+   thumb cannot be a fraction of the track any more: panel.ts measures the tab
+   that is down and writes it here. The fallbacks are what a switch that has
+   never been measured shows, which is the left-hand tab. */
 .viewswitch {
   position: relative;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
   flex: 0 1 auto;
   min-width: 0;
   margin-right: auto;
@@ -260,16 +264,20 @@ button {
   position: absolute;
   z-index: 0;
   top: 2px;
-  left: 2px;
-  width: calc(50% - 2px);
+  left: 0;
+  width: var(--thumb-w, 33%);
   height: calc(100% - 4px);
   border-radius: 999px;
   background: var(--fill);
-  transition: transform 0.22s cubic-bezier(0.3, 0.85, 0.35, 1);
+  transform: translateX(var(--thumb-x, 2px));
+  transition:
+    transform 0.22s cubic-bezier(0.3, 0.85, 0.35, 1),
+    width 0.22s cubic-bezier(0.3, 0.85, 0.35, 1);
 }
 
-.viewswitch[data-view='masks'] .viewswitch-thumb {
-  transform: translateX(100%);
+/* The word belongs to whichever side is saying something. */
+.viewswitch button:not([aria-selected='true']) span {
+  display: none;
 }
 
 .viewswitch button {
@@ -381,6 +389,329 @@ button {
 
 .mask-list .row + .row {
   margin-top: 5px;
+}
+
+/* ---- the planes view ------------------------------------------------------ */
+/* The third side of the switch. Each lace is drawn from the height it actually
+   came out at — the curve is the built centreline, the bands are its ownership
+   tags, the brackets its turn records, the ticks where the weave finds it
+   crossing another lace — and a row per member says which plane it rests on.
+   See planesList in src/ui/panel.ts. */
+
+.planes {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lace {
+  padding: 8px 8px 7px;
+  border: 1px solid var(--hair);
+  background: var(--paper);
+}
+
+.lace-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 1px 6px;
+}
+
+.lace-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.lace-fig {
+  margin: 0 0 7px;
+}
+
+.lace-fig svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--hair);
+  background: var(--cream);
+}
+
+/* Whole thicknesses, because that is what a plane is: level L's three are 2L±1
+   and 2L, and level L's top is level L+1's bottom. */
+.pf-rule {
+  stroke: var(--line);
+  stroke-width: 0.8;
+  stroke-dasharray: 3 3;
+}
+
+.pf-rule.pf-zero {
+  stroke: var(--muted);
+  stroke-width: 0.9;
+  stroke-dasharray: none;
+}
+
+.pf-tick {
+  fill: var(--muted);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 6.5px;
+  text-anchor: end;
+}
+
+/* A member's own colour; the stretch its C occupies is washed over the top, so a
+   band reads as "this much of 1_2, and this much of that is already in the
+   turn". The label is inked with a halo rather than reversed out, because the
+   colour underneath it is the strand's and can be any brightness at all. */
+.pf-band-label {
+  fill: #171713;
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.72);
+  stroke-width: 2.2;
+  font-size: 7.5px;
+  font-weight: 800;
+  text-anchor: middle;
+}
+
+.pf-turn {
+  fill: var(--paper);
+  fill-opacity: 0.62;
+  stroke: var(--edge2);
+  stroke-width: 0.7;
+  stroke-opacity: 0.5;
+}
+
+/* The apex: where the two members of a C hand ownership over. */
+.pf-seam {
+  stroke: var(--muted);
+  stroke-width: 0.7;
+  stroke-dasharray: 2 2.5;
+  opacity: 0.55;
+}
+
+.pf-apex {
+  fill: var(--paper);
+  stroke: var(--ink);
+  stroke-width: 1.1;
+}
+
+.pf-curve {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+/* A crossing is a BUTTON. The drawn ring is small because the picture is small;
+   the halo behind it is what a finger actually hits, and it is invisible until
+   the pointer is on it. */
+.pf-cross {
+  fill: var(--paper);
+  stroke-width: 1.3;
+}
+
+.pf-cross.over {
+  stroke: var(--teal);
+}
+
+.pf-cross.under {
+  stroke: var(--coral);
+}
+
+/* Placed: filled with its own colour, so "somebody decided this one" reads at a
+   glance against the hollow rings of the ones the weave is still deciding. */
+.pf-cross.placed.over {
+  fill: var(--teal);
+}
+
+.pf-cross.placed.under {
+  fill: var(--coral);
+}
+
+.pf-cross.picked {
+  stroke-width: 2.2;
+}
+
+/* Somebody else's crossing, while a layer is selected. Still drawn — the picture
+   would lie by omission otherwise — but out of the way. */
+.pf-cross.dim {
+  opacity: 0.22;
+}
+
+/* Nothing is woven between two storeys with no mask between them: they pass in
+   plan only. Dashed, because there is no over/under here to place. */
+.pf-cross.loose {
+  stroke-dasharray: 2 2;
+  opacity: 0.55;
+}
+
+.pf-halo {
+  fill: transparent;
+}
+
+.pf-hit {
+  cursor: pointer;
+}
+
+.pf-hit:hover .pf-halo,
+.pf-hit:focus-visible .pf-halo {
+  fill: var(--hover);
+}
+
+.pf-hit:focus-visible {
+  outline: none;
+}
+
+/* ---- the crossing you are pointing at ------------------------------------ */
+/* Sits directly under the figure, because the thing it is about is a tick in the
+   figure and the two should not be in different places. */
+.cross-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 7px;
+  padding: 5px 7px;
+  border: 1.5px solid var(--sel);
+  background: var(--cream);
+}
+
+.cross-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+}
+
+/* Each end of the crossing, as a tab: the lit one is what the ladder places. */
+.side {
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--muted);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.side:hover {
+  border-color: var(--edge2);
+  color: var(--ink);
+}
+
+.side.on {
+  border-color: var(--edge2);
+  background: var(--fill);
+  color: var(--fill-ink);
+}
+
+.cross-note {
+  flex: 0 1 auto;
+  font-size: 10px;
+  font-style: italic;
+  color: var(--muted);
+}
+
+/* ---- draw the shelves in the scene --------------------------------------- */
+.guides-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 1px 2px;
+}
+
+.guides-note {
+  font-size: 9.5px;
+  font-style: italic;
+  color: var(--muted);
+}
+
+.plane-row .row-name {
+  gap: 5px;
+}
+
+/* Over/under counts, which are a reading rather than a label — so they keep
+   their case and their arrows at a size you can actually tell apart. */
+.cross-tag {
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+/* ---- the seven marks that place a layer ---------------------------------- */
+/* The whole control, in the row. It used to be a chip that opened a five-line
+   list underneath, which cost a press to look and changed the row's height
+   while you were reading it. */
+.plane-pick {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 1px;
+}
+
+.plane-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Seven of these have to sit beside the layer's id in a 297px row, which
+     leaves 139px for the control. 7 x 18 + six 1px gaps is 132px — the widest
+     that still fits with nothing in the row starting to ellipsise. The height
+     comes down with the width: the lit one is a filled pill the size of the
+     button, and at 18x24 that was a tall black slug next to its neighbours. */
+  width: 18px;
+  height: 21px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.plane-btn .icon {
+  width: 17px;
+  height: 17px;
+}
+
+/* The storey's own floor and ceiling — the shelves a layer can be RESTED on, as
+   against the halves between them. The same coral the canvas gives those two. */
+.plane-btn.seam:not(.on) {
+  color: var(--coral);
+}
+
+.plane-btn:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.plane-btn.on {
+  background: var(--fill);
+  color: var(--fill-ink);
+}
+
+/* A C, written between the two members it joins — a readout, because the step is
+   theirs and not its own. */
+.fold-row {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin: 3px 0 3px 14px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.fold-row + .row {
+  margin-top: 3px;
+}
+
+.fold-text b {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .level-bar b {
@@ -495,13 +826,15 @@ button {
 }
 
 .row-id {
+  /* Never the thing that gives way. A row that has run out of room should drop a
+     tag, not ellipsise the one word naming what the row IS — which is what it
+     did when the five plane marks arrived: "1_2" came out as "1…". */
+  flex: 0 0 auto;
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: -0.01em;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .tag {

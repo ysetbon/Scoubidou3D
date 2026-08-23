@@ -113,6 +113,73 @@ function twoCrossingArms(): Scene3D {
   };
 }
 
+// 1c) BOX + STRAND — the same six-member scene with a SEVENTH strand laid
+//     across it: one long lone member, on no lace of its own, crossing the
+//     orange lace's `1_3` arm.
+//
+//     This is the scene the plane work is judged against, because it is the one
+//     that asks the question a resting plane cannot answer on its own: `3_1` and
+//     `1_3` cross once, and "put 3_1 exactly over 1_3" is a statement about that
+//     ONE passage. Pasted from the studio's own export, so it is exactly what was
+//     drawn rather than a retyping of it — the placements below included, which
+//     are the arrangement the studio was left in rather than a fresh scene.
+function boxAndStrand(): Scene3D {
+  const A = { x: 386.9144970868538, y: 202.04947370054907 };   // 1_1 start, 1_2 start
+  const B = { x: 518.8913237448178, y: 283.88319270756165 };   // 1_1 end,   1_3 start
+  const C = { x: 491.3931325751948, y: 178.85211012011382 };   // 2_1 start, 2_2 start
+  const D = { x: 414.25968793804265, y: 306.951317750308 };    // 2_1 end,   2_3 start
+  const W = { width: 54 };
+  return {
+    name: 'box + strand',
+    strands: [
+      mk('1_1', A, B, ORANGE, W),
+      mk('2_1', C, D, YELLOW, W),
+      mk('1_2', A, { x: 670.0747887002174, y: 254.99593669330284 }, ORANGE,
+        { ...W, parentId: '1_1', parentSide: 0 }),
+      mk('1_3', B, { x: 184.07573301978914, y: 234.49408664861474 }, ORANGE,
+        { ...W, parentId: '1_1', parentSide: 1 }),
+      mk('2_2', C, { x: 465.4973709199449, y: 432.0334256449166 }, YELLOW,
+        { ...W, parentId: '2_1', parentSide: 0 }),
+      mk('2_3', D, { x: 435.7216499729385, y: 54.045574825457976 }, YELLOW,
+        { ...W, parentId: '2_1', parentSide: 1 }),
+      // Attached to nothing: its own lace of one, and the only thing in the scene
+      // that crosses a lace without belonging to one.
+      mk('3_1', { x: 249.83942026940707, y: 471.543004750603 },
+        { x: 232.58209684414217, y: -93.07425581578741 }, YELLOW, { width: 46 }),
+    ],
+    masks: [
+      { overId: '1_2', underId: '2_3' },
+      { overId: '1_3', underId: '2_2' },
+    ],
+    levelBreaks: [],
+    // WHERE THINGS WERE LEFT. The only sample that opens with anything placed,
+    // and the reason it does is the last line of the paragraph above: unplaced,
+    // `3_1` and `1_3` merely pass, and the scene stops asking its question.
+    //
+    // A rung, not a thickness — see PLANE_RUNGS in the panel. `3_1` at `+1` over
+    // `1_3` at `-1` is two rungs, which is one thickness, which is the two of
+    // them resting exactly on each other. The yellow arms sit a rung low so the
+    // orange lace has somewhere to be, and `1_1` dips to `-3` under `2_1` — a
+    // rung past its own floor, which is the one thing a level break could not
+    // have said without moving the whole layer.
+    planes: { '3_1': 0, '2_2': -1, '2_3': -1 },
+    crossPlanes: {
+      '2_1|1_2|0|1_2': 0,
+      '1_2|2_2|0|1_2': 0,
+      '2_1|1_3|0|1_3': 0,
+      '1_3|2_3|0|1_3': 0,
+      '1_1|2_2|0|2_2': 0,
+      '1_3|2_2|0|2_2': 0,
+      '1_2|2_3|0|2_3': 0,
+      '1_1|2_3|0|2_3': 0,
+      '1_3|3_1|0|3_1': 1,
+      '1_3|3_1|0|1_3': -1,
+      '1_1|2_1|0|1_1': -3,
+      '1_1|2_1|0|2_1': 0,
+    },
+  };
+}
+
 // 2) A basket / woven mat — horizontal and vertical laces that truly interlock.
 //    A checkerboard of masks makes each strand ride OVER some crossings and duck
 //    UNDER others (impossible with layer order alone, since every vertical would
@@ -878,6 +945,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
   ...PLACED_SAMPLES,
   'two-crossing': twoCrossing,
   'two-crossing-arms': twoCrossingArms,
+  'box-and-strand': boxAndStrand,
   'box-stitch': boxStitch,
   'box-stitch-10': () => boxStitchRounds(10, 'Box stitch — 10 levels'),
   'box-stitch-15': () => boxStitchRounds(15, 'Box stitch — 15 levels'),
@@ -915,6 +983,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
 export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }> = [
   { key: 'two-crossing', label: 'Two crossing strands', group: 'Basics' },
   { key: 'two-crossing-arms', label: 'Two crossing strands — with arms', group: 'Basics' },
+  { key: 'box-and-strand', label: 'box + strand', group: 'Basics' },
   { key: 'box-stitch', label: 'Box stitch — starting stitch', group: 'Stitches' },
   { key: 'box-stitch-10', label: 'Box stitch — 10 levels', group: 'Stitches' },
   { key: 'box-stitch-15', label: 'Box stitch — 15 levels', group: 'Stitches' },

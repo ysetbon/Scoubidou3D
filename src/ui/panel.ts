@@ -34,7 +34,8 @@
 // Reordering a layer here restacks it in Z — the direct 3D analogue of moving a
 // layer in OpenStrand's layer panel.
 
-import { StrandScene, EditMode } from '../scene/StrandScene';
+import { StrandScene, EditMode, Sublevel } from '../scene/StrandScene';
+import { CrossFact, FoldFact, LaceFact, MemberFact, PROFILE } from '../scene/sections';
 import { MaskLink, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, TWIST_FAMILY, TWIST_MAX, makeSample } from '../model/samples';
 import { GAP, HANDS, TWOFAN_COLUMN_FAMILY, TWOFAN_MAX, columnKey } from '../model/twofan';
@@ -114,6 +115,23 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return n;
 }
 
+/**
+ * Text bound for an innerHTML string, made safe.
+ *
+ * Everywhere else in this panel a name reaches the DOM as `textContent`, which
+ * cannot be markup. The Planes figure is drawn as one SVG string, so the layer
+ * ids inside it are the one place a name is parsed as HTML — and a name is not
+ * ours: it comes off an imported OpenStrand file, which is somebody's document
+ * and can say anything at all.
+ */
+function escText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function hex(c: RGBA): string {
   const h = (v: number) => v.toString(16).padStart(2, '0');
   return `#${h(c.r)}${h(c.g)}${h(c.b)}`;
@@ -190,9 +208,28 @@ const DOCK_LABELS: Record<DockKey, string> = {
  * you learn once and then read forever — so both are gone, and the space went to
  * a switch that says what is on screen AND changes it. Masks are a different
  * kind of thing from layers (a crossing, not a storey), and now they get a view
- * of their own rather than a card in someone else's.
+ * of their own rather than a card in someone else's. Planes is the third: not a
+ * list of scene records at all, but the built lace read back — see planesList.
+ *
+ * Only the side that is DOWN carries its word. Three words and three marks do
+ * not fit beside the Level and Strand pills (the bar is 311px of content and the
+ * two-word switch already used 171 of it), and the choice was between cramming
+ * three labels, dropping all three, or printing the one that is actually saying
+ * something. The switch still names what is on screen; the other two are marks,
+ * which is what they are the moment you have pressed them once.
  */
-type StackView = 'layers' | 'masks';
+type StackView = 'layers' | 'masks' | 'planes';
+
+/** Every side of the switch, in the order they sit in it. */
+const STACK_VIEWS: StackView[] = ['layers', 'masks', 'planes'];
+
+/** What each side is called out loud — the tab, and the collapse toggle on a
+ *  narrow screen, which names whatever the sheet is holding. */
+const STACK_LABELS: Record<StackView, string> = {
+  layers: 'Layers',
+  masks: 'Masks',
+  planes: 'Planes',
+};
 
 /** The width at which the panel stops being a column beside the canvas and
  *  becomes a bottom sheet under it — the same breakpoint styles.css uses, and
@@ -376,13 +413,16 @@ export class Panel {
   private helpBtn: HTMLButtonElement | null = null;
   private foldToggle: HTMLButtonElement | null = null;
 
-  /** The fold toggle names whatever the sheet is actually holding — which is the
-   *  layer stack most of the time, but a dock card whenever one is open. */
+  /** The fold toggle names whatever the sheet is actually holding — a dock card
+   *  when one is open, and otherwise whichever side of the switch is down. It
+   *  said "layers" whatever was on screen until there were three sides to be
+   *  wrong about. */
   private syncFoldToggle(): void {
     const b = this.foldToggle;
     if (!b) return;
     const open = !document.body.classList.contains('panel-collapsed');
-    const what = this.inlineDock() ? DOCK_LABELS[this.inlineDock()!] : 'layers';
+    const card = this.inlineDock();
+    const what = card ? DOCK_LABELS[card] : STACK_LABELS[this.stackView];
     b.textContent = open ? `Hide ${what.toLowerCase()}` : what;
     b.setAttribute('aria-expanded', String(open));
   }
@@ -434,6 +474,11 @@ export class Panel {
   setScene(scene: Scene3D, label = 'open a scene'): void {
     this.scene = scene;
     this.selectedId = null;
+    // The incoming scene carries its OWN placements now, so they are not cleared
+    // here — `loadPlanesFromScene` on the redraw below takes whatever it brought,
+    // which for a scene with none is none.
+    this.pickedCross = null;
+    this.pickedSide = null;
     this.view.setScene(scene, true);
     this.record(label);
     this.render();
@@ -552,6 +597,12 @@ export class Panel {
     bar.innerHTML = '';
     host.innerHTML = '';
 
+    // Before anything reads the geometry: take what the scene is carrying (it may
+    // have just been opened, or stepped back to by undo), then drop whatever no
+    // longer names anything. See loadPlanesFromScene and prunePlanes.
+    this.loadPlanesFromScene();
+    this.prunePlanes();
+
     this.syncFoldToggle();
 
     this.syncBrand();
@@ -599,6 +650,9 @@ export class Panel {
       ),
     );
     this.renderStack();
+    // Last, with every pill in the bar: the switch may shrink to make room for
+    // them, and the thumb has to land on the tab where it finally sits.
+    this.syncSwitchThumb();
   }
 
   /** Which dock card the PANEL is showing, if any — only ever set on a narrow
@@ -637,7 +691,7 @@ export class Panel {
       this.viewTab(
         'layers',
         LAYERS_ICON,
-        'Layers',
+        STACK_LABELS.layers,
         'Show the layer stack — the top of the panel is the front of the scene',
       ),
     );
@@ -646,13 +700,43 @@ export class Panel {
       this.viewTab(
         'masks',
         MASK_ICON,
-        'Masks',
+        STACK_LABELS.masks,
         masks
           ? `Show the mask layers — ${plural(masks, 'crossing')}, over above under`
           : 'Show the mask layers — none yet',
       ),
     );
+    sw.appendChild(
+      this.viewTab(
+        'planes',
+        PLANES_ICON,
+        STACK_LABELS.planes,
+        'Show where each part of a lace rests — its run, its C’s and its crossings',
+      ),
+    );
     return sw;
+  }
+
+  /**
+   * Put the thumb under the tab that is down.
+   *
+   * The two-tab switch could do this in CSS: equal columns, a half-width thumb,
+   * translateX(100%). The tabs are no longer equal — only the selected one
+   * carries its word — so the thumb is measured instead. It has to run after the
+   * switch is in the document, and it does nothing at all while the panel is
+   * collapsed or off-screen, where every width reads zero and a thumb parked at
+   * 0×0 would slide in from the corner on the way back.
+   *
+   * `offsetLeft` is measured from the offsetParent's padding edge, which is
+   * exactly where an absolutely positioned thumb with `left: 0` begins — so the
+   * number goes straight in with no correction for the switch's own border.
+   */
+  private syncSwitchThumb(): void {
+    const sw = this.switchHost;
+    const tab = this.viewTabs[this.stackView];
+    if (!sw || !tab || !tab.offsetWidth) return;
+    sw.style.setProperty('--thumb-x', `${tab.offsetLeft}px`);
+    sw.style.setProperty('--thumb-w', `${tab.offsetWidth}px`);
   }
 
   private viewTab(view: StackView, icon: string, label: string, title: string): HTMLButtonElement {
@@ -672,10 +756,18 @@ export class Panel {
     if (this.stackView === view) return;
     this.stackView = view;
     if (this.switchHost) this.switchHost.dataset.view = view;
-    for (const key of ['layers', 'masks'] as StackView[]) {
+    for (const key of STACK_VIEWS) {
       this.viewTabs[key]?.setAttribute('aria-selected', String(key === view));
     }
     this.selectedId = null;
+    // The shelves belong to the Planes view: its toggle is the only way to turn
+    // them off, so leaving the view has to take them with it or they are stuck on
+    // with the switch nowhere in reach.
+    this.pushPlaneGuides();
+    // The word moves with the thumb, so the widths change under it: measure
+    // after the attribute flip, not before.
+    this.syncSwitchThumb();
+    this.syncFoldToggle();
     this.renderStack();
   }
 
@@ -1812,6 +1904,10 @@ export class Panel {
       host.appendChild(this.maskList());
       return;
     }
+    if (this.stackView === 'planes') {
+      host.appendChild(this.planesList());
+      return;
+    }
 
     const back = this.hiddenBanner();
     if (back) host.appendChild(back);
@@ -1966,6 +2062,639 @@ export class Panel {
     controls.appendChild(del);
     row.appendChild(controls);
     return row;
+  }
+
+  // ---- Planes --------------------------------------------------------------
+  /**
+   * WHERE EACH PART OF A LACE RESTS — the third side of the switch.
+   *
+   * A storey is two thicknesses deep, so a layer can rest on its floor, its
+   * middle or its ceiling — and one storey's ceiling IS the next one's floor.
+   * `StrandScene.setSublevels` has always taken that map. Nothing in the studio
+   * ever sent it one, so the fold lab could say this and the studio could not.
+   *
+   * The view is a PICTURE first, because the question is a picture question.
+   * Each lace gets its own elevation — measured off the built centreline, so it
+   * cannot disagree with the canvas — with the planes ruled across it, its
+   * members and C's as a band beneath, and every crossing ticked where the weave
+   * puts it. You point at the part you mean instead of naming it.
+   *
+   * The rows under the picture are the controls, ONE PER MEMBER, because a
+   * member is the only thing a plane can address:
+   *
+   *   * a C has no plane of its own. It carries the DIFFERENCE between the two
+   *     runs it joins, which is why its row is a readout and not a control —
+   *     move either run and the number follows.
+   *   * a crossing cannot have one either. An arm goes over one lace and under
+   *     the next inside a single run — on the opening sample 1_2 rides over 2_1
+   *     and 2_3 and under 2_2 — and no single resting height says both. The
+   *     weave settles those, as it always has, and the ticks report it.
+   *
+   * OFF is the default and stays one press away: an untouched layer has no entry
+   * at all, an empty map is `setSublevels(null)`, and the banner clears the lot.
+   */
+  private planesList(): HTMLElement {
+    const list = el('section', 'planes');
+    list.setAttribute('aria-label', 'Where each part of a lace rests');
+
+    const facts = this.view.getLaceFacts();
+    if (!facts.length) {
+      list.appendChild(
+        el(
+          'p',
+          'empty',
+          'Nothing to rest yet. Add a strand and it turns up here with its run, its C’s ' +
+            'and every crossing it makes.',
+        ),
+      );
+      return list;
+    }
+    list.appendChild(this.guidesToggle());
+    const banner = this.planesBanner();
+    if (banner) list.appendChild(banner);
+    for (const fact of facts) list.appendChild(this.laceCard(fact));
+    return list;
+  }
+
+  /**
+   * Draw the shelves in the CANVAS, not just in the picture.
+   *
+   * The elevation rules a lace against its planes, which answers "where is this
+   * one" — and leaves "where could it go" to be imagined. Turning the planes on
+   * puts them in the scene: three translucent sheets per storey, edge-on lines
+   * when you orbit down to look along them, which is the view that makes a
+   * height legible in the first place.
+   *
+   * The ladder belonging to whatever row is selected is the lit one; see
+   * StrandScene.setPlaneGuides for why the others stay hairlines.
+   */
+  private guidesToggle(): HTMLElement {
+    const box = el('div', 'guides-row');
+    box.appendChild(
+      check('Draw the planes in the scene', this.showPlaneGuides, (on) => {
+        this.showPlaneGuides = on;
+        this.pushPlaneGuides();
+        this.renderStack();
+      }),
+    );
+    if (this.showPlaneGuides) {
+      box.appendChild(
+        el(
+          'span',
+          'guides-note',
+          this.selectedId ? `lit: ${this.selectedId}’s storey` : 'select a layer to light its storey',
+        ),
+      );
+    }
+    return box;
+  }
+
+  private pushPlaneGuides(): void {
+    this.view.setPlaneGuides(
+      this.showPlaneGuides && this.stackView === 'planes',
+      this.selectedId,
+    );
+  }
+
+  /** How many layers have been given a plane, and the one press that takes them
+   *  all back off. The way back matters more here than anywhere else in the
+   *  panel: with ANY plane declared the fold easing is skipped, so "none of them"
+   *  is a different picture from "all of them centred", and it has to be
+   *  reachable without remembering which rows were touched. */
+  private planesBanner(): HTMLElement | null {
+    if (!this.planes.size && !this.crossPlanes.size) return null;
+    const box = el('div', 'hidden-banner');
+    const runs = this.planes.size;
+    const passages = this.crossPlanes.size;
+    const said = [
+      runs ? plural(runs, 'run') : '',
+      passages ? plural(passages, 'crossing') : '',
+    ].filter(Boolean);
+    box.appendChild(el('b', undefined, `${said.join(' and ')} placed`));
+    const clear = pill(
+      'Clear all',
+      () => {
+        this.planes.clear();
+        this.crossPlanes.clear();
+        this.pickedCross = null;
+        this.pickedSide = null;
+        this.syncPlanesToScene();
+        this.pushPlanes();
+        this.pushCrossPlanes();
+        this.record('clear every placed plane');
+        this.renderStack();
+      },
+      'Let the scene rest every layer again — exactly how it opens',
+    );
+    clear.classList.add('coral');
+    box.appendChild(clear);
+    return box;
+  }
+
+  /** One lace: the picture, then its members with the C's written between them,
+   *  in the order you walk the lace. */
+  private laceCard(fact: LaceFact): HTMLElement {
+    const card = el('section', 'lace');
+    const head = el('div', 'lace-head');
+    head.appendChild(el('span', 'lace-name', fact.key));
+    // Not `plural` — an uppercased "2 Cs" reads as an acronym, and a C is called
+    // a C however many of them a lace has.
+    head.appendChild(el('span', 'tag', fact.folds.length ? `${fact.folds.length} C` : 'no C'));
+    card.appendChild(head);
+    card.appendChild(this.laceFigure(fact));
+    const picked = fact.crossings.find((c) => `${c.key}|${c.ownId}` === this.pickedCross);
+    if (picked) card.appendChild(this.crossRow(picked));
+    fact.members.forEach((member, i) => {
+      card.appendChild(this.memberRow(member, fact));
+      const fold = fact.folds[i];
+      if (fold) card.appendChild(this.foldRow(fold));
+    });
+    return card;
+  }
+
+  /**
+   * The lace in elevation, with its sections banded underneath.
+   *
+   * Every number in it is measured: the curve is the height the centreline came
+   * out at, the bands are the ownership tags, the brackets are the turn records,
+   * and the ticks are where `polylineCrossings` — the weave's own finder — says
+   * this lace meets another. Nothing is drawn from a schematic, so the picture
+   * cannot drift from the canvas the way one would.
+   *
+   * The rules are whole thicknesses, because that is what a plane is: level L's
+   * three are `2L ± 1` and `2L`, and level L's top is level L+1's bottom.
+   */
+  private laceFigure(fact: LaceFact): HTMLElement {
+    const W = 300;
+    const H = 104;
+    const LEFT = 27;
+    const RIGHT = 294;
+    const TOP = 9;
+    const FLOOR = 63;
+    const BAND_Y = 72;
+    const BAND_H = 15;
+
+    // Always show a whole storey either side of the middle, even on a flat lace,
+    // so "there is room above and below this" is on screen before you touch it.
+    const lo = Math.min(-1.3, ...fact.profile) - 0.2;
+    const hi = Math.max(1.3, ...fact.profile) + 0.2;
+    const X = (u: number): number => LEFT + Math.max(0, Math.min(1, u)) * (RIGHT - LEFT);
+    const Y = (z: number): number => FLOOR - ((z - lo) / (hi - lo)) * (FLOOR - TOP);
+    const at = (u: number): number => fact.profile[Math.round(u * (PROFILE - 1))] ?? 0;
+    const n = (v: number): string => v.toFixed(1);
+
+    // One rule per thickness is right for a scene one storey deep and useless for
+    // a box stitch of ten rounds, which is twenty storeys tall: twenty-odd rules
+    // and their labels inside 54px is a grey band. So the step opens up until the
+    // rules are far enough apart to read, and every step is a whole number of
+    // thicknesses, so a rule is always a plane and zero is always on one.
+    let body = '';
+    const perT = (FLOOR - TOP) / (hi - lo);
+    const step = [1, 2, 4, 10, 20, 50].find((k) => k * perT >= 9) ?? 100;
+    for (let k = Math.ceil(lo / step) * step; k <= hi; k += step) {
+      const y = n(Y(k));
+      body +=
+        `<line class="pf-rule${k === 0 ? ' pf-zero' : ''}" x1="${LEFT}" y1="${y}" ` +
+        `x2="${RIGHT}" y2="${y}" />` +
+        `<text class="pf-tick" x="${LEFT - 4}" y="${n(Y(k) + 2.6)}">` +
+        `${k > 0 ? '+' : k < 0 ? '−' : ''}${Math.abs(k)}</text>`;
+    }
+
+    // The bands: each member in its own colour, and the stretch a C occupies
+    // washed over the top of it, so a section reads as "this much of 1_2, and
+    // this much of it is already inside the turn".
+    for (const member of fact.members) {
+      const strand = this.scene.strands.find((st) => st.id === member.id);
+      const x = X(member.u0);
+      const w = Math.max(1, X(member.u1) - x);
+      // Named in a tooltip as well as in the band, because the band only has room
+      // for a label on a short lace: a box stitch of ten rounds puts 21 members
+      // in this strip and none of them is 26px wide.
+      const run = member.run
+        ? `${Math.round((member.run.u1 - member.run.u0) * 100)}% of the lace is run`
+        : 'no free run — C straight into C';
+      body +=
+        `<rect class="pf-band" x="${n(x)}" y="${BAND_Y}" width="${n(w)}" height="${BAND_H}" ` +
+        `rx="2" style="fill:${strand ? hex(strand.color) : 'var(--muted)'}">` +
+        `<title>${escText(member.id)} — ${run}</title></rect>`;
+    }
+    // The C's wash goes on top of the bands and the apex seam stops at the band,
+    // so that neither of them lands across a member's name below.
+    for (const fold of fact.folds) {
+      const x = X(fold.u0);
+      const w = Math.max(1, X(fold.u1) - x);
+      body +=
+        `<rect class="pf-turn" x="${n(x)}" y="${BAND_Y}" width="${n(w)}" height="${BAND_H}" rx="2">` +
+        `<title>C · ${escText(fold.inId)} → ${escText(fold.outId)} — carries ` +
+        `${fold.stepT >= 0 ? '+' : '−'}${Math.abs(fold.stepT).toFixed(1)} thicknesses</title></rect>` +
+        `<line class="pf-seam" x1="${n(X(fold.uApex))}" y1="${TOP}" ` +
+        `x2="${n(X(fold.uApex))}" y2="${BAND_Y - 2}" />` +
+        `<circle class="pf-apex" cx="${n(X(fold.uApex))}" cy="${n(Y(at(fold.uApex)))}" r="3" />`;
+    }
+    // Names last: a member is the thing you are about to press, so nothing gets
+    // drawn over what it is called.
+    for (const member of fact.members) {
+      const x = X(member.u0);
+      const w = Math.max(1, X(member.u1) - x);
+      if (w < 26) continue;
+      body += `<text class="pf-band-label" x="${n(x + w / 2)}" y="${BAND_Y + 10.5}">${escText(member.id)}</text>`;
+    }
+
+    const path = fact.profile
+      .map((z, i) => `${i ? 'L' : 'M'}${n(X(i / (PROFILE - 1)))},${n(Y(z))}`)
+      .join('');
+    body += `<path class="pf-curve" d="${path}" />`;
+
+    // Each crossing is a BUTTON, not a dot. This is the part the picture was
+    // missing: you could see that 1_2 goes under 2_2 somewhere along there, and
+    // there was no way to point at that passage and say anything about it.
+    for (const cross of fact.crossings) {
+      const cx = n(X(cross.u));
+      const cy = n(Y(at(cross.u)));
+      const id = `${cross.key}|${cross.ownId}`;
+      const placed = this.crossPlanes.get(id);
+      const picked = this.pickedCross === id;
+      // With a layer selected, ITS crossings are the ones lit. That is the answer
+      // to "which of these is where 1_2 goes under 2_2" on a lace making three
+      // passages, let alone a box stitch making four hundred: select the row and
+      // the rest of the ticks get out of the way.
+      const dim = this.selectedId !== null && cross.ownId !== this.selectedId;
+      const cls =
+        `pf-cross ${cross.over ? 'over' : 'under'}` +
+        (picked ? ' picked' : '') +
+        (placed !== undefined ? ' placed' : '') +
+        (cross.woven ? '' : ' loose') +
+        (dim ? ' dim' : '');
+      body +=
+        `<g class="pf-hit" data-cross="${escText(id)}" role="button" tabindex="0">` +
+        `<circle class="pf-halo" cx="${cx}" cy="${cy}" r="7" />` +
+        `<circle class="${cls}" cx="${cx}" cy="${cy}" r="${picked ? 4.6 : 3.4}" />` +
+        `<title>${escText(cross.ownId)} ${cross.over ? 'over' : 'under'} ${escText(cross.withId)}` +
+        ` — ${cross.gapT.toFixed(1)} thicknesses apart` +
+        (placed !== undefined
+          ? ` · placed at the ${PLANE_RUNGS.find((r) => r.rung === placed)?.name ?? placed}`
+          : '') +
+        (cross.woven ? '' : ' · not woven, they pass on different storeys') +
+        `</title></g>`;
+    }
+
+    const fig = el('figure', 'lace-fig');
+    fig.innerHTML =
+      `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${escText(fact.key)} in elevation">${body}</svg>`;
+    for (const hit of fig.querySelectorAll<SVGGElement>('.pf-hit')) {
+      const id = hit.dataset.cross;
+      if (!id) continue;
+      hit.addEventListener('click', () => this.pickCross(id));
+      hit.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        this.pickCross(id);
+      });
+    }
+    return fig;
+  }
+
+  /** A member of a lace: what there is of its run, how it meets the other laces,
+   *  and the three planes it can be put on. */
+  private memberRow(member: MemberFact, fact: LaceFact): HTMLElement {
+    const strand = this.scene.strands.find((st) => st.id === member.id);
+    const selected = this.selectedId === member.id;
+    const row = el('div', 'row plane-row' + (selected ? ' sel' : ''));
+
+    const swatch = el('span', 'swatch');
+    if (strand) swatch.style.background = hex(strand.color);
+    row.appendChild(swatch);
+
+    const name = el('button', 'row-name') as HTMLButtonElement;
+    name.type = 'button';
+    name.appendChild(el('span', 'row-id', member.id));
+    // What there is of this member OUTSIDE its C's. A core between two folds can
+    // own a quarter of the lace and have no straight run at all, and that is
+    // worth saying plainly rather than printing 0%.
+    const share = member.run ? Math.round((member.run.u1 - member.run.u0) * 100) : 0;
+    name.appendChild(el('span', 'tag', member.run ? `${share}% run` : 'C to C'));
+
+    // The over/under count used to be a tag of its own here. Five marks need the
+    // width more than it does, and squeezing them both left the LAYER'S ID
+    // ellipsised down to "1…" — which is the one thing in the row that has to be
+    // readable. It moved into the tooltip; the figure above shows the same thing
+    // in colour, and selecting the row lights that member's own ticks.
+    const mine = fact.crossings.filter((c) => c.ownId === member.id);
+    const over = mine.filter((c) => c.over);
+    const names = (list: typeof mine): string => list.map((c) => c.withId).join(', ');
+    const met = mine.length
+      ? ` · over ${over.length ? names(over) : 'nothing'}, under ${
+          over.length < mine.length ? names(mine.filter((c) => !c.over)) : 'nothing'
+        }`
+      : '';
+    name.title =
+      (member.run
+        ? `${member.id} — ${share}% of the lace is run, the rest is inside its C’s`
+        : `${member.id} runs from one C straight into the next: no free run at all`) + met;
+    name.addEventListener('click', () => {
+      this.selectedId = selected ? null : member.id;
+      // The lit ladder follows the selection, so picking a row in the panel picks
+      // out its three shelves in the scene.
+      this.pushPlaneGuides();
+      this.renderStack();
+    });
+    row.appendChild(name);
+    row.appendChild(
+      this.planePick(this.planes.get(member.id) ?? null, member.id, (v) =>
+        this.setPlane(member.id, v),
+      ),
+    );
+    return row;
+  }
+  /**
+   * SEVEN MARKS, in the row, always.
+   *
+   * A chip that opened a list underneath meant a press to look and a press to
+   * set, and a row that changed height while you were reading it. The whole
+   * control is seven marks wide — 18px each, which is what makes seven of them
+   * fit beside the layer's id in a 297px row — so it simply sits in the row:
+   * nothing opens, nothing moves, and every height is one press away.
+   *
+   * Each mark is the storey seen edge-on with the slab sitting at that rung —
+   * the same picture as the shelves in the canvas and the rules in the card's
+   * elevation, at 17px. Pressing the lit one clears it, which is the only way
+   * back to "not placed", a state that is not the same as centre.
+   *
+   * The names live in the tooltips. There is no room for them at this size, and
+   * a legend under every row would cost more than the list did.
+   */
+  private planePick(
+    current: number | null,
+    label: string,
+    onPick: (rung: number | null) => void,
+  ): HTMLElement {
+    const group = el('span', 'plane-pick');
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', `Where ${label} rests`);
+    for (const rung of PLANE_RUNGS) {
+      const on = current === rung.rung;
+      const b = el(
+        'button',
+        'plane-btn' + (on ? ' on' : '') + (Math.abs(rung.rung) === 2 ? ' seam' : ''),
+      ) as HTMLButtonElement;
+      b.type = 'button';
+      b.innerHTML = PLANE_MARK(rung.rung);
+      b.setAttribute('aria-pressed', String(on));
+      const named = rung.also ? `${rung.name} · ${rung.also}` : rung.name;
+      b.title = on
+        ? `${label}: ${named} — press again to let the scene decide`
+        : `Put ${label} at the ${named}`;
+      b.addEventListener('click', () => onPick(on ? null : rung.rung));
+      group.appendChild(b);
+    }
+    return group;
+  }
+
+  /**
+   * The crossing you are pointing at, and where it sits.
+   *
+   * This is the control a resting plane cannot be. `1_2` rides over `2_1`, over
+   * `2_3` and under `2_2` inside one run, so there is no single height for `1_2`
+   * — but there is a height for each of those three passages, and this sets one
+   * of them. The weave still decides which way round the pair goes; this says
+   * how high the passage happens.
+   */
+  private crossRow(cross: CrossFact): HTMLElement {
+    const row = el('div', 'cross-row');
+
+    // BOTH sides, and either one placeable.
+    //
+    // A crossing is a pair, and the useful statements about one are about the
+    // pair: "3_1 exactly over 1_3" is two heights a thickness apart, not one
+    // height. Placing only the side whose tick you happened to click leaves the
+    // other still swinging — measured on the opening scene, 3_1 pinned to the top
+    // of the storey with 1_3 left to the weave came out 1.6 thicknesses apart
+    // rather than the 1 that means resting on. So each id is a tab: the lit one
+    // is the side the ladder below is placing.
+    const side = this.pickedSide ?? cross.ownId;
+    const name = el('span', 'cross-name');
+    const tab = (id: string): HTMLButtonElement => {
+      const b = el('button', 'side' + (id === side ? ' on' : ''), id) as HTMLButtonElement;
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(id === side));
+      b.title =
+        id === side ? `Placing ${id} at this crossing` : `Place ${id} at this crossing instead`;
+      b.addEventListener('click', () => {
+        this.pickedSide = id;
+        this.renderStack();
+      });
+      return b;
+    };
+    name.appendChild(tab(cross.ownId));
+    name.appendChild(
+      el('span', 'tag ' + (cross.over ? 'teal' : 'coral'), cross.over ? 'over' : 'under'),
+    );
+    name.appendChild(tab(cross.withId));
+    row.appendChild(name);
+
+    if (!cross.woven) {
+      // Nothing is woven between two storeys with no mask, so there is no anchor
+      // here to override — saying so beats a control that does nothing.
+      row.appendChild(el('span', 'cross-note', 'different storeys — nothing woven here'));
+      return row;
+    }
+    const id = `${cross.key}|${side}`;
+    row.appendChild(
+      this.planePick(this.crossPlanes.get(id) ?? null, side, (v) => this.setCrossPlane(id, v)),
+    );
+    return row;
+  }
+
+  /** A C, between the two members it joins. A readout: the step is theirs. */
+  private foldRow(fold: FoldFact): HTMLElement {
+    const row = el('div', 'fold-row');
+    row.appendChild(el('span', 'fold-mark', '↳'));
+    const step = fold.stepT;
+    const text = el('span', 'fold-text');
+    text.appendChild(el('b', undefined, `C · ${fold.inId} → ${fold.outId}`));
+    text.appendChild(
+      el(
+        'span',
+        undefined,
+        ` carries ${step >= 0 ? '+' : '−'}${Math.abs(step).toFixed(1)} thick`,
+      ),
+    );
+    row.appendChild(text);
+    row.title =
+      'A C has no plane of its own — it carries the difference between the two runs it ' +
+      'joins. Move either of them and this follows.';
+    return row;
+  }
+
+  // ---- the plane map -------------------------------------------------------
+  /**
+   * Which plane each TOUCHED layer rests on, in thicknesses: -1 bottom, 0 centre,
+   * +1 top. A layer nobody has placed is absent, not zero — see pushPlanes.
+   */
+  private planes = new Map<string, number>();
+
+  /**
+   * Where one layer sits at ONE crossing: `${crossKey}|${strandId}` to a plane in
+   * thicknesses. See StrandScene.setCrossingPlanes — this is the map that can say
+   * the thing a run plane cannot, which is where 1_2 goes as it passes UNDER 2_2
+   * as opposed to where it goes over 2_1 a moment later.
+   */
+  private crossPlanes = new Map<string, number>();
+
+  /** Which crossing the view is pointed at, by `${crossKey}|${strandId}`. */
+  private pickedCross: string | null = null;
+
+  /** Which SIDE of that crossing the ladder is placing — a crossing has two, and
+   *  the useful statements about one are about both. Null follows the tick that
+   *  was clicked. */
+  private pickedSide: string | null = null;
+
+  /** Whether the canvas is drawing the shelves themselves. */
+  private showPlaneGuides = false;
+
+  /**
+   * Send the map to the scene, or turn the whole thing off.
+   *
+   * Empty means `null`, and null is the studio's own behaviour to the byte. An
+   * empty MAP would not be: with any map declared `easeFolds` is skipped, which
+   * moves an otherwise untouched lace by about a fifth of a thickness. So "no
+   * layers placed" has to reach `setSublevels(null)` rather than a map of
+   * zeroes, and that is the whole reason a placed layer and a centred one are
+   * different states in the view above.
+   */
+  private pushPlanes(): void {
+    if (!this.planes.size) {
+      this.view.setSublevels(null);
+      return;
+    }
+    const map = new Map<string, Sublevel>();
+    // One value per layer, written to both ends of its run. `in` and `out` differ
+    // only where a layer changes plane ALONG itself, which is a ramp rather than
+    // a resting place, and not what this view is asking.
+    for (const [id, rung] of this.planes) {
+      const value = rungValue(rung);
+      map.set(id, { in: value, out: value });
+    }
+    this.view.setSublevels(map);
+  }
+
+  private pushCrossPlanes(): void {
+    if (!this.crossPlanes.size) {
+      this.view.setCrossingPlanes(null);
+      return;
+    }
+    const map = new Map<string, number>();
+    for (const [key, rung] of this.crossPlanes) map.set(key, rungValue(rung));
+    this.view.setCrossingPlanes(map);
+  }
+
+  private setCrossPlane(key: string, value: number | null): void {
+    if (value === null) this.crossPlanes.delete(key);
+    else this.crossPlanes.set(key, value);
+    this.syncPlanesToScene();
+    this.pushCrossPlanes();
+    this.record(value === null ? 'unplace a crossing' : 'place a crossing');
+    this.renderStack();
+  }
+
+  /** Point the view at one crossing — or at nothing, which is what pressing the
+   *  one already picked does. */
+  private pickCross(key: string | null): void {
+    this.pickedCross = this.pickedCross === key ? null : key;
+    // A new tick means a new pair; the side follows the tick until told otherwise.
+    this.pickedSide = null;
+    this.renderStack();
+  }
+
+  /**
+   * The scene is where these LIVE; the maps above are the working copy.
+   *
+   * Putting them in `Scene3D` is what makes them survive a save and what makes
+   * undo restore them, because the history records the scene. Empty means the
+   * field is dropped entirely, so a scene nobody has placed anything in saves as
+   * the file it always did.
+   */
+  private syncPlanesToScene(): void {
+    this.scene.planes = this.planes.size ? Object.fromEntries(this.planes) : undefined;
+    this.scene.crossPlanes = this.crossPlanes.size
+      ? Object.fromEntries(this.crossPlanes)
+      : undefined;
+  }
+
+  /**
+   * Take the working copies back from the scene, and tell the view if they moved.
+   *
+   * Runs on every redraw, which covers the two ways the scene can change under
+   * the panel: opening one, and stepping through history. It is idempotent —
+   * every edit writes to the scene first — so it cannot clobber a change that
+   * has just been made.
+   */
+  private loadPlanesFromScene(): void {
+    const same = (a: Map<string, number>, b: Map<string, number>): boolean =>
+      a.size === b.size && [...a].every(([k, v]) => b.get(k) === v);
+    const runs = new Map(Object.entries(this.scene.planes ?? {}));
+    if (!same(runs, this.planes)) {
+      this.planes = runs;
+      this.pushPlanes();
+    }
+    const cross = new Map(Object.entries(this.scene.crossPlanes ?? {}));
+    if (!same(cross, this.crossPlanes)) {
+      this.crossPlanes = cross;
+      this.pushCrossPlanes();
+    }
+  }
+
+  private setPlane(id: string, value: number | null): void {
+    if (value === null) this.planes.delete(id);
+    else this.planes.set(id, value);
+    this.syncPlanesToScene();
+    // The map rebuilds the scene, so the figure has to be drawn from what came
+    // out of THAT build — hence push first, redraw second.
+    this.pushPlanes();
+    this.record(value === null ? `unplace ${id}` : `place ${id}`);
+    this.renderStack();
+  }
+
+  /**
+   * Forget the planes of layers that are no longer in the scene.
+   *
+   * A stale entry is invisible in the geometry — the lookup simply misses — but
+   * it keeps the MAP non-empty, and a non-empty map keeps the fold easing off.
+   * Delete the one layer you had placed and the scene would quietly go on
+   * rendering as though something were still declared.
+   */
+  private prunePlanes(): void {
+    if (!this.planes.size) return;
+    const live = new Set(this.scene.strands.map((st) => st.id));
+    let dropped = false;
+    for (const id of [...this.planes.keys()]) {
+      if (live.has(id)) continue;
+      this.planes.delete(id);
+      dropped = true;
+    }
+    if (dropped) {
+      this.syncPlanesToScene();
+      this.pushPlanes();
+    }
+
+    // The same for crossings, which go stale two ways: the layer can be deleted,
+    // and the crossing itself can stop existing when a strand is moved off it.
+    if (!this.crossPlanes.size) return;
+    const alive = new Set<string>();
+    for (const point of this.view.getCrossPoints()) {
+      alive.add(`${point.key}|${point.aId}`);
+      alive.add(`${point.key}|${point.bId}`);
+    }
+    let lost = false;
+    for (const key of [...this.crossPlanes.keys()]) {
+      if (alive.has(key)) continue;
+      this.crossPlanes.delete(key);
+      lost = true;
+    }
+    if (lost) {
+      this.syncPlanesToScene();
+      this.pushCrossPlanes();
+    }
   }
 
   /**
@@ -2919,6 +3648,99 @@ const LAYERS_ICON = svg(
   '<path d="M12 3 22 9.2 12 15.4 2 9.2Z" />' +
     '<path d="M12 17.7 3.7 12.5 2 13.6 12 19.8 22 13.6 20.3 12.5Z" />',
 );
+
+// The planes side of the stack bar's switch: a storey seen edge-on — its floor
+// and its ceiling — with a layer at its middle. The same mark, with the slab
+// moved, is what each of the seven buttons in a row shows, so the tab and the
+// control say the same thing in the same shape.
+/**
+ * The mark for one rung: the storey seen edge-on, with the layer at that height.
+ *
+ * Only the storey's own floor and ceiling are drawn, faint — more rules inside
+ * 24px was noise the slab had to compete with, and where the slab sits is the
+ * whole of what the button says.
+ *
+ * IT IS TO SCALE, WHICH IS WHAT MAKES `±3` READABLE. The slab is drawn nearly a
+ * whole thickness tall — two rungs — and CENTRED on its rung, because a sublevel
+ * is where the strand's centreline goes, not where its underside does. So two
+ * marks two rungs apart show two slabs all but touching, which is the thing `+1`
+ * over `-1` does in the scene. And it lands the outer pair flush against the
+ * box: `+3`'s slab sits squarely on top of the ceiling rule, `-3`'s hangs under
+ * the floor, both clear of the walls. Everything between the two rules is this
+ * storey; those two marks are the storey next door.
+ */
+const MARK_MID = 12;
+const MARK_RUNG = 2.6;
+// A shade under the two rungs a thickness really is — exactly the rules' own
+// drawn weight under it, which is what puts ±3's slab flush OUTSIDE the box
+// instead of half over the rule it has just cleared. At 17px that fraction of a
+// rung is the difference between telling ±3 and ±2 apart and not.
+const MARK_SLAB = 2 * MARK_RUNG - 1.2;
+const MARK_TOP = MARK_MID - 2 * MARK_RUNG - 0.6; // the ceiling rule's own top
+const MARK_WALL = 4 * MARK_RUNG + 1.2; // down to the floor rule's underside
+
+const PLANE_MARK = (rung: number): string =>
+  svg(
+    `<rect x="1.5" y="${MARK_TOP.toFixed(2)}" width="21" height="1.2" rx="0.6" opacity="0.5" />` +
+      `<rect x="1.5" y="${(MARK_TOP + MARK_WALL - 1.2).toFixed(2)}" ` +
+      'width="21" height="1.2" rx="0.6" opacity="0.5" />' +
+      // The two uprights close the storey into a box. Without them a mark is a
+      // dash floating at some height, and seven of those side by side read as
+      // one ragged row rather than seven shelves in a room. They are also what
+      // ±3 is measured against: its slab is the one that leaves the box.
+      `<rect x="1.5" y="${MARK_TOP.toFixed(2)}" width="1" ` +
+      `height="${MARK_WALL.toFixed(2)}" rx="0.5" opacity="0.22" />` +
+      `<rect x="21.5" y="${MARK_TOP.toFixed(2)}" width="1" ` +
+      `height="${MARK_WALL.toFixed(2)}" rx="0.5" opacity="0.22" />` +
+      `<rect x="4.5" y="${(MARK_MID - rung * MARK_RUNG - MARK_SLAB / 2).toFixed(2)}" ` +
+      `width="15" height="${MARK_SLAB.toFixed(2)}" rx="1.6" />`,
+  );
+
+const PLANES_ICON = PLANE_MARK(0);
+
+/**
+ * THE LADDER — seven rungs, half a thickness apart.
+ *
+ * THE STEP IS HALF A THICKNESS, and that is the whole point. Two ribbons rest on
+ * each other when their CENTRES are one thickness apart — half of each closes
+ * the gap. With a rung of a whole thickness, `+1` and `-1` came out two
+ * thicknesses apart: measured on the opening scene, `3_1` at `+1` over `1_3` at
+ * `-1` left a full thickness of daylight between them, so the one thing the
+ * control is for could not be said. At half a thickness, `+1` and `-1` are
+ * exactly one thickness apart and the two touch. Measured, not reasoned:
+ *
+ *     1_3 -1, 3_1 +1  ->  gap 1.000 thicknesses  (resting exactly on)
+ *     1_3 -2, 3_1  0  ->  gap 1.000              (likewise, a storey lower)
+ *     1_3 -1, 3_1  0  ->  gap 0.500              (interpenetrating)
+ *
+ * SEVEN RUNGS, AND THE MIDDLE FIVE ARE THIS STOREY. `±2` are the storey's own
+ * floor and ceiling — and a storey's ceiling is still the next one's floor,
+ * which is what keeps `+2` and the storey above's `-2` the same place. `±3`
+ * reach one rung PAST those seams, into the neighbour, and they are the two the
+ * ladder gained: resting ON a seam is not the same as clearing a layer already
+ * sitting on it, and `+3` does that without spending a level break to move the
+ * whole layer up a storey. Further than that IS a level break's job. Both are
+ * named for the seam they clear rather than the storey they land in, because
+ * clearing it is what they get pressed to do.
+ *
+ * `rung` is what the panel shows and what a saved scene stores; `value` is what
+ * the scene is told, in thicknesses, which is the unit `setSublevels` has always
+ * taken and the fold lab still uses.
+ */
+const PLANE_RUNGS: Array<{ rung: number; value: number; name: string; also?: string }> = [
+  { rung: 3, value: 1.5, name: 'rung above this storey', also: 'clears its ceiling' },
+  { rung: 2, value: 1, name: 'top of this storey', also: 'floor of the one above' },
+  { rung: 1, value: 0.5, name: 'upper half', also: 'rests on −1' },
+  { rung: 0, value: 0, name: 'middle of this storey' },
+  { rung: -1, value: -0.5, name: 'lower half', also: 'carries +1' },
+  { rung: -2, value: -1, name: 'floor of this storey', also: 'top of the one below' },
+  { rung: -3, value: -1.5, name: 'rung below this storey', also: 'hangs under its floor' },
+];
+
+/** A rung as the scene wants it: thicknesses off the storey middle. */
+function rungValue(rung: number): number {
+  return (PLANE_RUNGS.find((r) => r.rung === rung) ?? { value: 0 }).value;
+}
 
 // The masks side of the stack bar's switch: one band whole, the other broken
 // behind it — the same thing the Weave tool's mark says, stood upright. The

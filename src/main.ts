@@ -17,6 +17,12 @@ const panelRoot = document.getElementById('panel') as HTMLElement;
 // joint and so no FOLD, which means the opening screen could not show the
 // storey turn at all. The turn is the part most likely to regress, so it is
 // what the app opens on.
+//
+// NOT `box-and-strand`, which is the same scene plus a seventh strand and comes
+// with planes already declared. It is the best demonstration of the plane work
+// and the worst thing to open on: an opening screen should show what the app
+// does by default, and a scene that arrives placed cannot. It is one pick away
+// in the dock, and `?sample=box-and-strand` links straight at it.
 const DEFAULT_SAMPLE = 'two-crossing-arms';
 const requested = new URLSearchParams(window.location.search).get('sample');
 const opening = requested && Object.prototype.hasOwnProperty.call(SAMPLES, requested)
