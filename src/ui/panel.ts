@@ -2331,7 +2331,9 @@ export class Panel {
         `<circle class="${cls}" cx="${cx}" cy="${cy}" r="${picked ? 4.6 : 3.4}" />` +
         `<title>${escText(cross.ownId)} ${cross.over ? 'over' : 'under'} ${escText(cross.withId)}` +
         ` — ${cross.gapT.toFixed(1)} thicknesses apart` +
-        (placed !== undefined ? ` · placed ${PLANE_WORDS[placed] ?? placed}` : '') +
+        (placed !== undefined
+          ? ` · placed at the ${PLANE_RUNGS.find((r) => r.rung === placed)?.name ?? placed}`
+          : '') +
         (cross.woven ? '' : ' · not woven, they pass on different storeys') +
         `</title></g>`;
     }
@@ -2372,20 +2374,23 @@ export class Panel {
     const share = member.run ? Math.round((member.run.u1 - member.run.u0) * 100) : 0;
     name.appendChild(el('span', 'tag', member.run ? `${share}% run` : 'C to C'));
 
+    // The over/under count used to be a tag of its own here. Five marks need the
+    // width more than it does, and squeezing them both left the LAYER'S ID
+    // ellipsised down to "1…" — which is the one thing in the row that has to be
+    // readable. It moved into the tooltip; the figure above shows the same thing
+    // in colour, and selecting the row lights that member's own ticks.
     const mine = fact.crossings.filter((c) => c.ownId === member.id);
-    if (mine.length) {
-      const over = mine.filter((c) => c.over);
-      const tag = el('span', 'tag cross-tag', `▲${over.length} ▼${mine.length - over.length}`);
-      const names = (list: typeof mine): string => list.map((c) => c.withId).join(', ');
-      tag.title =
-        (over.length ? `over ${names(over)}` : 'over nothing') +
-        ' · ' +
-        (over.length < mine.length ? `under ${names(mine.filter((c) => !c.over))}` : 'under nothing');
-      name.appendChild(tag);
-    }
-    name.title = member.run
-      ? `${member.id} — ${share}% of the lace is run, the rest is inside its C’s`
-      : `${member.id} runs from one C straight into the next: no free run at all`;
+    const over = mine.filter((c) => c.over);
+    const names = (list: typeof mine): string => list.map((c) => c.withId).join(', ');
+    const met = mine.length
+      ? ` · over ${over.length ? names(over) : 'nothing'}, under ${
+          over.length < mine.length ? names(mine.filter((c) => !c.over)) : 'nothing'
+        }`
+      : '';
+    name.title =
+      (member.run
+        ? `${member.id} — ${share}% of the lace is run, the rest is inside its C’s`
+        : `${member.id} runs from one C straight into the next: no free run at all`) + met;
     name.addEventListener('click', () => {
       this.selectedId = selected ? null : member.id;
       // The lit ladder follows the selection, so picking a row in the panel picks
@@ -2395,83 +2400,53 @@ export class Panel {
     });
     row.appendChild(name);
     row.appendChild(
-      this.planeChip(this.planes.get(member.id) ?? null, selected, () => {
-        this.selectedId = selected ? null : member.id;
-        this.pushPlaneGuides();
-        this.renderStack();
-      }),
-    );
-    if (!selected) return row;
-    row.classList.add('open');
-    row.appendChild(
-      this.planeLadder(this.planes.get(member.id) ?? null, (v) => this.setPlane(member.id, v)),
+      this.planePick(this.planes.get(member.id) ?? null, member.id, (v) =>
+        this.setPlane(member.id, v),
+      ),
     );
     return row;
   }
-
   /**
-   * The chosen height, in the width of a tag.
+   * FIVE MARKS, in the row, always.
    *
-   * Every row cannot carry the ladder — six members would be six ladders and the
-   * stack would stop being a stack — so the row STATES where it is, and the
-   * ladder opens in whichever row is selected. That is this panel's own idiom: a
-   * layer's controls belong in the layer's row, not in a section somewhere else.
+   * A chip that opened a five-line list underneath meant a press to look and a
+   * press to set, and a row that changed height while you were reading it. The
+   * whole control is five marks wide, so it simply sits in the row: nothing
+   * opens, nothing moves, and every height is one press away.
+   *
+   * Each mark is the storey seen edge-on with the slab resting on that rung —
+   * the same picture as the shelves in the canvas and the rules in the card's
+   * elevation, at 24px. Pressing the lit one clears it, which is the only way
+   * back to "not placed", a state that is not the same as centre.
+   *
+   * The names live in the tooltips. There is no room for them at this size, and
+   * a legend under every row would cost more than the list did.
    */
-  private planeChip(current: number | null, open: boolean, onOpen: () => void): HTMLElement {
-    const b = el(
-      'button',
-      'plane-chip' + (current === null ? ' unset' : '') + (open ? ' open' : ''),
-    ) as HTMLButtonElement;
-    b.type = 'button';
-    b.setAttribute('aria-expanded', String(open));
-    if (current !== null) b.innerHTML = PLANE_MARK(Math.sign(current));
-    b.appendChild(el('span', 'plane-tag', planeTag(current)));
-    b.title =
-      current === null
-        ? 'Not placed — the scene rests this where it falls. Open the ladder to place it.'
-        : `Placed at the ${PLANE_RUNGS.find((r) => r.value === current)?.name ?? planeTag(current)}`;
-    b.addEventListener('click', onOpen);
-    return b;
-  }
-
-  /**
-   * Every height it can go on, as a ladder read bottom-up.
-   *
-   * Three buttons could only offer three, all inside one storey — which is why
-   * "put this one exactly on top of that one" was out of reach whenever the two
-   * were not already in the same storey. Seven rungs reach the storey above and
-   * the one below in the same units.
-   *
-   * Nine cells collapse to seven, and that IS the model rather than a rounding:
-   * a storey's ceiling is the next one's floor. Both readings are printed on the
-   * one rung that is both, because offering them as two places would invent a
-   * distinction the geometry does not make.
-   *
-   * Pressing the lit rung clears it, which is how every other toggle here
-   * behaves and the only way back to "not placed" — a state that is not the same
-   * as centre; see pushPlanes for the 0.19 thicknesses between them.
-   */
-  private planeLadder(current: number | null, onPick: (value: number | null) => void): HTMLElement {
-    const box = el('div', 'plane-ladder');
-    box.setAttribute('role', 'group');
+  private planePick(
+    current: number | null,
+    label: string,
+    onPick: (rung: number | null) => void,
+  ): HTMLElement {
+    const group = el('span', 'plane-pick');
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', `Where ${label} rests`);
     for (const rung of PLANE_RUNGS) {
       const on = current === rung.rung;
       const b = el(
         'button',
-        'rung' + (on ? ' on' : '') + (Math.abs(rung.rung) < 2 ? ' here' : ' seam'),
+        'plane-btn' + (on ? ' on' : '') + (Math.abs(rung.rung) === 2 ? ' seam' : ''),
       ) as HTMLButtonElement;
       b.type = 'button';
+      b.innerHTML = PLANE_MARK(rung.rung);
       b.setAttribute('aria-pressed', String(on));
-      b.appendChild(el('span', 'rung-n', planeTag(rung.rung)));
-      const label = el('span', 'rung-name');
-      label.appendChild(el('b', undefined, rung.name));
-      if (rung.also) label.appendChild(el('i', undefined, ` · ${rung.also}`));
-      b.appendChild(label);
-      b.title = on ? 'Press again to let the scene decide again' : `Put it at the ${rung.name}`;
+      const named = rung.also ? `${rung.name} · ${rung.also}` : rung.name;
+      b.title = on
+        ? `${label}: ${named} — press again to let the scene decide`
+        : `Put ${label} at the ${named}`;
       b.addEventListener('click', () => onPick(on ? null : rung.rung));
-      box.appendChild(b);
+      group.appendChild(b);
     }
-    return box;
+    return group;
   }
 
   /**
@@ -2524,11 +2499,7 @@ export class Panel {
     }
     const id = `${cross.key}|${side}`;
     row.appendChild(
-      this.planeChip(this.crossPlanes.get(id) ?? null, true, () => this.pickCross(null)),
-    );
-    row.classList.add('open');
-    row.appendChild(
-      this.planeLadder(this.crossPlanes.get(id) ?? null, (v) => this.setCrossPlane(id, v)),
+      this.planePick(this.crossPlanes.get(id) ?? null, side, (v) => this.setCrossPlane(id, v)),
     );
     return row;
   }
@@ -3681,24 +3652,32 @@ const LAYERS_ICON = svg(
 // its middle and its ceiling — with a layer resting on the middle one. The same
 // mark, with the slab moved, is what each of the three buttons in a row shows,
 // so the tab and the control say the same thing in the same shape.
-const PLANE_RULES =
-  '<rect x="2" y="5.2" width="20" height="1.1" rx="0.55" opacity="0.3" />' +
-  '<rect x="2" y="12" width="20" height="1.1" rx="0.55" opacity="0.3" />' +
-  '<rect x="2" y="18.8" width="20" height="1.1" rx="0.55" opacity="0.3" />';
+/**
+ * The mark for one rung: the storey seen edge-on, with the slab resting ON it.
+ *
+ * Only the storey's own floor and ceiling are drawn, faint — three more rules
+ * inside 24px was noise the slab had to compete with, and the slab's height is
+ * the whole of what the button says. Rungs are `4 · SUBLEVEL_STEP` apart down
+ * the box, so the picture is to scale: `+1` really does sit half way between the
+ * middle and the ceiling.
+ */
+const MARK_MID = 12;
+const MARK_RUNG = 3.525; // (18.5 - 4.4) / 4, so ±2 land on the two rules
 
-/** The mark for one plane: the slab sitting ON the rule it names. The slab is
- *  the loud part and the rules are the faint ones, because which of the three it
- *  is sitting on is the whole of what the button says. */
-const PLANE_MARK = (value: number): string =>
+const PLANE_MARK = (rung: number): string =>
   svg(
-    PLANE_RULES +
-      `<rect x="5" y="${value < 0 ? 14.8 : value > 0 ? 1.2 : 8}" width="14" height="4" rx="1.3" />`,
+    '<rect x="1.5" y="4.4" width="21" height="1.2" rx="0.6" opacity="0.5" />' +
+      '<rect x="1.5" y="18.4" width="21" height="1.2" rx="0.6" opacity="0.5" />' +
+      // The two uprights close the storey into a box. Without them a mark is a
+      // dash floating at some height, and five of those side by side read as one
+      // ragged row rather than five shelves in a room.
+      '<rect x="1.5" y="4.4" width="1" height="15.2" rx="0.5" opacity="0.22" />' +
+      '<rect x="21.5" y="4.4" width="1" height="15.2" rx="0.5" opacity="0.22" />' +
+      `<rect x="4.5" y="${(MARK_MID - rung * MARK_RUNG - 3.4).toFixed(2)}" ` +
+      'width="15" height="3.4" rx="1.2" />',
   );
 
 const PLANES_ICON = PLANE_MARK(0);
-
-/** What each plane is called, wherever one has to be named in a sentence. */
-const PLANE_WORDS: Record<number, string> = { [-1]: 'bottom', 0: 'centre', 1: 'top' };
 
 /**
  * THE LADDER — five rungs inside one storey, half a thickness apart.
@@ -3736,12 +3715,6 @@ const PLANE_RUNGS: Array<{ rung: number; value: number; name: string; also?: str
 /** A rung as the scene wants it: thicknesses off the storey middle. */
 function rungValue(rung: number): number {
   return (PLANE_RUNGS.find((r) => r.rung === rung) ?? { value: 0 }).value;
-}
-
-/** How a chosen height is written where there is only room for a token. */
-function planeTag(value: number | null): string {
-  if (value === null) return '–';
-  return `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value)}`;
 }
 
 // The masks side of the stack bar's switch: one band whole, the other broken

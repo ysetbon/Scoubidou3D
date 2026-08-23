@@ -644,117 +644,10 @@ button {
   text-transform: none;
 }
 
-/* ---- the chosen height, and the ladder of every height ------------------- */
-/* The row states where it is; the ladder opens in the row that is selected.
-   Six ladders at once would stop the stack being a stack. */
-.plane-chip {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 24px;
-  padding: 0 7px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--paper);
-  color: var(--ink);
-}
-
-.plane-chip .icon {
-  width: 15px;
-  height: 15px;
-}
-
-.plane-tag {
-  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 10.5px;
-  font-weight: 700;
-}
-
-.plane-chip.unset {
-  color: var(--muted);
-  border-style: dashed;
-}
-
-.plane-chip:hover {
-  border-color: var(--edge2);
-}
-
-.plane-chip.open {
-  background: var(--fill);
-  border-color: var(--fill);
-  color: var(--fill-ink);
-}
-
-/* The row grows to hold the ladder, so the ladder needs the full width under the
-   identity line rather than a column beside it. */
-.row.open {
-  flex-wrap: wrap;
-}
-
-.plane-ladder {
-  flex: 1 0 100%;
-  display: flex;
-  flex-direction: column;
-  margin-top: 6px;
-  border: 1px solid var(--hair);
-}
-
-.rung {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 3px 7px;
-  border: 0;
-  border-bottom: 1px solid var(--hair);
-  background: var(--paper);
-  color: var(--muted);
-  text-align: left;
-}
-
-.rung:last-child {
-  border-bottom: 0;
-}
-
-/* This layer's OWN storey, against the two it can reach into. */
-.rung.here {
-  background: var(--cream);
-  color: var(--ink);
-}
-
-.rung:hover {
-  background: var(--hover);
-  color: var(--ink);
-}
-
-.rung.on,
-.rung.on:hover {
-  background: var(--fill);
-  color: var(--fill-ink);
-}
-
-.rung-n {
-  flex: 0 0 22px;
-  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 10.5px;
-  font-weight: 700;
-  text-align: right;
-}
-
-.rung-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: 10.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rung-name i {
-  opacity: 0.62;
-  font-size: 9.5px;
-}
-
+/* ---- the five marks that place a layer ----------------------------------- */
+/* The whole control, in the row. It used to be a chip that opened a five-line
+   list underneath, which cost a press to look and changed the row's height
+   while you were reading it. */
 .plane-pick {
   flex: 0 0 auto;
   display: flex;
@@ -765,7 +658,9 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
+  /* Five where there were three, so each gives up a pixel: the row still has to
+     hold the layer's id and both tags beside them. */
+  width: 23px;
   height: 24px;
   border: 0;
   border-radius: 4px;
@@ -774,8 +669,14 @@ button {
 }
 
 .plane-btn .icon {
-  width: 18px;
-  height: 18px;
+  width: 19px;
+  height: 19px;
+}
+
+/* The storey's own floor and ceiling — the shelves a layer can be RESTED on, as
+   against the halves between them. The same coral the canvas gives those two. */
+.plane-btn.seam:not(.on) {
+  color: var(--coral);
 }
 
 .plane-btn:hover {
@@ -922,13 +823,15 @@ button {
 }
 
 .row-id {
+  /* Never the thing that gives way. A row that has run out of room should drop a
+     tag, not ellipsise the one word naming what the row IS — which is what it
+     did when the five plane marks arrived: "1_2" came out as "1…". */
+  flex: 0 0 auto;
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: -0.01em;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .tag {
