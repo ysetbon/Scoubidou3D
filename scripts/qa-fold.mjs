@@ -143,6 +143,34 @@ for (const view of shots) {
           if (s > 1) out.steep++;
           if (s > out.worstMaxSlope) out.worstMaxSlope = s;
         }
+        // A lace whose folds were built as TURNS has no sharp vertex left to
+        // find — the crease is a smooth C now — so the turn records are what
+        // there is to measure. `faceHeight` becomes the storey the turn
+        // actually carries end to end, `faceTilt` its steepest gradient, and
+        // `ramped` is zero by construction: the whole climb is inside the
+        // turn, which is the point of building one.
+        if (L.turns && L.turns.length) {
+          for (const t of L.turns) {
+            out.folds++;
+            const face = Math.abs(P[t.to].z - P[t.from].z) / L.thickness;
+            if (face > out.worstCreaseStep) out.worstCreaseStep = face;
+            if (face < out.minFace) out.minFace = face;
+            out.meanFace += face;
+            // Read at the two ENDS, where the turn meets its runs — not at the
+            // apex. A C's tip passes through vertical there by construction, so
+            // the steepest gradient inside a turn is always about 90 degrees and
+            // says nothing. What the column was written to ask is whether the
+            // runs are left standing on edge, and that is an end measurement.
+            const grad = (i) => {
+              const run = Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y);
+              return run < 1e-9 ? 0 : Math.abs((P[i].z - P[i - 1].z) / run);
+            };
+            const tilt = deg(Math.atan(Math.max(grad(t.from + 1), grad(t.to))));
+            if (tilt > out.worstFaceTilt) out.worstFaceTilt = tilt;
+            if (tilt > 30) out.overTilt++;
+          }
+          continue;
+        }
         for (let i = 1; i < P.length - 1; i++) {
           if (turnAt(P, i) < FOLD) continue;
           out.folds++;
@@ -226,8 +254,20 @@ for (const view of shots) {
         };
         const L = view.laceCenterlines[0];
         const P = L.line;
-        const folds = [];
-        for (let i = 1; i < P.length - 1; i++) if (turnAt(P, i) >= FOLD) folds.push(i);
+        // Prefer the turn records: once a fold is built as a C there is no
+        // sharp vertex left for the angle search to find, and an empty list
+        // here used to take the whole run down with it. An apex is the better
+        // target anyway — it is the middle of the bight by construction,
+        // rather than whichever sample happened to be sharpest.
+        const folds =
+          L.turns && L.turns.length
+            ? L.turns.map((t) => t.apex)
+            : (() => {
+                const f = [];
+                for (let i = 1; i < P.length - 1; i++) if (turnAt(P, i) >= FOLD) f.push(i);
+                return f;
+              })();
+        if (!folds.length) return null; // nothing to stand in front of
         const best = { p: P[folds[folds.length >> 1]], w: L.width };
         const c = new V(best.p.x, best.p.y, best.p.z);
         stand(c, (best.w * detail) / (2 * Math.tan((cam.fov * Math.PI) / 360)));
@@ -259,6 +299,13 @@ for (const view of shots) {
     view,
   );
   const name = `${view.key}-${view.az}-${view.el}`;
+  if (!png) {
+    // A detail view with no turn to stand in front of. Said out loud rather
+    // than skipped quietly: a missing panel in a comparison sheet otherwise
+    // reads as a build that rendered nothing.
+    console.log(`skip  ${TAG}-${name}.png — no fold in this lace to frame`);
+    continue;
+  }
   writeFileSync(`${OUT}/${TAG}-${name}.png`, Buffer.from(png.split(',')[1], 'base64'));
   console.log(`shot ${TAG}-${name}.png`);
 }

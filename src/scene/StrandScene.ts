@@ -863,9 +863,18 @@ export class StrandScene {
       // is exactly what the sublevel model exposes: a crease that climbs from one
       // named plane to another has a step of its own, and capping it at a global
       // 2t would ramp the difference into the runs and flatten the C.
-      // With planes declared the crease is replaced by the storey turn from the Z
-      // band lab — but AFTER the corner rounding below, because the turn's points
-      // carry their own sweep frame and rounding would not know to keep it.
+      // The crease is replaced by the storey turn from the Z band lab — but
+      // AFTER the corner rounding below, because the turn's points carry their
+      // own sweep frame and rounding would not know to keep it.
+      //
+      // `easeFolds` still runs when no planes are declared, and it is not the
+      // old crease behaviour left in: what it does is settle the STEP, stacking
+      // the two runs a thickness apart and ramping away whatever the crease
+      // will not carry. That step is the turn's whole input — it is where `h`
+      // comes from — so without it every fold would climb nothing and the C
+      // would collapse to a flat hairpin. With planes declared the heights are
+      // already the planes', and easing them here would cap and ramp the very
+      // storey the planes asked for, so it is skipped.
       if (!this.sublevels) easeFolds(line, thickness * FOLD_STACK, thickness * 2);
       // Then walk up any step left at a gentle joint — a level break between two
       // members of the lace puts one storey's worth of height there, and without a
@@ -880,7 +889,15 @@ export class StrandScene {
       // a ratio of the lace's width, so the turn is the same shape on any lace.
       // Every C is built here, once, from the two real runs — a hidden partner
       // included — and each turn records the apex where ownership changes hands.
-      const turns: TurnRecord[] = this.sublevels ? zFolds(rounded, width * LEG_PER_WIDTH) : [];
+      //
+      // Unconditional. This used to be gated on `sublevels`, which meant only
+      // the fold lab ever saw a C: the studio kept the bare crease, and a fold
+      // there showed as the flat mitred corner a real lace cannot make. The
+      // gate was never about the studio not wanting the turn — it was that the
+      // turn arrived with the plane model and nothing went back to switch it
+      // on generally. A fold is a fold whichever page is drawing it, so the
+      // studio gets the same one.
+      const turns: TurnRecord[] = zFolds(rounded, width * LEG_PER_WIDTH);
       this.laceCenterlines.push({
         chain: chain.map((m) => m.index),
         line: rounded,
