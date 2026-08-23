@@ -15,7 +15,7 @@
 //
 // That works while the lace is BENDING. Past about 60° it is no longer bending but
 // FOLDING, and a fold is a different thing entirely — see `foldsOf` at the foot of
-// this file, and the sweep that builds it in ribbon.ts.
+// this file, and the turn that gets built there in geometry/fold.ts.
 
 import { Vec3 } from './vec';
 
@@ -192,35 +192,23 @@ export function roundCorners(pts: Vec3[], targetRadius: number): Vec3[] {
 // exactly. No gap to notch, no overlap to spike, and the lace keeps its full
 // width straight through the fold.
 //
-// Crucially the lace is NOT severed there. The two cuts are described as a pair
-// of cross-sections at the same point, and the sweep carries the surface across
-// them (ribbon.ts) — so the fold is a crease in one continuous skin, not a butt
-// joint between two pieces with a visible cut between them.
+// Crucially the lace is NOT severed there — but neither is the fold something a
+// sweep can carry. The strip rolls a half turn about that crease, and rolling
+// tilts its width clean out of horizontal, which the sweep's level ring frame
+// cannot express. So a fold is where the centreline is CUT and a built turn
+// spliced in (geometry/fold.ts). What this file supplies is where the cuts are
+// and which way the two runs point through them.
 
-/** The two end faces meeting at a fold. A shear of `d` slides a cross-section
- *  along its run by `d * u`, where `u` is the vertex's offset across the width,
- *  tipping the flat face over onto the crease. Zero is a square face — which is
- *  what a straight-back fold gives, the crease being square to both runs. */
+/** The two runs meeting at a fold. */
 export interface Fold {
   /** Index into the centreline of the vertex the lace folds at. */
   index: number;
   /** Unit headings of the runs arriving at and leaving the fold. */
   din: { x: number; y: number };
   dout: { x: number; y: number };
-  /** Unit direction of the crease line itself, in the drawing plane. */
+  /** Unit direction of the crease line itself, in the drawing plane: the
+   *  bisector of the two headings, which reflects one onto the other. */
   crease: { x: number; y: number };
-  shearIn: number;
-  shearOut: number;
-}
-
-/** How far a face must tip to lie along the crease `m`. */
-function creaseShear(t: { x: number; y: number }, m: { x: number; y: number }): number {
-  const den = t.x * m.y - t.y * m.x;
-  if (Math.abs(den) < 1e-6) return 0; // crease along the run — no fold after all
-  const num = -t.y * m.y - t.x * m.x; // the perpendicular of t, crossed with m
-  // A shallow crease would reach a long way back along the run; cap it at a 63°
-  // cut, past which the two runs are far enough apart to mitre normally anyway.
-  return Math.max(-2, Math.min(2, -num / den));
 }
 
 /**
@@ -244,7 +232,7 @@ function creaseShear(t: { x: number; y: number }, m: { x: number; y: number }): 
  * the height of the face the fold turns on — the whole of what that turn shows.
  * One thickness is the two runs touching. A fold that also climbs a storey has a
  * storey's worth of step to place, and can carry more of it here rather than ramp
- * it away; see FOLD_STACK in StrandScene.
+ * it away; see TURN_STACK in StrandScene.
  */
 export function easeFolds(pts: Vec3[], stack: number, reach: number): void {
   const folds = foldsOf(pts);
@@ -325,6 +313,31 @@ export function easeSteps(pts: Vec3[], reach: number): void {
   }
 }
 
+/**
+ * Collapse consecutive points that share a position in the drawing plane, taking
+ * the average of their heights and keeping the two originals.
+ *
+ * A joint produces exactly such a pair: the two strands meeting there were woven
+ * separately, so each brings its own height to the shared point. Keeping both
+ * leaves a step with no length in the plane, and every heading here is read from
+ * differences in the plane — so the heading at a joint comes out as neither
+ * run's, and a fold does not register as a reversal at all.
+ */
+export function collapseJoints(centerline: Vec3[]): Vec3[] {
+  const pts: Vec3[] = [];
+  for (const p of centerline) {
+    const last = pts[pts.length - 1];
+    if (last && Math.hypot(last.x - p.x, last.y - p.y) <= 1e-6) {
+      last.zIn = last.zIn ?? last.z;
+      last.zOut = p.zOut ?? p.z;
+      last.z = (last.zIn + last.zOut) / 2;
+      continue;
+    }
+    pts.push({ ...p });
+  }
+  return pts;
+}
+
 /** Find every fold in a centreline and work out the crease cut at each. */
 export function foldsOf(pts: Vec3[], minTurn = FOLD_TURN): Fold[] {
   const out: Fold[] = [];
@@ -341,14 +354,7 @@ export function foldsOf(pts: Vec3[], minTurn = FOLD_TURN): Fold[] {
     while (d < -Math.PI) d += 2 * Math.PI;
     const phi = a0 + d / 2;
     const m = { x: Math.cos(phi), y: Math.sin(phi) };
-    out.push({
-      index: i,
-      din,
-      dout,
-      crease: m,
-      shearIn: creaseShear(din, m),
-      shearOut: creaseShear(dout, m),
-    });
+    out.push({ index: i, din, dout, crease: m });
   }
   return out;
 }

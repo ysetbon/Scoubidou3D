@@ -39,9 +39,11 @@ import {
   visibleControls,
 } from '../model/controlPoints';
 import { sampleCenterline } from '../geometry/bezier';
-import { buildRibbonGeometry } from '../geometry/ribbon';
+import { buildRibbonGeometry, crossSection } from '../geometry/ribbon';
+import { LaceGauge, SplicedLace, mergeGeometry, spliceFolds, tube, turnRings } from '../geometry/fold';
+import { AUTO_DEFAULT } from '../geometry/autoFold';
 import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
-import { easeFolds, easeSteps, foldsOf, roundCorners } from '../geometry/polyline';
+import { easeFolds, easeSteps, roundCorners } from '../geometry/polyline';
 import { Anchor, arcLengths, heightField, polylineCrossings } from '../geometry/weave';
 import { Vec2, Vec3 } from '../geometry/vec';
 
@@ -49,176 +51,60 @@ import { Vec2, Vec3 } from '../geometry/vec';
 const SCALE = 0.02;
 
 /**
- * How far apart a fold leaves its two runs AT the crease, in strand thicknesses.
+ * How long the turn's straight LEGS are, world units.
  *
- * A fold is where a lace doubles back, and the flat face it turns on is exactly
- * this tall — so this number is the whole of what a turn shows. One thickness is
- * the two runs touching, which is right for a fold that only stacks a run on a
- * run, and it used to be the cap for every fold in the model.
+ * A fold is a tip with a leg either side of it: the strip runs straight out of
+ * the joint, rolls a half turn about its crease, and runs straight back. The
+ * legs are what a leaning crease bends in — at lean 0 they are dead straight and
+ * the tip turns the heading the whole way; at lean 1 the crease is square to the
+ * strap, the tip turns a full half turn, and the legs bend in plan to make up
+ * the difference (see `foldTurn` in geometry/fold.ts).
  *
- * It is the wrong cap for the folds that matter. A lace changes storey AT a fold,
- * and a storey is two thicknesses (`levelStepSource`); capped at one, half of
- * every storey change was refused at the crease and ramped away into the runs on
- * either side instead. That did two things at once: it left the turn showing a
- * face half the height the lace really steps through there, reading thin and
- * cut-off against the round of the runs, and it tipped those runs up to carry
- * what the crease would not — over 30 degrees off level at a third of the folds
- * in a box stitch column.
+ * At ZERO the turn is its bare tip, and that is the default. It is worth saying
+ * why, because it looks like something missing rather than something chosen: the
+ * legs are what make a bight DEEP. A plane curve turning half a turn while
+ * rising one storey cannot be much deeper than half that storey — depth has to
+ * be bought with turning that does not rise, and only a leg turns without
+ * rising. With no legs the turn is exactly as deep as the storey it climbs, and
+ * a knuckle is what a real lace shows at a tight fold.
  *
- * At two thicknesses the crease carries a whole storey, which is the step the
- * lace actually makes. The face comes out at its true height and the runs into
- * and out of the turn have nothing left to ramp. A fold with a smaller step than
- * this is unaffected: the cap only ever caps.
- *
- * This is only the default. It rides on `RenderParams.foldStack` and the Ribbon
- * panel puts a slider on it, because how tall a turn should read is a judgement
- * about the lace being drawn rather than a fact about the geometry — a stiff
- * gimp shows more of its fold than a soft one, and both are worth being able to
- * ask for.
+ * A leg of no length also has nowhere to put a bend, so at zero the lean cannot
+ * mean anything and the crease sits on the bisector whatever Auto says. Drag
+ * this up and the lean comes to life with it.
  */
-export const FOLD_STACK_DEFAULT = 2;
+export const TURN_LEG_DEFAULT = 0;
 
 /**
- * How thick the Z part is, in strand thicknesses — the piece that stands between
- * a fold's two runs, joining the storey below to the storey above.
+ * How long the RAMP is, world units — and, at four times this, the furthest a
+ * crease may slide.
  *
- * That piece runs along Z, so its thickness is measured along a NORMAL to Z: an
- * XY vector, pointing out of the turn. `foldStack` says how TALL the piece is;
- * this says how THICK. And it is drawn as a piece of lace in its own right (see
- * `foldRungs`): a short vertical strand with the lace's rounded edges and dark
- * rim, centred on the point where the two runs end — not a face carried out, and
- * not a wall. At zero it is omitted and the turn ends in the bare fold sheet, as
- * it always used to; at one it is the same gauge as the lace it belongs to.
+ * One number doing two jobs, and they are the same job seen from the two ends of
+ * the separation dial. Past the carry angle a lace has stopped folding and
+ * merely rises, and this is how long it takes to do it. Below that angle it is
+ * folding, and an oblique crease walks the strip sideways as it rolls: the
+ * walk is `π · (storey/2) · cot(tipTurn/2)`, which runs away as the crease
+ * swings onto the strip's own length — the point where a fold stops being one.
+ * Capping the walk at `4 × ramp` is where that is stopped.
+ *
+ * In the studio the carry angle is never reached (a turn has to bend 60° to
+ * count as a fold at all, so the separation never passes 120°, and Auto carries
+ * on from 126°), so what this actually does here is set the cap. At the default
+ * that cap is 2.0 world units — a hundred source units, about two storeys — and
+ * it binds only on the very shallowest folds, the ones barely past the 60° that
+ * makes them folds.
  */
-export const FOLD_DEPTH_DEFAULT = 1;
+export const TURN_RAMP_DEFAULT = 0.5;
 
 /**
- * How far the Z part's arc reaches OUT of the turn, as a multiple of the
- * natural half-gap.
+ * How far apart a turn leaves its two runs AT the joint, in strand thicknesses.
  *
- * The Z part is a BIGHT: the lace does not stop at a storey turn and start
- * again a storey up, it bends round. Its centreline is an arc whose two ends
- * sit on the runs' centrelines — half the gap above and below the fold point,
- * which the gap pins — and whose apex stands out along the turn's normal. At 1
- * that arc is a true semicircle and the bight is the shape a real lace makes.
- * Below 1 it is squashed flat against the turn; above 1 it is drawn out into a
- * longer loop.
- *
- * NEGATIVE dishes it instead: the outer face is scooped back between the runs
- * rather than bowed past them, and the turn reads as a waist rather than a
- * nose. The two halves of the dial are the same wall walked the other way, so
- * the shape stays continuous through zero.
- *
- * The floor is the geometry's, not the dial's: the wall may come most of the
- * way back to the buried edge but never through it, or the profile turns
- * inside out. Deep negatives therefore stop moving before the slider does.
- *
- * Nothing here changes how far apart the runs are (`foldStack`) or how thick
- * the lace running round the turn is (`foldDepth`) — only how far, and which
- * way, the outer edge goes.
+ * A lace changes storey at a fold, and a storey is two thicknesses
+ * (`levelStepSource`) — so at two, the turn carries a whole storey and the runs
+ * into and out of it have nothing left to ramp. It is a CAP and nothing else:
+ * a fold with a smaller step than this is untouched, and the weave, which knows
+ * nothing of folds, is stopped from turning a crease into a cliff (`easeFolds`).
  */
-export const FOLD_BULGE_DEFAULT = 1;
-
-/**
- * How thick the fold's own FACE is, in strand thicknesses.
- *
- * The face is the flat plate standing at a storey turn — a plane whose normal
- * lies in XY. Squared (see `squareFolds` in ribbon.ts) it is a sheet of no
- * thickness at all, and the turn shows a black slit anywhere it is seen near
- * edge-on. This carries it out along the turn's normal and back, so the plate
- * becomes a slab with substance behind it.
- *
- * It fills the space INSIDE the bight — the hollow of the U — so the two do not
- * fight for the same room. At 0 the face is the bare sheet it has always been.
- */
-export const FOLD_FACE_DEFAULT = 0;
-
-/**
- * How wide the Z part is ACROSS THE CREASE, as a multiple of the lace's width.
- *
- * The third direction of the same piece, and the last one to get a control. The
- * bight has always taken the lace's own width and no more — a hair over it, so
- * the squared fold sheet is swallowed whole and the runs' side faces are cleared
- * rather than lain on. That makes the Z part a plate whenever the lace is much
- * wider than it is thick, which it is: seen from most angles the turn shows a
- * sliver, however far the bight is made to bow or jut.
- *
- * Above 1 the bight overhangs its own runs at both sides. That is a real edge,
- * not a mistake — a lace pinched round a turn does swell — but it is visible, so
- * the dial starts where the piece has always been and only widens on being
- * asked. Below the hair the fold sheet would poke through the sides, so that is
- * the floor whatever the slider says.
- */
-export const FOLD_WIDE_DEFAULT = 1;
-
-/**
- * How far the Z part's edges are rounded off, 0..1.
- *
- * Measured against a reference render of a real lace at a storey turn, seen
- * from all three sides. Two things in it are not what a bevelled extrusion
- * gives. Head on, the turn is a rounded RECTANGLE — every corner generously
- * radiused, not a prism with its arrises knocked off. From above, the nose is a
- * full semicircle across the lace's width, so the piece reads as a pressed pill
- * rather than a slab with rounded corners.
- *
- * Both come from one number: how much of the available radius the edge rounding
- * takes. At 0 the lump is cut square. At 1 it takes the whole of it, and the
- * cross-section closes into a capsule — the reference shape. The floor is the
- * geometry's own: never more than half the smallest dimension the profile has
- * to give, or the extruder folds the shape through itself.
- */
-export const FOLD_ROUND_DEFAULT = 0.44;
-
-/**
- * Which outer wall the Z part turns on.
- *
- * Two reference renders of a real lace at a storey turn, each square-on from
- * three sides, disagree about one thing — and only one thing. Both show a
- * filled piece with generously rounded edges; they part company at the outer
- * wall, the face that carries the eye round the turn.
- *
- *   'nose'    a half-ellipse, bowing out to a single furthest point. The turn
- *             reads as a pressed pill.
- *   'squared'  a straight wall with softly rounded corners — a squared C,
- *             halfway between a bracket and a full curve. The turn reads as a
- *             block that has been eased rather than a bend.
- *   'flush'   the squared wall again, but sized to CONTINUE the runs rather
- *             than to sit against them. See below.
- *
- * Everything else — the height, the reach, the width across the crease, the
- * edge rounding — is shared, so the choice can be flipped without any of the
- * sliders moving.
- */
-export type FoldShape = 'nose' | 'squared' | 'flush';
-export const FOLD_SHAPE_DEFAULT: FoldShape = 'nose';
-
-/**
- * 'flush' is not a fourth wall — it is the squared one, sized so the turn reads
- * as ONE OBJECT with the two runs instead of a lump set against them.
- *
- * Three things give a separate piece away, and all three are size, not shape.
- * It is a hair wider than the lace, so a lip runs down each side. Its height
- * comes off `foldDepth`, so its top and bottom faces sit inside or outside the
- * runs' own rather than level with them, leaving a step. And its back is tucked
- * only a little way in, so the seam is close enough to the surface to show.
- *
- * Flush answers each: the width is exactly the lace's, so the side faces are
- * coplanar with the runs'; the height is locked to the runs' outer faces
- * whatever `foldDepth` says, so top and bottom run on unbroken; and the back is
- * buried a full thickness, well inside solid lace. `foldDepth` and `foldBulge`
- * still set the reach — how far the turn stands out — because that is the one
- * dimension the runs do not pin.
- */
-const FLUSH_TUCK = 1;
-
-/** How much of the squared wall's half-height its corners take. Fixed rather
- *  than dialled: at 0 the wall is a bare bracket and at 1 it is the nose again,
- *  and the reference sits squarely between them. */
-const SQUARED_CORNER = 0.45;
-
-/** The least the Z part may be, as a multiple of the lace width: a hair over it,
- *  so the squared fold sheet stays swallowed and the runs' sides stay cleared. */
-const FOLD_WIDE_MIN = 1.015;
+const TURN_STACK = 2;
 
 // Handle appearance (world-unit radii + colors), tuned against SCALE so the grab
 // dots read clearly at the default framing.
@@ -308,46 +194,28 @@ const EDIT_NAMES: Record<DragState['kind'], string> = {
 export interface RenderParams {
   thickness: number; // default ribbon depth, source units
   /**
-   * How far apart a fold leaves its two runs AT the crease, in strand
-   * thicknesses — and so the height of the flat face the turn shows. See
-   * FOLD_STACK_DEFAULT.
+   * How long the straight legs of a turn are, world units. See
+   * TURN_LEG_DEFAULT.
    */
-  foldStack: number;
+  turnLeg: number;
   /**
-   * How thick the Z part is — the piece standing between a fold's two runs — in
-   * strand thicknesses. Its length runs in Z, so this is an XY dimension. See
-   * FOLD_DEPTH_DEFAULT.
+   * How long a ramp is, world units — and, at four times it, the furthest a
+   * crease may slide. See TURN_RAMP_DEFAULT.
    */
-  foldDepth: number;
-  /**
-   * How far the Z part's arc bows out of the turn, as a multiple of the natural
-   * half-gap. See FOLD_BULGE_DEFAULT.
-   */
-  foldBulge: number;
-  /**
-   * How thick the fold's own face plate is, in strand thicknesses — the depth it
-   * is carried out along the turn's normal, which is an XY direction. See
-   * FOLD_FACE_DEFAULT.
-   */
-  foldFace: number;
-  /**
-   * How wide the Z part is across the crease, as a multiple of the lace's own
-   * width. See FOLD_WIDE_DEFAULT.
-   */
-  foldWide: number;
-  /**
-   * How far the Z part's edges are rounded off, 0..1. See FOLD_ROUND_DEFAULT.
-   */
-  foldRound: number;
-  /** Which outer wall the Z part turns on. See FOLD_SHAPE_DEFAULT. */
-  foldShape: FoldShape;
+  turnRamp: number;
   layerGap: number; // base lift between consecutive layers, source units (small)
   widthScale: number; // multiplier applied to every strand width
   outline: boolean; // draw the stroke-colored outline shell
   roundCaps: boolean; // rounded strand ends
   showGrid: boolean;
   weave: boolean; // realise over/under as real depth at crossings
-  weaveDepth: number; // weave amplitude — how far a lace lifts/dips, source units
+  /**
+   * How far apart the two laces are left at a crossing, source units — centre to
+   * centre, not each one's lift. One thickness is the two resting on each other,
+   * which is the floor and the default; more opens the weave up. See
+   * `weaveAmplitude`.
+   */
+  weaveDepth: number;
   weaveSpan: number; // crossing pulse width, as a multiple of the crossing widths
   // OSS `enable_third_control_point`: offer the centre square as a third handle,
   // and let a locked centre bend the curve through itself (bezier.ts).
@@ -356,13 +224,8 @@ export interface RenderParams {
 
 export const DEFAULT_PARAMS: RenderParams = {
   thickness: 26,
-  foldStack: FOLD_STACK_DEFAULT,
-  foldDepth: FOLD_DEPTH_DEFAULT,
-  foldBulge: FOLD_BULGE_DEFAULT,
-  foldFace: FOLD_FACE_DEFAULT,
-  foldWide: FOLD_WIDE_DEFAULT,
-  foldRound: FOLD_ROUND_DEFAULT,
-  foldShape: FOLD_SHAPE_DEFAULT,
+  turnLeg: TURN_LEG_DEFAULT,
+  turnRamp: TURN_RAMP_DEFAULT,
   // Base lift between layers. The weave picks over/under at every CROSSING on its
   // own (adaptive amplitude), so this only needs to separate strands that overlap
   // WITHOUT crossing (a plain parallel stack) — and it's what gives the ordered
@@ -373,6 +236,8 @@ export const DEFAULT_PARAMS: RenderParams = {
   roundCaps: true,
   showGrid: true,
   weave: true,
+  // One thickness: the lace riding over resting on the lace ducking under, which
+  // is what a crossing is. `thickness` is 26 above, and the two travel here.
   weaveDepth: 26,
   weaveSpan: 1.3,
   // On, matching the running desktop canvas (strand_drawing_canvas.py sets it
@@ -726,17 +591,15 @@ export class StrandScene {
       const width = strand.width * this.params.widthScale * SCALE * grow;
       const thickness = this.strandThicknessWorld(strand) * grow;
       if (width <= 0 || thickness <= 0) return;
-      const geom = buildRibbonGeometry(line, {
+      // Turns and all: the coat is built the same way the body is, so it goes
+      // on hugging the surface it is meant to be tinting rather than cutting
+      // the corner where the lace folds.
+      const geom = this.laceGeometry(
+        spliceFolds(line, this.laceGauge(width, thickness)),
         width,
         thickness,
-        cornerRadius: thickness * 0.48,
-        cornerSteps: 3,
-        roundCaps: false,
-        // The coat squares its folds when the body does, so it goes on hugging
-        // the surface it is meant to be tinting.
-        squareFolds: this.rungsOn(),
-        foldFaceReach: this.faceReach(thickness),
-      });
+        { capStart: false, capEnd: false, openStart: false, openEnd: false },
+      );
       const mesh = new THREE.Mesh(
         geom,
         new THREE.MeshBasicMaterial({
@@ -895,7 +758,7 @@ export class StrandScene {
       // Settle each fold before sweeping: the lace stacks on itself there, one
       // thickness apart, with the change eased into the runs on either side.
       const thickness = (first.thickness ?? this.params.thickness) * SCALE;
-      easeFolds(line, thickness * this.params.foldStack, thickness * 2);
+      easeFolds(line, thickness * TURN_STACK, thickness * 2);
       // Then walk up any step left at a gentle joint — a level break between two
       // members of the lace puts one storey's worth of height there, and without a
       // crease to climb at it has to be ramped into the runs instead.
@@ -1095,6 +958,76 @@ export class StrandScene {
     return { center: { ...p }, tangent: { x: p.x - q.x, y: p.y - q.y } };
   }
 
+  /**
+   * The lace's gauge, as the turn builder wants it.
+   *
+   * `round` is only consulted by a caller asking the fold module for a section
+   * of its own; the studio hands it the SWEEP's section instead, so a turn's end
+   * rings and the run's end rings are the same ring and the two meet without a
+   * step.
+   */
+  private laceGauge(width: number, thickness: number): LaceGauge {
+    return {
+      width,
+      thickness,
+      round: 0.96, // the sweep's own corner: 0.48 of the thickness, either side
+      reach: Math.max(0, this.params.turnLeg),
+      ramp: Math.max(0, this.params.turnRamp),
+      auto: AUTO_DEFAULT,
+    };
+  }
+
+  /**
+   * One lace as one skin: its runs swept, and a built turn spliced into every
+   * fold.
+   *
+   * The sweep cannot carry a fold. Its rings hold their width axis in XY —
+   * `perp(t)`, level whatever the climb — and a fold's tip tilts its width clean
+   * out of horizontal as the strip rolls over, so there is no ring frame the
+   * sweep could put there. It used to plan two coincident sections at a fold and
+   * carry the surface through them, which made the turn a flat sheet in a
+   * vertical plane; that is the piece this replaces.
+   *
+   * So the centreline is CUT at every fold (`spliceFolds`), the runs are swept
+   * as before, and each turn is built as its own solid and dropped in the gap.
+   * The joins cost nothing to look at: a turn's end rings carry the sweep's own
+   * section on the same width axis at the same level, so the two surfaces meet
+   * exactly, and neither side caps them — the faces are inside solid lace, and a
+   * pair of coincident plates there would only z-fight.
+   */
+  private laceGeometry(
+    spliced: SplicedLace,
+    width: number,
+    thickness: number,
+    ends: { capStart: boolean; capEnd: boolean; openStart: boolean; openEnd: boolean },
+  ): THREE.BufferGeometry {
+    const cornerRadius = thickness * 0.48;
+    const cornerSteps = 3;
+    const parts: THREE.BufferGeometry[] = [];
+    spliced.runs.forEach((run, i) => {
+      const head = i === 0;
+      const tail = i === spliced.runs.length - 1;
+      parts.push(
+        buildRibbonGeometry(run, {
+          width,
+          thickness,
+          cornerRadius,
+          cornerSteps,
+          roundCaps: this.params.roundCaps,
+          capStart: head ? ends.capStart : false,
+          capEnd: tail ? ends.capEnd : false,
+          openStart: head ? ends.openStart : true,
+          openEnd: tail ? ends.openEnd : true,
+        }),
+      );
+    });
+    if (spliced.turns.length > 0) {
+      const sec = crossSection(width, thickness, cornerRadius, cornerSteps);
+      for (const t of spliced.turns) parts.push(tube(turnRings(t, sec), false));
+    }
+    return mergeGeometry(parts);
+  }
+
   private buildStrandMesh(
     strand: Strand3D,
     centerline: Vec3[],
@@ -1111,16 +1044,17 @@ export class StrandScene {
     const capStart = this.params.roundCaps && freeEnds[0];
     const capEnd = this.params.roundCaps && freeEnds[1];
 
-    const fillGeom = buildRibbonGeometry(centerline, {
-      width,
-      thickness,
-      cornerRadius: thickness * 0.48,
-      cornerSteps: 3,
-      roundCaps: this.params.roundCaps,
+    // Cut once, at the body's gauge. The outline shell is the same lace a stroke
+    // width fatter, and a turn's placement does not depend on how thick the lace
+    // is — only on the storey it climbs and the crease it turns on — so the two
+    // are built off ONE plan and the shell nests exactly over the body.
+    const spliced = spliceFolds(centerline, this.laceGauge(width, thickness));
+
+    const fillGeom = this.laceGeometry(spliced, width, thickness, {
       capStart,
       capEnd,
-      squareFolds: this.rungsOn(),
-      foldFaceReach: this.faceReach(thickness),
+      openStart: false,
+      openEnd: false,
     });
     const fillMat = new THREE.MeshStandardMaterial({
       color: threeColor(strand.color),
@@ -1147,21 +1081,13 @@ export class StrandScene {
 
     if (this.params.outline && strand.stroke_width > 0) {
       const ow = strand.stroke_width * SCALE;
-      const outlineGeom = buildRibbonGeometry(centerline, {
-        width: width + ow * 2,
-        thickness: thickness + ow * 2,
-        cornerRadius: (thickness + ow * 2) * 0.48,
-        cornerSteps: 3,
-        roundCaps: this.params.roundCaps,
+      const outlineGeom = this.laceGeometry(spliced, width + ow * 2, thickness + ow * 2, {
         capStart,
         capEnd,
         // A glued end leaves the shell open so the outlines of the two laces join
         // into one sleeve instead of showing a black plate at the seam.
         openStart: !freeEnds[0],
         openEnd: !freeEnds[1],
-        openFolds: true,
-        squareFolds: this.rungsOn(),
-        foldFaceReach: this.faceReach(thickness),
       });
       const outlineMat = new THREE.MeshBasicMaterial({
         color: threeColor(strand.stroke_color),
@@ -1179,224 +1105,9 @@ export class StrandScene {
       group.add(outlineMesh);
     }
 
-    this.foldRungs(strand, centerline, width, thickness, group);
-
     return group;
   }
 
-  /**
-   * The Z part of every storey turn, drawn as a piece of lace in its own right.
-   *
-   * A fold's two runs end at one point in the drawing plane, a storey apart in
-   * height, and the sweep closes the gap between them with a sheet that has no
-   * substance along the turn's outward direction at all. Everything else in the
-   * model is lace; that one piece was paper.
-   *
-   * So each fold that steps in Z gets a RUNG: a short strand standing on end.
-   * Its axis runs along Z; its cross-section therefore lies in the drawing
-   * plane — the lace's width across the crease line, and `foldDepth` thicknesses
-   * along the turn's outward normal, which is the thickness the Ribbon panel's
-   * "Z part" slider sets. It is centred on the point where the runs end, half
-   * proud of the turn and half buried in it, and it is built by the same sweep
-   * as the lace itself — swept flat, then stood up — so it carries the same
-   * rounded long edges and the same dark rim, and reads as strand, not as
-   * scaffolding.
-   *
-   * Two small offsets keep it honest against the geometry it stands in. Its
-   * ends ride a hair PROUD of the runs' outer faces — flush faces flicker, and
-   * ending short leaves a groove looking down into the joint; proud, the rung
-   * caps the turn the way a wrapped lace does. And it is a hair wider than the
-   * lace, so the squared fold sheet (see `squareFolds` in ribbon.ts) is
-   * swallowed whole and the runs' side faces are cleared.
-   */
-  /** Whether fold rungs are being drawn — the geometry around a fold squares
-   *  itself up when they are, so nothing of the old fold pokes through them. */
-  private rungsOn(): boolean {
-    return this.params.foldDepth > 0.02;
-  }
-
-  /** How deep a squared fold's face is carried out, world units. Zero leaves the
-   *  bare sheet; see FOLD_FACE_DEFAULT. Squaring is what makes the face a plane
-   *  worth thickening, so it follows `rungsOn`. */
-  private faceReach(thickness: number): number {
-    return this.rungsOn() ? thickness * Math.max(0, this.params.foldFace) : 0;
-  }
-
-  private foldRungs(
-    strand: Strand3D,
-    centerline: Vec3[],
-    width: number,
-    thickness: number,
-    group: THREE.Group,
-  ): void {
-    if (!this.rungsOn()) return; // slider at zero — the bare fold, as it always was
-
-    for (const f of foldsOf(centerline)) {
-      const p = centerline[f.index];
-      const zIn = p.zIn ?? p.z;
-      const zOut = p.zOut ?? p.z;
-      const gap = Math.abs(zOut - zIn);
-      // A fold that steps nowhere (a solo strand doubling back on one storey)
-      // has no Z part to give a body to.
-      if (gap < thickness * 0.05) continue;
-
-      // The turn's outward normal: the way the lace would have carried on had it
-      // not doubled back. Perpendicular to the crease, pointing out of the bight.
-      let nx = f.din.x - f.dout.x;
-      let ny = f.din.y - f.dout.y;
-      const nl = Math.hypot(nx, ny);
-      if (nl < 1e-9) continue;
-      nx /= nl;
-      ny /= nl;
-
-      // The turn is a SOLID, not a strap bent round a hole. A swept ribbon is a
-      // band with the inside of its own U left empty, and no amount of widening,
-      // bowing or thickening a band stops it reading as a band — the void behind
-      // it is what the eye picks up. So the Z part is built as one filled lump
-      // instead: a D in the vertical plane the fold turns in, extruded across the
-      // crease.
-      //
-      // The D's flat back stands where the two runs end, tucked a little inside
-      // them so no faces are left coincident, and its curved front is the outer
-      // edge of the turn — a half-ellipse, because the two ends are pinned by
-      // how far apart the runs sit and only the reach is the bulge's to move.
-      const flush = this.params.foldShape === 'flush';
-      const rungT = thickness * this.params.foldDepth;
-      // Flush takes its height from the RUNS — their outer faces, half a
-      // thickness beyond each centreline — so the top and bottom run on
-      // unbroken. Otherwise the slider sets it and a step is possible.
-      const A = gap / 2 + (flush ? thickness / 2 : rungT / 2);
-      const tuck = flush ? thickness * FLUSH_TUCK : rungT * 0.5;
-      // The reach, and it is SIGNED. Positive stands the wall out of the turn;
-      // negative dishes it in, scooping the outer face back between the runs
-      // instead of bowing it past them. The floor is the back edge: the wall
-      // may come most of the way to it but never through it, or the profile
-      // turns inside out.
-      const reach = (gap / 2) * this.params.foldBulge + rungT / 2;
-      const B = Math.max(reach, -tuck * 0.75);
-      // Which way "outward" is for this wall, so the outline shell grows clear
-      // of the fill on a dished turn as well as a bulging one.
-      const out = B < 0 ? -1 : 1;
-
-      // x runs up the storey, y out of the turn. The back edge is flat at -gt
-      // in both shapes — it is buried in the runs — and only the outer wall
-      // differs (see FOLD_SHAPE_DEFAULT).
-      const profile = (grow: number): THREE.Shape => {
-        const ga = A + grow;
-        const gb = B + grow * out;
-        const gt = tuck + grow;
-        const sh = new THREE.Shape();
-        sh.moveTo(-ga, -gt);
-        sh.lineTo(ga, -gt);
-        // A dished wall always takes the straight form, whatever shape is
-        // chosen. The nose's ellipse runs between the two side tops at y 0, and
-        // scooped BELOW them it leaves a reflex corner at each — a notch the
-        // extruder's bevel offsets straight through itself, which shows as a
-        // crossed, inside-out lump. Dished, the straight wall is the whole top
-        // of the shape and the outline stays convex all the way round.
-        if (this.params.foldShape !== 'nose' || gb < 0) {
-          // Corners are taken off the BACK side of the wall whichever way it
-          // faces, so a dished wall eases into the runs rather than out of them.
-          const r = Math.min(ga, Math.abs(gb)) * SQUARED_CORNER;
-          sh.lineTo(ga, gb - out * r);
-          sh.quadraticCurveTo(ga, gb, ga - r, gb);
-          sh.lineTo(-ga + r, gb);
-          sh.quadraticCurveTo(-ga, gb, -ga, gb - out * r);
-        } else {
-          sh.lineTo(ga, 0);
-          // Same half-ellipse either way; walked clockwise it puts the apex at
-          // -|gb| instead of +|gb|, which is the scoop.
-          sh.absellipse(0, 0, ga, Math.abs(gb), 0, Math.PI, gb < 0);
-        }
-        sh.lineTo(-ga, -gt);
-        return sh;
-      };
-
-      // Local X is world Z, local Y the turn's outward normal — so the D stands
-      // in the vertical plane the fold actually turns in — and local Z the
-      // crease, which is the way the extrusion runs. The basis is determinant
-      // one, so the winding, the lighting and the BackSide rim all survive it.
-      const stand = new THREE.Matrix4().makeBasis(
-        new THREE.Vector3(0, 0, 1),
-        new THREE.Vector3(nx, ny, 0),
-        new THREE.Vector3(-ny, nx, 0),
-      );
-      stand.setPosition(p.x, p.y, (zIn + zOut) / 2);
-
-      // Never narrower than a hair over the lace: the squared fold sheet spans
-      // the lace's full width, and the lump must swallow it entirely — its side
-      // faces also then clear the runs' own sides instead of lying on them.
-      // Above that the slider takes over and the lump overhangs its runs.
-      // Flush is the exception to the hair: matching the lace exactly is the
-      // whole point, and the fold sheet it would otherwise leave proud is buried
-      // by the deeper tuck instead.
-      const rungW = flush
-        ? width * Math.max(1, this.params.foldWide)
-        : width * Math.max(FOLD_WIDE_MIN, this.params.foldWide);
-
-      // Rounded, not cut square: the lace's own long edges are rounded, and a
-      // lump with sharp arrises beside them reads as a different material. How
-      // far is the slider's (see FOLD_ROUND_DEFAULT) — at 1 the section closes
-      // into a capsule, which is the shape a real lace pressed round a turn
-      // actually shows. Capped by the profile's own smallest dimension: past
-      // half of it the extruder folds the shape through itself.
-      const round = Math.max(0, Math.min(1, this.params.foldRound));
-      // `tuck + B` is the profile's height where the wall is dished: a shallow
-      // shape has little to give, and a bevel past half of it eats the solid.
-      const bevel =
-        Math.min(rungT, rungW, A, Math.abs(B), tuck * 2, tuck + B) * 0.5 * round;
-      const extrude = (grow: number) => {
-        const depth = rungW + grow * 2 - bevel * 2;
-        const geom = new THREE.ExtrudeGeometry(profile(grow), {
-          depth: Math.max(depth, 1e-4),
-          bevelEnabled: true,
-          bevelThickness: bevel,
-          bevelSize: bevel,
-          bevelSegments: 4,
-          curveSegments: 18,
-        });
-        // Extrusion runs from 0 to depth along local Z; centre it on the crease.
-        geom.translate(0, 0, -(Math.max(depth, 1e-4) / 2));
-        geom.applyMatrix4(stand);
-        return geom;
-      };
-
-      const fillGeom = extrude(0);
-      const fillMat = new THREE.MeshStandardMaterial({
-        color: threeColor(strand.color),
-        roughness: 0.5,
-        metalness: 0.04,
-        side: THREE.DoubleSide,
-      });
-      if (strand.color.a < 255) {
-        fillMat.transparent = true;
-        fillMat.opacity = strand.color.a / 255;
-      }
-      const fillMesh = new THREE.Mesh(fillGeom, fillMat);
-      fillMesh.castShadow = true;
-      fillMesh.receiveShadow = true;
-      fillMesh.userData.strandId = strand.id;
-      group.add(fillMesh);
-
-      if (this.params.outline && strand.stroke_width > 0) {
-        const ow = strand.stroke_width * SCALE;
-        // The same lump, grown by a stroke width in every direction. Closed, not
-        // open at the ends: an extrusion's winding is outward all the way round,
-        // so BackSide shows nothing but the rim at the silhouette.
-        const outlineGeom = extrude(ow);
-        const outlineMat = new THREE.MeshBasicMaterial({
-          color: threeColor(strand.stroke_color),
-          side: THREE.BackSide,
-          polygonOffset: true,
-          polygonOffsetFactor: 4,
-          polygonOffsetUnits: 4,
-        });
-        const outlineMesh = new THREE.Mesh(outlineGeom, outlineMat);
-        outlineMesh.renderOrder = -1;
-        group.add(outlineMesh);
-      }
-    }
-  }
 
   // ---- coordinate helpers --------------------------------------------------
   // World position of a source-space point on a given layer's plane.
@@ -1454,21 +1165,37 @@ export class StrandScene {
   }
 
   /**
-   * How far a lace lifts/dips at a crossing, in world units.
+   * How far a lace lifts/dips at a crossing, in world units — HALF the distance
+   * between the two, because each of them takes half of it: the one riding over
+   * goes to +h and the one ducking under to -h.
    *
-   * The Depth slider sets it, floored where the two ribbons would otherwise pass
-   * through each other — and, once the scene has storeys, CAPPED so that the
-   * swing still fits inside one. A storey is two thicknesses; a crossing inside
-   * it puts one ribbon above the other, so each can go half a thickness from the
-   * storey's plane and no further. Left uncapped, a generous Depth swings the
-   * laces clean out of their own storey and into the ones above and below, which
-   * is what turns a stacked stitch into a loose spiral with holes in it.
+   * That halving is the whole of what Depth means, and it is why the slider is
+   * read as the SEPARATION rather than as one lace's displacement. Taken as the
+   * displacement — which is what it used to be — the two laces end up `2 × Depth`
+   * apart, and the default of one whole thickness therefore left them two
+   * thicknesses apart when resting on each other is one. Every crossing in every
+   * scene without storeys sat a full lace-thickness of daylight above the lace it
+   * was supposed to be lying on, and no setting of the slider could close it: the
+   * floor was 1.15 × resting, so even Depth 0 held them 15% of a thickness apart.
    *
-   * With no levels in play nothing is capped — Depth means exactly what it did.
+   * The floor is now resting itself. Below that the two ribbons pass through each
+   * other, which is the one thing the weave exists to prevent; at it they touch,
+   * which is what a lace lying over another does.
+   *
+   * Once the scene has storeys the swing is also CAPPED so it still fits inside
+   * one. A storey is two thicknesses; a crossing inside it puts one ribbon above
+   * the other, so each can go half a thickness from the storey's plane and no
+   * further. Left uncapped, a generous Depth swings the laces clean out of their
+   * own storey and into the ones above and below, which is what turns a stacked
+   * stitch into a loose spiral with holes in it. The cap is unchanged, and it
+   * already sat exactly at resting — which is why a levelled scene looked right
+   * while a flat weave did not.
    */
   private weaveAmplitude(thicknessOver: number, thicknessUnder: number): number {
-    const clearance = ((thicknessOver + thicknessUnder) / 2) * 1.15;
-    let h = Math.max(this.params.weaveDepth * SCALE, clearance / 2);
+    // Resting is centre-to-centre `(tOver + tUnder) / 2`, and each lace travels
+    // half of it.
+    const rest = (thicknessOver + thicknessUnder) / 4;
+    let h = Math.max((this.params.weaveDepth * SCALE) / 2, rest);
     if (this.current.levelBreaks.length > 0) {
       const room = (this.levelStepSource() * SCALE - Math.max(thicknessOver, thicknessUnder)) / 2;
       h = Math.min(h, Math.max(room, 0));
