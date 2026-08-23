@@ -120,7 +120,8 @@ function twoCrossingArms(): Scene3D {
 //     that asks the question a resting plane cannot answer on its own: `3_1` and
 //     `1_3` cross once, and "put 3_1 exactly over 1_3" is a statement about that
 //     ONE passage. Pasted from the studio's own export, so it is exactly what was
-//     drawn rather than a retyping of it.
+//     drawn rather than a retyping of it — the placements below included, which
+//     are the arrangement the studio was left in rather than a fresh scene.
 function armsAndAThird(): Scene3D {
   const A = { x: 386.9144970868538, y: 202.04947370054907 };   // 1_1 start, 1_2 start
   const B = { x: 518.8913237448178, y: 283.88319270756165 };   // 1_1 end,   1_3 start
@@ -150,6 +151,31 @@ function armsAndAThird(): Scene3D {
       { overId: '1_3', underId: '2_2' },
     ],
     levelBreaks: [],
+    // WHERE THINGS WERE LEFT. The only sample that opens with anything placed,
+    // and the reason it does is the last line of the paragraph above: unplaced,
+    // `3_1` and `1_3` merely pass, and the scene stops asking its question.
+    //
+    // A rung, not a thickness — see PLANE_RUNGS in the panel. `3_1` at `+1` over
+    // `1_3` at `-1` is two rungs, which is one thickness, which is the two of
+    // them resting exactly on each other. The yellow arms sit a rung low so the
+    // orange lace has somewhere to be, and `1_1` dips to `-3` under `2_1` — a
+    // rung past its own floor, which is the one thing a level break could not
+    // have said without moving the whole layer.
+    planes: { '3_1': 0, '2_2': -1, '2_3': -1 },
+    crossPlanes: {
+      '2_1|1_2|0|1_2': 0,
+      '1_2|2_2|0|1_2': 0,
+      '2_1|1_3|0|1_3': 0,
+      '1_3|2_3|0|1_3': 0,
+      '1_1|2_2|0|2_2': 0,
+      '1_3|2_2|0|2_2': 0,
+      '1_2|2_3|0|2_3': 0,
+      '1_1|2_3|0|2_3': 0,
+      '1_3|3_1|0|3_1': 1,
+      '1_3|3_1|0|1_3': -1,
+      '1_1|2_1|0|1_1': -3,
+      '1_1|2_1|0|2_1': 0,
+    },
   };
 }
 
