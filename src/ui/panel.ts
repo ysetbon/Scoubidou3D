@@ -485,6 +485,7 @@ export class Panel {
       this.view.setCrossingPlanes(null);
     }
     this.pickedCross = null;
+    this.pickedSide = null;
     this.view.setScene(scene, true);
     this.record(label);
     this.render();
@@ -2181,6 +2182,7 @@ export class Panel {
         this.planes.clear();
         this.crossPlanes.clear();
         this.pickedCross = null;
+        this.pickedSide = null;
         this.pushPlanes();
         this.pushCrossPlanes();
         this.renderStack();
@@ -2395,38 +2397,84 @@ export class Panel {
       this.renderStack();
     });
     row.appendChild(name);
-    row.appendChild(this.planePick(member));
+    row.appendChild(
+      this.planeChip(this.planes.get(member.id) ?? null, selected, () => {
+        this.selectedId = selected ? null : member.id;
+        this.pushPlaneGuides();
+        this.renderStack();
+      }),
+    );
+    if (!selected) return row;
+    row.classList.add('open');
+    row.appendChild(
+      this.planeLadder(this.planes.get(member.id) ?? null, (v) => this.setPlane(member.id, v)),
+    );
     return row;
   }
 
   /**
-   * Bottom, centre, top — and press the one that is lit to take it off again.
+   * The chosen height, in the width of a tag.
    *
-   * Three buttons rather than one chip that cycles, which is what the fold lab
-   * uses: the lab has three states and this has four, because "the scene rests
-   * it" is not the same as "centre". Cycling through four to get back to the
-   * default is a worse trade than three marks you can hit directly, and pressing
-   * the lit one to clear is the way every other toggle in the panel behaves.
+   * Every row cannot carry the ladder — six members would be six ladders and the
+   * stack would stop being a stack — so the row STATES where it is, and the
+   * ladder opens in whichever row is selected. That is this panel's own idiom: a
+   * layer's controls belong in the layer's row, not in a section somewhere else.
    */
-  private planePick(member: MemberFact): HTMLElement {
-    const group = el('span', 'plane-pick');
-    group.setAttribute('role', 'group');
-    group.setAttribute('aria-label', `Where ${member.id} rests`);
-    const current = this.planes.get(member.id) ?? null;
-    for (const value of [-1, 0, 1]) {
-      const label = PLANE_WORDS[value];
-      const on = current === value;
-      const b = el('button', 'plane-btn' + (on ? ' on' : '')) as HTMLButtonElement;
+  private planeChip(current: number | null, open: boolean, onOpen: () => void): HTMLElement {
+    const b = el(
+      'button',
+      'plane-chip' + (current === null ? ' unset' : '') + (open ? ' open' : ''),
+    ) as HTMLButtonElement;
+    b.type = 'button';
+    b.setAttribute('aria-expanded', String(open));
+    if (current !== null) b.innerHTML = PLANE_MARK(Math.max(-1, Math.min(1, current)));
+    b.appendChild(el('span', 'plane-tag', planeTag(current)));
+    b.title =
+      current === null
+        ? 'Not placed — the scene rests this where it falls. Open the ladder to place it.'
+        : `Placed at the ${PLANE_RUNGS.find((r) => r.value === current)?.name ?? planeTag(current)}`;
+    b.addEventListener('click', onOpen);
+    return b;
+  }
+
+  /**
+   * Every height it can go on, as a ladder read bottom-up.
+   *
+   * Three buttons could only offer three, all inside one storey — which is why
+   * "put this one exactly on top of that one" was out of reach whenever the two
+   * were not already in the same storey. Seven rungs reach the storey above and
+   * the one below in the same units.
+   *
+   * Nine cells collapse to seven, and that IS the model rather than a rounding:
+   * a storey's ceiling is the next one's floor. Both readings are printed on the
+   * one rung that is both, because offering them as two places would invent a
+   * distinction the geometry does not make.
+   *
+   * Pressing the lit rung clears it, which is how every other toggle here
+   * behaves and the only way back to "not placed" — a state that is not the same
+   * as centre; see pushPlanes for the 0.19 thicknesses between them.
+   */
+  private planeLadder(current: number | null, onPick: (value: number | null) => void): HTMLElement {
+    const box = el('div', 'plane-ladder');
+    box.setAttribute('role', 'group');
+    for (const rung of PLANE_RUNGS) {
+      const on = current === rung.value;
+      const b = el(
+        'button',
+        'rung' + (on ? ' on' : '') + (Math.abs(rung.value) <= 1 ? ' here' : ''),
+      ) as HTMLButtonElement;
       b.type = 'button';
-      b.innerHTML = PLANE_MARK(value);
       b.setAttribute('aria-pressed', String(on));
-      b.title = on
-        ? `${member.id} rests on the ${label} of its storey — press again to let the scene rest it`
-        : `Rest ${member.id} on the ${label} of its storey`;
-      b.addEventListener('click', () => this.setPlane(member.id, on ? null : value));
-      group.appendChild(b);
+      b.appendChild(el('span', 'rung-n', planeTag(rung.value)));
+      const label = el('span', 'rung-name');
+      label.appendChild(el('b', undefined, rung.name));
+      if (rung.also) label.appendChild(el('i', undefined, ` · ${rung.also}`));
+      b.appendChild(label);
+      b.title = on ? 'Press again to let the scene decide again' : `Put it at the ${rung.name}`;
+      b.addEventListener('click', () => onPick(on ? null : rung.value));
+      box.appendChild(b);
     }
-    return group;
+    return box;
   }
 
   /**
@@ -2439,15 +2487,36 @@ export class Panel {
    * how high the passage happens.
    */
   private crossRow(cross: CrossFact): HTMLElement {
-    const id = `${cross.key}|${cross.ownId}`;
     const row = el('div', 'cross-row');
 
+    // BOTH sides, and either one placeable.
+    //
+    // A crossing is a pair, and the useful statements about one are about the
+    // pair: "3_1 exactly over 1_3" is two heights a thickness apart, not one
+    // height. Placing only the side whose tick you happened to click leaves the
+    // other still swinging — measured on the opening scene, 3_1 pinned to the top
+    // of the storey with 1_3 left to the weave came out 1.6 thicknesses apart
+    // rather than the 1 that means resting on. So each id is a tab: the lit one
+    // is the side the ladder below is placing.
+    const side = this.pickedSide ?? cross.ownId;
     const name = el('span', 'cross-name');
-    name.appendChild(el('span', 'row-id', cross.ownId));
+    const tab = (id: string): HTMLButtonElement => {
+      const b = el('button', 'side' + (id === side ? ' on' : ''), id) as HTMLButtonElement;
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(id === side));
+      b.title =
+        id === side ? `Placing ${id} at this crossing` : `Place ${id} at this crossing instead`;
+      b.addEventListener('click', () => {
+        this.pickedSide = id;
+        this.renderStack();
+      });
+      return b;
+    };
+    name.appendChild(tab(cross.ownId));
     name.appendChild(
       el('span', 'tag ' + (cross.over ? 'teal' : 'coral'), cross.over ? 'over' : 'under'),
     );
-    name.appendChild(el('span', 'row-id', cross.withId));
+    name.appendChild(tab(cross.withId));
     row.appendChild(name);
 
     if (!cross.woven) {
@@ -2456,29 +2525,15 @@ export class Panel {
       row.appendChild(el('span', 'cross-note', 'different storeys — nothing woven here'));
       return row;
     }
-    row.appendChild(this.crossPick(id, cross));
+    const id = `${cross.key}|${side}`;
+    row.appendChild(
+      this.planeChip(this.crossPlanes.get(id) ?? null, true, () => this.pickCross(null)),
+    );
+    row.classList.add('open');
+    row.appendChild(
+      this.planeLadder(this.crossPlanes.get(id) ?? null, (v) => this.setCrossPlane(id, v)),
+    );
     return row;
-  }
-
-  private crossPick(id: string, cross: CrossFact): HTMLElement {
-    const group = el('span', 'plane-pick');
-    group.setAttribute('role', 'group');
-    group.setAttribute('aria-label', `Where ${cross.ownId} sits as it passes ${cross.withId}`);
-    const current = this.crossPlanes.get(id) ?? null;
-    for (const value of [-1, 0, 1]) {
-      const on = current === value;
-      const b = el('button', 'plane-btn' + (on ? ' on' : '')) as HTMLButtonElement;
-      b.type = 'button';
-      b.innerHTML = PLANE_MARK(value);
-      b.setAttribute('aria-pressed', String(on));
-      const word = PLANE_WORDS[value];
-      b.title = on
-        ? `${cross.ownId} passes ${cross.withId} at the ${word} of its storey — press again to let the weave decide`
-        : `Put this passage at the ${word} of ${cross.ownId}’s storey`;
-      b.addEventListener('click', () => this.setCrossPlane(id, on ? null : value));
-      group.appendChild(b);
-    }
-    return group;
   }
 
   /** A C, between the two members it joins. A readout: the step is theirs. */
@@ -2519,6 +2574,11 @@ export class Panel {
 
   /** Which crossing the view is pointed at, by `${crossKey}|${strandId}`. */
   private pickedCross: string | null = null;
+
+  /** Which SIDE of that crossing the ladder is placing — a crossing has two, and
+   *  the useful statements about one are about both. Null follows the tick that
+   *  was clicked. */
+  private pickedSide: string | null = null;
 
   /** Whether the canvas is drawing the shelves themselves. */
   private showPlaneGuides = false;
@@ -2561,6 +2621,8 @@ export class Panel {
    *  one already picked does. */
   private pickCross(key: string | null): void {
     this.pickedCross = this.pickedCross === key ? null : key;
+    // A new tick means a new pair; the side follows the tick until told otherwise.
+    this.pickedSide = null;
     this.renderStack();
   }
 
@@ -3583,6 +3645,35 @@ const PLANES_ICON = PLANE_MARK(0);
 
 /** What each plane is called, wherever one has to be named in a sentence. */
 const PLANE_WORDS: Record<number, string> = { [-1]: 'bottom', 0: 'centre', 1: 'top' };
+
+/**
+ * THE LADDER — every height a layer can be put on, across three storeys.
+ *
+ * Three buttons could only ever offer three heights, all inside one storey. A
+ * storey is `2 · thickness` deep and its planes are `2L ± 1` and `2L`, so the
+ * storey above and the one below are reachable in the same units — and reaching
+ * them is the difference between "a bit higher" and "resting on the thing above".
+ *
+ * Nine cells collapse to SEVEN rungs, and that is the model rather than a
+ * rounding: level L's top IS level L+1's floor. Naming both readings on the one
+ * rung is the honest way to offer nine options, because pretending they are two
+ * different places would be offering a distinction the geometry does not make.
+ */
+const PLANE_RUNGS: Array<{ value: number; name: string; also?: string }> = [
+  { value: 3, name: 'top of the storey above' },
+  { value: 2, name: 'middle of the storey above' },
+  { value: 1, name: 'top of this storey', also: 'floor of the one above' },
+  { value: 0, name: 'middle of this storey' },
+  { value: -1, name: 'floor of this storey', also: 'top of the one below' },
+  { value: -2, name: 'middle of the storey below' },
+  { value: -3, name: 'floor of the storey below' },
+];
+
+/** How a chosen height is written where there is only room for a token. */
+function planeTag(value: number | null): string {
+  if (value === null) return '–';
+  return `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value)}`;
+}
 
 // The masks side of the stack bar's switch: one band whole, the other broken
 // behind it — the same thing the Weave tool's mark says, stood upright. The

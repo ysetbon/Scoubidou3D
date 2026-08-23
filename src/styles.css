@@ -587,6 +587,29 @@ button {
   overflow: hidden;
 }
 
+/* Each end of the crossing, as a tab: the lit one is what the ladder places. */
+.side {
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--muted);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.side:hover {
+  border-color: var(--edge2);
+  color: var(--ink);
+}
+
+.side.on {
+  border-color: var(--edge2);
+  background: var(--fill);
+  color: var(--fill-ink);
+}
+
 .cross-note {
   flex: 0 1 auto;
   font-size: 10px;
@@ -619,6 +642,117 @@ button {
   font-size: 9px;
   letter-spacing: 0.02em;
   text-transform: none;
+}
+
+/* ---- the chosen height, and the ladder of every height ------------------- */
+/* The row states where it is; the ladder opens in the row that is selected.
+   Six ladders at once would stop the stack being a stack. */
+.plane-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.plane-chip .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.plane-tag {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.plane-chip.unset {
+  color: var(--muted);
+  border-style: dashed;
+}
+
+.plane-chip:hover {
+  border-color: var(--edge2);
+}
+
+.plane-chip.open {
+  background: var(--fill);
+  border-color: var(--fill);
+  color: var(--fill-ink);
+}
+
+/* The row grows to hold the ladder, so the ladder needs the full width under the
+   identity line rather than a column beside it. */
+.row.open {
+  flex-wrap: wrap;
+}
+
+.plane-ladder {
+  flex: 1 0 100%;
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+  border: 1px solid var(--hair);
+}
+
+.rung {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 7px;
+  border: 0;
+  border-bottom: 1px solid var(--hair);
+  background: var(--paper);
+  color: var(--muted);
+  text-align: left;
+}
+
+.rung:last-child {
+  border-bottom: 0;
+}
+
+/* This layer's OWN storey, against the two it can reach into. */
+.rung.here {
+  background: var(--cream);
+  color: var(--ink);
+}
+
+.rung:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.rung.on,
+.rung.on:hover {
+  background: var(--fill);
+  color: var(--fill-ink);
+}
+
+.rung-n {
+  flex: 0 0 22px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.rung-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rung-name i {
+  opacity: 0.62;
+  font-size: 9.5px;
 }
 
 .plane-pick {

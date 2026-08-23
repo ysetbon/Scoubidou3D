@@ -16,8 +16,10 @@ const panelRoot = document.getElementById('panel') as HTMLElement;
 // The six-member version rather than the two bare laces: bare laces have no
 // joint and so no FOLD, which means the opening screen could not show the
 // storey turn at all. The turn is the part most likely to regress, so it is
-// what the app opens on.
-const DEFAULT_SAMPLE = 'two-crossing-arms';
+// what the app opens on — plus a seventh strand belonging to no lace, which is
+// the case the plane work is judged against: `3_1` crosses `1_3` exactly once,
+// and putting one exactly over the other is a statement about that one passage.
+const DEFAULT_SAMPLE = 'arms-and-a-third';
 const requested = new URLSearchParams(window.location.search).get('sample');
 const opening = requested && Object.prototype.hasOwnProperty.call(SAMPLES, requested)
   ? requested

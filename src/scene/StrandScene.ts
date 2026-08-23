@@ -1572,10 +1572,24 @@ export class StrandScene {
     for (let i = 0; i < n; i++) {
       level[i] = levelAt(this.current, i);
       const p = this.sublevels?.get(this.current.strands[i].id);
-      const floor = (rankZ.get(find(i)) ?? 0) + level[i] * step;
-      floors[i] = floor;
-      rest[i] = floor + (p?.in ?? 0) * sub;
-      restOut[i] = floor + (p?.out ?? p?.in ?? 0) * sub;
+      // TWO floors, and the difference between them is the whole point.
+      //
+      // The automatic one carries `rankZ` — the layer stack's own spread, which
+      // lifts each lace a little above the one below so the panel's order is
+      // visible in Z. That is right for a layer nobody has placed.
+      //
+      // A DECLARED plane does not get it. `rankZ` is per lace, so with it in, the
+      // same declaration meant a different height on every lace: on the opening
+      // scene the three laces sit at -0.385, 0 and +0.385 thicknesses, and "put
+      // 3_1 on the top of its storey, 1_3 in the middle of its own" came out 1.77
+      // thicknesses apart instead of the 1 that means RESTING ON. A plane has to
+      // mean one height for the whole scene or it cannot be used to put one thing
+      // exactly on another, which is the thing it is for.
+      const storey = level[i] * step;
+      const floor = (rankZ.get(find(i)) ?? 0) + storey;
+      floors[i] = storey;
+      rest[i] = p ? storey + (p.in ?? 0) * sub : floor;
+      restOut[i] = p ? storey + (p.out ?? p.in ?? 0) * sub : floor;
     }
 
     // Re-centre on z = 0, so adding a level opens the stack up around the grid
@@ -1590,7 +1604,8 @@ export class StrandScene {
     this.baseZ = rest.map((z) => z + shift);
     this.baseZOut = restOut.map((z) => z + shift);
     // Shifted with everything else, so a plane declared at a crossing is measured
-    // in the same frame the runs are.
+    // in the same frame the runs are — and, like a declared run, off the storey
+    // rather than off the lace, so one number is one height scene-wide.
     this.baseFloorZ = floors.map((z) => z + shift);
     this.lowestZ = n ? min + shift : 0;
     this.strandLevel = level;
