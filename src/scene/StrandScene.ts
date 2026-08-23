@@ -52,6 +52,7 @@ import {
   type TurnRecord,
 } from '../geometry/polyline';
 import { Anchor, arcLengths, heightField, polylineCrossings } from '../geometry/weave';
+import { LaceFact, LaceInput, laceFacts } from './sections';
 import { Vec2, Vec3 } from '../geometry/vec';
 import { LEG_PER_WIDTH } from '../geometry/zturn';
 
@@ -584,6 +585,7 @@ export class StrandScene {
    *  crossing, decide who rides over, and weave the centerlines in Z. */
   rebuild(): void {
     this.disposeGroup();
+    this.laceFactCache = null;
 
     // 0) Resting height per strand, shared by every strand in one lace.
     this.computeBaseZ();
@@ -1937,6 +1939,53 @@ export class StrandScene {
   getCrossings(): CrossingFact[] {
     return this.crossingFacts;
   }
+
+  /**
+   * What each lace is MADE OF — its members, its C's, the crossings along it and
+   * the height it actually came out at. See scene/sections.ts.
+   *
+   * This is the Planes view's whole input, and it is deliberately read back off
+   * the built centrelines rather than worked out from the scene: a picture drawn
+   * from a schematic can disagree with the canvas, and this one cannot.
+   *
+   * A strand that merged into no lace is reported as a lace of one. It has a run
+   * and it crosses things, so it belongs in the view; it just has no C.
+   */
+  getLaceFacts(): LaceFact[] {
+    if (this.laceFactCache) return this.laceFactCache;
+    const inLace = new Set<number>();
+    for (const lace of this.laceCenterlines) for (const i of lace.chain) inLace.add(i);
+    const inputs: LaceInput[] = this.laceCenterlines.map((lace) => ({
+      chain: lace.chain,
+      line: lace.line,
+      thickness: lace.thickness,
+      turns: lace.turns,
+    }));
+    this.current.strands.forEach((strand, i) => {
+      const line = this.world3D[i];
+      // Masks carry no centreline at all (they are a crossing, not a ribbon), and
+      // neither does a strand too short to sweep.
+      if (inLace.has(i) || !line || line.length < 2) return;
+      inputs.push({
+        chain: [i],
+        line,
+        turns: [],
+        thickness: (strand.thickness ?? this.params.thickness) * SCALE,
+      });
+    });
+    // In stack order, so the view reads down the panel the way the layers do.
+    inputs.sort((a, b) => Math.min(...a.chain) - Math.min(...b.chain));
+    this.laceFactCache = laceFacts(inputs, this.current.strands.map((s) => s.id));
+    return this.laceFactCache;
+  }
+
+  /**
+   * Held until the next rebuild, because the panel asks for this on every redraw
+   * — selecting a row in the Planes view redraws it — and the crossing search is
+   * the one part of it that is not linear in the number of points. Nothing but a
+   * rebuild can change the answer, and `rebuild` is where it is dropped.
+   */
+  private laceFactCache: LaceFact[] | null = null;
 
   getMasks(): MaskLink[] {
     return this.current.masks;

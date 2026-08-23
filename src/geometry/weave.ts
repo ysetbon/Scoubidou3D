@@ -44,25 +44,116 @@ function cross2(ax: number, ay: number, bx: number, by: number): number {
 }
 
 /**
+ * Segments of `b` filed into columns by x, so a segment of `a` only has to meet
+ * the ones that could possibly be near it.
+ *
+ * Only worth building for a long polyline: below the threshold the plain double
+ * loop is already cheaper than filling the columns. Null means "just walk them
+ * all", which is what this did for its whole life.
+ */
+const GRID_MIN = 64;
+
+interface Columns {
+  cells: number[][];
+  x0: number;
+  cell: number;
+  last: number;
+}
+
+function columnsOf(b: Vec2[]): Columns | null {
+  const n = b.length - 1;
+  if (n < GRID_MIN) return null;
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  for (const q of b) {
+    if (q.x < x0) x0 = q.x;
+    if (q.x > x1) x1 = q.x;
+  }
+  const span = x1 - x0;
+  if (!(span > 0) || !Number.isFinite(span)) return null; // a vertical line
+  const count = Math.max(1, Math.min(n, Math.round(Math.sqrt(n))));
+  const cell = span / count;
+  const cells: number[][] = Array.from({ length: count }, () => []);
+  const last = count - 1;
+  for (let j = 0; j < n; j++) {
+    const lo = Math.min(b[j].x, b[j + 1].x);
+    const hi = Math.max(b[j].x, b[j + 1].x);
+    const c0 = Math.max(0, Math.min(last, Math.floor((lo - x0) / cell)));
+    const c1 = Math.max(0, Math.min(last, Math.floor((hi - x0) / cell)));
+    for (let c = c0; c <= c1; c++) cells[c].push(j);
+  }
+  return { cells, x0, cell, last };
+}
+
+/**
  * Every crossing point between two centerline polylines, with the arc-length
  * position on each. Handles curves (both are polylines) and multiple crossings
  * of the same pair. Near-duplicate hits at a shared vertex are merged.
+ *
+ * The search is BROAD-PHASED, and only that: two segments whose boxes do not
+ * touch cannot cross, so those pairs are skipped without being tested. The pairs
+ * that remain get exactly the test they always got, in exactly the ascending
+ * order the plain double loop walked them in, so the merge at the bottom sees
+ * the list it has always seen. Nothing about which crossings are found changes.
+ *
+ * It matters because this is quadratic and the inputs got long: the studio's
+ * Planes view runs it over whole merged laces, which on a ten-twist stitch are
+ * three lines of ~2,300 points each, and a full pass was a quarter of a second.
+ *
+ * The box test is padded, because the narrow phase deliberately accepts a hit a
+ * touch OUTSIDE either segment (`CROSS_EPS` is a fraction of the segment, not a
+ * distance). The pad is that fraction turned back into a distance, so a pair the
+ * narrow phase would have accepted is never rejected here.
  */
 export function polylineCrossings(a: Vec2[], b: Vec2[]): PolyCross[] {
   if (a.length < 2 || b.length < 2) return [];
   const A = arcLengths(a);
   const B = arcLengths(b);
   const out: PolyCross[] = [];
+  const nb = b.length - 1;
+
+  const columns = columnsOf(b);
+  // Which segments of `b` this segment of `a` has already collected — one pass
+  // stamp, so a `b` segment filed into three columns is still tested once.
+  const stamp = columns ? new Int32Array(nb).fill(-1) : null;
+  const near: number[] = [];
 
   for (let i = 0; i < a.length - 1; i++) {
     const p = a[i];
     const rx = a[i + 1].x - p.x;
     const ry = a[i + 1].y - p.y;
     const segA = A.cum[i + 1] - A.cum[i];
-    for (let j = 0; j < b.length - 1; j++) {
+    const ax0 = Math.min(p.x, a[i + 1].x);
+    const ax1 = Math.max(p.x, a[i + 1].x);
+    const ay0 = Math.min(p.y, a[i + 1].y);
+    const ay1 = Math.max(p.y, a[i + 1].y);
+    const padA = CROSS_EPS * (Math.abs(rx) + Math.abs(ry));
+
+    let list: number[] | null = null;
+    if (columns && stamp) {
+      near.length = 0;
+      const c0 = Math.max(0, Math.floor((ax0 - columns.x0) / columns.cell));
+      const c1 = Math.min(columns.last, Math.floor((ax1 - columns.x0) / columns.cell));
+      for (let c = c0; c <= c1; c++) {
+        for (const j of columns.cells[c]) {
+          if (stamp[j] === i) continue;
+          stamp[j] = i;
+          near.push(j);
+        }
+      }
+      near.sort((m, n) => m - n);
+      list = near;
+    }
+
+    const count = list ? list.length : nb;
+    for (let k = 0; k < count; k++) {
+      const j = list ? list[k] : k;
       const q = b[j];
       const sx = b[j + 1].x - q.x;
       const sy = b[j + 1].y - q.y;
+      const pad = padA + CROSS_EPS * (Math.abs(sx) + Math.abs(sy)) + 1e-9;
+      if (Math.min(q.x, b[j + 1].x) - pad > ax1 || Math.max(q.x, b[j + 1].x) + pad < ax0) continue;
+      if (Math.min(q.y, b[j + 1].y) - pad > ay1 || Math.max(q.y, b[j + 1].y) + pad < ay0) continue;
       const denom = cross2(rx, ry, sx, sy);
       if (Math.abs(denom) < CROSS_EPS) continue; // parallel / collinear
       const qpx = q.x - p.x;

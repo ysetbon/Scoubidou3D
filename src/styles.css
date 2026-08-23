@@ -243,10 +243,14 @@ button {
    statement here as everywhere else, and neither theme needs a colour of its
    own. Grid rather than flex so the halves stay equal whatever the labels
    measure, which is what lets the thumb be a plain 50%. */
+/* Three tabs in the room two words used to take. The tabs are no longer equal
+   widths — the selected one shows its word and the others are marks — so the
+   thumb cannot be a fraction of the track any more: panel.ts measures the tab
+   that is down and writes it here. The fallbacks are what a switch that has
+   never been measured shows, which is the left-hand tab. */
 .viewswitch {
   position: relative;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
   flex: 0 1 auto;
   min-width: 0;
   margin-right: auto;
@@ -260,16 +264,20 @@ button {
   position: absolute;
   z-index: 0;
   top: 2px;
-  left: 2px;
-  width: calc(50% - 2px);
+  left: 0;
+  width: var(--thumb-w, 33%);
   height: calc(100% - 4px);
   border-radius: 999px;
   background: var(--fill);
-  transition: transform 0.22s cubic-bezier(0.3, 0.85, 0.35, 1);
+  transform: translateX(var(--thumb-x, 2px));
+  transition:
+    transform 0.22s cubic-bezier(0.3, 0.85, 0.35, 1),
+    width 0.22s cubic-bezier(0.3, 0.85, 0.35, 1);
 }
 
-.viewswitch[data-view='masks'] .viewswitch-thumb {
-  transform: translateX(100%);
+/* The word belongs to whichever side is saying something. */
+.viewswitch button:not([aria-selected='true']) span {
+  display: none;
 }
 
 .viewswitch button {
@@ -381,6 +389,200 @@ button {
 
 .mask-list .row + .row {
   margin-top: 5px;
+}
+
+/* ---- the planes view ------------------------------------------------------ */
+/* The third side of the switch. Each lace is drawn from the height it actually
+   came out at — the curve is the built centreline, the bands are its ownership
+   tags, the brackets its turn records, the ticks where the weave finds it
+   crossing another lace — and a row per member says which plane it rests on.
+   See planesList in src/ui/panel.ts. */
+
+.planes {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lace {
+  padding: 8px 8px 7px;
+  border: 1px solid var(--hair);
+  background: var(--paper);
+}
+
+.lace-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 1px 6px;
+}
+
+.lace-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.lace-fig {
+  margin: 0 0 7px;
+}
+
+.lace-fig svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--hair);
+  background: var(--cream);
+}
+
+/* Whole thicknesses, because that is what a plane is: level L's three are 2L±1
+   and 2L, and level L's top is level L+1's bottom. */
+.pf-rule {
+  stroke: var(--line);
+  stroke-width: 0.8;
+  stroke-dasharray: 3 3;
+}
+
+.pf-rule.pf-zero {
+  stroke: var(--muted);
+  stroke-width: 0.9;
+  stroke-dasharray: none;
+}
+
+.pf-tick {
+  fill: var(--muted);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 6.5px;
+  text-anchor: end;
+}
+
+/* A member's own colour; the stretch its C occupies is washed over the top, so a
+   band reads as "this much of 1_2, and this much of that is already in the
+   turn". The label is inked with a halo rather than reversed out, because the
+   colour underneath it is the strand's and can be any brightness at all. */
+.pf-band-label {
+  fill: #171713;
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.72);
+  stroke-width: 2.2;
+  font-size: 7.5px;
+  font-weight: 800;
+  text-anchor: middle;
+}
+
+.pf-turn {
+  fill: var(--paper);
+  fill-opacity: 0.62;
+  stroke: var(--edge2);
+  stroke-width: 0.7;
+  stroke-opacity: 0.5;
+}
+
+/* The apex: where the two members of a C hand ownership over. */
+.pf-seam {
+  stroke: var(--muted);
+  stroke-width: 0.7;
+  stroke-dasharray: 2 2.5;
+  opacity: 0.55;
+}
+
+.pf-apex {
+  fill: var(--paper);
+  stroke: var(--ink);
+  stroke-width: 1.1;
+}
+
+.pf-curve {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.pf-cross {
+  fill: var(--paper);
+  stroke-width: 1.3;
+}
+
+.pf-cross.over {
+  stroke: var(--teal);
+}
+
+.pf-cross.under {
+  stroke: var(--coral);
+}
+
+.plane-row .row-name {
+  gap: 5px;
+}
+
+/* Over/under counts, which are a reading rather than a label — so they keep
+   their case and their arrows at a size you can actually tell apart. */
+.cross-tag {
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.plane-pick {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 1px;
+}
+
+.plane-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.plane-btn .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.plane-btn:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.plane-btn.on {
+  background: var(--fill);
+  color: var(--fill-ink);
+}
+
+/* A C, written between the two members it joins — a readout, because the step is
+   theirs and not its own. */
+.fold-row {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin: 3px 0 3px 14px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.fold-row + .row {
+  margin-top: 3px;
+}
+
+.fold-text b {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .level-bar b {
