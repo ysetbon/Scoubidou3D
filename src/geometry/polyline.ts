@@ -271,9 +271,30 @@ function creaseShear(t: { x: number; y: number }, m: { x: number; y: number }): 
  * than added on the end of them. A fold without enough straight run to seat the
  * legs is left as it was — better a crease than a turn poking through the weave.
  */
-export function zFolds(pts: Vec3[], legLength: number): void {
+/**
+ * One turn `zFolds` spliced into a lace, and who owns what of it.
+ *
+ * A fold belongs to two strands, and so does the C that carries it: the run
+ * arriving climbs to the apex — the mid-height point of the rolled tip — and
+ * the run leaving takes over from there. These indices address the FINAL
+ * centreline (after every splice), so a consumer can slice the built lace at
+ * the apex instead of re-deriving where a layer's share begins.
+ */
+export interface TurnRecord {
+  /** First and last index of the turn's points in the finished centreline. */
+  from: number;
+  to: number;
+  /** Index of the apex sample — where ownership changes hands. */
+  apex: number;
+  /** The layer arriving at the fold, and the one leaving it (Vec3.owner). */
+  inOwner?: number;
+  outOwner?: number;
+}
+
+export function zFolds(pts: Vec3[], legLength: number): TurnRecord[] {
+  const records: TurnRecord[] = [];
   const folds = foldsOf(pts);
-  if (folds.length === 0) return;
+  if (folds.length === 0) return records;
 
   // Every measurement below comes from `src`, the line as it was before any turn
   // was spliced into it, and every span is settled before the first splice. Both
@@ -504,71 +525,81 @@ export function zFolds(pts: Vec3[], legLength: number): void {
       turn[k].x += missX * w;
       turn[k].y += missY * w;
     }
+
+    // Who owns which half of this C. The fold sits at the joint between two
+    // strands, so everything up to the apex — the mid-height of the rolled tip
+    // — is the arriving layer's, and everything after it is the leaving
+    // layer's. The apex itself is SHARED: it is the one ring both halves end
+    // on, and a slice taken on either side must keep it or the two halves part
+    // by a sample. Recorded here, where the turn is built, so no consumer has
+    // to guess the split from nearest-point distance ever again.
+    const inOwner = src[f.index - 1]?.owner ?? src[lo].owner;
+    const outOwner = src[f.index + 1]?.owner ?? src[hi].owner;
+    const apexAt = legSteps + Math.round(tipSteps / 2);
+    for (let k = 0; k < turn.length; k++) turn[k].owner = k <= apexAt ? inOwner : outOwner;
+    turn[apexAt].shared = true;
+
+    // The records address the FINAL array. Splices run last to first, so every
+    // record already taken sits beyond this one and shifts by however much the
+    // turn grew or shrank the stretch it replaced.
+    const delta = turn.length - (hi - lo + 1);
+    for (const r of records) {
+      r.from += delta;
+      r.to += delta;
+      r.apex += delta;
+    }
+    records.push({ from: lo, to: lo + last, apex: lo + apexAt, inOwner, outOwner });
+
     pts.splice(lo, hi - lo + 1, ...turn);
   }
+  return records.sort((a, b) => a.from - b.from);
 }
 
+// `zHalfFold` used to live here: half a turn invented at a run whose fold
+// partner was hidden. It fabricated the partner's heading as a dead fold-back
+// (`dout = -din`), lost the crease walk that heading implies, sampled at half
+// the resolution of a real turn, and reset the alternating face state — so the
+// half-C it showed was not half of the C the full lace has. It is gone rather
+// than improved: hidden strands now stay in their lace's build, the full C is
+// built once by `zFolds`, and visibility merely slices the finished centreline
+// at the apex the turn recorded. Visibility must never change the geometry.
+
 /**
- * Half a turn, at a run whose fold partner is not being drawn.
+ * Give every point of a merged lace an owner.
  *
- * A fold belongs to two strands, and so does the turn that makes it: the tip is
- * where they meet, so half the C is this strand's and half is the neighbour's.
- * Hide the neighbour and the whole turn used to vanish, which is wrong twice
- * over — this run really does climb to the apex before anything of the other one
- * begins, and a layer shown on its own should carry the part of the turn that
- * belongs to it.
- *
- * So the run keeps its leg and its quarter-circle up to the apex, and stops
- * there: at the mid-height between the two planes, which is exactly where the
- * neighbour would take over. The seam is the truth of the thing rather than a
- * cut, and `zPartner` is where the hidden run rests, which is still known.
+ * Concatenation tags each point with the strand it came from, but the passes
+ * that reshape the line afterwards create points of their own — `roundCorners`
+ * replaces the stretch around a gentle joint with an arc whose samples are
+ * new. Those points still belong to somebody, and it matters exactly where the
+ * handover lands: it is where hide/solo will cut. So each unowned stretch is
+ * split at its middle between the owners on either side, and the split point
+ * is marked shared so a cut there keeps it on both sides — the same rule the
+ * turns use at their apex.
  */
-export function zHalfFold(
-  pts: Vec3[],
-  end: 'start' | 'end',
-  zPartner: number,
-  legLength: number,
-): void {
+export function fillOwners(pts: Vec3[]): void {
   const n = pts.length;
-  if (n < 3) return;
-  const tip = end === 'end' ? n - 1 : 0;
-  const step = end === 'end' ? -1 : 1;
-  const zIn = pts[tip].z;
-  const h = Math.max(Math.abs(zPartner - zIn) / 2, 1e-4);
-  const span = legLength + h;
-
-  let lo = tip;
-  for (let d = 0; d < span; ) {
-    const next = lo + step;
-    if (next < 0 || next >= n) break;
-    d += Math.hypot(pts[next].x - pts[lo].x, pts[next].y - pts[lo].y);
-    lo = next;
+  let i = 0;
+  while (i < n) {
+    if (pts[i].owner !== undefined) {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < n && pts[j].owner === undefined) j++;
+    const left = i > 0 ? pts[i - 1].owner : undefined;
+    const right = j < n ? pts[j].owner : undefined;
+    if (left === undefined && right === undefined) return; // nothing was ever tagged
+    if (left === undefined || left === right) {
+      for (let k = i; k < j; k++) pts[k].owner = right ?? left;
+    } else if (right === undefined) {
+      for (let k = i; k < j; k++) pts[k].owner = left;
+    } else {
+      const mid = i + Math.floor((j - i) / 2);
+      for (let k = i; k < j; k++) pts[k].owner = k <= mid ? left : right;
+      pts[mid].shared = true;
+    }
+    i = j;
   }
-  if (Math.abs(lo - tip) < 2) return; // no run to seat a leg in
-
-  const inner = lo + step; // one step further into the run, for the heading
-  if (inner < 0 || inner >= n) return;
-  const din = { x: pts[inner].x - pts[lo].x, y: pts[inner].y - pts[lo].y };
-  if (Math.hypot(din.x, din.y) < 1e-9) return;
-
-  const legSteps = 10;
-  const tipSteps = 28;
-  const turn = zTurn({
-    from: { x: pts[lo].x, y: pts[lo].y },
-    din,
-    dout: { x: -din.x, y: -din.y },
-    zIn,
-    zOut: zPartner,
-    leg: legLength,
-    legSteps,
-    tipSteps,
-  });
-  // Leg, then the tip as far as its apex — half of a half-turn.
-  const half = turn.slice(0, legSteps + 1 + Math.round(tipSteps / 2));
-  if (half.length < 2) return;
-
-  if (end === 'end') pts.splice(lo, n - lo, ...half);
-  else pts.splice(0, tip - lo + 1, ...half.reverse());
 }
 
 export function easeFolds(pts: Vec3[], stack: number, reach: number): void {

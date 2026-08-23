@@ -43,7 +43,14 @@ import {
 import { sampleCenterline } from '../geometry/bezier';
 import { buildRibbonGeometry } from '../geometry/ribbon';
 import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
-import { easeFolds, easeSteps, roundCorners, zFolds, zHalfFold } from '../geometry/polyline';
+import {
+  easeFolds,
+  easeSteps,
+  fillOwners,
+  roundCorners,
+  zFolds,
+  type TurnRecord,
+} from '../geometry/polyline';
 import { Anchor, arcLengths, heightField, polylineCrossings } from '../geometry/weave';
 import { Vec2, Vec3 } from '../geometry/vec';
 import { LEG_PER_WIDTH } from '../geometry/zturn';
@@ -311,6 +318,11 @@ export class StrandScene {
   // null for hidden strands), rebuilt every frame the scene changes. Handles and
   // connectors read endpoint heights from here so they follow the weave.
   private world3D: Array<Vec3[] | null> = [];
+  // The same lines BEFORE visibility drops any of them (null only for masks).
+  // The lace merge reads these: a hidden strand still shapes its lace — it is
+  // simply not swept at the end — so the geometry never depends on what is
+  // currently shown.
+  private wovenLines: Array<Vec3[] | null> = [];
   /**
    * The centreline each merged LACE is finally swept along — after the folds and
    * storey steps have been settled and the gentle corners rounded. Kept because
@@ -318,8 +330,20 @@ export class StrandScene {
    * than as triangles: `npm run qa:fold` reads it to measure the face a fold
    * shows and the step the runs either side are left to walk, neither of which
    * is recoverable from the mesh afterwards.
+   *
+   * ALWAYS the whole lace, hidden members included: visibility decides what is
+   * swept into meshes, never what is built. Each point carries the layer that
+   * owns it (`Vec3.owner`, split at every turn's apex) and `turns` records the
+   * Cs `zFolds` spliced in, so the fold lab's elevation, picking, and hide/solo
+   * all read one set of ownership ranges instead of guessing by distance.
    */
-  laceCenterlines: Array<{ chain: number[]; line: Vec3[]; width: number; thickness: number }> = [];
+  laceCenterlines: Array<{
+    chain: number[];
+    line: Vec3[];
+    width: number;
+    thickness: number;
+    turns: TurnRecord[];
+  }> = [];
   // Resting height per strand (see computeBaseZ) and the lowest of them, which the
   // grid sits below.
   private baseZ: number[] = [];
@@ -580,10 +604,12 @@ export class StrandScene {
     //    them out of the solve straightens the OTHER one — so hiding a layer
     //    used to flatten the lace it ran under, and "hide everything but this
     //    lace" handed back the one thing it was asked to show with every one of
-    //    its over/unders gone. Everything downstream — the lace merge, the
-    //    ribbons, the connectors, the handles, the weave overlays — reads
-    //    `world3D` and skips a null, so this one line is the whole of "hidden".
-    this.world3D = this.weaveCenterlines(worldLines).map((line, i) =>
+    //    its over/unders gone. The connectors, the handles and the weave
+    //    overlays read `world3D` and skip a null; the lace merge reads
+    //    `wovenLines` instead, because a hidden strand still belongs to its
+    //    lace — its stretch of the built centreline is simply not swept.
+    this.wovenLines = this.weaveCenterlines(worldLines);
+    this.world3D = this.wovenLines.map((line, i) =>
       this.current.strands[i].visible ? line : null,
     );
 
@@ -754,18 +780,23 @@ export class StrandScene {
 
     const visited = new Set<number>();
     for (let seed = 0; seed < strands.length; seed++) {
-      if (visited.has(seed) || !this.world3D[seed]) continue;
+      // Seeded off the PRE-visibility lines: a lace every member of which is
+      // hidden still gets its centreline built (it just sweeps no pieces), so
+      // `laceCenterlines` reports the same laces in the same order whatever is
+      // currently shown.
+      if (visited.has(seed) || !this.wovenLines[seed]) continue;
 
-      // Walk back from the seed to the head of its chain.
+      // Walk back from the seed to the head of its chain. HIDDEN neighbours are
+      // walked straight through: the lace is one physical object, and its shape
+      // must not depend on which parts of it are currently drawn. The chain is
+      // always the whole chain — visibility decides, at the very end, which
+      // stretches of the built centreline get swept.
       let head = seed;
       let headIn: 0 | 1 = 0;
       const back = new Set<number>([seed]);
       for (;;) {
         const p = partner.get(`${head}:${headIn}`);
-        // A hidden neighbour ends the chain rather than being walked into: it has
-        // no centreline to merge, and stopping here is what lets the run keep its
-        // own half of the turn (below) instead of losing the fold entirely.
-        if (!p || back.has(p.index) || !this.world3D[p.index]) break;
+        if (!p || back.has(p.index) || !this.wovenLines[p.index]) break;
         back.add(p.index);
         head = p.index;
         headIn = (1 - p.side) as 0 | 1;
@@ -781,26 +812,14 @@ export class StrandScene {
         visited.add(cur);
         chain.push({ index: cur, reversed: inSide === 1 });
         const p = partner.get(`${cur}:${(1 - inSide) as 0 | 1}`);
-        if (!p || !this.world3D[p.index]) break;
+        if (!p || !this.wovenLines[p.index]) break;
         cur = p.index;
         inSide = p.side;
       }
 
-      // The two ends of the chain, and whether each one folds onto a strand that
-      // is not being drawn. That is what a half turn hangs off.
-      const tailIndex = chain[chain.length - 1].index;
-      const tailSide = (chain[chain.length - 1].reversed ? 0 : 1) as 0 | 1;
-      const headStub = partner.get(`${chain[0].index}:${headIn}`);
-      const tailStub = partner.get(`${tailIndex}:${tailSide}`);
-      const headHidden = headStub && !this.world3D[headStub.index] ? headStub : null;
-      const tailHidden = tailStub && !this.world3D[tailStub.index] ? tailStub : null;
-
-      // A lone strand is normally left to mesh on its own. It goes through the
-      // lace path instead when it has a turn to carry, because that is where the
-      // turn is built.
-      if (chain.length < 2 && !(this.sublevels && (headHidden || tailHidden))) continue;
+      if (chain.length < 2) continue; // a lone strand meshes on its own
       const first = strands[chain[0].index];
-      const ok = chain.every((m) => this.world3D[m.index] && sameLook(strands[m.index], first));
+      const ok = chain.every((m) => this.wovenLines[m.index] && sameLook(strands[m.index], first));
       if (!ok) {
         for (const m of chain) visited.delete(m.index); // let them mesh individually
         continue;
@@ -810,9 +829,12 @@ export class StrandScene {
       // from each strand, each with its own weave height — so collapse the pair
       // and split the difference, otherwise the joint carries a step with no
       // length in the plane and the heading there reads as neither run's.
+      // Every point is tagged with the member it came from, and the collapsed
+      // joint — one point both members brought — is marked shared: that tag is
+      // what hide/solo, picking and the fold lab's elevation will read.
       const line: Vec3[] = [];
       for (const m of chain) {
-        const part = this.world3D[m.index]!;
+        const part = this.wovenLines[m.index]!;
         const walk = m.reversed ? [...part].reverse() : part;
         for (const p of walk) {
           const last = line[line.length - 1];
@@ -820,9 +842,10 @@ export class StrandScene {
             last.zIn = last.zIn ?? last.z;
             last.zOut = p.z;
             last.z = (last.zIn + last.zOut) / 2;
+            last.shared = true;
             continue;
           }
-          line.push({ ...p });
+          line.push({ ...p, owner: m.index });
         }
       }
 
@@ -849,23 +872,71 @@ export class StrandScene {
       // crease to climb at it has to be ramped into the runs instead.
       easeSteps(line, width);
       const rounded = roundCorners(line, width * 0.5);
+      // The rounding replaces the stretch around each gentle joint with fresh
+      // arc samples; give those an owner too, split at the arc's middle, so the
+      // ownership map is gapless before the folds read it.
+      fillOwners(rounded);
       // leg, half-turn tip of radius step/2, leg — see docs/z-lab.md. The leg is
       // a ratio of the lace's width, so the turn is the same shape on any lace.
-      if (this.sublevels) {
-        zFolds(rounded, width * LEG_PER_WIDTH);
-        // Half a turn at either end whose partner is hidden: this run climbs to
-        // the apex, where the other one would take over. See zHalfFold.
-        const leg = width * LEG_PER_WIDTH;
-        if (tailHidden) zHalfFold(rounded, 'end', this.baseZ[tailHidden.index] ?? 0, leg);
-        if (headHidden) zHalfFold(rounded, 'start', this.baseZ[headHidden.index] ?? 0, leg);
-      }
-      this.laceCenterlines.push({ chain: chain.map((m) => m.index), line: rounded, width, thickness });
-      const mesh = this.buildStrandMesh(first, rounded, [true, true]);
-      if (!mesh) {
-        for (const m of chain) visited.delete(m.index);
+      // Every C is built here, once, from the two real runs — a hidden partner
+      // included — and each turn records the apex where ownership changes hands.
+      const turns: TurnRecord[] = this.sublevels ? zFolds(rounded, width * LEG_PER_WIDTH) : [];
+      this.laceCenterlines.push({
+        chain: chain.map((m) => m.index),
+        line: rounded,
+        width,
+        thickness,
+        turns,
+      });
+
+      if (chain.every((m) => strands[m.index].visible)) {
+        const mesh = this.buildStrandMesh(first, rounded, [true, true]);
+        if (!mesh) {
+          for (const m of chain) visited.delete(m.index);
+          continue;
+        }
+        this.strandGroup.add(mesh);
+        for (const m of chain) absorbed.add(m.index);
         continue;
       }
-      this.strandGroup.add(mesh);
+
+      // Some members are hidden: sweep the SAME centreline, in pieces. Each
+      // visible stretch of the ownership map becomes its own mesh, cut exactly
+      // where the tags change hands — at a turn's apex, this run really does
+      // climb to the mid-height of the tip before anything of the hidden
+      // partner begins. A shared boundary point (an apex, a collapsed joint)
+      // is kept by the slice on either side of it, so showing both layers
+      // again leaves no gap and no double ring. Nothing is rebuilt and nothing
+      // is invented: a soloed layer shows the exact subset of the full lace it
+      // owns, and restoring every layer returns the identical geometry.
+      const shown = (k: number): boolean => {
+        const o = rounded[k].owner;
+        return o === undefined || strands[o].visible;
+      };
+      const pieces: Array<{ a: number; b: number }> = [];
+      let a = -1;
+      for (let k = 0; k < rounded.length; k++) {
+        if (shown(k)) {
+          if (a < 0) a = k;
+        } else if (a >= 0) {
+          pieces.push({ a, b: k - 1 });
+          a = -1;
+        }
+      }
+      if (a >= 0) pieces.push({ a, b: rounded.length - 1 });
+      const last = rounded.length - 1;
+      for (const r of pieces) {
+        if (r.a > 0 && rounded[r.a - 1].shared) r.a--;
+        if (r.b < last && rounded[r.b + 1].shared) r.b++;
+        if (r.b - r.a < 1) continue;
+        // An end cut mid-lace is a glued end, not a free one: it gets a flat
+        // cap rather than a dome, exactly as it would against a drawn partner.
+        const mesh = this.buildStrandMesh(first, rounded.slice(r.a, r.b + 1), [
+          r.a === 0,
+          r.b === last,
+        ]);
+        if (mesh) this.strandGroup.add(mesh);
+      }
       for (const m of chain) absorbed.add(m.index);
     }
     return absorbed;
@@ -1782,29 +1853,48 @@ export class StrandScene {
     // raycaster ignores `visible`, so an unlit overlay still answers a ray.
     const hit = this.raycaster.intersectObjects(this.weaveGroup.children, false)[0];
     const byOverlay = hit?.object.userData.strandId as string | undefined;
-    if (byOverlay) return byOverlay;
 
     // The overlays are swept along each strand's OWN run, and a fold's turn is
-    // not in any of them — it is built later, on the merged lace. So a click on
-    // the C itself found nothing at all. Fall back to the bodies and attribute
-    // the point to whichever strand's run passes closest, which hands each half
-    // of a turn to the strand it belongs to: the tip is where the two meet, so
-    // the near half is the near strand's.
-    const body = this.raycaster.intersectObjects(this.strandGroup.children, false)[0];
+    // not in any of them — it is built later, on the merged lace. So the drawn
+    // bodies answer too (recursively: each ribbon is a group holding its fill
+    // and outline meshes). The overlay only wins while it is the thing actually
+    // under the pointer: a C wraps AROUND other strands, and their invisible
+    // overlays would otherwise swallow a click on the turn that covers them.
+    // The slack forgives the overlay's own inflation over the body it coats.
+    const body = this.raycaster.intersectObjects(this.strandGroup.children, true)[0];
+    const slack = this.params.thickness * SCALE * 0.5;
+    if (byOverlay && (!body || hit.distance <= body.distance + slack)) return byOverlay;
     if (!body) return null;
+
+    // A hit on a body: attribute the point through the lace's OWN ownership
+    // map — every point of a merged centreline records the layer that owns it,
+    // split at each turn's apex — so either half of a C names its real layer
+    // instead of whichever original run happens to pass closest.
     const p = body.point;
     let best: string | null = null;
     let bd = Infinity;
+    const consider = (q: Vec3, id: string): void => {
+      const d = (q.x - p.x) ** 2 + (q.y - p.y) ** 2 + (q.z - p.z) ** 2;
+      if (d < bd) {
+        bd = d;
+        best = id;
+      }
+    };
+    const inLace = new Set<number>();
+    for (const lace of this.laceCenterlines) {
+      for (const idx of lace.chain) inLace.add(idx);
+      for (const q of lace.line) {
+        const o = q.owner;
+        if (o === undefined || !this.world3D[o]) continue; // hidden: not on screen
+        consider(q, this.current.strands[o].id);
+      }
+    }
+    // Strands not merged into any lace only exist as their own runs.
     for (let i = 0; i < this.world3D.length; i++) {
+      if (inLace.has(i)) continue;
       const line = this.world3D[i];
       if (!line) continue;
-      for (const q of line) {
-        const d = (q.x - p.x) ** 2 + (q.y - p.y) ** 2 + (q.z - p.z) ** 2;
-        if (d < bd) {
-          bd = d;
-          best = this.current.strands[i].id;
-        }
-      }
+      for (const q of line) consider(q, this.current.strands[i].id);
     }
     return best;
   }

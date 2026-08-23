@@ -34,6 +34,24 @@ export interface Vec3 {
    * uses it instead of guessing. Absent everywhere else, so nothing changes.
    */
   up?: { x: number; y: number; z: number };
+  /**
+   * Which strand LAYER this stretch of a merged lace belongs to (an index into
+   * the scene's strands). A lace is one centreline built from several glued
+   * strands, and once folds are spliced in the members' shares are not where
+   * the original runs were: a turn's tip belongs half to the layer arriving and
+   * half to the layer leaving, split at the apex. This is that split, recorded
+   * where it is decided (concatenation and `zFolds`) so that hiding, soloing,
+   * picking and the fold lab's elevation all read the SAME answer instead of
+   * each guessing from nearest-point distance.
+   */
+  owner?: number;
+  /**
+   * A point on the boundary between two owners that belongs to BOTH — a turn's
+   * apex, or the collapsed vertex of a joint. When visibility slices a lace,
+   * the slice on either side keeps this point, so the two halves of a C meet at
+   * one shared apex ring rather than leaving a one-sample gap.
+   */
+  shared?: boolean;
 }
 
 export const vadd = (a: Vec2, b: Vec2): Vec2 => ({ x: a.x + b.x, y: a.y + b.y });

@@ -254,11 +254,11 @@ function sideView(id: string, colour: string): SVGElement | null {
   if (!own || own.length < 2 || !rest || !(t > 0)) return null;
 
   const W = 320, H = 168, PADX = 8, PADT = 16, PADB = 14, LABEL = 150;
-  // Normally this layer is drawn inside its lace, which is where its fold lives.
-  // With the rest of that lace hidden there is no merged centreline to sit in —
-  // a lace of one strand is drawn straight rather than merged — so it falls back
-  // to its own run. The turn is not in that run: a fold belongs to the junction
-  // with the neighbour that is currently hidden, so there is nothing to draw.
+  // Normally this layer is drawn inside its lace, which is where its fold lives
+  // — and the lace is ALWAYS the whole lace now, hidden members included, so
+  // hiding neighbours no longer takes the merged centreline away. The fallback
+  // to the layer's own run remains only for a chain that could not be merged
+  // (members that do not look alike); that run has no turn in it to draw.
   const line = lace ? lace.line : own;
   const soloed = !lace;
 
@@ -287,19 +287,28 @@ function sideView(id: string, colour: string): SVGElement | null {
   const cum = line.map((q) => (q.x - own[0].x) * dx + (q.y - own[0].y) * dy);
   const total = Math.max(...cum) - Math.min(...cum) || 1;
 
-  const nearest = (q: { x: number; y: number }): number => {
-    let best = 0;
-    let bd = Infinity;
+  // This layer's stretch of the lace, read off the generated ownership map
+  // rather than guessed from nearest-point distance: every point of a merged
+  // centreline records the layer that owns it, split at each turn's apex, and
+  // a shared boundary point (the apex ring itself) belongs to both sides.
+  let from = 0;
+  let to = line.length - 1;
+  if (lace) {
+    let a = -1;
+    let b = -1;
     for (let k = 0; k < line.length; k++) {
-      const d = (line[k].x - q.x) ** 2 + (line[k].y - q.y) ** 2;
-      if (d < bd) { bd = d; best = k; }
+      if (line[k].owner === i) {
+        if (a < 0) a = k;
+        b = k;
+      }
     }
-    return best;
-  };
-  const a = soloed ? 0 : nearest(own[0]);
-  const b = soloed ? own.length - 1 : nearest(own[own.length - 1]);
-  const from = Math.min(a, b);
-  const to = Math.max(a, b);
+    if (a >= 0) {
+      if (a > 0 && line[a - 1].shared) a--;
+      if (b < line.length - 1 && line[b + 1].shared) b++;
+      from = a;
+      to = b;
+    }
+  }
 
   // The x-window is THIS LAYER plus a margin, not the whole lace. Scaled to the
   // lace, a single arm of a five-arm stitch is a few pixels wide and the drawing
@@ -376,7 +385,7 @@ function sideView(id: string, colour: string): SVGElement | null {
   svg.appendChild(sv('text', { x: X(from) + 2, y: Y(line[from].z) - 7, class: 'arm-id' }, id));
   if (soloed) {
     svg.appendChild(sv('text', { x: PADX, y: H - 4, class: 'pl seam' },
-      'lace hidden — its turn is not in this run'));
+      'not merged into a lace — its turn is not in this run'));
   }
   return svg;
 }
