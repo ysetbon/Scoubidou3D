@@ -70,6 +70,49 @@ function twoCrossing(): Scene3D {
   };
 }
 
+// 1b) The same two strands, but each grown a pair of ARMS with Attach — the
+//     scene the fold work is judged against.
+//
+//     `two-crossing` above is two bare laces, and a bare lace has no joint, so
+//     it has no FOLD: it cannot show the storey turn at all. This one is the
+//     six-member version — a core with an arm glued to either end, twice over —
+//     so every lace carries two folds and the C-return is on screen the moment
+//     the app opens. That is why it is the opening sample rather than a card
+//     buried in the list: the turn is the thing most likely to regress, and a
+//     regression nobody looks at is one nobody catches.
+//
+//     Coordinates are as drawn in OpenStrand Studio and pasted in unchanged, so
+//     this is the same shape the studio exports. The two masks are what make the
+//     laces actually interlock — 1_2 over 2_3 and 1_3 over 2_2 — rather than one
+//     lace sitting wholly above the other on layer order alone.
+function twoCrossingArms(): Scene3D {
+  const A = { x: 386.9144970868538, y: 202.04947370054907 };  // 1_1 start, 1_2 start
+  const B = { x: 523.2634993991879, y: 282.7769365430087 };   // 1_1 end,   1_3 start
+  const C = { x: 491.3931325751948, y: 178.85211012011382 };  // 2_1 start, 2_2 start
+  const D = { x: 414.25968793804265, y: 306.951317750308 };   // 2_1 end,   2_3 start
+  const W = { width: 54 };
+  return {
+    name: 'Two crossing strands',
+    strands: [
+      mk('1_1', A, B, ORANGE, W),
+      mk('2_1', C, D, YELLOW, W),
+      mk('1_2', A, { x: 670.0747887002174, y: 254.99593669330284 }, ORANGE,
+        { ...W, parentId: '1_1', parentSide: 0 }),
+      mk('1_3', B, { x: 184.07573301978914, y: 234.49408664861474 }, ORANGE,
+        { ...W, parentId: '1_1', parentSide: 1 }),
+      mk('2_2', C, { x: 465.4973709199449, y: 432.0334256449166 }, YELLOW,
+        { ...W, parentId: '2_1', parentSide: 0 }),
+      mk('2_3', D, { x: 435.7216499729385, y: 54.045574825457976 }, YELLOW,
+        { ...W, parentId: '2_1', parentSide: 1 }),
+    ],
+    masks: [
+      { overId: '1_2', underId: '2_3' },
+      { overId: '1_3', underId: '2_2' },
+    ],
+    levelBreaks: [],
+  };
+}
+
 // 2) A basket / woven mat — horizontal and vertical laces that truly interlock.
 //    A checkerboard of masks makes each strand ride OVER some crossings and duck
 //    UNDER others (impossible with layer order alone, since every vertical would
@@ -834,6 +877,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
   ...BOX_COLUMN_SAMPLES,
   ...PLACED_SAMPLES,
   'two-crossing': twoCrossing,
+  'two-crossing-arms': twoCrossingArms,
   'box-stitch': boxStitch,
   'box-stitch-10': () => boxStitchRounds(10, 'Box stitch — 10 levels'),
   'box-stitch-15': () => boxStitchRounds(15, 'Box stitch — 15 levels'),
@@ -870,6 +914,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
  */
 export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }> = [
   { key: 'two-crossing', label: 'Two crossing strands', group: 'Basics' },
+  { key: 'two-crossing-arms', label: 'Two crossing strands — with arms', group: 'Basics' },
   { key: 'box-stitch', label: 'Box stitch — starting stitch', group: 'Stitches' },
   { key: 'box-stitch-10', label: 'Box stitch — 10 levels', group: 'Stitches' },
   { key: 'box-stitch-15', label: 'Box stitch — 15 levels', group: 'Stitches' },

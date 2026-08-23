@@ -13,7 +13,11 @@ const panelRoot = document.getElementById('panel') as HTMLElement;
 // site can link a card straight at the scene it is showing a picture of. An
 // unknown key is ignored rather than erroring — a stale bookmark should still
 // land you in a working app.
-const DEFAULT_SAMPLE = 'two-crossing';
+// The six-member version rather than the two bare laces: bare laces have no
+// joint and so no FOLD, which means the opening screen could not show the
+// storey turn at all. The turn is the part most likely to regress, so it is
+// what the app opens on.
+const DEFAULT_SAMPLE = 'two-crossing-arms';
 const requested = new URLSearchParams(window.location.search).get('sample');
 const opening = requested && Object.prototype.hasOwnProperty.call(SAMPLES, requested)
   ? requested

@@ -145,8 +145,61 @@ export interface TurnOpts {
  * radius is half the storey step, so the curve leaves on `zIn` and arrives on
  * `zOut` exactly, and `walk` carries it along the crease as it turns, which is
  * what lets a leaning fold travel sideways instead of doubling back on itself.
+ *
+ * ---- the construction below only ever CLIMBS -----------------------------
+ *
+ * Everything from `const a = norm(o.din)` down assumes the fold rises, and it
+ * has to: the tip's sweep frame is written as `(−sin φ·face, cos φ·face)`,
+ * with no climb direction in it. The tip's centreline meanwhile is a
+ * half-circle about the crease, offset `(h·sin φ, −sign·h·cos φ)` in the plane
+ * of the crease normal and Z, so a rigid wrap — the strip going ROUND the roll
+ * rather than THROUGH it — needs the thickness axis to be that circle's own
+ * outward radial, `(sin φ, −sign·cos φ)`. Those agree only for `sign = +1`:
+ *
+ *     climbing:  up · radial = −face          constant — rigid
+ *     dropping:  up · radial = +face·cos 2φ   swings, and is ZERO at φ = π/2
+ *
+ * At that zero the thickness axis lies ALONG the path and the cross-section
+ * has no width left to sweep, so the strip wrings itself into a point. That
+ * was visible as a pinched, twisted flap on exactly half of every lace's
+ * turns — the half whose joint is glued start-to-start, which is the one a
+ * chain walks downhill. The z-lab this came from benches a single canonical
+ * turn, climbing, so the broken half of the parameter space never came up.
+ *
+ * The fix is not to patch the formula but to stop asking it a question it
+ * cannot answer. A dropping fold IS a climbing fold seen upside down, so it
+ * is built climbing and reflected — see the top of the function. Nothing
+ * below needs to know, and the shape a climbing fold has is untouched to the
+ * last bit.
  */
 export function zTurn(o: TurnOpts): Vec3[] {
+  // A DROPPING fold, by reflection. Swapping the two heights builds the same
+  // turn climbing — the plan geometry cannot tell, because only `h` enters it
+  // and `h` is a magnitude — and reflecting that in Z puts it back the way it
+  // was asked for.
+  //
+  // The frame is reflected AND negated. Reflection takes (x, y, z) to
+  // (x, y, −z); a reflection also reverses orientation, so the axis comes back
+  // pointing into the strip rather than out of it, and negating restores the
+  // convention. The two together are (x, y, z) -> (−x, −y, z), which leaves
+  // the legs' `(0,0,±face)` untouched.
+  //
+  // That last point is load bearing. `face` arrives as a parity alternating
+  // down the lace, and it is a HANDSHAKE: a turn hands the strip on upside
+  // down, so turn k's exit leg has to be what turn k+1's entry leg expects.
+  // Deriving the legs' frame from the climb instead broke that handshake and
+  // tore each lace open along its core — the run between its two turns — while
+  // its centreline stayed perfectly correct. Reflection keeps the handshake by
+  // construction, because it never touches a leg's z at all.
+  if (o.zOut < o.zIn) {
+    const centre = (o.zIn + o.zOut) / 2;
+    return zTurn({ ...o, zIn: o.zOut, zOut: o.zIn }).map((q) => ({
+      ...q,
+      z: 2 * centre - q.z,
+      up: q.up ? { x: -q.up.x, y: -q.up.y, z: q.up.z } : undefined,
+    }));
+  }
+
   const a = norm(o.din);
   const swing = headingChange(o.din, o.dout);
   const lean = autoLean(separationOf(o.din, o.dout));
