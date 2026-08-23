@@ -18,6 +18,7 @@
 // this file, and the sweep that builds it in ribbon.ts.
 
 import { Vec3 } from './vec';
+import { zTurn } from './zturn';
 
 /** Corners gentler than this are left alone — a sampled curve is a polyline of
  *  very slight corners, and rounding those would soften the curve itself. */
@@ -246,6 +247,361 @@ function creaseShear(t: { x: number; y: number }, m: { x: number; y: number }): 
  * storey's worth of step to place, and can carry more of it here rather than ramp
  * it away; see FOLD_STACK in StrandScene.
  */
+/**
+ * Replace a fold's crease with the storey TURN the Z band lab settled on.
+ *
+ * `easeFolds` leaves the crease a crease: the two runs are stepped apart at one
+ * vertex and whatever the step will not carry is ramped back into them. That is
+ * the right shape for a fold with nothing to climb. It is the wrong one the
+ * moment there is a storey to make, because the climb then happens over no
+ * in-plane length at all — a cliff at a point, which reads as a flat Z.
+ *
+ * The lab's answer is three pieces, and the middle one alone is not enough:
+ *
+ *     leg out at the lower storey · half-turn tip of radius step/2 ·
+ *     leg back at the upper storey
+ *
+ * A tip on its own is a knuckle. A plane curve that turns exactly half a turn
+ * and rises exactly one storey cannot be much deeper than half that storey at a
+ * steady turning rate, so the depth has to be bought with turning that does not
+ * rise — and the straight legs are that turning-free depth. See docs/z-lab.md.
+ *
+ * The turn is fitted so its TIP lands where the crease was: the lace keeps the
+ * reach the model gave it, and the turn is cut into the runs either side rather
+ * than added on the end of them. A fold without enough straight run to seat the
+ * legs is left as it was — better a crease than a turn poking through the weave.
+ */
+/**
+ * One turn `zFolds` spliced into a lace, and who owns what of it.
+ *
+ * A fold belongs to two strands, and so does the C that carries it: the run
+ * arriving climbs to the apex — the mid-height point of the rolled tip — and
+ * the run leaving takes over from there. These indices address the FINAL
+ * centreline (after every splice), so a consumer can slice the built lace at
+ * the apex instead of re-deriving where a layer's share begins.
+ */
+export interface TurnRecord {
+  /** First and last index of the turn's points in the finished centreline. */
+  from: number;
+  to: number;
+  /** Index of the apex sample — where ownership changes hands. */
+  apex: number;
+  /** The layer arriving at the fold, and the one leaving it (Vec3.owner). */
+  inOwner?: number;
+  outOwner?: number;
+}
+
+export function zFolds(pts: Vec3[], legLength: number): TurnRecord[] {
+  const records: TurnRecord[] = [];
+  const folds = foldsOf(pts);
+  if (folds.length === 0) return records;
+
+  // Every measurement below comes from `src`, the line as it was before any turn
+  // was spliced into it, and every span is settled before the first splice. Both
+  // are the fix for the same defect, and it is worth recording what it looked
+  // like, because only ONE arm of each lace came out wrong.
+  //
+  // A turn is not a point. It eats a leg and a tip either side of the crease —
+  // about ten samples each on a box stitch — while the folds themselves sit only
+  // about fourteen apart. Ten and ten do not fit in fourteen, so consecutive
+  // turns overlapped: measured on a two-round box stitch the four turns of one
+  // lace tiled it end to end, 13-61, 62-110, 111-159, 160-208, with no run left
+  // between any of them. Where two butt straight together the line reverses a
+  // half turn in a single step, and the sweep tears there.
+  //
+  // It showed up as a head-versus-tail split because the splices run last-to-
+  // first (a fold's index must not be shifted out from under it): the LAST arm's
+  // turn is the outermost one, with open run beyond it, while the FIRST arm's is
+  // boxed in by every other turn in the lace — and, reading the live array, it
+  // walked its span along turn points, took `dout` off a leg belonging to another
+  // C, and had `restore` sample that C's climb as though it were this run's
+  // weave.
+  //
+  // So: neighbours share the run between them at the midpoint, and each turn's
+  // legs are sized to the room ITS OWN side actually has. Sizing them together
+  // would shorten the outer leg of an outermost fold for no reason and put a
+  // notch where the C should grow smoothly out of the run; sized per side, an
+  // arm's outer leg keeps its full length and only the crowded side gives way.
+  const src = pts.map((q) => ({ ...q }));
+
+  const arc = (from: number, to: number): number => {
+    let d = 0;
+    for (let i = from; i < to; i++) d += Math.hypot(src[i + 1].x - src[i].x, src[i + 1].y - src[i].y);
+    return d;
+  };
+
+  const planned = folds.map((f) => {
+    const p = src[f.index];
+    const zIn = p.zIn ?? p.z;
+    const zOut = p.zOut ?? p.z;
+    const h = Math.max(Math.abs(zOut - zIn) / 2, 1e-4);
+    const span = legLength + h; // leg, then the tip reaching h further
+
+    let lo = f.index;
+    for (let d = 0; lo > 0 && d < span; lo--) {
+      d += Math.hypot(src[lo].x - src[lo - 1].x, src[lo].y - src[lo - 1].y);
+    }
+    let hi = f.index;
+    for (let d = 0; hi < src.length - 1 && d < span; hi++) {
+      d += Math.hypot(src[hi].x - src[hi + 1].x, src[hi].y - src[hi + 1].y);
+    }
+    return { f, lo, hi, zIn, zOut, h };
+  });
+
+  // Which way up the lace arrives at each fold. It starts face-up and every turn
+  // rolls it over, so the face alternates down the chain — see TurnOpts.face.
+  const face = planned.map((_, k) => (k % 2 === 0 ? 1 : -1));
+
+  for (let k = 0; k < planned.length - 1; k++) {
+    const a = planned[k];
+    const b = planned[k + 1];
+    if (a.hi < b.lo) continue;
+    const mid = Math.floor((a.f.index + b.f.index) / 2);
+    a.hi = Math.min(a.hi, mid);
+    b.lo = Math.max(b.lo, mid + 1);
+  }
+
+  // Last to first: each splice changes the length, and folds after the one being
+  // replaced would have their indices shifted out from under them. The spans are
+  // clear of one another now, so `lo` and `hi` still address the points they did
+  // in `src` when this fold's turn goes in.
+  for (let k = planned.length - 1; k >= 0; k--) {
+    const { f, lo, hi, zIn, zOut, h } = planned[k];
+    if (lo >= f.index || hi <= f.index) continue; // no run to seat the legs in
+    if (lo < 1 || hi > src.length - 2) continue; // and a neighbour each side to read the heading off
+    // The tip reaches `h` along the run before the leg starts, so what is left
+    // for the leg is whatever this side has beyond that.
+    const legIn = Math.max(0, Math.min(legLength, arc(lo, f.index) - h));
+    const legOut = Math.max(0, Math.min(legLength, arc(f.index, hi) - h));
+
+    // Seat the turn on the heading the run ACTUALLY has where it is cut, not on
+    // the one it has at the crease. Rounding leaves the last stretch curving
+    // slightly, and a leg laid along the crease's heading meets the run at a
+    // visible angle — a seam right where the turn is supposed to grow out of it.
+    const din = { x: src[lo].x - src[lo - 1].x, y: src[lo].y - src[lo - 1].y };
+    const dout = { x: src[hi + 1].x - src[hi].x, y: src[hi + 1].y - src[hi].y };
+    // The lab's own sampling: 20 along each leg, 56 round the tip. Half that
+    // left the tip visibly faceted at a lace this wide, and the facets read as
+    // creases in a surface whose whole point is that it is smooth.
+    const legSteps = 20;
+    const tipSteps = 56;
+    const turn = zTurn({
+      from: { x: src[lo].x, y: src[lo].y },
+      din: Math.hypot(din.x, din.y) > 1e-9 ? din : f.din,
+      dout: Math.hypot(dout.x, dout.y) > 1e-9 ? dout : f.dout,
+      zIn,
+      zOut,
+      leg: legLength,
+      legIn,
+      legOut,
+      face: face[k],
+      legSteps,
+      tipSteps,
+    });
+
+    // Give the legs back whatever the WEAVE had put in this stretch.
+    //
+    // The turn's legs are flat at their storey by construction, and splicing them
+    // in wholesale threw away every height the weave had already decided here —
+    // including the dip of any crossing that happened to fall inside the length
+    // being replaced. Measured on a two-round box stitch that cost two crossings
+    // their over/under entirely: the two laces came out at the same height, dead
+    // flat through the meeting, passing through each other instead of one going
+    // under the other.
+    //
+    // So each leg point takes the deviation the weave had at the same place along
+    // ITS OWN side of the crease. Sides matter: at a dead fold-back the two runs
+    // lie on top of each other in plan, and a search over both would draw from
+    // whichever run happened to be nearer.
+    //
+    // Sampled by POSITION and interpolated, not snapped to the nearest original
+    // point. Snapping is a staircase by construction — the turn's points and the
+    // run's points do not line up, so each one took a neighbour's height whole
+    // and the leg came out in visible steps. Catmull-Rom through the samples is
+    // C1: the slope matches across every sample, so no step survives into the
+    // sweep, which reads the gradient to pitch the ribbon.
+    const restore = (
+      from: number,
+      to: number,
+      oFrom: number,
+      oTo: number,
+      planeZ: number,
+      dir: { x: number; y: number },
+      /** 0 at the crease end of this leg, 1 at the end that joins the run. */
+      weight: (k: number) => number,
+    ) => {
+      if (oFrom > oTo) return;
+      const dl = Math.hypot(dir.x, dir.y) || 1;
+      const ux = dir.x / dl;
+      const uy = dir.y / dl;
+      const ox = src[oFrom].x;
+      const oy = src[oFrom].y;
+      const along = (q: { x: number; y: number }): number => (q.x - ox) * ux + (q.y - oy) * uy;
+
+      const ss: number[] = [];
+      const dv: number[] = [];
+      for (let o = oFrom; o <= oTo; o++) {
+        ss.push(along(src[o]));
+        dv.push(src[o].z - planeZ);
+      }
+      if (ss.length > 1 && ss[0] > ss[ss.length - 1]) {
+        ss.reverse();
+        dv.reverse();
+      }
+
+      const devAt = (x: number): number => {
+        const n = ss.length;
+        if (n === 0) return 0;
+        if (n === 1 || x <= ss[0]) return dv[0];
+        if (x >= ss[n - 1]) return dv[n - 1];
+        let j = 0;
+        while (j < n - 2 && ss[j + 1] < x) j++;
+        const t = (x - ss[j]) / (ss[j + 1] - ss[j] || 1);
+        const p0 = dv[Math.max(0, j - 1)];
+        const p1 = dv[j];
+        const p2 = dv[j + 1];
+        const p3 = dv[Math.min(n - 1, j + 2)];
+        return (
+          0.5 *
+          (2 * p1 +
+            (-p0 + p2) * t +
+            (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t +
+            (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t)
+        );
+      };
+
+      for (let k = from; k <= to && k < turn.length; k++) {
+        turn[k].z += devAt(along(turn[k])) * weight(k);
+      }
+    };
+    // Taper to nothing at the crease. The TIP is not adjusted — its height is the
+    // turn's own — so a leg carrying its full deviation right up to the join left
+    // a step between the two: measured at 0.48 of a world unit across a single
+    // 0.10 sample, against a thickness of 0.52. A cliff, and the visible one.
+    //
+    // Tapering is also the truer statement: a crossing's dip belongs to the RUN,
+    // and by the crease the lace has committed to the turn. Smoothstep rather
+    // than a straight fade so the slope matches at both ends and the sweep, which
+    // pitches the ribbon off the gradient, finds nothing to catch on.
+    const smooth = (t: number): number => {
+      const u = Math.min(1, Math.max(0, t));
+      return u * u * (3 - 2 * u);
+    };
+    // The crease vertex itself is excluded: its `z` is the collapsed mean of the
+    // two runs, which is neither leg's height.
+    const tail = turn.length - legSteps;
+    restore(0, legSteps, lo, f.index - 1, zIn, din, (k) => smooth(1 - k / legSteps));
+    restore(tail, turn.length - 1, f.index + 1, hi, zOut, dout,
+      (k) => smooth((k - tail) / Math.max(1, legSteps - 1)));
+
+    // Land the turn ON the run it rejoins. The turn is seated exactly where it
+    // starts — from `src[lo]`, on the run's own heading — but where it ENDS is
+    // wherever the legs put it, and without the lab's crease-walk term that is
+    // not on the run: measured 0.29 to 0.37 off, against a run step of ~0.19.
+    // The exit HEADING is right (it is built from `dout`), only the landing
+    // point misses. Where the next thing along the lace is open run the bridge
+    // hides in the first segment; where it is the NEXT TURN'S entry — seated
+    // exactly, like every entry — the two meet in a kink of 60-odd degrees,
+    // which is what a lace with a fold at each end of a short core showed at
+    // its middle, always beside the FIRST fold's C: the lace is walked from
+    // the head arm, so the head turn's exit is the one that lands mid-model.
+    //
+    // So the residual is eased into the OUTGOING LEG alone, smoothstepped from
+    // the tip's end so the slope matches where it starts. The tip is the lab's
+    // rolled crease and nothing may touch it: an earlier version spread this
+    // from the apex outward, which bent half the bight, and the strip tucked
+    // into itself right at the roll — a flat strap being asked to bend in its
+    // own plane, which is the one thing it cannot do. A leg is where a fold
+    // borrows plan bend by construction (see zturn.ts's LEAN 1), so a leg is
+    // where this belongs. In plan only: the heights along here are the weave's
+    // and `restore` below owns them.
+    const last = turn.length - 1;
+    const missX = src[hi].x - turn[last].x;
+    const missY = src[hi].y - turn[last].y;
+    const tipEnd = legSteps + tipSteps;
+    for (let k = tipEnd + 1; k <= last; k++) {
+      const u = (k - tipEnd) / (last - tipEnd);
+      const w = u * u * (3 - 2 * u);
+      turn[k].x += missX * w;
+      turn[k].y += missY * w;
+    }
+
+    // Who owns which half of this C. The fold sits at the joint between two
+    // strands, so everything up to the apex — the mid-height of the rolled tip
+    // — is the arriving layer's, and everything after it is the leaving
+    // layer's. The apex itself is SHARED: it is the one ring both halves end
+    // on, and a slice taken on either side must keep it or the two halves part
+    // by a sample. Recorded here, where the turn is built, so no consumer has
+    // to guess the split from nearest-point distance ever again.
+    const inOwner = src[f.index - 1]?.owner ?? src[lo].owner;
+    const outOwner = src[f.index + 1]?.owner ?? src[hi].owner;
+    const apexAt = legSteps + Math.round(tipSteps / 2);
+    for (let k = 0; k < turn.length; k++) turn[k].owner = k <= apexAt ? inOwner : outOwner;
+    turn[apexAt].shared = true;
+
+    // The records address the FINAL array. Splices run last to first, so every
+    // record already taken sits beyond this one and shifts by however much the
+    // turn grew or shrank the stretch it replaced.
+    const delta = turn.length - (hi - lo + 1);
+    for (const r of records) {
+      r.from += delta;
+      r.to += delta;
+      r.apex += delta;
+    }
+    records.push({ from: lo, to: lo + last, apex: lo + apexAt, inOwner, outOwner });
+
+    pts.splice(lo, hi - lo + 1, ...turn);
+  }
+  return records.sort((a, b) => a.from - b.from);
+}
+
+// `zHalfFold` used to live here: half a turn invented at a run whose fold
+// partner was hidden. It fabricated the partner's heading as a dead fold-back
+// (`dout = -din`), lost the crease walk that heading implies, sampled at half
+// the resolution of a real turn, and reset the alternating face state — so the
+// half-C it showed was not half of the C the full lace has. It is gone rather
+// than improved: hidden strands now stay in their lace's build, the full C is
+// built once by `zFolds`, and visibility merely slices the finished centreline
+// at the apex the turn recorded. Visibility must never change the geometry.
+
+/**
+ * Give every point of a merged lace an owner.
+ *
+ * Concatenation tags each point with the strand it came from, but the passes
+ * that reshape the line afterwards create points of their own — `roundCorners`
+ * replaces the stretch around a gentle joint with an arc whose samples are
+ * new. Those points still belong to somebody, and it matters exactly where the
+ * handover lands: it is where hide/solo will cut. So each unowned stretch is
+ * split at its middle between the owners on either side, and the split point
+ * is marked shared so a cut there keeps it on both sides — the same rule the
+ * turns use at their apex.
+ */
+export function fillOwners(pts: Vec3[]): void {
+  const n = pts.length;
+  let i = 0;
+  while (i < n) {
+    if (pts[i].owner !== undefined) {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < n && pts[j].owner === undefined) j++;
+    const left = i > 0 ? pts[i - 1].owner : undefined;
+    const right = j < n ? pts[j].owner : undefined;
+    if (left === undefined && right === undefined) return; // nothing was ever tagged
+    if (left === undefined || left === right) {
+      for (let k = i; k < j; k++) pts[k].owner = right ?? left;
+    } else if (right === undefined) {
+      for (let k = i; k < j; k++) pts[k].owner = left;
+    } else {
+      const mid = i + Math.floor((j - i) / 2);
+      for (let k = i; k < j; k++) pts[k].owner = k <= mid ? left : right;
+      pts[mid].shared = true;
+    }
+    i = j;
+  }
+}
+
 export function easeFolds(pts: Vec3[], stack: number, reach: number): void {
   const folds = foldsOf(pts);
   if (folds.length === 0 || reach <= 0) return;

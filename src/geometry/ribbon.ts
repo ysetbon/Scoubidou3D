@@ -48,6 +48,18 @@ export interface RibbonOptions {
    * body's face shows through it, and the rim still runs round the edges.
    */
   openFolds?: boolean;
+  /**
+   * Cull quads that have folded through themselves inside a TURN (a point run
+   * carrying its own frame — polyline's zFolds). The outline shell needs this
+   * for the same reason it needs openFolds: it is a ribbon grown a stroke-width
+   * fatter than the body, and inside the tip's concave pocket that extra girth
+   * has less room than its own width — it folds through itself, its reversed
+   * faces land in front of the body, and the rim floods the bight as a black
+   * star. The reversed quads are exactly the fold-through, and the body fills
+   * the pocket they covered. The BODY must not set this: its own tip quads are
+   * legitimate, and the same test would bite a hole in the surface.
+   */
+  cullFoldThrough?: boolean;
 }
 
 // A cross-section is a closed loop of {u, v} points in the local (side, up)
@@ -179,7 +191,11 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   // face reaches past the crease, so there is no spike; the faces coincide, so
   // there is no notch.
   const folds = new Map<number, Fold>();
-  for (const f of foldsOf(pts)) folds.set(f.index, f);
+  // A vertex that carries its own frame was built as a TURN, not left as a
+  // crease (polyline.ts `zFolds`). In plan it still doubles back, so `foldsOf`
+  // still finds it — but creasing it would drive a seam through the middle of a
+  // smooth half-turn and tear the strip open. It is not a fold any more.
+  for (const f of foldsOf(pts)) if (!pts[f.index].up) folds.set(f.index, f);
 
   interface Section {
     p: Vec3;
@@ -187,6 +203,17 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     up: Vec3; // thickness axis, pitched with the climb
     shear: number; // tips the face over onto the crease
     crease: boolean; // second face of a fold: the section turns over here
+    /**
+     * The across-axis, when the in-plane perpendicular will not do.
+     *
+     * Normally "across" is the perpendicular of the heading in XY, dead level, so
+     * the lace never rolls about its own axis. A half-turn tip is the one place
+     * that fails twice over: the path goes straight up there, so the in-plane
+     * heading degenerates and its perpendicular is noise — and the strip really is
+     * rolling, so a level across-axis is the wrong answer even where it is
+     * defined. A turn therefore hands the sweep the axis square to its own frame.
+     */
+    side?: Vec3;
   }
   // The thickness axis for a run heading `t` at gradient `slope`: leant back over
   // the heading just enough to stand square to the climb.
@@ -203,6 +230,56 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   for (let i = 0; i < pts.length; i++) {
     const f = folds.get(i);
     if (!f) {
+      // An explicit frame wins over the derived one: see Vec3.up.
+      const given = pts[i].up;
+      if (given) {
+        const a = pts[Math.max(0, i - 1)];
+        const b = pts[Math.min(pts.length - 1, i + 1)];
+        const tan = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
+        const tl = Math.hypot(tan.x, tan.y, tan.z) || 1;
+        tan.x /= tl;
+        tan.y /= tl;
+        tan.z /= tl;
+        // Square the given frame to the path before using it. A turn hands over
+        // the frame it was BUILT with, and that frame is only perpendicular to
+        // the path the turn drew: its legs leave zTurn dead flat, so a vertical
+        // thickness axis is right for them. They do not stay flat. `restore`
+        // (polyline.ts) gives the legs back the dips the weave had put in that
+        // stretch, and a leg carrying a crossing climbs — measured at a gradient
+        // of 0.68 while its axis still stood straight up, 47 degrees off square.
+        // `up x tan` then falls to 0.72 of its length and the across-axis it
+        // yields is skew, so the cross-section shears round and the bight funnels
+        // to a point.
+        //
+        // Projecting the tangential component out pitches the axis onto the
+        // slope, which is exactly what `upOf` does for every ordinary run point
+        // — the same rule, applied to a frame that arrived with an opinion about
+        // roll. The roll survives (it is the component across the path, which
+        // this leaves alone), so the tip still turns the strip over.
+        const drift = given.x * tan.x + given.y * tan.y + given.z * tan.z;
+        const sq = {
+          x: given.x - tan.x * drift,
+          y: given.y - tan.y * drift,
+          z: given.z - tan.z * drift,
+        };
+        const ql = Math.hypot(sq.x, sq.y, sq.z);
+        const up = ql > 1e-6 ? { x: sq.x / ql, y: sq.y / ql, z: sq.z / ql } : given;
+        const sd = {
+          x: up.y * tan.z - up.z * tan.y,
+          y: up.z * tan.x - up.x * tan.z,
+          z: up.x * tan.y - up.y * tan.x,
+        };
+        const sl = Math.hypot(sd.x, sd.y, sd.z) || 1;
+        plan.push({
+          p: pts[i],
+          t: tangents[i],
+          up,
+          shear: 0,
+          crease: false,
+          side: { x: sd.x / sl, y: sd.y / sl, z: sd.z / sl },
+        });
+        continue;
+      }
       plan.push({ p: pts[i], t: tangents[i], up: upOf(tangents[i], slopes[i]), shear: 0, crease: false });
       continue;
     }
@@ -255,16 +332,24 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   for (let i = 1; i < plan.length; i++) {
     const prev = plan[i - 1].t;
     const t = plan[i].t;
-    const flipped = plan[i].crease || -t.y * -prev.y + t.x * prev.x < 0;
+    // A point carrying its own across-axis is inside a turn whose frame already
+    // rotates continuously. The in-plane heading reverses somewhere in the middle
+    // of that turn, and flipping the winding there would tear the strip open at
+    // the very place it is meant to be smoothest.
+    const flipped = plan[i].side
+      ? false
+      : plan[i].crease || -t.y * -prev.y + t.x * prev.x < 0;
     mirrored.push(flipped ? !mirrored[i - 1] : mirrored[i - 1]);
   }
 
   for (let i = 0; i < plan.length; i++) {
-    const { p, t, up, shear } = plan[i];
+    const { p, t, up, shear, side } = plan[i];
     // In-plane side normal (perpendicular to tangent, in XY): (-ty, tx). It stays
-    // level whatever the climb, so the lace never rolls about its own axis.
-    const sx = -t.y;
-    const sy = t.x;
+    // level whatever the climb, so the lace never rolls about its own axis —
+    // unless the point brought its own, which a turn does.
+    const sx = side ? side.x : -t.y;
+    const sy = side ? side.y : t.x;
+    const sz = side ? side.z : 0;
     const ringIdx: number[] = [];
     for (let j = 0; j < m; j++) {
       const s = section[mirrored[i] ? m - 1 - j : j];
@@ -273,7 +358,7 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
       const d = shear * u; // slide along the heading to reach the crease line
       const x = p.x + sx * u + t.x * d + up.x * v;
       const y = p.y + sy * u + t.y * d + up.y * v;
-      const z = p.z + up.z * v;
+      const z = p.z + sz * u + up.z * v;
       ringIdx.push(positions.length / 3);
       positions.push(x, y, z);
     }
@@ -286,12 +371,37 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     if (opts.openFolds && plan[i + 1].crease) continue; // skip the fold's outer face
     const a = rings[i];
     const b = rings[i + 1];
+    // Inside a turn, cull any quad with a vertex walking BACKWARDS against the
+    // path. A ribbon fatter than the geometry it wraps — the outline shell is
+    // one, inflated a stroke-width past the body — folds through itself in the
+    // tip's concave pocket: its inner edge has less room than its own width,
+    // the reversed faces land in front of the body, and the rim floods the
+    // bight as a black star. A quad with one column reversed is a bowtie and a
+    // quad with both is inside the fold-through; the body fills the pocket
+    // either covers, and the silhouette rim never walks backwards — so both
+    // can go. Only rings carrying a turn frame are tested: everywhere else the
+    // shell is the studio's, and the studio's is left be.
+    // The test is taken IN PLAN, not in 3D: mid-roll the centreline climbs
+    // steeply, and the climb keeps a 3D dot positive even while the quad has
+    // crossed over in plan — which is where the fold-through actually lives.
+    const inTurn = opts.cullFoldThrough && plan[i].side && plan[i + 1].side;
+    const tX = plan[i + 1].p.x - plan[i].p.x;
+    const tY = plan[i + 1].p.y - plan[i].p.y;
     for (let j = 0; j < m; j++) {
       const j2 = (j + 1) % m;
       const v00 = a[j];
       const v01 = a[j2];
       const v10 = b[j];
       const v11 = b[j2];
+      if (inTurn) {
+        const s0 =
+          (positions[v10 * 3] - positions[v00 * 3]) * tX +
+          (positions[v10 * 3 + 1] - positions[v00 * 3 + 1]) * tY;
+        const s1 =
+          (positions[v11 * 3] - positions[v01 * 3]) * tX +
+          (positions[v11 * 3 + 1] - positions[v01 * 3 + 1]) * tY;
+        if (s0 < 0 || s1 < 0) continue;
+      }
       // Wound so face normals point OUTWARD (radially away from the centerline).
       // This matches Three's front-face convention, so MeshStandard lights the
       // outside and the BackSide outline shell reads as a silhouette rim. Where the

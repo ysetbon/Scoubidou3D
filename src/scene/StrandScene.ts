@@ -43,9 +43,17 @@ import {
 import { sampleCenterline } from '../geometry/bezier';
 import { buildRibbonGeometry } from '../geometry/ribbon';
 import { buildConnectorGeometry, ConnectorEnd } from '../geometry/connector';
-import { easeFolds, easeSteps, roundCorners } from '../geometry/polyline';
+import {
+  easeFolds,
+  easeSteps,
+  fillOwners,
+  roundCorners,
+  zFolds,
+  type TurnRecord,
+} from '../geometry/polyline';
 import { Anchor, arcLengths, heightField, polylineCrossings } from '../geometry/weave';
 import { Vec2, Vec3 } from '../geometry/vec';
+import { LEG_PER_WIDTH } from '../geometry/zturn';
 
 // Source (pixel) units -> world units. Keeps camera distances comfortable.
 const SCALE = 0.02;
@@ -91,6 +99,53 @@ const COLOR_OCC = 0x9099a6; // attach-mode occupied endpoint (gray — junction)
 // the site's cream paper, and the warm near-black it inverts to. Only the ground
 // the model sits on changes — the laces keep their own colours, and the handle
 // marks keep OpenStrand's.
+/**
+ * One pair of strands that cross in plan, and what the weave decided about them.
+ *
+ * The decision is made in `weaveCenterlines`, and it is made once — a mask if one
+ * covers the pair, otherwise the higher layer rides over. Anything that wants to
+ * REPORT the weave (the fold lab's layer panel, a check script) must read it from
+ * there rather than re-deriving it, or the report and the picture drift apart the
+ * first time either rule changes.
+ */
+/**
+ * Where a strand RESTS, in thicknesses off its storey's middle — at the start of
+ * its run and at the end of it.
+ *
+ * Two numbers rather than one because a lace that comes out of a fold does not
+ * have to come out on the plane it went in on: the turn can land it anywhere, and
+ * the run after it then rests somewhere else than the run before. `out` equal to
+ * `in` is the flat case and the common one.
+ */
+export interface Sublevel {
+  in: number;
+  out: number;
+}
+
+export interface CrossingFact {
+  aIndex: number;
+  bIndex: number;
+  aId: string;
+  bId: string;
+  /** Indices resolved by the same rule the geometry uses. */
+  overIndex: number;
+  underIndex: number;
+  overId: string;
+  underId: string;
+  /** How many times the two centrelines cross in plan. */
+  count: number;
+  /** True when an explicit mask decided it, rather than the layer order. */
+  masked: boolean;
+  /**
+   * False when the two sit on different storeys with no mask between them: they
+   * cross in plan only, one simply passes above the other, and no over/under is
+   * woven. That is the statement a level break makes.
+   */
+  woven: boolean;
+  levelA: number;
+  levelB: number;
+}
+
 const PALETTE = {
   light: { bg: '#f5efdf', gridMajor: 0xcfc6ae, gridMinor: 0xe2dbc6 },
   dark: { bg: '#191410', gridMajor: 0x4a4133, gridMinor: 0x322b21 },
@@ -263,6 +318,11 @@ export class StrandScene {
   // null for hidden strands), rebuilt every frame the scene changes. Handles and
   // connectors read endpoint heights from here so they follow the weave.
   private world3D: Array<Vec3[] | null> = [];
+  // The same lines BEFORE visibility drops any of them (null only for masks).
+  // The lace merge reads these: a hidden strand still shapes its lace — it is
+  // simply not swept at the end — so the geometry never depends on what is
+  // currently shown.
+  private wovenLines: Array<Vec3[] | null> = [];
   /**
    * The centreline each merged LACE is finally swept along — after the folds and
    * storey steps have been settled and the gentle corners rounded. Kept because
@@ -270,8 +330,20 @@ export class StrandScene {
    * than as triangles: `npm run qa:fold` reads it to measure the face a fold
    * shows and the step the runs either side are left to walk, neither of which
    * is recoverable from the mesh afterwards.
+   *
+   * ALWAYS the whole lace, hidden members included: visibility decides what is
+   * swept into meshes, never what is built. Each point carries the layer that
+   * owns it (`Vec3.owner`, split at every turn's apex) and `turns` records the
+   * Cs `zFolds` spliced in, so the fold lab's elevation, picking, and hide/solo
+   * all read one set of ownership ranges instead of guessing by distance.
    */
-  laceCenterlines: Array<{ chain: number[]; line: Vec3[]; width: number; thickness: number }> = [];
+  laceCenterlines: Array<{
+    chain: number[];
+    line: Vec3[];
+    width: number;
+    thickness: number;
+    turns: TurnRecord[];
+  }> = [];
   // Resting height per strand (see computeBaseZ) and the lowest of them, which the
   // grid sits below.
   private baseZ: number[] = [];
@@ -279,6 +351,12 @@ export class StrandScene {
   // Which storey each strand rests on, and the plane each storey weaves about
   // (both filled by computeBaseZ, read by the weave).
   private strandLevel: number[] = [];
+
+  /** The resting height at the END of each run; see Sublevel. */
+  private baseZOut: number[] = [];
+
+  /** See setSublevels. Null is off, and off is the studio's behaviour exactly. */
+  private sublevels: Map<string, Sublevel> | null = null;
   private levelPlaneZ = new Map<number, number>();
   // Half the stack's height in world units — the other half of what the camera
   // has to frame once levels make a scene tall.
@@ -526,10 +604,12 @@ export class StrandScene {
     //    them out of the solve straightens the OTHER one — so hiding a layer
     //    used to flatten the lace it ran under, and "hide everything but this
     //    lace" handed back the one thing it was asked to show with every one of
-    //    its over/unders gone. Everything downstream — the lace merge, the
-    //    ribbons, the connectors, the handles, the weave overlays — reads
-    //    `world3D` and skips a null, so this one line is the whole of "hidden".
-    this.world3D = this.weaveCenterlines(worldLines).map((line, i) =>
+    //    its over/unders gone. The connectors, the handles and the weave
+    //    overlays read `world3D` and skip a null; the lace merge reads
+    //    `wovenLines` instead, because a hidden strand still belongs to its
+    //    lace — its stretch of the built centreline is simply not swept.
+    this.wovenLines = this.weaveCenterlines(worldLines);
+    this.world3D = this.wovenLines.map((line, i) =>
       this.current.strands[i].visible ? line : null,
     );
 
@@ -582,7 +662,7 @@ export class StrandScene {
    */
   private buildWeaveOverlays(): void {
     this.weaveOverlays.clear();
-    if (this.mode !== 'weave') return;
+    if (this.mode !== 'weave' && !this.layerPicking) return;
 
     this.current.strands.forEach((strand, i) => {
       const line = this.world3D[i];
@@ -636,9 +716,16 @@ export class StrandScene {
     for (const [id, mesh] of this.weaveOverlays) {
       const pending = id === this.weavePendingOverId;
       const hovered = id === this.weaveHoverId && !pending;
-      mesh.visible = pending || hovered;
+      const picked = id === this.selectedStrandId && !pending && !hovered;
+      mesh.visible = pending || hovered || picked;
       if (!mesh.visible) continue;
       const mat = mesh.material as THREE.MeshBasicMaterial;
+      if (picked) {
+        // The studio's own "this one" colour, the coral every active control takes.
+        mat.color.set(0xff5c35);
+        mat.opacity = 0.55;
+        continue;
+      }
       // A hover while a strand is already held previews the UNDER half of the
       // pair; anything else is an over.
       mat.color.set(hovered && this.weavePendingOverId ? 0x2f7bd6 : 0x2fb862);
@@ -693,15 +780,23 @@ export class StrandScene {
 
     const visited = new Set<number>();
     for (let seed = 0; seed < strands.length; seed++) {
-      if (visited.has(seed) || !this.world3D[seed]) continue;
+      // Seeded off the PRE-visibility lines: a lace every member of which is
+      // hidden still gets its centreline built (it just sweeps no pieces), so
+      // `laceCenterlines` reports the same laces in the same order whatever is
+      // currently shown.
+      if (visited.has(seed) || !this.wovenLines[seed]) continue;
 
-      // Walk back from the seed to the head of its chain.
+      // Walk back from the seed to the head of its chain. HIDDEN neighbours are
+      // walked straight through: the lace is one physical object, and its shape
+      // must not depend on which parts of it are currently drawn. The chain is
+      // always the whole chain — visibility decides, at the very end, which
+      // stretches of the built centreline get swept.
       let head = seed;
       let headIn: 0 | 1 = 0;
       const back = new Set<number>([seed]);
       for (;;) {
         const p = partner.get(`${head}:${headIn}`);
-        if (!p || back.has(p.index)) break;
+        if (!p || back.has(p.index) || !this.wovenLines[p.index]) break;
         back.add(p.index);
         head = p.index;
         headIn = (1 - p.side) as 0 | 1;
@@ -717,14 +812,14 @@ export class StrandScene {
         visited.add(cur);
         chain.push({ index: cur, reversed: inSide === 1 });
         const p = partner.get(`${cur}:${(1 - inSide) as 0 | 1}`);
-        if (!p) break;
+        if (!p || !this.wovenLines[p.index]) break;
         cur = p.index;
         inSide = p.side;
       }
 
-      if (chain.length < 2) continue;
+      if (chain.length < 2) continue; // a lone strand meshes on its own
       const first = strands[chain[0].index];
-      const ok = chain.every((m) => this.world3D[m.index] && sameLook(strands[m.index], first));
+      const ok = chain.every((m) => this.wovenLines[m.index] && sameLook(strands[m.index], first));
       if (!ok) {
         for (const m of chain) visited.delete(m.index); // let them mesh individually
         continue;
@@ -734,9 +829,12 @@ export class StrandScene {
       // from each strand, each with its own weave height — so collapse the pair
       // and split the difference, otherwise the joint carries a step with no
       // length in the plane and the heading there reads as neither run's.
+      // Every point is tagged with the member it came from, and the collapsed
+      // joint — one point both members brought — is marked shared: that tag is
+      // what hide/solo, picking and the fold lab's elevation will read.
       const line: Vec3[] = [];
       for (const m of chain) {
-        const part = this.world3D[m.index]!;
+        const part = this.wovenLines[m.index]!;
         const walk = m.reversed ? [...part].reverse() : part;
         for (const p of walk) {
           const last = line[line.length - 1];
@@ -744,9 +842,10 @@ export class StrandScene {
             last.zIn = last.zIn ?? last.z;
             last.zOut = p.z;
             last.z = (last.zIn + last.zOut) / 2;
+            last.shared = true;
             continue;
           }
-          line.push({ ...p });
+          line.push({ ...p, owner: m.index });
         }
       }
 
@@ -759,19 +858,85 @@ export class StrandScene {
       // Settle each fold before sweeping: the lace stacks on itself there, one
       // thickness apart, with the change eased into the runs on either side.
       const thickness = (first.thickness ?? this.params.thickness) * SCALE;
-      easeFolds(line, thickness * FOLD_STACK, thickness * 2);
+      // How much step this lace's folds actually carry. FOLD_STACK is the right
+      // cap for a whole-level fold and the wrong one for every other size, which
+      // is exactly what the sublevel model exposes: a crease that climbs from one
+      // named plane to another has a step of its own, and capping it at a global
+      // 2t would ramp the difference into the runs and flatten the C.
+      // With planes declared the crease is replaced by the storey turn from the Z
+      // band lab — but AFTER the corner rounding below, because the turn's points
+      // carry their own sweep frame and rounding would not know to keep it.
+      if (!this.sublevels) easeFolds(line, thickness * FOLD_STACK, thickness * 2);
       // Then walk up any step left at a gentle joint — a level break between two
       // members of the lace puts one storey's worth of height there, and without a
       // crease to climb at it has to be ramped into the runs instead.
       easeSteps(line, width);
       const rounded = roundCorners(line, width * 0.5);
-      this.laceCenterlines.push({ chain: chain.map((m) => m.index), line: rounded, width, thickness });
-      const mesh = this.buildStrandMesh(first, rounded, [true, true]);
-      if (!mesh) {
-        for (const m of chain) visited.delete(m.index);
+      // The rounding replaces the stretch around each gentle joint with fresh
+      // arc samples; give those an owner too, split at the arc's middle, so the
+      // ownership map is gapless before the folds read it.
+      fillOwners(rounded);
+      // leg, half-turn tip of radius step/2, leg — see docs/z-lab.md. The leg is
+      // a ratio of the lace's width, so the turn is the same shape on any lace.
+      // Every C is built here, once, from the two real runs — a hidden partner
+      // included — and each turn records the apex where ownership changes hands.
+      const turns: TurnRecord[] = this.sublevels ? zFolds(rounded, width * LEG_PER_WIDTH) : [];
+      this.laceCenterlines.push({
+        chain: chain.map((m) => m.index),
+        line: rounded,
+        width,
+        thickness,
+        turns,
+      });
+
+      if (chain.every((m) => strands[m.index].visible)) {
+        const mesh = this.buildStrandMesh(first, rounded, [true, true]);
+        if (!mesh) {
+          for (const m of chain) visited.delete(m.index);
+          continue;
+        }
+        this.strandGroup.add(mesh);
+        for (const m of chain) absorbed.add(m.index);
         continue;
       }
-      this.strandGroup.add(mesh);
+
+      // Some members are hidden: sweep the SAME centreline, in pieces. Each
+      // visible stretch of the ownership map becomes its own mesh, cut exactly
+      // where the tags change hands — at a turn's apex, this run really does
+      // climb to the mid-height of the tip before anything of the hidden
+      // partner begins. A shared boundary point (an apex, a collapsed joint)
+      // is kept by the slice on either side of it, so showing both layers
+      // again leaves no gap and no double ring. Nothing is rebuilt and nothing
+      // is invented: a soloed layer shows the exact subset of the full lace it
+      // owns, and restoring every layer returns the identical geometry.
+      const shown = (k: number): boolean => {
+        const o = rounded[k].owner;
+        return o === undefined || strands[o].visible;
+      };
+      const pieces: Array<{ a: number; b: number }> = [];
+      let a = -1;
+      for (let k = 0; k < rounded.length; k++) {
+        if (shown(k)) {
+          if (a < 0) a = k;
+        } else if (a >= 0) {
+          pieces.push({ a, b: k - 1 });
+          a = -1;
+        }
+      }
+      if (a >= 0) pieces.push({ a, b: rounded.length - 1 });
+      const last = rounded.length - 1;
+      for (const r of pieces) {
+        if (r.a > 0 && rounded[r.a - 1].shared) r.a--;
+        if (r.b < last && rounded[r.b + 1].shared) r.b++;
+        if (r.b - r.a < 1) continue;
+        // An end cut mid-lace is a glued end, not a free one: it gets a flat
+        // cap rather than a dome, exactly as it would against a drawn partner.
+        const mesh = this.buildStrandMesh(first, rounded.slice(r.a, r.b + 1), [
+          r.a === 0,
+          r.b === last,
+        ]);
+        if (mesh) this.strandGroup.add(mesh);
+      }
       for (const m of chain) absorbed.add(m.index);
     }
     return absorbed;
@@ -825,6 +990,7 @@ export class StrandScene {
    *  ordered stack when the weave is switched off. */
   private weaveCenterlines(worldLines: Array<Vec2[] | null>): Array<Vec3[] | null> {
     const strands = this.current.strands;
+    this.crossingFacts = [];
     const span = this.params.weaveSpan;
     const anchors: Anchor[][] = strands.map(() => []);
 
@@ -842,6 +1008,17 @@ export class StrandScene {
 
           // Who's over here: a mask if one covers the pair, else the higher layer.
           const masked = this.maskOver(i, j);
+          // Recorded here, at the one place the question is answered, so a report
+          // of the weave can never disagree with the geometry it describes.
+          const factOver = masked ?? j;
+          this.crossingFacts.push({
+            aIndex: i, bIndex: j, aId: strands[i].id, bId: strands[j].id,
+            overIndex: factOver, underIndex: factOver === i ? j : i,
+            overId: strands[factOver].id, underId: strands[factOver === i ? j : i].id,
+            count: crossings.length, masked: masked !== null,
+            woven: masked !== null || this.strandLevel[i] === this.strandLevel[j],
+            levelA: this.strandLevel[i] ?? 0, levelB: this.strandLevel[j] ?? 0,
+          });
           // Two strands on DIFFERENT storeys are already a full level apart, and
           // that separation is the statement the level break makes. Weaving them
           // as well would drag both back toward one shared plane and undo it —
@@ -866,6 +1043,9 @@ export class StrandScene {
           // nudge off each strand's own resting height: the displacement must not
           // depend on how far apart the two sit in the layer panel, or a lace
           // masked over several strands ramps instead of riding flat.
+          const clearance = ((this.strandThicknessWorld(strands[over]) +
+            this.strandThicknessWorld(strands[under])) / 2) * 1.15;
+          if (this.declaredClears(over, under, clearance)) continue;
           const plane = this.crossingPlaneZ(i, j);
           for (const c of crossings) {
             const sOver = over === i ? c.sA : c.sB;
@@ -881,7 +1061,7 @@ export class StrandScene {
       const line = worldLines[i];
       if (!line) return null;
       const { cum } = arcLengths(line);
-      const z = heightField(cum, anchors[i], this.layerZ(i));
+      const z = heightField(cum, anchors[i], this.restingBase(i, cum, strands[i]));
       return line.map((p, k) => ({ x: p.x, y: p.y, z: z[k] }));
     });
   }
@@ -1024,6 +1204,7 @@ export class StrandScene {
         openStart: !freeEnds[0],
         openEnd: !freeEnds[1],
         openFolds: true,
+        cullFoldThrough: true,
       });
       const outlineMat = new THREE.MeshBasicMaterial({
         color: threeColor(strand.stroke_color),
@@ -1134,6 +1315,58 @@ export class StrandScene {
     this.updateGrid();
   }
 
+  /**
+   * SUBLEVELS — a resting plane inside a storey, per strand, in thicknesses.
+   *
+   * `-1` bottom, `0` centre, `+1` top. Off by default (`null`), and the studio
+   * never turns it on: with no map the arithmetic below collapses to exactly what
+   * it was, which is the only reason this can live in the shared renderer.
+   *
+   * A storey is `2 · thickness`, so level L's three planes land on
+   * `L·2t + {-t, 0, +t}` — and level L's TOP (`L·2t + t`) is the same height as
+   * level L+1's BOTTOM (`(L+1)·2t - t`). The shared seam is not a special case
+   * bolted on; it is what a three-plane storey at this pitch already does.
+   *
+   * A sublevel sets where a strand RESTS; it does not replace the crossing swing,
+   * and the first draft of this was wrong to try. The swing has to stay because a
+   * plane is per STRAND while over/under varies ALONG one: a box-stitch arm rides
+   * over one lace and ducks under the next within a single run, and no single
+   * resting plane can say both. Suppress the swing and the weave flattens into
+   * parallel slabs — which is what it did.
+   *
+   * So the two compose, and they compose in the right order: `heightField` rests
+   * a run at its own plane and pulls it to `plane ± h` only where it actually
+   * crosses something. The plane governs the long stretches, the swing governs
+   * the crossings, and the FOLD between two strands on different planes carries
+   * the difference at its crease.
+   */
+  setSublevels(map: Map<string, Sublevel> | null): void {
+    this.sublevels = map && map.size > 0 ? new Map(map) : null;
+    this.rebuild();
+  }
+
+  /** One strand's own woven centreline in world units, before laces are merged. */
+  getStrandCentrelineWorld(id: string): Vec3[] | null {
+    const i = this.current.strands.findIndex((st) => st.id === id);
+    return i < 0 ? null : this.world3D[i];
+  }
+
+  /** Where a strand actually rests, in world units, at each end of its run. */
+  getRestingWorld(id: string): { in: number; out: number } | null {
+    const i = this.current.strands.findIndex((st) => st.id === id);
+    if (i < 0) return null;
+    return { in: this.baseZ[i] ?? 0, out: this.baseZOut[i] ?? this.baseZ[i] ?? 0 };
+  }
+
+  /** One thickness in world units — the distance between two planes. */
+  getThicknessWorld(): number {
+    return this.params.thickness * SCALE;
+  }
+
+  hasSublevels(): boolean {
+    return this.sublevels !== null;
+  }
+
   /** One storey's height in source units, for the layer panel to quote. */
   getLevelStep(): number {
     return this.levelStepSource();
@@ -1170,23 +1403,32 @@ export class StrandScene {
       .sort((a, b) => a[1] - b[1])
       .forEach(([r], k) => rankZ.set(r, k * gap));
 
+    // A sublevel is a plane INSIDE the storey, so it is added on top of the
+    // storey's own height rather than replacing it — and it is per STRAND, like
+    // the level break it sits inside, because it is a statement about one row.
+    const sub = this.params.thickness * SCALE;
     const rest = new Array<number>(n);
+    const restOut = new Array<number>(n);
     const level = new Array<number>(n);
     for (let i = 0; i < n; i++) {
       level[i] = levelAt(this.current, i);
-      rest[i] = (rankZ.get(find(i)) ?? 0) + level[i] * step;
+      const p = this.sublevels?.get(this.current.strands[i].id);
+      const floor = (rankZ.get(find(i)) ?? 0) + level[i] * step;
+      rest[i] = floor + (p?.in ?? 0) * sub;
+      restOut[i] = floor + (p?.out ?? p?.in ?? 0) * sub;
     }
 
     // Re-centre on z = 0, so adding a level opens the stack up around the grid
     // instead of walking the whole model off it.
     let min = Infinity;
     let max = -Infinity;
-    for (const z of rest) {
+    for (const z of [...rest, ...restOut]) {
       if (z < min) min = z;
       if (z > max) max = z;
     }
     const shift = n ? -(min + max) / 2 : 0;
     this.baseZ = rest.map((z) => z + shift);
+    this.baseZOut = restOut.map((z) => z + shift);
     this.lowestZ = n ? min + shift : 0;
     this.strandLevel = level;
     // How tall the stack itself is, for the camera. A single storey is a flat
@@ -1216,9 +1458,82 @@ export class StrandScene {
    *  mask): halfway between them, so the mask still lifts one clear of the other
    *  by the same amount it would anywhere else. */
   private crossingPlaneZ(i: number, j: number): number {
+    // With planes declared they are the statement, so a crossing swings about the
+    // two runs' OWN heights rather than about the storey they happen to share.
+    // Swinging about the storey overrode the declaration: a run was pinned to
+    // `storey ± t/2` at every crossing, and on a stitch whose arms are barely
+    // longer than they are wide the crossings cover the whole run, so the plane
+    // it was supposed to rest on never showed. Measured on two crossing strands:
+    // arms declared `top` and cores `bottom`, two thicknesses apart, came out
+    // resting at ±0.258 against a thickness of 0.52 — half a thickness each side
+    // of the storey, which is the swing and nothing else.
+    if (this.sublevels) {
+      return ((this.baseZ[i] ?? 0) + (this.baseZ[j] ?? 0)) / 2;
+    }
     const a = this.levelPlaneZ.get(this.strandLevel[i] ?? 0) ?? 0;
     const b = this.levelPlaneZ.get(this.strandLevel[j] ?? 0) ?? 0;
     return (a + b) / 2;
+  }
+
+  /**
+   * Does the declared assignment already settle this crossing?
+   *
+   * Two runs whose planes put them a clear thickness apart, the right way up, do
+   * not need weaving: they pass at the heights they were given and the over/under
+   * is already true. Anchoring them anyway would drag both back toward one shared
+   * plane — the swing is half a thickness either side, so a pair declared two
+   * thicknesses apart would be pulled to one — which is the declaration being
+   * overruled by the thing it was supposed to drive.
+   */
+  private declaredClears(over: number, under: number, clearance: number): boolean {
+    if (!this.sublevels) return false;
+    const zOver = this.baseZ[over] ?? 0;
+    const zUnder = this.baseZ[under] ?? 0;
+    return zOver - zUnder >= clearance;
+  }
+
+/**
+   * The plane this run rests on, per vertex.
+   *
+   * A scalar while the run rests at one height, which is every run in the studio
+   * and most of them here. When a strand comes out of its fold onto a different
+   * plane from the one it went in on, the resting height has to CHANGE along the
+   * run, and how it changes is the whole question — a straight line reads as a
+   * ramp with corners at both ends, which is exactly the join that looked wrong
+   * where the turn met the run.
+   *
+   * So it eases on an arctan: flat where it leaves the fold, flat again where it
+   * settles, and all of the change in the middle. `K` is how steep that middle
+   * is. The lace holds its first plane for a leg's length out of the turn before
+   * any of it happens, because the part being placed is the run AFTER the C, not
+   * the C itself.
+   */
+  private restingBase(i: number, cum: number[], strand: Strand3D): number | number[] {
+    const zIn = this.layerZ(i);
+    const zOut = this.baseZOut[i] ?? zIn;
+    if (Math.abs(zOut - zIn) < 1e-9) return zIn;
+
+    const total = cum[cum.length - 1];
+    if (!(total > 0)) return zIn;
+    const width = strand.width * this.params.widthScale * SCALE;
+    // Hold, then ramp. Squeezed proportionally rather than clipped when the run
+    // is too short to seat both, so a stubby arm still eases instead of stepping.
+    let hold = width * LEG_PER_WIDTH;
+    let ramp = width * 2;
+    if (hold + ramp > total) {
+      const k = total / (hold + ramp);
+      hold *= k;
+      ramp *= k;
+    }
+
+    const K = 3;
+    const span = Math.atan(K) * 2;
+    const ease = (u: number): number => 0.5 + Math.atan(K * (2 * u - 1)) / span;
+
+    return cum.map((c) => {
+      const u = Math.min(1, Math.max(0, (c - hold) / ramp));
+      return zIn + (zOut - zIn) * ease(u);
+    });
   }
 
   private layerZ(layerIndex: number): number {
@@ -1500,6 +1815,112 @@ export class StrandScene {
   }
 
   // ---- masks (over/under) --------------------------------------------------
+  private crossingFacts: CrossingFact[] = [];
+
+  /**
+   * Keep the per-strand pick ribbons up outside the weave tool.
+   *
+   * `buildWeaveOverlays` already builds exactly what is needed to answer "which
+   * LAYER is this?" — one ribbon per strand, along that strand's own centreline,
+   * carrying its own id — because a merged lace is one mesh over many strands and
+   * cannot answer it. It was gated on the weave tool because that is the only
+   * place that asked. The fold lab asks the same question, so it opens the same
+   * gate rather than growing a second answer.
+   */
+  private layerPicking = false;
+
+  /** The layer the fold lab has selected, lit in the studio's own pick colour. */
+  private selectedStrandId: string | null = null;
+
+  setLayerPicking(on: boolean): void {
+    if (this.layerPicking === on) return;
+    this.layerPicking = on;
+    this.buildWeaveOverlays();
+  }
+
+  /** Which strand is under this client point, or null. */
+  pickStrandAt(clientX: number, clientY: number): string | null {
+    const rect = this.canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    this.raycaster.setFromCamera(
+      new THREE.Vector2(
+        ((clientX - rect.left) / rect.width) * 2 - 1,
+        -((clientY - rect.top) / rect.height) * 2 + 1,
+      ),
+      this.camera,
+    );
+    // Non-recursive, and against the OVERLAYS rather than the bodies: three's
+    // raycaster ignores `visible`, so an unlit overlay still answers a ray.
+    const hit = this.raycaster.intersectObjects(this.weaveGroup.children, false)[0];
+    const byOverlay = hit?.object.userData.strandId as string | undefined;
+
+    // The overlays are swept along each strand's OWN run, and a fold's turn is
+    // not in any of them — it is built later, on the merged lace. So the drawn
+    // bodies answer too (recursively: each ribbon is a group holding its fill
+    // and outline meshes). The overlay only wins while it is the thing actually
+    // under the pointer: a C wraps AROUND other strands, and their invisible
+    // overlays would otherwise swallow a click on the turn that covers them.
+    // The slack forgives the overlay's own inflation over the body it coats.
+    const body = this.raycaster.intersectObjects(this.strandGroup.children, true)[0];
+    const slack = this.params.thickness * SCALE * 0.5;
+    if (byOverlay && (!body || hit.distance <= body.distance + slack)) return byOverlay;
+    if (!body) return null;
+
+    // A hit on a body: attribute the point through the lace's OWN ownership
+    // map — every point of a merged centreline records the layer that owns it,
+    // split at each turn's apex — so either half of a C names its real layer
+    // instead of whichever original run happens to pass closest.
+    const p = body.point;
+    let best: string | null = null;
+    let bd = Infinity;
+    const consider = (q: Vec3, id: string): void => {
+      const d = (q.x - p.x) ** 2 + (q.y - p.y) ** 2 + (q.z - p.z) ** 2;
+      if (d < bd) {
+        bd = d;
+        best = id;
+      }
+    };
+    const inLace = new Set<number>();
+    for (const lace of this.laceCenterlines) {
+      for (const idx of lace.chain) inLace.add(idx);
+      for (const q of lace.line) {
+        const o = q.owner;
+        if (o === undefined || !this.world3D[o]) continue; // hidden: not on screen
+        consider(q, this.current.strands[o].id);
+      }
+    }
+    // Strands not merged into any lace only exist as their own runs.
+    for (let i = 0; i < this.world3D.length; i++) {
+      if (inLace.has(i)) continue;
+      const line = this.world3D[i];
+      if (!line) continue;
+      for (const q of line) consider(q, this.current.strands[i].id);
+    }
+    return best;
+  }
+
+  /** Light one layer, or none. */
+  selectStrand(id: string | null): void {
+    this.selectedStrandId = id;
+    this.applyWeaveHighlight();
+  }
+
+  getSelectedStrand(): string | null {
+    return this.selectedStrandId;
+  }
+
+
+  /**
+   * Every crossing the last build resolved, and who rode over at it.
+   *
+   * Only populated while the Weave render param is on — with the weave off there
+   * are no crossings to resolve, and the stack order alone decides what covers
+   * what. Read after `rebuild()`.
+   */
+  getCrossings(): CrossingFact[] {
+    return this.crossingFacts;
+  }
+
   getMasks(): MaskLink[] {
     return this.current.masks;
   }
