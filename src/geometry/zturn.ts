@@ -225,7 +225,12 @@ export function zTurn(o: TurnOpts): Vec3[] {
     return zTurn({ ...o, style: 'current', zIn: o.zOut, zOut: o.zIn }).map((q) => ({
       ...q,
       z: 2 * centre - q.z,
-      up: q.up ? { x: q.up.x, y: q.up.y, z: -q.up.z } : undefined,
+      // Reflecting in Z takes (x, y, z) to (x, y, -z), and then the whole axis
+      // is negated: a reflection reverses orientation, so the frame comes out
+      // pointing into the strip instead of out of it. Negating restores the
+      // convention, and lands this on exactly what 'radial' computes — which
+      // is the point of keeping both.
+      up: q.up ? { x: -q.up.x, y: -q.up.y, z: q.up.z } : undefined,
     }));
   }
 
@@ -270,13 +275,24 @@ export function zTurn(o: TurnOpts): Vec3[] {
   // so the leg coming away is upside down. That is not a quirk of the model — it
   // is what a folded strap does, and it is why the other side shows at a turn.
   const face = (o.face ?? 1) >= 0 ? 1 : -1;
-  // The legs meet the tip at its two ends, so they take the frame the tip has
-  // there: at phi = 0 and phi = pi the radial is (0, -/+ sign), which is where
-  // `sign` enters. 'current' leaves it out, and so hands the dropping fold's
-  // legs a frame its own tip disagrees with.
-  const frameSign = style === 'current' ? 1 : sign;
-  const UP = { x: 0, y: 0, z: frameSign * face };
-  const DOWN = { x: 0, y: 0, z: -frameSign * face };
+  const UP = { x: 0, y: 0, z: face };
+  const DOWN = { x: 0, y: 0, z: -face };
+
+  // The climb belongs in the TIP's frame, and ONLY there.
+  //
+  // `face` arrives as a parity, alternating down the lace, and it is load
+  // bearing: a turn hands the strip to whatever follows it upside down, so
+  // turn k's exit has to be what turn k+1's entry expects. The legs are that
+  // handshake — (0,0,face) in, (0,0,-face) out — and they must not move, or
+  // consecutive turns disagree by a half turn with no length to take it in.
+  // Folding `sign` into the legs did exactly that, and it showed as a lace
+  // torn open along its CORE, the run between its two turns.
+  //
+  // What the climb has to reach is the tip in between, so `sign` multiplies
+  // the parity here alone. The two ends then still read (0,0,face) and
+  // (0,0,-face) whichever way the fold runs — the handshake is preserved —
+  // and only the path taken between them turns the right way round.
+  const tipFace = style === 'current' ? face : sign * face;
 
   for (let i = 0; i <= legSteps; i++) {
     const q = legAt(o.from, a, i / legSteps, lenIn);
@@ -357,7 +373,7 @@ export function zTurn(o: TurnOpts): Vec3[] {
       up:
         style === 'current'
           ? { x: -n.x * sin * face, y: -n.y * sin * face, z: cos * face }
-          : { x: (-n.x * ux * face) / ul, y: (-n.y * ux * face) / ul, z: (-uz * face) / ul },
+          : { x: (-n.x * ux * tipFace) / ul, y: (-n.y * ux * tipFace) / ul, z: (-uz * tipFace) / ul },
     });
   }
 
