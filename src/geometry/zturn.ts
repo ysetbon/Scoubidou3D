@@ -56,6 +56,35 @@ export const LEG = 0.95;
 export const LAB_LACE_WIDTH = 1.1;
 export const LEG_PER_WIDTH = LEG / LAB_LACE_WIDTH;
 
+/**
+ * Which construction the storey turn uses. All four build the same three
+ * pieces — leg, rolled tip, leg — and differ only in how the tip's sweep
+ * frame is arrived at, which is the whole of the C's shape. See `zTurn`.
+ *
+ *   current  the shipped frame: correct climbing, degenerate dropping
+ *   radial   the frame taken from the path itself (the minimal fix)
+ *   mirror   built climbing and reflected (an independent route to `radial`)
+ *   broad    `radial`, with the bight opened out in plan
+ */
+export type TurnStyle = 'current' | 'radial' | 'mirror' | 'broad';
+
+export const TURN_STYLES: TurnStyle[] = ['current', 'radial', 'mirror', 'broad'];
+
+/**
+ * How wide `broad` opens the bight, against the lace's width.
+ *
+ * The tip's in-plane profile radius is normally `h`, half the climb — which on
+ * a two-thickness storey lands near half the lace width, so the bight comes
+ * out about as tight as the strip is wide and the C closes to a slot. This is
+ * the floor under that radius, and it only ever widens it.
+ *
+ * It has to clear `h` to do anything at all: on this lab's laces the width is
+ * 1.08 and `h` is 0.52, so a ratio under about 0.48 leaves the floor never
+ * biting and 'broad' collapses onto 'radial'. 0.7 opens the bight by about
+ * half again, which is enough to read as a rounder return with an open eye.
+ */
+export const BROAD_PER_WIDTH = 0.7;
+
 const smoothstep = (t: number): number => {
   const u = Math.min(1, Math.max(0, t));
   return u * u * (3 - 2 * u);
@@ -132,6 +161,8 @@ export interface TurnOpts {
    * take it in — which is a strip turned inside out in a single step.
    */
   face?: number;
+  /** Which construction to use. Default 'current' — the shipped one. */
+  style?: TurnStyle;
   /** Samples along each leg and around the tip. */
   legSteps?: number;
   tipSteps?: number;
@@ -145,8 +176,64 @@ export interface TurnOpts {
  * radius is half the storey step, so the curve leaves on `zIn` and arrives on
  * `zOut` exactly, and `walk` carries it along the crease as it turns, which is
  * what lets a leaning fold travel sideways instead of doubling back on itself.
+ *
+ * ---- the frame, and why a DROPPING fold used to come out pinched ----------
+ *
+ * The tip's centreline is a half-circle about the crease. In the plane spanned
+ * by the crease's in-plane normal `n` and Z, its offset from the roll axis is
+ *
+ *     (h·sin φ,  −sign·h·cos φ)          sign = +1 climbing, −1 dropping
+ *
+ * so a RIGID wrap — the strip going round the roll rather than through it —
+ * needs the thickness axis to be that circle's own outward radial,
+ *
+ *     (sin φ,  −sign·cos φ)
+ *
+ * The shipped frame ('current') is `(−sin φ·face, cos φ·face)`, which has no
+ * `sign` in it at all. Against the radial that is
+ *
+ *     climbing  (sign +1):  −face                  constant — rigid
+ *     dropping  (sign −1):  +face·cos 2φ           swings, and is ZERO at φ=π/2
+ *
+ * At that zero — the apex, the middle of the bight — the thickness axis lies
+ * ALONG the path and the cross-section has no width left to sweep: the strip
+ * wrings itself into a point. That is the pinched, twisted flap, and it is why
+ * only half a lace's turns showed it. Which half is decided by the junction:
+ * walking a chain, the joint taken start-to-start is the one crossed going
+ * downhill, so it drops and pinches, while the end-to-start joint climbs and
+ * comes out as the broad clean C. Same code, same fold, opposite sign.
+ *
+ * The lab this was ported from benches ONE canonical turn, climbing, so the
+ * half of the parameter space that is wrong never came up there.
+ *
+ * `style` picks how the frame is arrived at. 'current' keeps the shipped
+ * formula; everything else derives the frame from the path, and is therefore
+ * rigid whichever way the fold runs. For a CLIMBING fold every style below
+ * reproduces 'current' exactly — the accepted C is never touched.
  */
 export function zTurn(o: TurnOpts): Vec3[] {
+  const style = o.style ?? 'current';
+
+  // 'mirror' does not trust a frame formula to cover both directions: it
+  // builds the turn CLIMBING and reflects the result in Z. The plan geometry
+  // cannot notice — only `h` enters it, and `h` is a magnitude — so the
+  // reflection moves heights and frames and nothing else. An independent route
+  // to what 'radial' computes directly; if the two render alike, the formula
+  // is right.
+  if (style === 'mirror' && o.zOut < o.zIn) {
+    const centre = (o.zIn + o.zOut) / 2;
+    return zTurn({ ...o, style: 'current', zIn: o.zOut, zOut: o.zIn }).map((q) => ({
+      ...q,
+      z: 2 * centre - q.z,
+      // Reflecting in Z takes (x, y, z) to (x, y, -z), and then the whole axis
+      // is negated: a reflection reverses orientation, so the frame comes out
+      // pointing into the strip instead of out of it. Negating restores the
+      // convention, and lands this on exactly what 'radial' computes — which
+      // is the point of keeping both.
+      up: q.up ? { x: -q.up.x, y: -q.up.y, z: q.up.z } : undefined,
+    }));
+  }
+
   const a = norm(o.din);
   const swing = headingChange(o.din, o.dout);
   const lean = autoLean(separationOf(o.din, o.dout));
@@ -191,6 +278,22 @@ export function zTurn(o: TurnOpts): Vec3[] {
   const UP = { x: 0, y: 0, z: face };
   const DOWN = { x: 0, y: 0, z: -face };
 
+  // The climb belongs in the TIP's frame, and ONLY there.
+  //
+  // `face` arrives as a parity, alternating down the lace, and it is load
+  // bearing: a turn hands the strip to whatever follows it upside down, so
+  // turn k's exit has to be what turn k+1's entry expects. The legs are that
+  // handshake — (0,0,face) in, (0,0,-face) out — and they must not move, or
+  // consecutive turns disagree by a half turn with no length to take it in.
+  // Folding `sign` into the legs did exactly that, and it showed as a lace
+  // torn open along its CORE, the run between its two turns.
+  //
+  // What the climb has to reach is the tip in between, so `sign` multiplies
+  // the parity here alone. The two ends then still read (0,0,face) and
+  // (0,0,-face) whichever way the fold runs — the handshake is preserved —
+  // and only the path taken between them turns the right way round.
+  const tipFace = style === 'current' ? face : sign * face;
+
   for (let i = 0; i <= legSteps; i++) {
     const q = legAt(o.from, a, i / legSteps, lenIn);
     out.push({ x: q.x, y: q.y, z: mid - sign * h, up: UP });
@@ -228,25 +331,57 @@ export function zTurn(o: TurnOpts): Vec3[] {
   const du = inTip.x * c.x + inTip.y * c.y;
   const k = Math.min(dv < 1e-9 ? Infinity : du / dv, (Math.max(o.leg, h) * 4) / (Math.PI * h));
   const base = legAt(o.from, a, 1, lenIn);
+
+  // How far the profile reaches out in plan. Normally `h`, which makes the tip
+  // a circle; 'broad' lifts it toward the lace's own width and the tip becomes
+  // an ellipse — wider across, still climbing exactly `h`. Neither END moves:
+  // at phi = 0 and phi = pi the profile is back on the roll axis whatever the
+  // radius, so the turn still leaves on `zIn` and lands on `zOut`.
+  const rad = style === 'broad' ? Math.max(h, (o.leg / LEG_PER_WIDTH) * BROAD_PER_WIDTH) : h;
+
+  // The walk is the profile's ARCLENGTH times the crease rate. A circle's is
+  // h·phi in closed form; the widened ellipse's is not, so it is accumulated
+  // over the tip's own samples — the resolution the walk is applied at anyway.
+  // The circle keeps its exact form, so 'current' and 'radial' are unchanged
+  // to the last bit.
+  const arc: number[] = [0];
+  for (let i = 1; i <= tipSteps; i++) {
+    const p0 = (Math.PI * (i - 1)) / tipSteps;
+    const p1 = (Math.PI * i) / tipSteps;
+    arc.push(arc[i - 1] + Math.hypot(rad * (Math.sin(p1) - Math.sin(p0)), h * (Math.cos(p1) - Math.cos(p0))));
+  }
+  const walkAt = (i: number, phi: number): number => (rad === h ? h * phi : arc[i]) * k;
+
   for (let i = 1; i <= tipSteps; i++) {
     const phi = Math.PI * (i / tipSteps);
     const sin = Math.sin(phi);
     const cos = Math.cos(phi);
-    const walk = h * phi * k; // profile arclength times the crease rate
+    const walk = walkAt(i, phi); // profile arclength times the crease rate
+    // Square to the crease and to the tip's own tangent, turning over with the
+    // strip. The profile's tangent is (rad·cos, sign·h·sin) in the (n, Z)
+    // plane, so its outward normal — the axis a rigid wrap needs — is
+    // (h·sin, −sign·rad·cos), normalised. With rad = h that is the circle's
+    // radial, and with sign = +1 it is the lab's own ring frame, which is why
+    // a climbing fold comes out identical whichever style asked for it.
+    const ux = h * sin;
+    const uz = -sign * rad * cos;
+    const ul = Math.hypot(ux, uz) || 1;
     out.push({
-      x: base.x + c.x * walk + n.x * h * sin,
-      y: base.y + c.y * walk + n.y * h * sin,
+      x: base.x + c.x * walk + n.x * rad * sin,
+      y: base.y + c.y * walk + n.y * rad * sin,
       z: mid - sign * h * cos,
-      // Square to the crease and to the tip's own tangent, turning over with the
-      // strip. Taken from the lab's own ring frame.
-      up: { x: -n.x * sin * face, y: -n.y * sin * face, z: cos * face },
+      up:
+        style === 'current'
+          ? { x: -n.x * sin * face, y: -n.y * sin * face, z: cos * face }
+          : { x: (-n.x * ux * tipFace) / ul, y: (-n.y * ux * tipFace) / ul, z: (-uz * tipFace) / ul },
     });
   }
 
   // The leg coming away, bending the rest of the way onto the outgoing run,
   // from where the walk left the strip.
   const away = spin(inTip, tipTurn);
-  const tipEnd: Vec2 = { x: base.x + c.x * h * Math.PI * k, y: base.y + c.y * h * Math.PI * k };
+  const reach = walkAt(tipSteps, Math.PI);
+  const tipEnd: Vec2 = { x: base.x + c.x * reach, y: base.y + c.y * reach };
   for (let i = 1; i <= legSteps; i++) {
     const q = legAt(tipEnd, away, i / legSteps, lenOut);
     out.push({ x: q.x, y: q.y, z: mid + sign * h, up: DOWN });
