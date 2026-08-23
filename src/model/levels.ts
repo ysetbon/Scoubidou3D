@@ -25,6 +25,25 @@ export function levelAt(scene: Scene3D, strandIndex: number): number {
   return n;
 }
 
+/**
+ * Is the scene STACKED — more than one storey with something on it?
+ *
+ * Not the same question as "are there any breaks", and the difference is a bug
+ * you could hit by pressing one button. `addLevelBreak` below defaults to the
+ * top of the stack, so "add a level" on a seven-strand scene stores `[7]`: a
+ * break above every strand, with nothing yet on the far side of it. Every
+ * strand is still on storey 0 and nothing about the scene should move.
+ *
+ * A break lifts every strand from its index upward, so the level is
+ * non-decreasing down the stack and the two ends settle it: same storey at both
+ * ends means one storey throughout, however many breaks are stored. That also
+ * covers a break at 0, which lifts the whole stack together and stacks nothing.
+ */
+export function isStacked(scene: Scene3D): boolean {
+  const n = scene.strands.length;
+  return n > 0 && levelAt(scene, n - 1) !== levelAt(scene, 0);
+}
+
 /** Add a break, by default at the top of the stack (the button's behaviour). */
 export function addLevelBreak(scene: Scene3D, at: number = scene.strands.length): void {
   scene.levelBreaks.push(clamp(Math.round(at), 0, scene.strands.length));

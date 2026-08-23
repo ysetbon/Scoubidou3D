@@ -29,7 +29,7 @@ import {
   recomputeOccupancy,
   setEndpoint,
 } from '../model/connections';
-import { levelAt, removeStrandAt } from '../model/levels';
+import { isStacked, levelAt, removeStrandAt } from '../model/levels';
 import {
   ControlHandle,
   VisibleControls,
@@ -1429,11 +1429,22 @@ export class StrandScene {
    * is what turns a stacked stitch into a loose spiral with holes in it.
    *
    * With no levels in play nothing is capped — Depth means exactly what it did.
+   *
+   * "In play" means the scene really HAS a second storey, not that a break
+   * exists. Those are different, and the difference was a bug you could hit by
+   * pressing one button: `addLevelBreak` defaults to the top of the stack, so
+   * "add a level" on a seven-strand scene stores `levelBreaks: [7]` — a break
+   * above every strand, with nothing on the far side of it. Every strand stays
+   * on storey 0 and the picture should not move at all. Testing the break
+   * instead of the storey, it halved the swing at all fourteen crossings:
+   * undeclared pairs closed up by a whole thickness, and a scene someone had
+   * spent an evening placing rearranged itself the moment they added a level
+   * they had not yet put anything on.
    */
   private weaveAmplitude(thicknessOver: number, thicknessUnder: number): number {
     const clearance = ((thicknessOver + thicknessUnder) / 2) * 1.15;
     let h = Math.max(this.params.weaveDepth * SCALE, clearance / 2);
-    if (this.current.levelBreaks.length > 0) {
+    if (isStacked(this.current)) {
       const room = (this.levelStepSource() * SCALE - Math.max(thicknessOver, thicknessUnder)) / 2;
       h = Math.min(h, Math.max(room, 0));
     }
