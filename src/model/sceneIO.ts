@@ -157,13 +157,18 @@ function parseStrand(raw: unknown, i: number): Strand3D {
 
 /** Parse Scoubidou3D's own scene format. Throws with a readable reason. */
 /**
- * A rung from untrusted input. Whole numbers in `[-2, 2]` and nothing else: the
- * ladder has five rungs, and a file claiming `+9` would put a layer four storeys
+ * A rung from untrusted input. Whole numbers in `[-3, 3]` and nothing else: the
+ * ladder has seven rungs, and a file claiming `+9` would put a layer four storeys
  * up with no shelf under it and no way to see what happened.
+ *
+ * The range widened from `±2` once, which is the safe direction: every file
+ * written before it widened still loads unchanged. A file written NOW with `±3`
+ * loaded by a build from before will DROP those entries rather than move the
+ * layer somewhere wrong — the same thing it does with any rung it cannot place.
  */
 function rung(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isInteger(value)) return null;
-  return value >= -2 && value <= 2 ? value : null;
+  return value >= -3 && value <= 3 ? value : null;
 }
 
 /** Placed RUNS, keeping only the ones naming a strand this scene actually has. */

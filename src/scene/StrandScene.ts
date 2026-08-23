@@ -183,9 +183,9 @@ export interface CrossPoint {
  * One height a layer can be put on, in world units — see setPlaneGuides.
  *
  * `step` is how many thicknesses it sits off the storey middle it belongs to, so
- * an ODD step is a seam: a storey's ceiling and the next one's floor are one
- * height under two names, which is what `PITCH = 2` means and the reason the
- * panel's nine names are seven rungs.
+ * a WHOLE step is a seam: a storey's ceiling and the next one's floor are one
+ * height under two names, which is what `PITCH = 2` means, and the reason the
+ * panel's seven rungs name fewer than seven distinct heights across a stack.
  */
 export interface SublevelPlane {
   z: number;
@@ -201,13 +201,14 @@ export interface SublevelPlane {
  * A whole-thickness rung left them a full thickness of daylight, which is the
  * one arrangement the control exists to make.
  *
- * Two rungs either side of the middle, so the ladder spans `±1` thickness —
- * exactly one storey, whose floor and ceiling are the seams it shares with its
- * neighbours. The panel's rungs and these MUST agree; they did not once, and the
- * canvas quietly drew four fewer shelves than there were rungs to press.
+ * Three rungs either side of the middle, so the ladder spans `±1.5` thicknesses:
+ * this storey, whose floor and ceiling (`±2`) are the seams it shares with its
+ * neighbours, plus one rung PAST each seam into the storey next door. The
+ * panel's rungs and these MUST agree; they did not once, and the canvas quietly
+ * drew four fewer shelves than there were rungs to press.
  */
 const SUBLEVEL_STEP = 0.5;
-const SUBLEVEL_REACH = 2;
+const SUBLEVEL_REACH = 3;
 
 const PALETTE = {
   light: { bg: '#f5efdf', gridMajor: 0xcfc6ae, gridMinor: 0xe2dbc6 },
@@ -2616,9 +2617,10 @@ export class StrandScene {
    *   * Nobody picked out: each storey the scene actually HAS, and its three
    *     heights. Bounded by the number of levels, so a twenty-storey box stitch
    *     stays a stack rather than a fog.
-   *   * A layer picked out: every height ITS ladder can reach — all seven — so
-   *     each rung in the panel has a shelf in the scene, which is the promise
-   *     the two make to each other.
+   *   * A layer picked out: every height ITS ladder can reach — all seven, the
+   *     outer two lying past the seams in the storeys next door — so each rung
+   *     in the panel has a shelf in the scene, which is the promise the two
+   *     make to each other.
    */
   sublevelPlanes(focusIndex = -1): SublevelPlane[] {
     const t = this.params.thickness * SCALE;

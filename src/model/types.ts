@@ -118,8 +118,9 @@ export interface Scene3D {
   levelBreaks: number[];
   /**
    * WHERE EACH LAYER'S RUN RESTS, by strand id, as a RUNG: `-2` the floor of its
-   * storey, `0` the middle, `+2` the ceiling. A rung is half a thickness, so two
-   * rungs apart is one thickness — which is what "resting on" means.
+   * storey, `0` the middle, `+2` the ceiling, and `±3` one rung past those into
+   * the storey next door. A rung is half a thickness, so two rungs apart is one
+   * thickness — which is what "resting on" means.
    *
    * Absent, or absent for a given layer, is the default: the scene rests it
    * where the layer stack falls. That is not the same as `0`, because declaring

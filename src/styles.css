@@ -644,7 +644,7 @@ button {
   text-transform: none;
 }
 
-/* ---- the five marks that place a layer ----------------------------------- */
+/* ---- the seven marks that place a layer ---------------------------------- */
 /* The whole control, in the row. It used to be a chip that opened a five-line
    list underneath, which cost a press to look and changed the row's height
    while you were reading it. */
@@ -658,10 +658,13 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* Five where there were three, so each gives up a pixel: the row still has to
-     hold the layer's id and both tags beside them. */
-  width: 23px;
-  height: 24px;
+  /* Seven of these have to sit beside the layer's id in a 297px row, which
+     leaves 139px for the control. 7 x 18 + six 1px gaps is 132px — the widest
+     that still fits with nothing in the row starting to ellipsise. The height
+     comes down with the width: the lit one is a filled pill the size of the
+     button, and at 18x24 that was a tall black slug next to its neighbours. */
+  width: 18px;
+  height: 21px;
   border: 0;
   border-radius: 4px;
   background: transparent;
@@ -669,8 +672,8 @@ button {
 }
 
 .plane-btn .icon {
-  width: 19px;
-  height: 19px;
+  width: 17px;
+  height: 17px;
 }
 
 /* The storey's own floor and ceiling — the shelves a layer can be RESTED on, as

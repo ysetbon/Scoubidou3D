@@ -2407,16 +2407,17 @@ export class Panel {
     return row;
   }
   /**
-   * FIVE MARKS, in the row, always.
+   * SEVEN MARKS, in the row, always.
    *
-   * A chip that opened a five-line list underneath meant a press to look and a
-   * press to set, and a row that changed height while you were reading it. The
-   * whole control is five marks wide, so it simply sits in the row: nothing
-   * opens, nothing moves, and every height is one press away.
+   * A chip that opened a list underneath meant a press to look and a press to
+   * set, and a row that changed height while you were reading it. The whole
+   * control is seven marks wide — 18px each, which is what makes seven of them
+   * fit beside the layer's id in a 297px row — so it simply sits in the row:
+   * nothing opens, nothing moves, and every height is one press away.
    *
-   * Each mark is the storey seen edge-on with the slab resting on that rung —
+   * Each mark is the storey seen edge-on with the slab sitting at that rung —
    * the same picture as the shelves in the canvas and the rules in the card's
-   * elevation, at 24px. Pressing the lit one clears it, which is the only way
+   * elevation, at 17px. Pressing the lit one clears it, which is the only way
    * back to "not placed", a state that is not the same as centre.
    *
    * The names live in the tooltips. There is no room for them at this size, and
@@ -3648,39 +3649,57 @@ const LAYERS_ICON = svg(
     '<path d="M12 17.7 3.7 12.5 2 13.6 12 19.8 22 13.6 20.3 12.5Z" />',
 );
 
-// The planes side of the stack bar's switch: a storey seen edge-on — its floor,
-// its middle and its ceiling — with a layer resting on the middle one. The same
-// mark, with the slab moved, is what each of the three buttons in a row shows,
-// so the tab and the control say the same thing in the same shape.
+// The planes side of the stack bar's switch: a storey seen edge-on — its floor
+// and its ceiling — with a layer at its middle. The same mark, with the slab
+// moved, is what each of the seven buttons in a row shows, so the tab and the
+// control say the same thing in the same shape.
 /**
- * The mark for one rung: the storey seen edge-on, with the slab resting ON it.
+ * The mark for one rung: the storey seen edge-on, with the layer at that height.
  *
- * Only the storey's own floor and ceiling are drawn, faint — three more rules
- * inside 24px was noise the slab had to compete with, and the slab's height is
- * the whole of what the button says. Rungs are `4 · SUBLEVEL_STEP` apart down
- * the box, so the picture is to scale: `+1` really does sit half way between the
- * middle and the ceiling.
+ * Only the storey's own floor and ceiling are drawn, faint — more rules inside
+ * 24px was noise the slab had to compete with, and where the slab sits is the
+ * whole of what the button says.
+ *
+ * IT IS TO SCALE, WHICH IS WHAT MAKES `±3` READABLE. The slab is drawn nearly a
+ * whole thickness tall — two rungs — and CENTRED on its rung, because a sublevel
+ * is where the strand's centreline goes, not where its underside does. So two
+ * marks two rungs apart show two slabs all but touching, which is the thing `+1`
+ * over `-1` does in the scene. And it lands the outer pair flush against the
+ * box: `+3`'s slab sits squarely on top of the ceiling rule, `-3`'s hangs under
+ * the floor, both clear of the walls. Everything between the two rules is this
+ * storey; those two marks are the storey next door.
  */
 const MARK_MID = 12;
-const MARK_RUNG = 3.525; // (18.5 - 4.4) / 4, so ±2 land on the two rules
+const MARK_RUNG = 2.6;
+// A shade under the two rungs a thickness really is — exactly the rules' own
+// drawn weight under it, which is what puts ±3's slab flush OUTSIDE the box
+// instead of half over the rule it has just cleared. At 17px that fraction of a
+// rung is the difference between telling ±3 and ±2 apart and not.
+const MARK_SLAB = 2 * MARK_RUNG - 1.2;
+const MARK_TOP = MARK_MID - 2 * MARK_RUNG - 0.6; // the ceiling rule's own top
+const MARK_WALL = 4 * MARK_RUNG + 1.2; // down to the floor rule's underside
 
 const PLANE_MARK = (rung: number): string =>
   svg(
-    '<rect x="1.5" y="4.4" width="21" height="1.2" rx="0.6" opacity="0.5" />' +
-      '<rect x="1.5" y="18.4" width="21" height="1.2" rx="0.6" opacity="0.5" />' +
+    `<rect x="1.5" y="${MARK_TOP.toFixed(2)}" width="21" height="1.2" rx="0.6" opacity="0.5" />` +
+      `<rect x="1.5" y="${(MARK_TOP + MARK_WALL - 1.2).toFixed(2)}" ` +
+      'width="21" height="1.2" rx="0.6" opacity="0.5" />' +
       // The two uprights close the storey into a box. Without them a mark is a
-      // dash floating at some height, and five of those side by side read as one
-      // ragged row rather than five shelves in a room.
-      '<rect x="1.5" y="4.4" width="1" height="15.2" rx="0.5" opacity="0.22" />' +
-      '<rect x="21.5" y="4.4" width="1" height="15.2" rx="0.5" opacity="0.22" />' +
-      `<rect x="4.5" y="${(MARK_MID - rung * MARK_RUNG - 3.4).toFixed(2)}" ` +
-      'width="15" height="3.4" rx="1.2" />',
+      // dash floating at some height, and seven of those side by side read as
+      // one ragged row rather than seven shelves in a room. They are also what
+      // ±3 is measured against: its slab is the one that leaves the box.
+      `<rect x="1.5" y="${MARK_TOP.toFixed(2)}" width="1" ` +
+      `height="${MARK_WALL.toFixed(2)}" rx="0.5" opacity="0.22" />` +
+      `<rect x="21.5" y="${MARK_TOP.toFixed(2)}" width="1" ` +
+      `height="${MARK_WALL.toFixed(2)}" rx="0.5" opacity="0.22" />` +
+      `<rect x="4.5" y="${(MARK_MID - rung * MARK_RUNG - MARK_SLAB / 2).toFixed(2)}" ` +
+      `width="15" height="${MARK_SLAB.toFixed(2)}" rx="1.6" />`,
   );
 
 const PLANES_ICON = PLANE_MARK(0);
 
 /**
- * THE LADDER — five rungs inside one storey, half a thickness apart.
+ * THE LADDER — seven rungs, half a thickness apart.
  *
  * THE STEP IS HALF A THICKNESS, and that is the whole point. Two ribbons rest on
  * each other when their CENTRES are one thickness apart — half of each closes
@@ -3694,22 +3713,28 @@ const PLANES_ICON = PLANE_MARK(0);
  *     1_3 -2, 3_1  0  ->  gap 1.000              (likewise, a storey lower)
  *     1_3 -1, 3_1  0  ->  gap 0.500              (interpenetrating)
  *
- * FIVE RUNGS, NOT SEVEN. `±2` are the storey's own floor and ceiling, so the
- * ladder spans exactly one storey — and a storey's ceiling is still the next
- * one's floor, which is what keeps `+2` and the storey above's `-2` the same
- * place. Reaching a third storey needs a level break, which is what level
- * breaks are for.
+ * SEVEN RUNGS, AND THE MIDDLE FIVE ARE THIS STOREY. `±2` are the storey's own
+ * floor and ceiling — and a storey's ceiling is still the next one's floor,
+ * which is what keeps `+2` and the storey above's `-2` the same place. `±3`
+ * reach one rung PAST those seams, into the neighbour, and they are the two the
+ * ladder gained: resting ON a seam is not the same as clearing a layer already
+ * sitting on it, and `+3` does that without spending a level break to move the
+ * whole layer up a storey. Further than that IS a level break's job. Both are
+ * named for the seam they clear rather than the storey they land in, because
+ * clearing it is what they get pressed to do.
  *
  * `rung` is what the panel shows and what a saved scene stores; `value` is what
  * the scene is told, in thicknesses, which is the unit `setSublevels` has always
  * taken and the fold lab still uses.
  */
 const PLANE_RUNGS: Array<{ rung: number; value: number; name: string; also?: string }> = [
+  { rung: 3, value: 1.5, name: 'rung above this storey', also: 'clears its ceiling' },
   { rung: 2, value: 1, name: 'top of this storey', also: 'floor of the one above' },
   { rung: 1, value: 0.5, name: 'upper half', also: 'rests on −1' },
   { rung: 0, value: 0, name: 'middle of this storey' },
   { rung: -1, value: -0.5, name: 'lower half', also: 'carries +1' },
   { rung: -2, value: -1, name: 'floor of this storey', also: 'top of the one below' },
+  { rung: -3, value: -1.5, name: 'rung below this storey', also: 'hangs under its floor' },
 ];
 
 /** A rung as the scene wants it: thicknesses off the storey middle. */
