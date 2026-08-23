@@ -16,9 +16,10 @@ import { inferTriangleHasMoved, normalizeControlPoints } from './controlPoints';
 import { sceneFromOss } from './importOss';
 
 export const SCENE_FORMAT = 'scoubidou3d-scene';
-// v2 added `levelBreaks`. The change is additive: a v1 file loads as a scene with
-// no levels, and a v2 file read by anything older simply ignores the field.
-export const SCENE_VERSION = 2;
+// v2 added `levelBreaks`; v3 added `planes` and `crossPlanes` — where each layer
+// and each crossing was PLACED. Every step is additive: an older file loads as a
+// scene with nothing placed, and an older reader ignores the fields.
+export const SCENE_VERSION = 3;
 
 export interface SceneFile {
   format: typeof SCENE_FORMAT;
@@ -27,6 +28,8 @@ export interface SceneFile {
   strands: Strand3D[];
   masks: MaskLink[];
   levelBreaks: number[];
+  planes?: Record<string, number>;
+  crossPlanes?: Record<string, number>;
 }
 
 export function sceneToFile(scene: Scene3D): SceneFile {
@@ -38,6 +41,12 @@ export function sceneToFile(scene: Scene3D): SceneFile {
     strands: scene.strands.map(cloneStrand),
     masks: scene.masks.map((m) => ({ overId: m.overId, underId: m.underId })),
     levelBreaks: [...scene.levelBreaks],
+    // Omitted entirely when nothing is placed, so a scene nobody has touched
+    // saves as the same file it always did.
+    ...(scene.planes && Object.keys(scene.planes).length ? { planes: { ...scene.planes } } : {}),
+    ...(scene.crossPlanes && Object.keys(scene.crossPlanes).length
+      ? { crossPlanes: { ...scene.crossPlanes } }
+      : {}),
   };
 }
 
@@ -60,6 +69,8 @@ export function sceneFromSnapshot(file: SceneFile): Scene3D {
     strands: file.strands.map(cloneStrand),
     masks: file.masks.map((m) => ({ overId: m.overId, underId: m.underId })),
     levelBreaks: [...file.levelBreaks],
+    ...(file.planes ? { planes: { ...file.planes } } : {}),
+    ...(file.crossPlanes ? { crossPlanes: { ...file.crossPlanes } } : {}),
     name: file.name,
   };
 }
@@ -145,6 +156,52 @@ function parseStrand(raw: unknown, i: number): Strand3D {
 }
 
 /** Parse Scoubidou3D's own scene format. Throws with a readable reason. */
+/**
+ * A rung from untrusted input. Whole numbers in `[-2, 2]` and nothing else: the
+ * ladder has five rungs, and a file claiming `+9` would put a layer four storeys
+ * up with no shelf under it and no way to see what happened.
+ */
+function rung(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return null;
+  return value >= -2 && value <= 2 ? value : null;
+}
+
+/** Placed RUNS, keeping only the ones naming a strand this scene actually has. */
+function placed(raw: unknown, has: (id: string) => boolean): { planes: Record<string, number> } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const out: Record<string, number> = {};
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    const r = rung(value);
+    if (r === null || !has(id)) continue;
+    out[id] = r;
+  }
+  return Object.keys(out).length ? { planes: out } : null;
+}
+
+/**
+ * Placed CROSSINGS. The key is `aId|bId|n|strandId`, and only the strand ids can
+ * be checked here — whether crossing `n` of that pair still exists depends on
+ * geometry the parser has not built yet. The panel drops the stragglers once it
+ * has (see prunePlanes), which is the same thing it does when a strand is moved
+ * off a crossing during an edit.
+ */
+function placedCross(
+  raw: unknown,
+  ids: Set<string>,
+): { crossPlanes: Record<string, number> } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const r = rung(value);
+    const parts = key.split('|');
+    if (r === null || parts.length !== 4) continue;
+    if (!ids.has(parts[0]) || !ids.has(parts[1]) || !ids.has(parts[3])) continue;
+    if (!/^\d+$/.test(parts[2])) continue;
+    out[key] = r;
+  }
+  return Object.keys(out).length ? { crossPlanes: out } : null;
+}
+
 export function sceneFromFile(data: unknown, fallbackName = 'saved scene'): Scene3D {
   const obj = (data ?? {}) as Record<string, unknown>;
   if (!Array.isArray(obj.strands)) throw new Error('no "strands" array');
@@ -170,6 +227,8 @@ export function sceneFromFile(data: unknown, fallbackName = 'saved scene'): Scen
     strands,
     masks,
     levelBreaks: normalizeLevelBreaks(obj.levelBreaks, strands.length),
+    ...(placed(obj.planes, (id) => ids.has(id)) ?? {}),
+    ...(placedCross(obj.crossPlanes, ids) ?? {}),
     name: typeof obj.name === 'string' && obj.name ? obj.name : fallbackName,
   };
   recomputeOccupancy(scene);

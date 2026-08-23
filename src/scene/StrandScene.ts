@@ -194,13 +194,20 @@ export interface SublevelPlane {
 }
 
 /**
- * How far the panel's ladder reaches, in thicknesses off a layer's storey middle.
- * Three storeys — the one below, its own, the one above — which is `2 · PITCH`
- * either side plus the seam, so ±3. The panel's rungs and this MUST agree; they
- * did not once, and the canvas quietly drew four fewer shelves than there were
- * rungs to press.
+ * The panel's ladder, in the units the scene thinks in.
+ *
+ * A rung is HALF a thickness, because two ribbons rest on each other when their
+ * centres are one thickness apart — so `+1` and `-1`, two rungs apart, touch.
+ * A whole-thickness rung left them a full thickness of daylight, which is the
+ * one arrangement the control exists to make.
+ *
+ * Two rungs either side of the middle, so the ladder spans `±1` thickness —
+ * exactly one storey, whose floor and ceiling are the seams it shares with its
+ * neighbours. The panel's rungs and these MUST agree; they did not once, and the
+ * canvas quietly drew four fewer shelves than there were rungs to press.
  */
-const SUBLEVEL_REACH = 3;
+const SUBLEVEL_STEP = 0.5;
+const SUBLEVEL_REACH = 2;
 
 const PALETTE = {
   light: { bg: '#f5efdf', gridMajor: 0xcfc6ae, gridMinor: 0xe2dbc6 },
@@ -2560,9 +2567,9 @@ export class StrandScene {
     const SEAM = 0xe0857a;
     const MIDDLE = 0x5fa8dc;
     for (const plane of planes) {
-      // Its own storey is the part being placed into; the reach either side is
-      // context, and reads as context.
-      const near = Math.abs(plane.step) <= 1;
+      // Everything the ladder reaches is inside one storey now, so the seams —
+      // its floor and ceiling — are the ones to pick out.
+      const near = plane.seam || Math.abs(plane.step) < 1;
       const strength = anyFocus ? (near ? 1 : 0.45) : 0.5;
       const geom = new THREE.PlaneGeometry(size, size);
       const mesh = new THREE.Mesh(
@@ -2621,14 +2628,14 @@ export class StrandScene {
       const z = middle + step * t;
       const key = Math.round(z * 1e6);
       if (seen.has(key)) return;
-      // Odd steps off a storey's middle are the seams — and a seam reached from
-      // one storey is the same height as the one reached from its neighbour, so
-      // the dedupe above is what keeps it a single shelf.
-      seen.set(key, { z, step, seam: Math.abs(step % 2) === 1 });
+      // A seam is a storey's own edge — its floor or its ceiling — which is the
+      // next storey's ceiling or floor. Reached from either side it is the same
+      // height, so the dedupe above keeps it a single shelf.
+      seen.set(key, { z, step, seam: Math.abs(Math.abs(step) - 1) < 1e-9 });
     };
     const focusFloor = focusIndex >= 0 ? this.baseFloorZ[focusIndex] : undefined;
     if (focusFloor !== undefined) {
-      for (let k = -SUBLEVEL_REACH; k <= SUBLEVEL_REACH; k++) add(focusFloor, k);
+      for (let k = -SUBLEVEL_REACH; k <= SUBLEVEL_REACH; k++) add(focusFloor, k * SUBLEVEL_STEP);
       return [...seen.values()].sort((a, b) => a.z - b.z);
     }
     for (const middle of this.baseFloorZ) for (const k of [-1, 0, 1]) add(middle, k);

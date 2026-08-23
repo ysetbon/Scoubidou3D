@@ -474,16 +474,9 @@ export class Panel {
   setScene(scene: Scene3D, label = 'open a scene'): void {
     this.scene = scene;
     this.selectedId = null;
-    // The planes were statements about the OUTGOING scene's layers. Clear them
-    // before the new one is built, so it opens the way an untouched scene does.
-    if (this.planes.size) {
-      this.planes.clear();
-      this.view.setSublevels(null);
-    }
-    if (this.crossPlanes.size) {
-      this.crossPlanes.clear();
-      this.view.setCrossingPlanes(null);
-    }
+    // The incoming scene carries its OWN placements now, so they are not cleared
+    // here — `loadPlanesFromScene` on the redraw below takes whatever it brought,
+    // which for a scene with none is none.
     this.pickedCross = null;
     this.pickedSide = null;
     this.view.setScene(scene, true);
@@ -604,8 +597,10 @@ export class Panel {
     bar.innerHTML = '';
     host.innerHTML = '';
 
-    // Before anything reads the geometry: a layer that has been deleted must not
-    // leave its plane behind. See prunePlanes.
+    // Before anything reads the geometry: take what the scene is carrying (it may
+    // have just been opened, or stepped back to by undo), then drop whatever no
+    // longer names anything. See loadPlanesFromScene and prunePlanes.
+    this.loadPlanesFromScene();
     this.prunePlanes();
 
     this.syncFoldToggle();
@@ -2183,8 +2178,10 @@ export class Panel {
         this.crossPlanes.clear();
         this.pickedCross = null;
         this.pickedSide = null;
+        this.syncPlanesToScene();
         this.pushPlanes();
         this.pushCrossPlanes();
+        this.record('clear every placed plane');
         this.renderStack();
       },
       'Let the scene rest every layer again — exactly how it opens',
@@ -2427,7 +2424,7 @@ export class Panel {
     ) as HTMLButtonElement;
     b.type = 'button';
     b.setAttribute('aria-expanded', String(open));
-    if (current !== null) b.innerHTML = PLANE_MARK(Math.max(-1, Math.min(1, current)));
+    if (current !== null) b.innerHTML = PLANE_MARK(Math.sign(current));
     b.appendChild(el('span', 'plane-tag', planeTag(current)));
     b.title =
       current === null
@@ -2458,20 +2455,20 @@ export class Panel {
     const box = el('div', 'plane-ladder');
     box.setAttribute('role', 'group');
     for (const rung of PLANE_RUNGS) {
-      const on = current === rung.value;
+      const on = current === rung.rung;
       const b = el(
         'button',
-        'rung' + (on ? ' on' : '') + (Math.abs(rung.value) <= 1 ? ' here' : ''),
+        'rung' + (on ? ' on' : '') + (Math.abs(rung.rung) < 2 ? ' here' : ' seam'),
       ) as HTMLButtonElement;
       b.type = 'button';
       b.setAttribute('aria-pressed', String(on));
-      b.appendChild(el('span', 'rung-n', planeTag(rung.value)));
+      b.appendChild(el('span', 'rung-n', planeTag(rung.rung)));
       const label = el('span', 'rung-name');
       label.appendChild(el('b', undefined, rung.name));
       if (rung.also) label.appendChild(el('i', undefined, ` · ${rung.also}`));
       b.appendChild(label);
       b.title = on ? 'Press again to let the scene decide again' : `Put it at the ${rung.name}`;
-      b.addEventListener('click', () => onPick(on ? null : rung.value));
+      b.addEventListener('click', () => onPick(on ? null : rung.rung));
       box.appendChild(b);
     }
     return box;
@@ -2602,18 +2599,29 @@ export class Panel {
     // One value per layer, written to both ends of its run. `in` and `out` differ
     // only where a layer changes plane ALONG itself, which is a ramp rather than
     // a resting place, and not what this view is asking.
-    for (const [id, value] of this.planes) map.set(id, { in: value, out: value });
+    for (const [id, rung] of this.planes) {
+      const value = rungValue(rung);
+      map.set(id, { in: value, out: value });
+    }
     this.view.setSublevels(map);
   }
 
   private pushCrossPlanes(): void {
-    this.view.setCrossingPlanes(this.crossPlanes.size ? this.crossPlanes : null);
+    if (!this.crossPlanes.size) {
+      this.view.setCrossingPlanes(null);
+      return;
+    }
+    const map = new Map<string, number>();
+    for (const [key, rung] of this.crossPlanes) map.set(key, rungValue(rung));
+    this.view.setCrossingPlanes(map);
   }
 
   private setCrossPlane(key: string, value: number | null): void {
     if (value === null) this.crossPlanes.delete(key);
     else this.crossPlanes.set(key, value);
+    this.syncPlanesToScene();
     this.pushCrossPlanes();
+    this.record(value === null ? 'unplace a crossing' : 'place a crossing');
     this.renderStack();
   }
 
@@ -2626,12 +2634,52 @@ export class Panel {
     this.renderStack();
   }
 
+  /**
+   * The scene is where these LIVE; the maps above are the working copy.
+   *
+   * Putting them in `Scene3D` is what makes them survive a save and what makes
+   * undo restore them, because the history records the scene. Empty means the
+   * field is dropped entirely, so a scene nobody has placed anything in saves as
+   * the file it always did.
+   */
+  private syncPlanesToScene(): void {
+    this.scene.planes = this.planes.size ? Object.fromEntries(this.planes) : undefined;
+    this.scene.crossPlanes = this.crossPlanes.size
+      ? Object.fromEntries(this.crossPlanes)
+      : undefined;
+  }
+
+  /**
+   * Take the working copies back from the scene, and tell the view if they moved.
+   *
+   * Runs on every redraw, which covers the two ways the scene can change under
+   * the panel: opening one, and stepping through history. It is idempotent —
+   * every edit writes to the scene first — so it cannot clobber a change that
+   * has just been made.
+   */
+  private loadPlanesFromScene(): void {
+    const same = (a: Map<string, number>, b: Map<string, number>): boolean =>
+      a.size === b.size && [...a].every(([k, v]) => b.get(k) === v);
+    const runs = new Map(Object.entries(this.scene.planes ?? {}));
+    if (!same(runs, this.planes)) {
+      this.planes = runs;
+      this.pushPlanes();
+    }
+    const cross = new Map(Object.entries(this.scene.crossPlanes ?? {}));
+    if (!same(cross, this.crossPlanes)) {
+      this.crossPlanes = cross;
+      this.pushCrossPlanes();
+    }
+  }
+
   private setPlane(id: string, value: number | null): void {
     if (value === null) this.planes.delete(id);
     else this.planes.set(id, value);
+    this.syncPlanesToScene();
     // The map rebuilds the scene, so the figure has to be drawn from what came
     // out of THAT build — hence push first, redraw second.
     this.pushPlanes();
+    this.record(value === null ? `unplace ${id}` : `place ${id}`);
     this.renderStack();
   }
 
@@ -2652,7 +2700,10 @@ export class Panel {
       this.planes.delete(id);
       dropped = true;
     }
-    if (dropped) this.pushPlanes();
+    if (dropped) {
+      this.syncPlanesToScene();
+      this.pushPlanes();
+    }
 
     // The same for crossings, which go stale two ways: the layer can be deleted,
     // and the crossing itself can stop existing when a strand is moved off it.
@@ -2668,7 +2719,10 @@ export class Panel {
       this.crossPlanes.delete(key);
       lost = true;
     }
-    if (lost) this.pushCrossPlanes();
+    if (lost) {
+      this.syncPlanesToScene();
+      this.pushCrossPlanes();
+    }
   }
 
   /**
@@ -3647,27 +3701,42 @@ const PLANES_ICON = PLANE_MARK(0);
 const PLANE_WORDS: Record<number, string> = { [-1]: 'bottom', 0: 'centre', 1: 'top' };
 
 /**
- * THE LADDER — every height a layer can be put on, across three storeys.
+ * THE LADDER — five rungs inside one storey, half a thickness apart.
  *
- * Three buttons could only ever offer three heights, all inside one storey. A
- * storey is `2 · thickness` deep and its planes are `2L ± 1` and `2L`, so the
- * storey above and the one below are reachable in the same units — and reaching
- * them is the difference between "a bit higher" and "resting on the thing above".
+ * THE STEP IS HALF A THICKNESS, and that is the whole point. Two ribbons rest on
+ * each other when their CENTRES are one thickness apart — half of each closes
+ * the gap. With a rung of a whole thickness, `+1` and `-1` came out two
+ * thicknesses apart: measured on the opening scene, `3_1` at `+1` over `1_3` at
+ * `-1` left a full thickness of daylight between them, so the one thing the
+ * control is for could not be said. At half a thickness, `+1` and `-1` are
+ * exactly one thickness apart and the two touch. Measured, not reasoned:
  *
- * Nine cells collapse to SEVEN rungs, and that is the model rather than a
- * rounding: level L's top IS level L+1's floor. Naming both readings on the one
- * rung is the honest way to offer nine options, because pretending they are two
- * different places would be offering a distinction the geometry does not make.
+ *     1_3 -1, 3_1 +1  ->  gap 1.000 thicknesses  (resting exactly on)
+ *     1_3 -2, 3_1  0  ->  gap 1.000              (likewise, a storey lower)
+ *     1_3 -1, 3_1  0  ->  gap 0.500              (interpenetrating)
+ *
+ * FIVE RUNGS, NOT SEVEN. `±2` are the storey's own floor and ceiling, so the
+ * ladder spans exactly one storey — and a storey's ceiling is still the next
+ * one's floor, which is what keeps `+2` and the storey above's `-2` the same
+ * place. Reaching a third storey needs a level break, which is what level
+ * breaks are for.
+ *
+ * `rung` is what the panel shows and what a saved scene stores; `value` is what
+ * the scene is told, in thicknesses, which is the unit `setSublevels` has always
+ * taken and the fold lab still uses.
  */
-const PLANE_RUNGS: Array<{ value: number; name: string; also?: string }> = [
-  { value: 3, name: 'top of the storey above' },
-  { value: 2, name: 'middle of the storey above' },
-  { value: 1, name: 'top of this storey', also: 'floor of the one above' },
-  { value: 0, name: 'middle of this storey' },
-  { value: -1, name: 'floor of this storey', also: 'top of the one below' },
-  { value: -2, name: 'middle of the storey below' },
-  { value: -3, name: 'floor of the storey below' },
+const PLANE_RUNGS: Array<{ rung: number; value: number; name: string; also?: string }> = [
+  { rung: 2, value: 1, name: 'top of this storey', also: 'floor of the one above' },
+  { rung: 1, value: 0.5, name: 'upper half', also: 'rests on −1' },
+  { rung: 0, value: 0, name: 'middle of this storey' },
+  { rung: -1, value: -0.5, name: 'lower half', also: 'carries +1' },
+  { rung: -2, value: -1, name: 'floor of this storey', also: 'top of the one below' },
 ];
+
+/** A rung as the scene wants it: thicknesses off the storey middle. */
+function rungValue(rung: number): number {
+  return (PLANE_RUNGS.find((r) => r.rung === rung) ?? { value: 0 }).value;
+}
 
 /** How a chosen height is written where there is only room for a token. */
 function planeTag(value: number | null): string {
