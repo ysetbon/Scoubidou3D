@@ -113,8 +113,9 @@ function twoCrossingArms(): Scene3D {
   };
 }
 
-// 1c) The same six-member scene with a SEVENTH strand laid across it — one long
-//     lone member, on no lace of its own, crossing the orange lace's `1_3` arm.
+// 1c) BOX + STRAND — the same six-member scene with a SEVENTH strand laid
+//     across it: one long lone member, on no lace of its own, crossing the
+//     orange lace's `1_3` arm.
 //
 //     This is the scene the plane work is judged against, because it is the one
 //     that asks the question a resting plane cannot answer on its own: `3_1` and
@@ -122,14 +123,14 @@ function twoCrossingArms(): Scene3D {
 //     ONE passage. Pasted from the studio's own export, so it is exactly what was
 //     drawn rather than a retyping of it — the placements below included, which
 //     are the arrangement the studio was left in rather than a fresh scene.
-function armsAndAThird(): Scene3D {
+function boxAndStrand(): Scene3D {
   const A = { x: 386.9144970868538, y: 202.04947370054907 };   // 1_1 start, 1_2 start
   const B = { x: 518.8913237448178, y: 283.88319270756165 };   // 1_1 end,   1_3 start
   const C = { x: 491.3931325751948, y: 178.85211012011382 };   // 2_1 start, 2_2 start
   const D = { x: 414.25968793804265, y: 306.951317750308 };    // 2_1 end,   2_3 start
   const W = { width: 54 };
   return {
-    name: 'Two crossing strands, and a third',
+    name: 'box + strand',
     strands: [
       mk('1_1', A, B, ORANGE, W),
       mk('2_1', C, D, YELLOW, W),
@@ -944,7 +945,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
   ...PLACED_SAMPLES,
   'two-crossing': twoCrossing,
   'two-crossing-arms': twoCrossingArms,
-  'arms-and-a-third': armsAndAThird,
+  'box-and-strand': boxAndStrand,
   'box-stitch': boxStitch,
   'box-stitch-10': () => boxStitchRounds(10, 'Box stitch — 10 levels'),
   'box-stitch-15': () => boxStitchRounds(15, 'Box stitch — 15 levels'),
@@ -982,7 +983,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
 export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }> = [
   { key: 'two-crossing', label: 'Two crossing strands', group: 'Basics' },
   { key: 'two-crossing-arms', label: 'Two crossing strands — with arms', group: 'Basics' },
-  { key: 'arms-and-a-third', label: 'Two crossing strands — arms, and a third', group: 'Basics' },
+  { key: 'box-and-strand', label: 'box + strand', group: 'Basics' },
   { key: 'box-stitch', label: 'Box stitch — starting stitch', group: 'Stitches' },
   { key: 'box-stitch-10', label: 'Box stitch — 10 levels', group: 'Stitches' },
   { key: 'box-stitch-15', label: 'Box stitch — 15 levels', group: 'Stitches' },
