@@ -147,6 +147,46 @@ export interface CrossingFact {
   levelB: number;
 }
 
+/**
+ * ONE place two strands cross in plan, named so it can be pointed at.
+ *
+ * `CrossingFact` is per PAIR — it says who rides over, and how many times. This
+ * is per crossing, because "the part of 1_2 that goes under 2_2" is not a pair,
+ * it is one passage among the three that arm makes, and nothing addressed it.
+ *
+ * `key` is `aId|bId|n`, where the pair is in strand order and `n` is the
+ * crossing's place in the list `polylineCrossings` returns for that pair. That
+ * list is built from the strands' PLAN geometry alone, so the key survives every
+ * change of height — which is the one thing it must survive, since placing a
+ * crossing changes heights. Moving a strand can renumber it, the same way moving
+ * a strand can invalidate anything else said about where it went.
+ */
+export interface CrossPoint {
+  key: string;
+  aIndex: number;
+  bIndex: number;
+  aId: string;
+  bId: string;
+  /** Arc position along each strand's own centreline, in world units. */
+  sA: number;
+  sB: number;
+  x: number;
+  y: number;
+  overIndex: number;
+  underIndex: number;
+  /** False when the two only pass in plan — different storeys, no mask — so the
+   *  weave anchors nothing here and a plane would have nothing to override. */
+  woven: boolean;
+}
+
+/** One storey's three resting heights — see setPlaneGuides. */
+export interface SublevelLadder {
+  floor: number;
+  bottom: number;
+  middle: number;
+  top: number;
+}
+
 const PALETTE = {
   light: { bg: '#f5efdf', gridMajor: 0xcfc6ae, gridMinor: 0xe2dbc6 },
   dark: { bg: '#191410', gridMajor: 0x4a4133, gridMinor: 0x322b21 },
@@ -358,6 +398,24 @@ export class StrandScene {
 
   /** See setSublevels. Null is off, and off is the studio's behaviour exactly. */
   private sublevels: Map<string, Sublevel> | null = null;
+
+  /**
+   * Where one strand sits at ONE crossing, in thicknesses off its storey's floor
+   * — see setCrossingPlanes. Keyed `${CrossPoint.key}|${strandId}`.
+   */
+  private crossPlanes = new Map<string, number>();
+
+  /** Every plan crossing in the scene, filled by weaveCenterlines. */
+  private crossPoints: CrossPoint[] = [];
+
+  /** The FLOOR of each strand's storey (before its sublevel is added), shifted
+   *  the same way baseZ is. A declared plane is measured off this. */
+  private baseFloorZ: number[] = [];
+
+  /** The drawn sublevel planes — see setPlaneGuides. Off unless asked for. */
+  private planeGroup: THREE.Group | null = null;
+  private showPlanes = false;
+  private planeFocusId: string | null = null;
   private levelPlaneZ = new Map<number, number>();
   // Half the stack's height in world units — the other half of what the camera
   // has to frame once levels make a scene tall.
@@ -640,6 +698,9 @@ export class StrandScene {
     this.buildConnectors(merged);
 
     this.updateGrid();
+    // The floors move whenever anything is placed, so the shelves are redrawn
+    // with the model rather than only when the toggle is pressed.
+    this.updatePlaneGuides();
     this.buildHandles();
     this.buildWeaveOverlays();
   }
@@ -1010,6 +1071,7 @@ export class StrandScene {
   private weaveCenterlines(worldLines: Array<Vec2[] | null>): Array<Vec3[] | null> {
     const strands = this.current.strands;
     this.crossingFacts = [];
+    this.crossPoints = [];
     const span = this.params.weaveSpan;
     const anchors: Anchor[][] = strands.map(() => []);
 
@@ -1045,6 +1107,26 @@ export class StrandScene {
           // They cross in plan only; in space one simply passes above the other.
           // An explicit mask is the exception: the user asking for an over/under
           // there gets one, woven about the midpoint of the two storeys.
+          const woven = masked !== null || this.strandLevel[i] === this.strandLevel[j];
+          // Recorded whether or not the weave anchors here: the Planes view draws
+          // a tick for every place two laces pass, and a crossing between storeys
+          // is exactly the kind you want to SEE even though nothing is woven.
+          crossings.forEach((c, n) => {
+            this.crossPoints.push({
+              key: `${strands[i].id}|${strands[j].id}|${n}`,
+              aIndex: i,
+              bIndex: j,
+              aId: strands[i].id,
+              bId: strands[j].id,
+              sA: c.sA,
+              sB: c.sB,
+              x: c.x,
+              y: c.y,
+              overIndex: factOver,
+              underIndex: factOver === i ? j : i,
+              woven,
+            });
+          });
           if (masked === null && this.strandLevel[i] !== this.strandLevel[j]) continue;
           const over = masked ?? j;
           const under = over === i ? j : i;
@@ -1064,14 +1146,27 @@ export class StrandScene {
           // masked over several strands ramps instead of riding flat.
           const clearance = ((this.strandThicknessWorld(strands[over]) +
             this.strandThicknessWorld(strands[under])) / 2) * 1.15;
-          if (this.declaredClears(over, under, clearance)) continue;
+          const declaredClear = this.declaredClears(over, under, clearance);
           const plane = this.crossingPlaneZ(i, j);
-          for (const c of crossings) {
+          crossings.forEach((c, n) => {
             const sOver = over === i ? c.sA : c.sB;
             const sUnder = under === i ? c.sA : c.sB;
-            anchors[over].push({ s: sOver, radius, z: plane + h });
-            anchors[under].push({ s: sUnder, radius, z: plane - h });
-          }
+            const key = `${strands[i].id}|${strands[j].id}|${n}`;
+            const zOver = this.crossPlaneZ(key, over);
+            const zUnder = this.crossPlaneZ(key, under);
+            // A pair the declared run planes already hold a clear thickness apart
+            // needs no swing — anchoring it would drag both back toward one shared
+            // plane. But a crossing somebody has PLACED is a statement about this
+            // passage, and it outranks that: the anchor goes in for whichever side
+            // was placed, and the other keeps the height its run gave it.
+            if (declaredClear && zOver === null && zUnder === null) return;
+            if (!declaredClear || zOver !== null) {
+              anchors[over].push({ s: sOver, radius, z: zOver ?? plane + h });
+            }
+            if (!declaredClear || zUnder !== null) {
+              anchors[under].push({ s: sUnder, radius, z: zUnder ?? plane - h });
+            }
+          });
         }
       }
     }
@@ -1364,6 +1459,50 @@ export class StrandScene {
     this.rebuild();
   }
 
+  /**
+   * WHERE ONE STRAND SITS AT ONE CROSSING — a plane for a passage, not for a run.
+   *
+   * A resting plane is per strand, and that is the whole of what it can say. It
+   * cannot say where an arm goes UNDER one lace and OVER the next inside a single
+   * run: on the opening sample `1_2` rides over `2_1` and `2_3` and under `2_2`,
+   * and one height says none of that. The weave settles which way round each
+   * passage goes; this settles how HIGH it goes.
+   *
+   * The map is `${CrossPoint.key}|${strandId}` to a plane in thicknesses off that
+   * strand's storey floor — the same units and the same zero the run planes use,
+   * so `top` means the same thing in both.
+   *
+   * It rides on top of the weave rather than replacing it. An untouched crossing
+   * keeps its `plane ± h`; a placed one gets the height it was given, and the
+   * strand eases back to its run on either side exactly as before, because an
+   * `Anchor` was always an absolute height and this is just a different one.
+   *
+   * Nothing else changes: with no crossing placed the map is empty and every
+   * anchor is the one the weave computed.
+   */
+  setCrossingPlanes(map: Map<string, number> | null): void {
+    this.crossPlanes = map ? new Map(map) : new Map();
+    this.rebuild();
+  }
+
+  /** Every place two strands cross in plan, addressable. See CrossPoint. */
+  getCrossPoints(): CrossPoint[] {
+    return this.crossPoints;
+  }
+
+  /**
+   * The declared height for one strand at one crossing, in world units, or null
+   * when nobody has placed it.
+   */
+  private crossPlaneZ(key: string, strandIndex: number): number | null {
+    if (this.crossPlanes.size === 0) return null;
+    const id = this.current.strands[strandIndex]?.id;
+    if (id === undefined) return null;
+    const plane = this.crossPlanes.get(`${key}|${id}`);
+    if (plane === undefined) return null;
+    return (this.baseFloorZ[strandIndex] ?? 0) + plane * this.params.thickness * SCALE;
+  }
+
   /** One strand's own woven centreline in world units, before laces are merged. */
   getStrandCentrelineWorld(id: string): Vec3[] | null {
     const i = this.current.strands.findIndex((st) => st.id === id);
@@ -1428,11 +1567,13 @@ export class StrandScene {
     const sub = this.params.thickness * SCALE;
     const rest = new Array<number>(n);
     const restOut = new Array<number>(n);
+    const floors = new Array<number>(n);
     const level = new Array<number>(n);
     for (let i = 0; i < n; i++) {
       level[i] = levelAt(this.current, i);
       const p = this.sublevels?.get(this.current.strands[i].id);
       const floor = (rankZ.get(find(i)) ?? 0) + level[i] * step;
+      floors[i] = floor;
       rest[i] = floor + (p?.in ?? 0) * sub;
       restOut[i] = floor + (p?.out ?? p?.in ?? 0) * sub;
     }
@@ -1448,6 +1589,9 @@ export class StrandScene {
     const shift = n ? -(min + max) / 2 : 0;
     this.baseZ = rest.map((z) => z + shift);
     this.baseZOut = restOut.map((z) => z + shift);
+    // Shifted with everything else, so a plane declared at a crossing is measured
+    // in the same frame the runs are.
+    this.baseFloorZ = floors.map((z) => z + shift);
     this.lowestZ = n ? min + shift : 0;
     this.strandLevel = level;
     // How tall the stack itself is, for the camera. A single storey is a flat
@@ -1975,7 +2119,11 @@ export class StrandScene {
     });
     // In stack order, so the view reads down the panel the way the layers do.
     inputs.sort((a, b) => Math.min(...a.chain) - Math.min(...b.chain));
-    this.laceFactCache = laceFacts(inputs, this.current.strands.map((s) => s.id));
+    this.laceFactCache = laceFacts(
+      inputs,
+      this.current.strands.map((s) => s.id),
+      this.crossPoints,
+    );
     return this.laceFactCache;
   }
 
@@ -2316,6 +2464,124 @@ export class StrandScene {
     grid.position.z = this.lowestZ - drop;
     this.grid = grid;
     this.scene.add(grid);
+  }
+
+  /**
+   * DRAW THE SUBLEVEL PLANES — the shelves themselves, not just what rests on
+   * them.
+   *
+   * A storey is `2 · thickness` deep and has three heights in it: its floor, its
+   * middle, and its ceiling — which is the next storey's floor. The model has
+   * always had them; nothing ever drew one, so "rest this layer on the top of
+   * its storey" was a sentence rather than a place you could see.
+   *
+   * A ladder is per LACE, not per scene: `computeBaseZ` lifts each lace by
+   * `layerGap` before the storey height is added, so a woven mat has eight
+   * ladders and twenty-four planes. Drawing all of them at full strength is
+   * soup, so the ladder the FOCUSED layer rests in is drawn properly and the
+   * rest stay hairlines — the stack still reads as a stack, and the three planes
+   * that answer the question you are asking are the ones you can see.
+   */
+  setPlaneGuides(show: boolean, focusId: string | null = null): void {
+    if (this.showPlanes === show && this.planeFocusId === focusId) return;
+    this.showPlanes = show;
+    this.planeFocusId = focusId;
+    this.updatePlaneGuides();
+    // No explicit draw: the scene runs a requestAnimationFrame loop, so adding to
+    // the graph is enough and the next frame shows it.
+  }
+
+  private disposePlaneGuides(): void {
+    if (!this.planeGroup) return;
+    this.scene.remove(this.planeGroup);
+    for (const child of this.planeGroup.children) {
+      const m = child as THREE.Mesh;
+      m.geometry?.dispose();
+      const mat = m.material as THREE.Material | THREE.Material[];
+      if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+      else mat?.dispose?.();
+    }
+    this.planeGroup = null;
+  }
+
+  private updatePlaneGuides(): void {
+    this.disposePlaneGuides();
+    if (!this.showPlanes) return;
+    const ladders = this.sublevelLadders();
+    if (!ladders.length) return;
+
+    const focusIndex = this.planeFocusId
+      ? this.current.strands.findIndex((st) => st.id === this.planeFocusId)
+      : -1;
+    const focusFloor = focusIndex >= 0 ? this.baseFloorZ[focusIndex] : null;
+
+    const group = new THREE.Group();
+    // The model's own footprint and a margin. `contentRadius` is already a half
+    // diagonal, so the diameter is twice it — a shelf the size of the whole
+    // viewport is not a shelf, it is a tint over everything behind it.
+    const size = this.contentRadius * 2.1;
+    // Six translucent sheets stacked in the eye add up fast. With nothing
+    // selected they all read at once, so each has to be fainter than it would be
+    // on its own; picking a row lifts its three clear of the rest.
+    const anyFocus = focusFloor !== null;
+    // Floor, middle, ceiling. Coloured the way the Planes view's own marks are
+    // ordered, so the picture in the panel and the sheet in the scene agree.
+    const SHADES: Array<[keyof SublevelLadder, number]> = [
+      ['bottom', 0x5fa8dc],
+      ['middle', 0x9a9088],
+      ['top', 0xe0857a],
+    ];
+    for (const ladder of ladders) {
+      const lit = focusFloor === null || Math.abs(ladder.floor - focusFloor) < 1e-6;
+      for (const [which, colour] of SHADES) {
+        const z = ladder[which] as number;
+        const geom = new THREE.PlaneGeometry(size, size);
+        const mesh = new THREE.Mesh(
+          geom,
+          new THREE.MeshBasicMaterial({
+            color: colour,
+            transparent: true,
+            opacity: lit ? (anyFocus ? 0.15 : 0.055) : 0.015,
+            side: THREE.DoubleSide,
+            depthWrite: false, // a guide never hides a ribbon
+          }),
+        );
+        mesh.position.set(0, 0, z);
+        mesh.renderOrder = -1;
+        group.add(mesh);
+        // A rim, so a plane seen edge-on is a line rather than nothing at all —
+        // and edge-on is exactly how you look at a stack to judge its heights.
+        const edge = new THREE.LineSegments(
+          new THREE.EdgesGeometry(geom),
+          new THREE.LineBasicMaterial({
+            color: colour,
+            transparent: true,
+            opacity: lit ? (anyFocus ? 0.8 : 0.4) : 0.08,
+          }),
+        );
+        edge.position.copy(mesh.position);
+        edge.renderOrder = -1;
+        group.add(edge as unknown as THREE.Mesh);
+      }
+    }
+    this.planeGroup = group;
+    this.scene.add(group);
+  }
+
+  /**
+   * Every ladder in the scene: one per distinct storey floor, with the three
+   * heights a layer can rest on. Deduped, because a lace's members share a floor
+   * and there is one shelf there, not six.
+   */
+  sublevelLadders(): SublevelLadder[] {
+    const t = this.params.thickness * SCALE;
+    const seen = new Map<number, SublevelLadder>();
+    this.baseFloorZ.forEach((floor) => {
+      const kkey = Math.round(floor * 1e6);
+      if (seen.has(kkey)) return;
+      seen.set(kkey, { floor, bottom: floor - t, middle: floor, top: floor + t });
+    });
+    return [...seen.values()].sort((a, b) => a.floor - b.floor);
   }
 
   /** Frame the content: point the camera at the center and back off to fit.

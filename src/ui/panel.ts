@@ -35,7 +35,7 @@
 // layer in OpenStrand's layer panel.
 
 import { StrandScene, EditMode, Sublevel } from '../scene/StrandScene';
-import { FoldFact, LaceFact, MemberFact, PROFILE } from '../scene/sections';
+import { CrossFact, FoldFact, LaceFact, MemberFact, PROFILE } from '../scene/sections';
 import { MaskLink, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, TWIST_FAMILY, TWIST_MAX, makeSample } from '../model/samples';
 import { GAP, HANDS, TWOFAN_COLUMN_FAMILY, TWOFAN_MAX, columnKey } from '../model/twofan';
@@ -480,6 +480,11 @@ export class Panel {
       this.planes.clear();
       this.view.setSublevels(null);
     }
+    if (this.crossPlanes.size) {
+      this.crossPlanes.clear();
+      this.view.setCrossingPlanes(null);
+    }
+    this.pickedCross = null;
     this.view.setScene(scene, true);
     this.record(label);
     this.render();
@@ -759,6 +764,10 @@ export class Panel {
       this.viewTabs[key]?.setAttribute('aria-selected', String(key === view));
     }
     this.selectedId = null;
+    // The shelves belong to the Planes view: its toggle is the only way to turn
+    // them off, so leaving the view has to take them with it or they are stuck on
+    // with the switch nowhere in reach.
+    this.pushPlaneGuides();
     // The word moves with the thumb, so the widths change under it: measure
     // after the attribute flip, not before.
     this.syncSwitchThumb();
@@ -2104,10 +2113,51 @@ export class Panel {
       );
       return list;
     }
+    list.appendChild(this.guidesToggle());
     const banner = this.planesBanner();
     if (banner) list.appendChild(banner);
     for (const fact of facts) list.appendChild(this.laceCard(fact));
     return list;
+  }
+
+  /**
+   * Draw the shelves in the CANVAS, not just in the picture.
+   *
+   * The elevation rules a lace against its planes, which answers "where is this
+   * one" — and leaves "where could it go" to be imagined. Turning the planes on
+   * puts them in the scene: three translucent sheets per storey, edge-on lines
+   * when you orbit down to look along them, which is the view that makes a
+   * height legible in the first place.
+   *
+   * The ladder belonging to whatever row is selected is the lit one; see
+   * StrandScene.setPlaneGuides for why the others stay hairlines.
+   */
+  private guidesToggle(): HTMLElement {
+    const box = el('div', 'guides-row');
+    box.appendChild(
+      check('Draw the planes in the scene', this.showPlaneGuides, (on) => {
+        this.showPlaneGuides = on;
+        this.pushPlaneGuides();
+        this.renderStack();
+      }),
+    );
+    if (this.showPlaneGuides) {
+      box.appendChild(
+        el(
+          'span',
+          'guides-note',
+          this.selectedId ? `lit: ${this.selectedId}’s storey` : 'select a layer to light its storey',
+        ),
+      );
+    }
+    return box;
+  }
+
+  private pushPlaneGuides(): void {
+    this.view.setPlaneGuides(
+      this.showPlaneGuides && this.stackView === 'planes',
+      this.selectedId,
+    );
   }
 
   /** How many layers have been given a plane, and the one press that takes them
@@ -2116,14 +2166,23 @@ export class Panel {
    *  is a different picture from "all of them centred", and it has to be
    *  reachable without remembering which rows were touched. */
   private planesBanner(): HTMLElement | null {
-    if (!this.planes.size) return null;
+    if (!this.planes.size && !this.crossPlanes.size) return null;
     const box = el('div', 'hidden-banner');
-    box.appendChild(el('b', undefined, `${plural(this.planes.size, 'layer')} placed`));
+    const runs = this.planes.size;
+    const passages = this.crossPlanes.size;
+    const said = [
+      runs ? plural(runs, 'run') : '',
+      passages ? plural(passages, 'crossing') : '',
+    ].filter(Boolean);
+    box.appendChild(el('b', undefined, `${said.join(' and ')} placed`));
     const clear = pill(
       'Clear all',
       () => {
         this.planes.clear();
+        this.crossPlanes.clear();
+        this.pickedCross = null;
         this.pushPlanes();
+        this.pushCrossPlanes();
         this.renderStack();
       },
       'Let the scene rest every layer again — exactly how it opens',
@@ -2144,6 +2203,8 @@ export class Panel {
     head.appendChild(el('span', 'tag', fact.folds.length ? `${fact.folds.length} C` : 'no C'));
     card.appendChild(head);
     card.appendChild(this.laceFigure(fact));
+    const picked = fact.crossings.find((c) => `${c.key}|${c.ownId}` === this.pickedCross);
+    if (picked) card.appendChild(this.crossRow(picked));
     fact.members.forEach((member, i) => {
       card.appendChild(this.memberRow(member, fact));
       const fold = fact.folds[i];
@@ -2245,18 +2306,50 @@ export class Panel {
       .join('');
     body += `<path class="pf-curve" d="${path}" />`;
 
+    // Each crossing is a BUTTON, not a dot. This is the part the picture was
+    // missing: you could see that 1_2 goes under 2_2 somewhere along there, and
+    // there was no way to point at that passage and say anything about it.
     for (const cross of fact.crossings) {
       const cx = n(X(cross.u));
       const cy = n(Y(at(cross.u)));
+      const id = `${cross.key}|${cross.ownId}`;
+      const placed = this.crossPlanes.get(id);
+      const picked = this.pickedCross === id;
+      // With a layer selected, ITS crossings are the ones lit. That is the answer
+      // to "which of these is where 1_2 goes under 2_2" on a lace making three
+      // passages, let alone a box stitch making four hundred: select the row and
+      // the rest of the ticks get out of the way.
+      const dim = this.selectedId !== null && cross.ownId !== this.selectedId;
+      const cls =
+        `pf-cross ${cross.over ? 'over' : 'under'}` +
+        (picked ? ' picked' : '') +
+        (placed !== undefined ? ' placed' : '') +
+        (cross.woven ? '' : ' loose') +
+        (dim ? ' dim' : '');
       body +=
-        `<circle class="pf-cross ${cross.over ? 'over' : 'under'}" cx="${cx}" cy="${cy}" r="3.4">` +
+        `<g class="pf-hit" data-cross="${escText(id)}" role="button" tabindex="0">` +
+        `<circle class="pf-halo" cx="${cx}" cy="${cy}" r="7" />` +
+        `<circle class="${cls}" cx="${cx}" cy="${cy}" r="${picked ? 4.6 : 3.4}" />` +
         `<title>${escText(cross.ownId)} ${cross.over ? 'over' : 'under'} ${escText(cross.withId)}` +
-        ` — ${cross.gapT.toFixed(1)} thicknesses apart</title></circle>`;
+        ` — ${cross.gapT.toFixed(1)} thicknesses apart` +
+        (placed !== undefined ? ` · placed ${PLANE_WORDS[placed] ?? placed}` : '') +
+        (cross.woven ? '' : ' · not woven, they pass on different storeys') +
+        `</title></g>`;
     }
 
     const fig = el('figure', 'lace-fig');
     fig.innerHTML =
       `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${escText(fact.key)} in elevation">${body}</svg>`;
+    for (const hit of fig.querySelectorAll<SVGGElement>('.pf-hit')) {
+      const id = hit.dataset.cross;
+      if (!id) continue;
+      hit.addEventListener('click', () => this.pickCross(id));
+      hit.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        this.pickCross(id);
+      });
+    }
     return fig;
   }
 
@@ -2296,6 +2389,9 @@ export class Panel {
       : `${member.id} runs from one C straight into the next: no free run at all`;
     name.addEventListener('click', () => {
       this.selectedId = selected ? null : member.id;
+      // The lit ladder follows the selection, so picking a row in the panel picks
+      // out its three shelves in the scene.
+      this.pushPlaneGuides();
       this.renderStack();
     });
     row.appendChild(name);
@@ -2317,12 +2413,8 @@ export class Panel {
     group.setAttribute('role', 'group');
     group.setAttribute('aria-label', `Where ${member.id} rests`);
     const current = this.planes.get(member.id) ?? null;
-    const OPTIONS: Array<[number, string]> = [
-      [-1, 'bottom'],
-      [0, 'centre'],
-      [1, 'top'],
-    ];
-    for (const [value, label] of OPTIONS) {
+    for (const value of [-1, 0, 1]) {
+      const label = PLANE_WORDS[value];
       const on = current === value;
       const b = el('button', 'plane-btn' + (on ? ' on' : '')) as HTMLButtonElement;
       b.type = 'button';
@@ -2332,6 +2424,58 @@ export class Panel {
         ? `${member.id} rests on the ${label} of its storey — press again to let the scene rest it`
         : `Rest ${member.id} on the ${label} of its storey`;
       b.addEventListener('click', () => this.setPlane(member.id, on ? null : value));
+      group.appendChild(b);
+    }
+    return group;
+  }
+
+  /**
+   * The crossing you are pointing at, and where it sits.
+   *
+   * This is the control a resting plane cannot be. `1_2` rides over `2_1`, over
+   * `2_3` and under `2_2` inside one run, so there is no single height for `1_2`
+   * — but there is a height for each of those three passages, and this sets one
+   * of them. The weave still decides which way round the pair goes; this says
+   * how high the passage happens.
+   */
+  private crossRow(cross: CrossFact): HTMLElement {
+    const id = `${cross.key}|${cross.ownId}`;
+    const row = el('div', 'cross-row');
+
+    const name = el('span', 'cross-name');
+    name.appendChild(el('span', 'row-id', cross.ownId));
+    name.appendChild(
+      el('span', 'tag ' + (cross.over ? 'teal' : 'coral'), cross.over ? 'over' : 'under'),
+    );
+    name.appendChild(el('span', 'row-id', cross.withId));
+    row.appendChild(name);
+
+    if (!cross.woven) {
+      // Nothing is woven between two storeys with no mask, so there is no anchor
+      // here to override — saying so beats a control that does nothing.
+      row.appendChild(el('span', 'cross-note', 'different storeys — nothing woven here'));
+      return row;
+    }
+    row.appendChild(this.crossPick(id, cross));
+    return row;
+  }
+
+  private crossPick(id: string, cross: CrossFact): HTMLElement {
+    const group = el('span', 'plane-pick');
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', `Where ${cross.ownId} sits as it passes ${cross.withId}`);
+    const current = this.crossPlanes.get(id) ?? null;
+    for (const value of [-1, 0, 1]) {
+      const on = current === value;
+      const b = el('button', 'plane-btn' + (on ? ' on' : '')) as HTMLButtonElement;
+      b.type = 'button';
+      b.innerHTML = PLANE_MARK(value);
+      b.setAttribute('aria-pressed', String(on));
+      const word = PLANE_WORDS[value];
+      b.title = on
+        ? `${cross.ownId} passes ${cross.withId} at the ${word} of its storey — press again to let the weave decide`
+        : `Put this passage at the ${word} of ${cross.ownId}’s storey`;
+      b.addEventListener('click', () => this.setCrossPlane(id, on ? null : value));
       group.appendChild(b);
     }
     return group;
@@ -2366,6 +2510,20 @@ export class Panel {
   private planes = new Map<string, number>();
 
   /**
+   * Where one layer sits at ONE crossing: `${crossKey}|${strandId}` to a plane in
+   * thicknesses. See StrandScene.setCrossingPlanes — this is the map that can say
+   * the thing a run plane cannot, which is where 1_2 goes as it passes UNDER 2_2
+   * as opposed to where it goes over 2_1 a moment later.
+   */
+  private crossPlanes = new Map<string, number>();
+
+  /** Which crossing the view is pointed at, by `${crossKey}|${strandId}`. */
+  private pickedCross: string | null = null;
+
+  /** Whether the canvas is drawing the shelves themselves. */
+  private showPlaneGuides = false;
+
+  /**
    * Send the map to the scene, or turn the whole thing off.
    *
    * Empty means `null`, and null is the studio's own behaviour to the byte. An
@@ -2386,6 +2544,24 @@ export class Panel {
     // a resting place, and not what this view is asking.
     for (const [id, value] of this.planes) map.set(id, { in: value, out: value });
     this.view.setSublevels(map);
+  }
+
+  private pushCrossPlanes(): void {
+    this.view.setCrossingPlanes(this.crossPlanes.size ? this.crossPlanes : null);
+  }
+
+  private setCrossPlane(key: string, value: number | null): void {
+    if (value === null) this.crossPlanes.delete(key);
+    else this.crossPlanes.set(key, value);
+    this.pushCrossPlanes();
+    this.renderStack();
+  }
+
+  /** Point the view at one crossing — or at nothing, which is what pressing the
+   *  one already picked does. */
+  private pickCross(key: string | null): void {
+    this.pickedCross = this.pickedCross === key ? null : key;
+    this.renderStack();
   }
 
   private setPlane(id: string, value: number | null): void {
@@ -2415,6 +2591,22 @@ export class Panel {
       dropped = true;
     }
     if (dropped) this.pushPlanes();
+
+    // The same for crossings, which go stale two ways: the layer can be deleted,
+    // and the crossing itself can stop existing when a strand is moved off it.
+    if (!this.crossPlanes.size) return;
+    const alive = new Set<string>();
+    for (const point of this.view.getCrossPoints()) {
+      alive.add(`${point.key}|${point.aId}`);
+      alive.add(`${point.key}|${point.bId}`);
+    }
+    let lost = false;
+    for (const key of [...this.crossPlanes.keys()]) {
+      if (alive.has(key)) continue;
+      this.crossPlanes.delete(key);
+      lost = true;
+    }
+    if (lost) this.pushCrossPlanes();
   }
 
   /**
@@ -3388,6 +3580,9 @@ const PLANE_MARK = (value: number): string =>
   );
 
 const PLANES_ICON = PLANE_MARK(0);
+
+/** What each plane is called, wherever one has to be named in a sentence. */
+const PLANE_WORDS: Record<number, string> = { [-1]: 'bottom', 0: 'centre', 1: 'top' };
 
 // The masks side of the stack bar's switch: one band whole, the other broken
 // behind it — the same thing the Weave tool's mark says, stood upright. The

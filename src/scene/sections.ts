@@ -17,7 +17,6 @@
 // where the answer matters, which is what the ownership tags exist to prevent.
 import { Vec3 } from '../geometry/vec';
 import { TurnRecord } from '../geometry/polyline';
-import { polylineCrossings } from '../geometry/weave';
 
 /** One member of a lace, and the stretch of it a plane would govern. */
 export interface MemberFact {
@@ -58,16 +57,41 @@ export interface FoldFact {
   stepT: number;
 }
 
-/** One place this lace passes another, as the weave finds it. */
+/** One place this lace passes another — one PASSAGE, not a pair. */
 export interface CrossFact {
+  /**
+   * The crossing's own key, from the weave. This is what makes a passage
+   * addressable: `1_2 under 2_2` is one of the three crossings that arm makes,
+   * and until there was a key for it there was no way to point at it.
+   */
+  key: string;
   u: number;
   /** The member of this lace, and the layer of the other one. */
   ownId: string;
+  ownIndex: number;
   withId: string;
-  /** True when this lace passes ABOVE the other here. */
+  /** True when this lace passes ABOVE the other here — the weave's own verdict. */
   over: boolean;
   /** The gap between the two, in thicknesses. */
   gapT: number;
+  /** False when nothing is woven here: two storeys passing, no mask between. */
+  woven: boolean;
+}
+
+/**
+ * One crossing as `StrandScene` recorded it. `CrossPoint` there satisfies this;
+ * the shape is restated rather than imported so the geometry does not have to
+ * depend on the renderer.
+ */
+export interface CrossInput {
+  key: string;
+  aIndex: number;
+  bIndex: number;
+  x: number;
+  y: number;
+  overIndex: number;
+  underIndex: number;
+  woven: boolean;
 }
 
 export interface LaceFact {
@@ -125,28 +149,6 @@ function zAt(line: Vec3[], cum: number[], s: number): number {
   return line[i].z + t * (line[i + 1].z - line[i].z);
 }
 
-/** Do two laces share any of the drawing plane at all? Laces that do not cannot
- *  cross, and on a mat most pairs do not — one box test each saves the whole
- *  segment-against-segment search for them. */
-function overlaps(a: Vec3[], b: Vec3[]): boolean {
-  const box = (line: Vec3[]) => {
-    let x0 = Infinity;
-    let x1 = -Infinity;
-    let y0 = Infinity;
-    let y1 = -Infinity;
-    for (const q of line) {
-      if (q.x < x0) x0 = q.x;
-      if (q.x > x1) x1 = q.x;
-      if (q.y < y0) y0 = q.y;
-      if (q.y > y1) y1 = q.y;
-    }
-    return { x0, x1, y0, y1 };
-  };
-  const A = box(a);
-  const B = box(b);
-  return A.x0 <= B.x1 && B.x0 <= A.x1 && A.y0 <= B.y1 && B.y0 <= A.y1;
-}
-
 function median(values: number[]): number {
   if (!values.length) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -159,48 +161,88 @@ function median(values: number[]): number {
  * `laces` is every built centreline — a merged lace or a strand standing on its
  * own — and `ids` names the layers by index.
  */
-export function laceFacts(laces: LaceInput[], ids: string[]): LaceFact[] {
+/** Are these two members glued to each other inside this lace? */
+function adjacentInChain(chain: number[], a: number, b: number): boolean {
+  const ia = chain.indexOf(a);
+  const ib = chain.indexOf(b);
+  return ia >= 0 && ib >= 0 && Math.abs(ia - ib) === 1;
+}
+
+export function laceFacts(
+  laces: LaceInput[],
+  ids: string[],
+  points: CrossInput[],
+): LaceFact[] {
   const arcs = laces.map((L) => planArc(L.line));
 
-  // Where the laces meet each other. The finder is the weave's own, so the ticks
-  // land where the weave puts a crossing rather than where a second search would
-  // — and over/under is READ BACK off the two heights there, which is exactly
-  // what the elevation is drawing.
+  // WHERE THE CROSSINGS COME FROM, and why not from here.
   //
-  // Each PAIR is walked once and reported to both laces. Walking it twice, once
-  // per direction, doubled the cost of the one measurement in here that is not
-  // linear: a twist stitch is three laces of ~2,300 points, and every pair is a
-  // segment-against-segment search.
-  const found: CrossFact[][] = laces.map(() => []);
-  for (let ai = 0; ai < laces.length; ai++) {
-    for (let bi = ai + 1; bi < laces.length; bi++) {
-      const A = laces[ai];
-      const B = laces[bi];
-      if (!overlaps(A.line, B.line)) continue;
-      for (const hit of polylineCrossings(A.line, B.line)) {
-        const pa = A.line[indexAt(arcs[ai].cum, hit.sA)];
-        const pb = B.line[indexAt(arcs[bi].cum, hit.sB)];
-        const za = zAt(A.line, arcs[ai].cum, hit.sA);
-        const zb = zAt(B.line, arcs[bi].cum, hit.sB);
-        const aId = ids[pa.owner ?? A.chain[0] ?? -1] ?? '?';
-        const bId = ids[pb.owner ?? B.chain[0] ?? -1] ?? '?';
-        const gapT = Math.abs(za - zb) / (A.thickness || 1);
-        found[ai].push({
-          u: arcs[ai].total > 0 ? hit.sA / arcs[ai].total : 0,
-          ownId: aId,
-          withId: bId,
-          over: za > zb,
-          gapT,
-        });
-        found[bi].push({
-          u: arcs[bi].total > 0 ? hit.sB / arcs[bi].total : 0,
-          ownId: bId,
-          withId: aId,
-          over: zb > za,
-          gapT,
-        });
+  // This used to run the weave's finder again over the merged laces. It agreed
+  // with the weave — it was the same function — but agreeing is not the same as
+  // being the same thing, and it could not be: a crossing found here had no
+  // identity the weave would recognise, so a tick in the picture could be looked
+  // at and never pointed at. Placing one needs a name for it.
+  //
+  // So the weave names them (`CrossPoint.key`) and this only has to say WHERE on
+  // each lace to draw the tick. The owner is already known — the crossing says
+  // which strand — so the search is over that member's own stretch of the lace
+  // and nothing else. That is a drawing position, not a decision about ownership,
+  // which is the thing the tags exist to settle.
+  const memberSpan = new Map<number, { li: number; from: number; to: number }>();
+  laces.forEach((L, li) => {
+    let from = 0;
+    for (let k = 1; k <= L.line.length; k++) {
+      const owner = L.line[k - 1].owner;
+      if (k < L.line.length && L.line[k].owner === owner) continue;
+      const index = owner ?? L.chain[0] ?? 0;
+      if (!memberSpan.has(index)) memberSpan.set(index, { li, from, to: k - 1 });
+      from = k;
+    }
+  });
+
+  /** The point of `index`'s own stretch closest to (x, y), and its height. */
+  const place = (index: number, x: number, y: number) => {
+    const span = memberSpan.get(index);
+    if (!span) return null;
+    const L = laces[span.li];
+    let best = span.from;
+    let bestD = Infinity;
+    for (let k = span.from; k <= span.to; k++) {
+      const d = (L.line[k].x - x) ** 2 + (L.line[k].y - y) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = k;
       }
     }
+    return { li: span.li, k: best, z: L.line[best].z };
+  };
+
+  const found: CrossFact[][] = laces.map(() => []);
+  for (const point of points) {
+    const a = place(point.aIndex, point.x, point.y);
+    const b = place(point.bIndex, point.x, point.y);
+    if (!a || !b) continue;
+    // Two members of ONE lace glued end to end are not crossing, they are joined:
+    // the "crossing" is the joint itself. Chain adjacency says so exactly, so no
+    // guess is involved and a lace that genuinely crosses itself still reports it.
+    if (a.li === b.li && adjacentInChain(laces[a.li].chain, point.aIndex, point.bIndex)) continue;
+    const t = laces[a.li].thickness || 1;
+    const gapT = Math.abs(a.z - b.z) / t;
+    const push = (side: typeof a, index: number, otherIndex: number) => {
+      const { cum, total } = arcs[side.li];
+      found[side.li].push({
+        key: point.key,
+        u: total > 0 ? cum[side.k] / total : 0,
+        ownId: ids[index] ?? String(index),
+        ownIndex: index,
+        withId: ids[otherIndex] ?? String(otherIndex),
+        over: point.overIndex === index,
+        gapT,
+        woven: point.woven,
+      });
+    };
+    push(a, point.aIndex, point.bIndex);
+    push(b, point.bIndex, point.aIndex);
   }
 
   return laces.map((L, li) => {
