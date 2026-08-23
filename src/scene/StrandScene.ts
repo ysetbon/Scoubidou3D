@@ -53,7 +53,7 @@ import {
 } from '../geometry/polyline';
 import { Anchor, arcLengths, heightField, polylineCrossings } from '../geometry/weave';
 import { Vec2, Vec3 } from '../geometry/vec';
-import { LEG_PER_WIDTH } from '../geometry/zturn';
+import { LEG_PER_WIDTH, type TurnStyle } from '../geometry/zturn';
 
 // Source (pixel) units -> world units. Keeps camera distances comfortable.
 const SCALE = 0.02;
@@ -357,6 +357,9 @@ export class StrandScene {
 
   /** See setSublevels. Null is off, and off is the studio's behaviour exactly. */
   private sublevels: Map<string, Sublevel> | null = null;
+
+  /** Which storey-turn construction the C's are built with. See setTurnStyle. */
+  private turnStyle: TurnStyle = 'current';
   private levelPlaneZ = new Map<number, number>();
   // Half the stack's height in world units — the other half of what the camera
   // has to frame once levels make a scene tall.
@@ -880,7 +883,9 @@ export class StrandScene {
       // a ratio of the lace's width, so the turn is the same shape on any lace.
       // Every C is built here, once, from the two real runs — a hidden partner
       // included — and each turn records the apex where ownership changes hands.
-      const turns: TurnRecord[] = this.sublevels ? zFolds(rounded, width * LEG_PER_WIDTH) : [];
+      const turns: TurnRecord[] = this.sublevels
+        ? zFolds(rounded, width * LEG_PER_WIDTH, this.turnStyle)
+        : [];
       this.laceCenterlines.push({
         chain: chain.map((m) => m.index),
         line: rounded,
@@ -1343,6 +1348,25 @@ export class StrandScene {
   setSublevels(map: Map<string, Sublevel> | null): void {
     this.sublevels = map && map.size > 0 ? new Map(map) : null;
     this.rebuild();
+  }
+
+  /**
+   * Which construction the storey turns are built with — see `TurnStyle`.
+   *
+   * A comparison switch, not a preference: the four differ only in how a C's
+   * sweep frame is arrived at, they agree exactly on a fold that CLIMBS, and
+   * they part company only on one that DROPS — which is the fold that comes
+   * out pinched. The fold lab drives it so the two can be put side by side on
+   * the real model rather than argued about from a still.
+   */
+  setTurnStyle(style: TurnStyle): void {
+    if (this.turnStyle === style) return;
+    this.turnStyle = style;
+    this.rebuild();
+  }
+
+  getTurnStyle(): TurnStyle {
+    return this.turnStyle;
   }
 
   /** One strand's own woven centreline in world units, before laces are merged. */

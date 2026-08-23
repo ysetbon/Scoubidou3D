@@ -18,7 +18,7 @@
 // this file, and the sweep that builds it in ribbon.ts.
 
 import { Vec3 } from './vec';
-import { zTurn } from './zturn';
+import { zTurn, type TurnStyle } from './zturn';
 
 /** Corners gentler than this are left alone — a sampled curve is a polyline of
  *  very slight corners, and rounding those would soften the curve itself. */
@@ -291,7 +291,7 @@ export interface TurnRecord {
   outOwner?: number;
 }
 
-export function zFolds(pts: Vec3[], legLength: number): TurnRecord[] {
+export function zFolds(pts: Vec3[], legLength: number, style?: TurnStyle): TurnRecord[] {
   const records: TurnRecord[] = [];
   const folds = foldsOf(pts);
   if (folds.length === 0) return records;
@@ -395,6 +395,7 @@ export function zFolds(pts: Vec3[], legLength: number): TurnRecord[] {
       legIn,
       legOut,
       face: face[k],
+      style,
       legSteps,
       tipSteps,
     });

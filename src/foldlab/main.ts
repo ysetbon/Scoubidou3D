@@ -32,7 +32,7 @@ import { collectJunctions } from '../model/connections';
 import { levelAt } from '../model/levels';
 import { sceneFromFile } from '../model/sceneIO';
 import TWO_CROSSING from './two-crossing.json';
-import { separationOf, turnMode } from '../geometry/zturn';
+import { separationOf, turnMode, TURN_STYLES, type TurnStyle } from '../geometry/zturn';
 import { StrandScene, type CrossingFact } from '../scene/StrandScene';
 import type { Point, RGBA, Scene3D, Strand3D } from '../model/types';
 
@@ -98,6 +98,51 @@ const plane = new Map<string, Rest>(
   }),
 );
 const open = new Set<string>();
+
+/**
+ * The four constructions of the storey turn, and what each one is claiming.
+ *
+ * They differ ONLY in how a C's sweep frame is arrived at, and they agree to
+ * the last bit on a fold that climbs. What separates them is the fold that
+ * DROPS — and which of a lace's folds drops is decided by the junction, not by
+ * the shape: walking a chain, the joint glued start-to-start is crossed going
+ * downhill and the one glued end-to-start going uphill. That is why exactly
+ * half the C's in this scene come out pinched.
+ */
+const TURN_NOTES: Record<TurnStyle, { name: string; blurb: string }> = {
+  current: {
+    name: 'Current',
+    blurb:
+      'The shipped frame. It has no climb direction in it, so on a DROPPING ' +
+      'fold the thickness axis swings and falls to zero at the apex — the ' +
+      'section has no width left to sweep and the strip wrings to a point. ' +
+      'That is the pinched flap.',
+  },
+  radial: {
+    name: 'Radial (fix)',
+    blurb:
+      'Takes the frame from the path itself — the outward radial of the roll ' +
+      'the tip actually makes. Rigid whichever way the fold runs, and on a ' +
+      'climbing fold identical to Current, so the C you already accepted ' +
+      'cannot move.',
+  },
+  mirror: {
+    name: 'Mirror',
+    blurb:
+      'Builds the turn CLIMBING and reflects it in Z, trusting no formula. An ' +
+      'independent route to what Radial computes directly: if these two look ' +
+      'the same, the formula is right.',
+  },
+  broad: {
+    name: 'Broad',
+    blurb:
+      'Radial, plus the bight opened out in plan — the tip reaches toward the ' +
+      "lace's own width instead of half the climb. Rounder return, more open " +
+      'eye. Neither end moves.',
+  },
+};
+let turnStyle: TurnStyle = 'current';
+
 let declared = true;
 let scrollKeep = 0;
 let selected: string | null = null;
@@ -637,6 +682,45 @@ function layerCard(i: number, facts: CrossingFact[], folds: FoldRow[]): HTMLElem
   return card;
 }
 
+/**
+ * Switch the C's construction, live, on this scene.
+ *
+ * Deliberately not a per-layer control: the choice is about how EVERY turn is
+ * built, and the whole point is to flip it back and forth with the same
+ * camera on the same model.
+ */
+function turnSwitch(): HTMLElement {
+  const box = el('div', 'turnbar');
+  box.appendChild(el('h4', undefined, 'C-return build'));
+  box.appendChild(
+    el('p', 'why',
+      'All four agree exactly on a fold that climbs. They differ only on one ' +
+      'that drops — which is every joint glued start-to-start.'),
+  );
+
+  const row = el('div', 'styles');
+  for (const s of TURN_STYLES) {
+    const b = el('button', 'pill');
+    b.textContent = TURN_NOTES[s].name;
+    b.setAttribute('aria-pressed', String(s === turnStyle));
+    b.title = TURN_NOTES[s].blurb;
+    b.addEventListener('click', () => {
+      if (turnStyle === s) return;
+      turnStyle = s;
+      view.setTurnStyle(s);
+      build();
+    });
+    row.appendChild(b);
+  }
+  box.appendChild(row);
+
+  const note = el('p', 'note');
+  note.appendChild(el('b', undefined, `${TURN_NOTES[turnStyle].name}. `));
+  note.appendChild(document.createTextNode(TURN_NOTES[turnStyle].blurb));
+  box.appendChild(note);
+  return box;
+}
+
 function build(): void {
   const facts = view.getCrossings();
   const folds = foldRows();
@@ -709,6 +793,8 @@ function build(): void {
   });
   stackbar.appendChild(copy);
   panel.appendChild(stackbar);
+
+  panel.appendChild(turnSwitch());
 
   const stack = el('div', 'stack from-bottom');
   stack.addEventListener('scroll', () => (scrollKeep = stack.scrollTop));

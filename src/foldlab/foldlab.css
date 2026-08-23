@@ -522,3 +522,63 @@
   min-width: 30px;
   padding: 0;
 }
+
+/* ---- the turn-style switch ------------------------------------------------
+ * Four constructions of the same C, one of which is the shipped one. They
+ * agree exactly on a fold that CLIMBS and part company only on one that
+ * DROPS, so the switch is for putting two of them against the same model
+ * rather than for setting a preference — which is why it sits above the
+ * layers with its own note rather than among the per-layer controls.
+ */
+.turnbar {
+  margin: 0 0 8px;
+  padding: 9px 10px 10px;
+  border: 1.5px solid var(--edge2);
+  border-radius: 12px;
+  background: var(--panel2, transparent);
+}
+
+.turnbar h4 {
+  margin: 0 0 2px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+
+.turnbar .why {
+  margin: 0 0 8px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.turnbar .styles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.turnbar .styles .pill {
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 10.5px;
+}
+
+.turnbar .styles .pill[aria-pressed='true'] {
+  background: var(--coral);
+  border-color: var(--coral);
+  color: #171713;
+}
+
+.turnbar .note {
+  margin: 8px 0 0;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.turnbar .note b {
+  color: var(--ink);
+}
