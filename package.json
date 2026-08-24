@@ -17,6 +17,7 @@
     "check:census": "esbuild scripts/check-census.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-census.mjs --log-level=warning && node node_modules/.cache/check-census.mjs",
     "check:box": "esbuild scripts/check-box.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-box.mjs --log-level=warning && node node_modules/.cache/check-box.mjs",
     "check:plan": "esbuild scripts/check-plan.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-plan.mjs --log-level=warning && node node_modules/.cache/check-plan.mjs",
+    "check:planes": "esbuild scripts/check-planes-identity.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-planes-identity.mjs --log-level=warning && node node_modules/.cache/check-planes-identity.mjs",
     "check:atlas": "esbuild scripts/check-atlas.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-atlas.mjs --log-level=warning && node node_modules/.cache/check-atlas.mjs",
     "check:fit": "esbuild scripts/check-fit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-fit.mjs --log-level=warning && node node_modules/.cache/check-fit.mjs",
     "check:ladder": "esbuild scripts/check-ladder.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-ladder.mjs --log-level=warning && node node_modules/.cache/check-ladder.mjs",
