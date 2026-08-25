@@ -38,7 +38,7 @@ masking, and the box + strand sample in this app's studio, where the over lace p
 
 <table>
 <tr>
-<td width="50%"><img src="docs/readme/openstrand-2d.png" alt="OpenStrandJS: the box stitch top-down — width and masking, no depth"></td>
+<td width="50%"><img src="docs/readme/openstrand-2d.png" alt="OpenStrandJS: box + strand top-down — width and masking, no depth"></td>
 <td width="50%"><img src="docs/readme/scoubidou-3d.png" alt="Scoubidou3D: box + strand tilted — ribbons with thickness, really interlocked"></td>
 </tr>
 <tr>
