@@ -139,7 +139,9 @@ fingertip. one finger orbits, pinch zooms, two fingers pan.
 
 ## where each part of a lace rests — the Planes view
 
-this is the newest thing in the studio, and it's the third side of the stack bar's switch.
+the third side of the stack bar's switch. a storey is two thicknesses deep, so a layer doesn't
+only have a storey — it has somewhere to rest *inside* it: floor, middle, ceiling, or half a step
+between. the fold lab could always say that; now the studio can too.
 
 <table>
 <tr>
@@ -148,50 +150,17 @@ this is the newest thing in the studio, and it's the third side of the stack bar
 </tr>
 </table>
 
-a storey is two thicknesses deep, so a layer doesn't only have a storey — it has somewhere to rest
-*inside* it. the fold lab could always say that; the studio couldn't say it at all. now it can.
+each lace gets its own **elevation**, measured off the built centreline so it can't disagree with
+the canvas, with every crossing ticked where the weave puts it — you point at the part you mean
+instead of naming it. under the picture, one row per member with **seven rungs**, half a thickness
+apart: press one and the run rests there, press it again and the scene decides. a C never gets a
+rung of its own — it just carries the difference between the two runs it joins — and crossings stay
+the weave's to settle, as they always were.
 
-the view is a **picture first**, because the question is a picture question. each lace gets its own
-elevation, **measured off the built centreline** rather than drawn from a schematic, so it can't
-disagree with what's on the canvas: the planes ruled across it, the members and C's as a coloured
-band underneath, and every crossing ticked where the weave actually puts it. you point at the part
-you mean instead of naming it — the crossings are buttons, and selecting a row dims everybody else's
-ticks, which is the only way to find one passage on a stitch that makes four hundred.
-
-under the picture, one row per **member**, because a member is the only thing a plane can address:
-
-- a **C has no plane of its own.** it carries the *difference* between the two runs it joins, so its
-  row is a readout, not a control — move either run and the number follows.
-- a **crossing can't have one either.** an arm rides over one lace and ducks under the next inside a
-  single run, and no one resting height says both. the weave settles those, as it always has, and
-  the ticks report it.
-
-**seven rungs**, half a thickness apart, and the middle five are this storey:
-
-| rung | where | |
-| --- | --- | --- |
-| `+3` | a rung above this storey | clears its ceiling |
-| `+2` | top of this storey | floor of the one above |
-| `+1` | upper half | rests on `−1` |
-| `0` | middle of this storey | |
-| `−1` | lower half | carries `+1` |
-| `−2` | floor of this storey | top of the one below |
-| `−3` | a rung below this storey | hangs under its floor |
-
-half a thickness, not a whole one, and that was measured rather than reasoned: two ribbons rest on
-each other when their centres are one thickness apart, so at a whole-thickness rung `+1` over `−1`
-left a full thickness of daylight — the one thing the control exists for couldn't be said. at half,
-`+1` and `−1` are exactly one thickness apart and the two touch.
-
-`±2` are the seams, and a storey's ceiling is still the next one's floor. `±3` reach one rung *past*
-the seam into the neighbour, because resting **on** a seam isn't the same as clearing a layer
-already sitting on it — and doing that shouldn't cost a level break. further than that is a level
-break's job.
-
-**Draw the planes in the scene** puts the shelves on the canvas as well: three translucent sheets
-per storey, edge-on lines when you orbit down to look along them, with the selected row's ladder lit
-and the rest left as hairlines. off is the default and stays one press away — an untouched layer has
-no entry, an empty map is `setSublevels(null)`, and the banner clears the lot in one go.
+**Draw the planes in the scene** puts the shelves on the canvas too, lit for whichever row is
+selected. off is the default — an untouched layer has no entry, and the banner clears every placed
+plane in one press. the brief this was built from, with the full reasoning, is
+[docs/app-sublevels-handoff.md](docs/app-sublevels-handoff.md).
 
 ## the stitches
 
