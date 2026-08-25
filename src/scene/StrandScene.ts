@@ -83,27 +83,6 @@ const SCALE = 0.02;
  */
 const FOLD_STACK = 2;
 
-/**
- * How far apart a fold must leave its two runs AT the crease, in thicknesses —
- * the floor to FOLD_STACK's ceiling.
- *
- * A crease is a real bend in real material, and `zFolds` builds it as one: a
- * half-cylinder of radius half the step, swept with the lace's own section. The
- * ribbon's inner surface therefore lands at `step/2 - thickness/2`. At a step of
- * one thickness — the two runs touching, which is exactly what a storey settling
- * onto the storey below produces — that radius is ZERO: the inner face collapses
- * to a line and the ribbon shows a nick. Below one thickness it goes NEGATIVE and
- * the lace passes through its own body, which is the torn crumple a declared
- * plane could put on a fold whose two runs sat a third of a thickness apart.
- *
- * So the floor is half a thickness to reach the crease axis, plus the radius the
- * section already rounds its own edges with (`CORNER`) — because that is the
- * tightest bend this model asks of the material anywhere else, and a crease has
- * no business being tighter than a corner. Twice that is the step.
- */
-export const CORNER = 0.48; // cross-section corner radius, in thicknesses
-export const FOLD_MIN = 1 + 2 * CORNER;
-
 // Handle appearance (world-unit radii + colors), tuned against SCALE so the grab
 // dots read clearly at the default framing.
 const END_R = 0.18;
@@ -788,7 +767,7 @@ export class StrandScene {
       const geom = buildRibbonGeometry(line, {
         width,
         thickness,
-        cornerRadius: thickness * CORNER,
+        cornerRadius: thickness * 0.48,
         cornerSteps: 3,
         roundCaps: false,
       });
@@ -978,23 +957,15 @@ export class StrandScene {
       // AFTER the corner rounding below, because the turn's points carry their
       // own sweep frame and rounding would not know to keep it.
       //
-      // `easeFolds` is not the old crease behaviour left in: what it does is
-      // settle the STEP, stepping the two runs apart and ramping away whatever
-      // the crease will not carry. That step is the turn's whole input — it is
-      // where `h` comes from — so without it every fold would climb nothing and
-      // the C would collapse to a flat hairpin.
-      //
-      // The FLOOR runs always: a fold whose two runs sit closer than the crease
-      // can physically bend is a lace passing through itself, and a declared
-      // plane is no more entitled to ask for that than the weave is. The CAP is
-      // the part planes are exempt from — a fold that climbs three declared
-      // storeys should carry all three at its crease, and capping it at two
-      // would ramp the difference into the runs and flatten the very storey the
-      // planes asked for.
-      easeFolds(line, thickness * 2, {
-        min: thickness * FOLD_MIN,
-        max: this.sublevels ? Infinity : thickness * FOLD_STACK,
-      });
+      // `easeFolds` still runs when no planes are declared, and it is not the
+      // old crease behaviour left in: what it does is settle the STEP, stacking
+      // the two runs a thickness apart and ramping away whatever the crease
+      // will not carry. That step is the turn's whole input — it is where `h`
+      // comes from — so without it every fold would climb nothing and the C
+      // would collapse to a flat hairpin. With planes declared the heights are
+      // already the planes', and easing them here would cap and ramp the very
+      // storey the planes asked for, so it is skipped.
+      if (!this.sublevels) easeFolds(line, thickness * FOLD_STACK, thickness * 2);
       // Then walk up any step left at a gentle joint — a level break between two
       // members of the lace puts one storey's worth of height there, and without a
       // crease to climb at it has to be ramped into the runs instead.
@@ -1513,7 +1484,7 @@ export class StrandScene {
       const geom = buildConnectorGeometry(parent, child, {
         width,
         thickness,
-        cornerRadius: thickness * CORNER,
+        cornerRadius: thickness * 0.48,
         cornerSteps: 3,
       });
       if (!geom) continue;
@@ -1540,7 +1511,7 @@ export class StrandScene {
         const outlineGeom = buildConnectorGeometry(parent, child, {
           width: width + ow * 2,
           thickness: thickness + ow * 2,
-          cornerRadius: (thickness + ow * 2) * CORNER,
+          cornerRadius: (thickness + ow * 2) * 0.48,
           cornerSteps: 3,
         });
         if (outlineGeom) {
@@ -1591,7 +1562,7 @@ export class StrandScene {
     const fillGeom = buildRibbonGeometry(centerline, {
       width,
       thickness,
-      cornerRadius: thickness * CORNER,
+      cornerRadius: thickness * 0.48,
       cornerSteps: 3,
       roundCaps: this.params.roundCaps,
       capStart,
@@ -1626,7 +1597,7 @@ export class StrandScene {
       const outlineGeom = buildRibbonGeometry(centerline, {
         width: width + ow * 2,
         thickness: thickness + ow * 2,
-        cornerRadius: (thickness + ow * 2) * CORNER,
+        cornerRadius: (thickness + ow * 2) * 0.48,
         cornerSteps: 3,
         roundCaps: this.params.roundCaps,
         capStart,
