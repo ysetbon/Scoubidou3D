@@ -231,21 +231,29 @@ function creaseShear(t: { x: number; y: number }, m: { x: number; y: number }): 
  * drawing plane for a good way past the crease — a strip brought back on itself
  * at 155° covers the run it came off. Held at one height the two bodies pass
  * straight through each other, and the edge of one surfaces through the face of
- * the other as a lump. They have to be STACKED: exactly one thickness apart, the
- * returning run lying on the run it folded off.
+ * the other as a lump. They have to be STACKED, and the step is bounded at BOTH
+ * ends — `step.min` and `step.max`, in world units — with whatever either bound
+ * refuses eased back into the runs on either side over `reach` of in-plane
+ * length. The lace ramps to the fold and ramps away from it, which is what it
+ * does in the hand.
  *
- * The weave, which knows nothing of folds, will often want much more than that —
- * the arm of a stitch can come in riding over everything and leave ducking under
- * everything, a drop of two thicknesses. Taking that literally turns the crease
- * into a cliff. So the step is capped at `stack` and the difference is eased back
- * into the runs on either side, over `reach` of in-plane length: the lace ramps to
- * the fold and ramps away from it, which is what it does in the hand.
+ * The CAP is there because the weave knows nothing of folds: the arm of a stitch
+ * can come in riding over everything and leave ducking under everything, a drop
+ * of two thicknesses, and taking that literally turns the crease into a cliff.
  *
- * `stack` is how far apart the two runs are left AT the crease, and so it is also
- * the height of the face the fold turns on — the whole of what that turn shows.
- * One thickness is the two runs touching. A fold that also climbs a storey has a
- * storey's worth of step to place, and can carry more of it here rather than ramp
- * it away; see FOLD_STACK in StrandScene.
+ * The FLOOR is there because the crease is a real bend in real material. The
+ * turn spliced in at a fold (`zFolds`) is a half-cylinder whose radius is half
+ * the step, so the ribbon's inner surface sits at `step/2 - thickness/2`: at one
+ * thickness of step that radius is ZERO and the inner face wrings itself into a
+ * line, and below one thickness it turns inside out and the lace passes through
+ * its own body. Both are visible — a nick in the ribbon at the first, a torn
+ * crumple at the second. Nothing legitimately asks for either, so the floor
+ * refuses them; see FOLD_MIN in StrandScene for where the number comes from.
+ *
+ * The step is also the height of the face the fold turns on — the whole of what
+ * that turn shows. One thickness is the two runs touching. A fold that also
+ * climbs a storey has a storey's worth of step to place, and can carry more of
+ * it here rather than ramp it away; see FOLD_STACK in StrandScene.
  */
 /**
  * Replace a fold's crease with the storey TURN the Z band lab settled on.
@@ -602,7 +610,7 @@ export function fillOwners(pts: Vec3[]): void {
   }
 }
 
-export function easeFolds(pts: Vec3[], stack: number, reach: number): void {
+export function easeFolds(pts: Vec3[], reach: number, step: { min: number; max: number }): void {
   const folds = foldsOf(pts);
   if (folds.length === 0 || reach <= 0) return;
   const was = pts.map((p) => p.z); // read heights from before any easing
@@ -612,7 +620,12 @@ export function easeFolds(pts: Vec3[], stack: number, reach: number): void {
     const zIn = pts[i].zIn ?? was[i];
     const zOut = pts[i].zOut ?? was[i];
     const mid = (zIn + zOut) / 2;
-    const half = Math.max(-stack, Math.min(stack, zOut - zIn)) / 2;
+    const raw = zOut - zIn;
+    // Magnitude first, sign second: the floor has to push the two runs APART,
+    // and clamping a signed value against a positive floor would instead drag
+    // a descending fold up through its own partner.
+    const size = Math.min(step.max, Math.max(step.min, Math.abs(raw)));
+    const half = (raw < 0 ? -size : size) / 2;
     const toIn = mid - half;
     const toOut = mid + half;
 
