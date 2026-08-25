@@ -405,6 +405,41 @@ button {
   gap: 10px;
 }
 
+/* A storey, when the scene has more than one. The bar names it and the laces
+   resting on it sit inside — so "what is on level 1" is a section you scroll to
+   rather than a run of rows to be picked apart. An UNSTACKED scene never draws
+   this: one storey does not need saying, and the cards stand alone exactly as
+   they always have (see planesList). */
+.plane-level {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1.5px solid var(--edge2);
+  background: var(--cream);
+}
+
+.plane-level-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 1px 1px;
+}
+
+.plane-level-head b {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.plane-level-head small {
+  margin-right: auto;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
 .lace {
   padding: 8px 8px 7px;
   border: 1px solid var(--hair);

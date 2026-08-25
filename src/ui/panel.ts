@@ -45,6 +45,7 @@ import { parseSceneText, sceneFromFile, sceneToJson } from '../model/sceneIO';
 import { History } from '../model/history';
 import {
   addLevelBreak,
+  isStacked,
   levelAt,
   moveLevelBreak,
   removeLevelBreak,
@@ -2112,8 +2113,66 @@ export class Panel {
     list.appendChild(this.guidesToggle());
     const banner = this.planesBanner();
     if (banner) list.appendChild(banner);
-    for (const fact of facts) list.appendChild(this.laceCard(fact));
+
+    // A scene with no storeys IS one storey, and one storey does not need saying:
+    // the cards stand on their own exactly as they always have. `isStacked` rather
+    // than `levelBreaks.length` for the reason it was written — a break parked at
+    // the top of the stack with nothing above it is not a storey, and pressing
+    // "Level" on a flat scene must not reorganise the panel underneath you.
+    if (!isStacked(this.scene)) {
+      for (const fact of facts) list.appendChild(this.laceCard(fact));
+      return list;
+    }
+
+    // Storeys, highest first — the top of the panel is the front of the scene,
+    // the same way round as the layer stack. A lace appears in every storey it
+    // has members on, carrying only those members, so "what is on level 1" is a
+    // section rather than something to be picked out of a run of rows.
+    for (let level = this.scene.levelBreaks.length; level >= 0; level--) {
+      const here = facts
+        .map((fact) => ({
+          fact,
+          members: fact.members.filter((m) => levelAt(this.scene, m.index) === level),
+        }))
+        .filter((g) => g.members.length > 0);
+      // A storey nothing reaches is left out rather than drawn empty: the breaks
+      // are positions in the stack and two of them can land on the same gap.
+      if (here.length) list.appendChild(this.planeLevelSection(level, here));
+    }
     return list;
+  }
+
+  /** One storey's worth of the planes view: the bar that names it, then a card
+   *  per lace that has anything resting on it. */
+  private planeLevelSection(
+    level: number,
+    groups: Array<{ fact: LaceFact; members: MemberFact[] }>,
+  ): HTMLElement {
+    const box = el('section', 'plane-level');
+    box.setAttribute('aria-label', `Level ${level}`);
+
+    const head = el('div', 'plane-level-head');
+    head.appendChild(el('span', 'level-badge', String(level)));
+    head.appendChild(el('b', undefined, `Level ${level}`));
+    const layers = groups.reduce((n, g) => n + g.members.length, 0);
+    head.appendChild(
+      el(
+        'small',
+        undefined,
+        level === 0
+          ? `ground · ${plural(layers, 'layer')}`
+          : `+${level} ${level === 1 ? 'storey' : 'storeys'} · ${plural(layers, 'layer')}`,
+      ),
+    );
+    const step = fmt(this.view.getLevelStep());
+    head.title =
+      level === 0
+        ? 'The ground storey — everything here rests on the base plane.'
+        : `Rests ${level} × ${step} above the ground.`;
+    box.appendChild(head);
+
+    for (const g of groups) box.appendChild(this.laceCard(g.fact, g.members));
+    return box;
   }
 
   /**
@@ -2191,23 +2250,45 @@ export class Panel {
     return box;
   }
 
-  /** One lace: the picture, then its members with the C's written between them,
-   *  in the order you walk the lace. */
-  private laceCard(fact: LaceFact): HTMLElement {
+  /**
+   * One lace: the picture, then its members with the C's written between them,
+   * in the order you walk the lace.
+   *
+   * `members` is the stretch of the lace to draw, and defaults to the whole of
+   * it — which is the only thing an unstacked scene ever asks for, so that path
+   * is the one that has always shipped. A storey passes its own members and gets
+   * the same card over that slice: same figure, same rows, same C's, just fewer.
+   */
+  private laceCard(fact: LaceFact, members: MemberFact[] = fact.members): HTMLElement {
+    const shown = new Set(members);
+    // A C belongs to this card only when BOTH members it joins are on it —
+    // otherwise it is the step out of this storey, and it is the next storey's
+    // business to say so.
+    const folds = fact.folds.filter((_, i) => shown.has(fact.members[i]) && shown.has(fact.members[i + 1]));
+
     const card = el('section', 'lace');
     const head = el('div', 'lace-head');
-    head.appendChild(el('span', 'lace-name', fact.key));
+    // The key IS the members in chain order, so a storey's card names the members
+    // it actually draws. Printing the whole 21-link chain over a card holding two
+    // of them says the wrong thing twice: it claims rows that are not there, and
+    // it ellipsises to the same text in every section.
+    head.appendChild(
+      el('span', 'lace-name', shown.size === fact.members.length ? fact.key : members.map((m) => m.id).join('→')),
+    );
     // Not `plural` — an uppercased "2 Cs" reads as an acronym, and a C is called
     // a C however many of them a lace has.
-    head.appendChild(el('span', 'tag', fact.folds.length ? `${fact.folds.length} C` : 'no C'));
+    head.appendChild(el('span', 'tag', folds.length ? `${folds.length} C` : 'no C'));
     card.appendChild(head);
-    card.appendChild(this.laceFigure(fact));
-    const picked = fact.crossings.find((c) => `${c.key}|${c.ownId}` === this.pickedCross);
+    card.appendChild(this.laceFigure(fact, members));
+    const picked = fact.crossings.find(
+      (c) => `${c.key}|${c.ownId}` === this.pickedCross && members.some((m) => m.id === c.ownId),
+    );
     if (picked) card.appendChild(this.crossRow(picked));
-    fact.members.forEach((member, i) => {
+    members.forEach((member) => {
       card.appendChild(this.memberRow(member, fact));
+      const i = fact.members.indexOf(member);
       const fold = fact.folds[i];
-      if (fold) card.appendChild(this.foldRow(fold));
+      if (fold && shown.has(fact.members[i + 1])) card.appendChild(this.foldRow(fold));
     });
     return card;
   }
@@ -2224,7 +2305,7 @@ export class Panel {
    * The rules are whole thicknesses, because that is what a plane is: level L's
    * three are `2L ± 1` and `2L`, and level L's top is level L+1's bottom.
    */
-  private laceFigure(fact: LaceFact): HTMLElement {
+  private laceFigure(fact: LaceFact, members: MemberFact[] = fact.members): HTMLElement {
     const W = 300;
     const H = 104;
     const LEFT = 27;
@@ -2234,11 +2315,32 @@ export class Panel {
     const BAND_Y = 72;
     const BAND_H = 15;
 
+    // WHAT STRETCH OF THE LACE THIS IS, and why it is not always all of it.
+    //
+    // Drawn whole, a ten-storey lace puts twenty thicknesses into 54px and the
+    // rule step opens to 4 — a rule every SECOND storey, and the seven plane
+    // marks in the row below controlling about eight pixels of it. Handed one
+    // storey's members, the same 54px holds about three thicknesses, the step
+    // lands back on 1, and every rule is a plane again.
+    //
+    // The whole lace is still the default and still takes exactly the arithmetic
+    // it always did: `uA/uB` are pinned to 0 and 1 rather than derived, so an
+    // unstacked scene cannot drift by a rounding step.
+    const shown = new Set(members);
+    const whole = members.length === fact.members.length;
+    const uA = whole ? 0 : Math.min(...members.map((m) => m.u0));
+    const uB = whole ? 1 : Math.max(...members.map((m) => m.u1));
+    const span = Math.max(1e-6, uB - uA);
+    const i0 = Math.round(uA * (PROFILE - 1));
+    const i1 = Math.round(uB * (PROFILE - 1));
+    const slice = fact.profile.slice(i0, i1 + 1);
+
     // Always show a whole storey either side of the middle, even on a flat lace,
     // so "there is room above and below this" is on screen before you touch it.
-    const lo = Math.min(-1.3, ...fact.profile) - 0.2;
-    const hi = Math.max(1.3, ...fact.profile) + 0.2;
-    const X = (u: number): number => LEFT + Math.max(0, Math.min(1, u)) * (RIGHT - LEFT);
+    const lo = Math.min(-1.3, ...slice) - 0.2;
+    const hi = Math.max(1.3, ...slice) + 0.2;
+    const X = (u: number): number =>
+      LEFT + Math.max(0, Math.min(1, (u - uA) / span)) * (RIGHT - LEFT);
     const Y = (z: number): number => FLOOR - ((z - lo) / (hi - lo)) * (FLOOR - TOP);
     const at = (u: number): number => fact.profile[Math.round(u * (PROFILE - 1))] ?? 0;
     const n = (v: number): string => v.toFixed(1);
@@ -2263,7 +2365,7 @@ export class Panel {
     // The bands: each member in its own colour, and the stretch a C occupies
     // washed over the top of it, so a section reads as "this much of 1_2, and
     // this much of it is already inside the turn".
-    for (const member of fact.members) {
+    for (const member of members) {
       const strand = this.scene.strands.find((st) => st.id === member.id);
       const x = X(member.u0);
       const w = Math.max(1, X(member.u1) - x);
@@ -2280,7 +2382,8 @@ export class Panel {
     }
     // The C's wash goes on top of the bands and the apex seam stops at the band,
     // so that neither of them lands across a member's name below.
-    for (const fold of fact.folds) {
+    for (const [i, fold] of fact.folds.entries()) {
+      if (!shown.has(fact.members[i]) || !shown.has(fact.members[i + 1])) continue;
       const x = X(fold.u0);
       const w = Math.max(1, X(fold.u1) - x);
       body +=
@@ -2293,15 +2396,15 @@ export class Panel {
     }
     // Names last: a member is the thing you are about to press, so nothing gets
     // drawn over what it is called.
-    for (const member of fact.members) {
+    for (const member of members) {
       const x = X(member.u0);
       const w = Math.max(1, X(member.u1) - x);
       if (w < 26) continue;
       body += `<text class="pf-band-label" x="${n(x + w / 2)}" y="${BAND_Y + 10.5}">${escText(member.id)}</text>`;
     }
 
-    const path = fact.profile
-      .map((z, i) => `${i ? 'L' : 'M'}${n(X(i / (PROFILE - 1)))},${n(Y(z))}`)
+    const path = slice
+      .map((z, k) => `${k ? 'L' : 'M'}${n(X((i0 + k) / (PROFILE - 1)))},${n(Y(z))}`)
       .join('');
     body += `<path class="pf-curve" d="${path}" />`;
 
@@ -2309,6 +2412,9 @@ export class Panel {
     // missing: you could see that 1_2 goes under 2_2 somewhere along there, and
     // there was no way to point at that passage and say anything about it.
     for (const cross of fact.crossings) {
+      // A tick belongs to the member that makes the passage, so a storey draws
+      // its own and leaves the rest to the storey they happen on.
+      if (!members.some((m) => m.id === cross.ownId)) continue;
       const cx = n(X(cross.u));
       const cy = n(Y(at(cross.u)));
       const id = `${cross.key}|${cross.ownId}`;
