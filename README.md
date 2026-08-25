@@ -1,47 +1,40 @@
 # Scoubidou3D
 
-**A 3D reimagining of [OpenStrand Studio](https://github.com/ysetbon/OpenStrandStudio)** — strands
-become ribbons with real thickness, layer order becomes height, and masks become a weave you can
-orbit.
+**a 3D reimagining of [OpenStrand Studio](https://github.com/ysetbon/OpenStrandStudio)** — a strand
+gets a real thickness, its layer number becomes its height, and a mask stops being paint and becomes
+a weave you can orbit.
 
-🧶 **[Open the studio](https://ysetbon.github.io/Scoubidou3D/app/)** ·
-🌐 **[Project site](https://ysetbon.github.io/Scoubidou3D/)** ·
-🪜 **[Level gallery](https://ysetbon.github.io/Scoubidou3D/levels/)** ·
-🔗 **[Every link](docs/links.md)**
+🧶 **[open the studio](https://ysetbon.github.io/Scoubidou3D/app/)** ·
+🌐 **[the site](https://ysetbon.github.io/Scoubidou3D/)** ·
+🌀 **[the twist study](https://ysetbon.github.io/Scoubidou3D/twist/)** ·
+🧪 **[the MXN lab](https://ysetbon.github.io/Scoubidou3D/mxn/)** ·
+🔗 **[every link](docs/links.md)**
 
 ![a woven mat in 3D — the laces physically lift and dip at every crossing](docs/readme/weave.png)
 
-OpenStrand Studio (and its browser port [OpenStrandJS](https://github.com/ysetbon/OpenStrandJS))
-draw strands from a **top-down** point of view. Strands have a *width*, and over/under weaving is
-*faked* with masking. Scoubidou3D asks a different question:
-
-> What if a strand had a real **thickness**, and "layer over layer" in the layer panel meant the
-> strand physically sits **on top** in space — so you could tilt the camera and see the weave in 3D?
-
-That's the whole idea. Each strand becomes a **ribbon** (like the plastic-lacing / gimp lanyards
-this was inspired by): its OpenStrand *width* runs across the ribbon, a new *thickness* runs
-through it, and its **layer index becomes its height (Z)**. When strand *Y* is above strand *X* in
-the layer panel, *Y*'s ribbon sits over *X*'s by default — and a **mask** can flip that at any
-single crossing, so one lace weaves over-and-under just like a real basket.
-
-![concept](docs/concept.svg)
-
-No install, nothing uploaded: it runs in your browser and your files stay on your machine.
+nothing to install, nothing uploaded. it runs in the browser and your files stay on your machine.
 
 ---
 
-## The studio
+## the idea
 
-The panel is the **layer stack and nothing else** — a bar per storey sitting *under* the layers it
-carries, because that is what a storey is: the floor they rest on. So level 0's bar is the last thing
-in the panel, the ground under everything, and the stack hangs from the bottom where the ground is.
-Masks get a card of their own above it all, and a strand's colour, width and *Straighten* open inside
-its own row. The settings live in
-a **dock** along the bottom of the canvas (Ribbon / Weave / View / Scene), one card at a time, each
-pill printing its own value so a scene's whole setup reads without opening anything. Every note the
-panel used to print — what each tool does, what undo covers, what a level is, what a mask is, the
-gestures — is behind the **?**. What is left over the canvas is one status line: the camera gesture for the device you
-are on, or the weave's half-made pick.
+OpenStrand Studio, and its browser port [OpenStrandJS](https://github.com/ysetbon/OpenStrandJS),
+draw strands from straight above. a strand has a *width*, and over/under is *faked* by masking one
+strand out where it crosses another. that is the right call for a 2D editor and it is also a
+picture of something that isn't flat.
+
+> so what if the strand had a real **thickness**, and "layer over layer" in the panel meant it
+> physically sits **on top** in space — so you tilt the camera and the weave is actually there?
+
+that is the whole repo. every strand becomes a **ribbon**, like the plastic lacing this is named
+after: the OpenStrand *width* runs across it, a new *thickness* runs through it, and the **layer
+index is its height**. strand `2_1` above strand `1_3` in the panel means `2_1`'s ribbon rides over
+`1_3`'s — and a **mask** flips that at one single crossing, so one lace goes over its neighbour and
+under the next, which is what a real basket does.
+
+![concept](docs/concept.svg)
+
+## the studio
 
 <table>
 <tr>
@@ -50,372 +43,359 @@ are on, or the weave's half-made pick.
 </tr>
 </table>
 
-**Light and dark**, both built from the project site's own palette rather than inverted: cream paper
-and coral, or the warm near-black it inverts to. It follows the OS, the ◐ button overrides it either
-way, and the choice is remembered — the site wears it too, and both share the one stored choice, so
-opening the studio from the site never changes the lights. The 3D canvas and its grid follow along.
-What does *not* follow it is the artwork: the gold stage, the laces woven across it and the drawings
-on the sample cards are the product, and they look the same on any page.
+the panel is the **layer stack and nothing else**. a bar per storey sits *under* the layers it
+carries, because that is what a storey is — the floor they rest on — so level 0's bar is the last
+thing in the list and the stack hangs off the ground. the settings live in a **dock** along the
+bottom (Ribbon / Weave / View / Scene), one card at a time, every pill printing its own value so a
+scene's setup reads without opening anything. everything the panel used to explain is behind the
+**?**, and what's left over the canvas is one status line.
 
-<table>
-<tr>
-<td width="62%">
+**light and dark** are both built from the site's palette rather than one inverted into the other —
+cream paper and coral, or the warm near-black it turns into. follows the OS, ◐ overrides it, the
+choice is remembered and the site wears the same one. the artwork does not follow it: the gold
+stage and the laces on it are the product and they look the same on every page.
 
-**It works on a phone.** The panel becomes a bottom sheet you can fold away, and the dock's cards
-open **inside it** rather than over the scene — tap Ribbon and the stack becomes the Ribbon
-controls, so you can watch the ribbons fatten while you drag Thickness. (A floating card is right on
-a desktop and useless at 390px, where it covers the very thing the slider is changing.)
+**it works on a phone.** the panel becomes a bottom sheet, and the dock's cards open *inside* it
+instead of over the scene — tap Ribbon and the stack becomes the Ribbon controls, so you can watch
+the ribbons fatten while you drag Thickness. the handles carry OpenStrand's own generous grab areas
+(`move_mode.py`'s 120px endpoint square, `attach_mode.py`'s 120px attach circle) scaled for a
+fingertip. one finger orbits, pinch zooms, two fingers pan.
+<img src="docs/readme/phone.png" alt="the studio on a phone, with the Ribbon card in the panel" align="right" width="200">
 
-The tool bar and the dock stay over the canvas so Move, Attach and every slider are one tap away,
-and the handles carry OpenStrand's generous invisible grab areas — `move_mode.py`'s 120px endpoint
-square, `attach_mode.py`'s 120px attach circle — scaled for a fingertip, so a press that lands
-*near* a handle still takes it. One finger orbits, pinch zooms, two fingers pan.
+### what it does
 
-The three layouts this was chosen from, as clickable mocks and renders:
-**[docs/panel-mocks](docs/panel-mocks/)**.
-
-</td>
-<td width="38%"><img src="docs/readme/phone.png" alt="the studio on a phone, with the Ribbon card in the panel"></td>
-</tr>
-</table>
-
-## What works today
-
-- 🧵 **Strands → 3D ribbons.** Every strand is extruded into a solid ribbon with configurable
-  **thickness**, rounded edges, rounded ends, and a stroke-coloured outline.
-- 🧶 **Masks → a real over/under weave.** This is the headline. In OpenStrand a *MaskedStrand* fakes
-  over/under by painting one strand on top of another where they cross. Scoubidou3D makes it
-  physical: at every crossing the **over** lace lifts and the **under** lace dips, so a *single*
-  strand can go over one neighbour and under the next — a true basket weave, not a flat stack.
-  - The **Weave** tool: click the strand that goes over, then the strand it crosses over — the 3D
-    version of picking two strands for an OSS mask (first selected = over). Hovering lights **one
-    layer** and names it at the cursor — green for the over, blue for the under — so on a stitch
-    whose arms are drawn as one seamless lace you can still see exactly which strand a click takes.
-  - **Masks are layers.** The panel's bar opens with a **Layers | Masks** switch; the masks side
-    is a row per crossing, reading `1_2` **over** `1_3` (OSS's `first_second`), with a two-tone
-    disc showing the over strand's colour above the under strand's, and flip / delete controls.
-    A mask changes only its own crossing.
-  - **Imported masks weave automatically.** `MaskedStrand` records from a `.json` become over/under
-    relationships, so an imported basket interlaces the way it was drawn. With no mask on a
-    crossing, the **higher layer** rides over.
-  - **Depth / Span / Layer-lift** tune how far laces rise and dip and how wide the bump around each
-    crossing is.
-- 🪢 **Attached strands are really connected.** An attached strand lives on a different layer than
-  its parent, so the join used to float with a Z gap. Now a **lofted bridge** morphs the parent's
-  end cross-section into the child's start across the gap, banking gently — the join reads as one
-  continuous lace stepping between layers. Derived from coincident endpoints, so imported files
-  reconnect too.
-- 🎨 **Colour a layer, or the whole lace.** A layer name is `set_length`: `1_2` is the second length
-  of lace `1`. So a picked colour has two places it can land, and a switch under the palette says
-  which — **This layer** paints `1_2` alone, **All layers** paints *every* length of that lace at
-  once, and either way it is one press of undo. A lace worked through a ten-round column is
-  twenty-odd layers of one set; recolouring it used to be twenty-odd presses and twenty-odd undos.
-  The set is read off the **name** rather than the attach graph, exactly as OSS writes it, so it
-  survives a file being saved, reopened and hand-edited. The switch is offered only where it means
-  something — a lace with a single length has nothing to spread to — and the choice is remembered
-  between visits. ([`src/model/colour.ts`](src/model/colour.ts), checked by `npm run check:colour`)
-- 🎡 **Any colour, and none of it spent until OK.** Six chips are the laces you keep; the **wheel**
-  beside them opens a picker window — a saturation/brightness square over a hue strip, with a hex
-  field for a colour you already know. It is a window rather than a live well because hunting for a
-  colour is a *drag*, and painting every step of that drag put a hundred colours through the scene
-  (and through undo) on the way to the one you wanted. **OK** spends the colour under whichever
-  scope the switch is holding; **Cancel**, **Escape** and a click outside spend nothing.
-- 📚 **Layer stacking = default depth.** The layer order sets the *default* over/under (higher layer
-  rides over); masks override specific crossings, just like in OSS. Reorder a layer and it restacks
-  live.
-- 🪜 **Levels — storeys in the layer stack.** The **Level** button adds a storey; everything above it
-  rests **one storey** higher — two strand thicknesses, the height of a woven round (a lace over
-  plus a lace under), which is what it takes for the next round to sit *on* it instead of sinking
-  into it. Because the storey goes in at the top, nothing already drawn moves — but every strand you
-  add next is born a storey up. Each storey is a bar of its own, numbered from **0** (the ground),
-  sitting under the layers resting on it — so `▲▼` walk that bar through the stack like any other
-  layer, and whichever rows it passes change storey. ([how it works](docs/layer-levels.md))
-- 🔗 **Attach & Move — OpenStrand's editing, in 3D.** A **Tool** bar across the top of the scene
-  (the undo pair, then Pan / Orbit / Move / Attach / Weave), where OpenStrand Studio keeps its
-  modes, turns the strand endpoints into grab handles:
-  - **Attach**: pull from a *free* (green) endpoint and a new strand is born there — glued to the
-    parent, inheriting its look, joining the same layer *set* (`1_1` → `1_2`), stacked on top, and
-    bridged by a connector. Occupied junctions show gray and refuse new attachments, exactly like
-    OSS's `has_circles` rule.
-  - **Move**: drag a (blue) endpoint and every strand glued to that point moves with it, so
-    attachments stay connected. The weave re-solves as you drag.
-  - **Control points are OpenStrand's own.** Same marks, same staging: a green **triangle** on an
-    untouched strand, and pulling it brings out the **circle** (the far handle) and the **square**
-    (the middle), wired up with OSS's dashed green rig. The circle rides with the end until you pull
-    it off; the square tracks the midpoint until you drag it, then locks — and unlocks itself if you
-    drop it back. Put every mark home and the set folds away again.
+- 🧵 **strands → ribbons.** every strand extruded into a solid ribbon with a configurable
+  **thickness**, rounded edges, rounded ends and a stroke-coloured outline.
+- 🧶 **masks → a real over/under weave.** this is the headline. in OpenStrand a `MaskedStrand`
+  paints one strand on top of another where they cross. here the **over** lace lifts and the
+  **under** lace dips, so a single strand goes over one neighbour and under the next.
+  - the **Weave** tool: click the strand that goes over, then the one it crosses. hovering lights
+    **one layer** and names it at the cursor, green for the over and blue for the under, so on a
+    stitch drawn as one seamless lace you still see which strand a click takes.
+  - **masks are layers.** the stack bar switches **Layers | Masks | Planes**; the masks side is a
+    row per crossing reading `1_2` over `1_3` (OSS's `first_second`), with a two-tone disc and
+    flip / delete. a mask changes only its own crossing.
+  - **imported masks weave by themselves.** `MaskedStrand` records become over/under links, so an
+    imported basket interlaces the way it was drawn. no mask on a crossing → the higher layer rides.
+  - **Depth / Span / Layer-lift** tune how far the laces rise and dip and how wide the bump is.
+- 🪢 **attached strands are really joined.** an attached strand lives on another layer, so the join
+  used to float with a Z gap. now a **lofted bridge** morphs the parent's end cross-section into the
+  child's start across that gap, banking gently — one continuous lace stepping between layers.
+  derived from coincident endpoints, so imported files reconnect too.
+- 🎨 **colour a layer, or the whole lace.** a layer name is `set_length`, so `1_2` is the second
+  length of lace `1`. a switch under the palette says where a colour lands — **This layer** paints
+  `1_2`, **All layers** paints every length of that lace at once — and either way it's one undo. a
+  lace worked through ten rounds is twenty-odd layers; recolouring it used to be twenty-odd presses.
+  read off the *name*, exactly as OSS writes it, so it survives a save and a hand edit.
+  ([`src/model/colour.ts`](src/model/colour.ts), `npm run check:colour`)
+- 🎡 **any colour, and none of it spent until OK.** six chips are the laces you keep; the **wheel**
+  opens a picker window — sat/brightness square over a hue strip, plus a hex field. a window rather
+  than a live well because hunting for a colour is a *drag*, and painting every step of that drag
+  put a hundred colours through undo on the way to the one you wanted.
+- 📚 **layer order = default depth.** higher layer rides over; masks override single crossings, same
+  as OSS. reorder and it restacks live.
+- 🪜 **levels — storeys in the stack.** **Level** adds a storey, and everything above it rests one
+  storey higher: two thicknesses, the height of a woven round (a lace over plus a lace under), which
+  is what it takes for the next round to sit *on* it rather than sink into it. the storey goes in at
+  the top so nothing already drawn moves. each storey is its own bar, numbered from **0**, and `▲▼`
+  walk it through the stack. ([how it works](docs/layer-levels.md))
+- 🔗 **Attach & Move — OpenStrand's editing, in 3D.** a tool bar across the top of the scene (the
+  undo pair, then Pan / Orbit / Move / Attach / Weave) turns endpoints into handles.
+  - **Attach**: pull from a *free* (green) endpoint and a new strand is born glued to the parent,
+    inheriting its look, joining the same set (`1_1` → `1_2`), stacked on top and bridged. occupied
+    junctions go gray and refuse, exactly like OSS's `has_circles`.
+  - **Move**: drag a (blue) endpoint and everything glued to it comes along. the weave re-solves as
+    you drag.
+  - **control points are OpenStrand's own.** same marks, same staging — a green **triangle** on an
+    untouched strand, pulling it brings out the **circle** and the **square**, on OSS's dashed green
+    rig. put every mark home and the set folds away again.
     ([the full behaviour, and the one place it differs](docs/control-points.md))
-- ↩️ **Undo, recorded off the scene's own JSON.** A scene whose JSON does not look like the one last
-  recorded is a new recording; one that looks alike is not. That single test is the whole mechanism:
-  no edit has to declare what it changed or describe an inverse, so a drag on the canvas, a slider
-  in a row and a mask picked with **Weave** all land in the same history — and an edit that ends
-  where it began (arming a weave pick and cancelling it, dropping a handle back where you picked it
-  up) writes the same text and records nothing, because there is nothing there to undo. **The camera
-  is the exception the rule makes for itself:** orbit, pan, zoom and *Fit* change no strand, no mask
-  and no level, so they never record — which is also why undo never moves the camera back. The
-  arrows sit at the head of the tool bar, behind a rule, and `⌘/Ctrl+Z` / `⇧⌘/Ctrl+Shift+Z` do the
-  same. ([`src/model/history.ts`](src/model/history.ts), checked by `npm run check:history`)
-- 🎥 **Full 3D camera.** Orbit, pan, zoom (Three.js `OrbitControls`). One click snaps back to the
-  familiar top-down OpenStrand view. Panning is always on the right button and on two fingers; the
-  **Pan** tool puts it on a plain drag too, for a trackpad with no second button and for a phone,
-  where two fingers are already a pinch.
-- 📥 **Import real files.** Load an OpenStrand Studio / OpenStrandJS `.json` save and see it in 3D.
-  The strand geometry uses a faithful port of OSS's curve math (`strand.py::_build_curve_profile`),
-  so curves match the original.
-- 💾 **Save your own scenes.** Arrange strands, pick the over/unders, then **Save** — it is kept in
-  your browser, so it is still in the Sample dropdown after a refresh (grouped under *Saved by
-  you*). **JSON** gives you the scene as text to send on or paste back in, and that same text can be
-  dropped into `samples.ts` to become a permanent built-in. Nothing is uploaded.
-- 🧩 **Thirteen sample scenes:** two crossing strands, the **box stitch** (below) on its own and
-  worked as a 10- or 15-round column, the **round stitch** — the same four folds without the
-  reversal, so the column repeats every round instead of every two
-  ([the difference](docs/box-stitch-levels/README.md#the-round-stitch)) — the **twist stitch**,
-  three laces on a 2×1 face that turns 26° a stitch ([how it is built](docs/twist-stitch/)), and
-  **two-fan columns** on a **1×3** and a **2×2** face, ten levels each, derived from the reference
-  stitch rather than idealised ([the law](docs/twist-stitch/deriving-the-turn.md)), three- and
-  four-strand braids, a truly-woven
-  mat (a checkerboard of masks), a diagonal basket, and a curved ribbon weave. Behind those, two
-  generated families the browser lists as grids rather than dropdown entries: every m×n **twist**
-  face and every m×n **box** face, 1×1 to 8×8, in both hands — two of the box faces have cards of
-  their own on the site. Each is listed with
-  its own picture on [the project site](https://ysetbon.github.io/Scoubidou3D/), and
-  `?sample=<key>` opens one directly — e.g.
-  [`/app/?sample=box-stitch-10`](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-stitch-10).
-  Every m×n twist face has a link of its own, too: **[docs/links.md](docs/links.md)**.
+- ↩️ **undo, recorded off the scene's own JSON.** a scene whose JSON doesn't match the last
+  recording is a new recording; one that matches isn't. that single test is the whole mechanism — no
+  edit declares what it changed, so a canvas drag, a slider and a mask all land in the same history,
+  and an edit that ends where it began records nothing. **the camera is the exception:** orbit, pan,
+  zoom and Fit change no strand, so they never record, which is also why undo never moves the camera
+  back. `⌘/Ctrl+Z` and `⇧⌘/Ctrl+Shift+Z`. ([`src/model/history.ts`](src/model/history.ts),
+  `npm run check:history`)
+- 🎥 **full 3D camera.** orbit, pan, zoom. one click snaps back to the familiar top-down view.
+- 📥 **import real files.** load an OpenStrand Studio / OpenStrandJS `.json` and see it in 3D. the
+  curve math is a faithful port of `strand.py::_build_curve_profile`, so curves match the original.
+- 💾 **save your own.** **Save** keeps a scene in your browser, so it's still in the dropdown after a
+  refresh. **JSON** hands you the text to send on or paste back, and that same text dropped into
+  `samples.ts` becomes a permanent built-in. nothing is uploaded.
 
-### The box stitch
+## where each part of a lace rests — the Planes view
 
-The built-in **Box stitch — starting stitch** is the classic two-colour lanyard, at the point where
-the first stitch closes. Two laces are crossed and pinned and their four arms lettered A/B/C/D —
-A–C one lace, B–D the other, which is why the instructions say to fold an arm over *"lanyard B‑D"*,
-naming a whole lace. Then each arm folds back across the middle in turn, the last tucking under the
-first.
+this is the newest thing in the studio, and it's the third side of the stack bar's switch.
 
-Every fold turns one arm into its own strand hanging off the middle, so each lace ends up as **three
-runs**: the short original pinned segment, plus an arm attached at each of its two ends. That middle
-segment sits at an angle, and the angle is what offsets the two arms — no U‑turn is involved; the
-fold is just the arm leaving the middle in a new direction. It is the OpenStrand shape exactly:
-`1_1` with `1_2` and `1_3` grown off it.
+a storey is two thicknesses deep, so a layer doesn't only have a storey — it has somewhere to rest
+*inside* it. the fold lab could always say that; the studio couldn't say it at all. now it can.
 
-The two laces cross **nine** times, and it needs exactly **one** mask. The arms were folded in layer
-order, so the stacking already tells the truth at eight of the nine crossings; the ninth is the move
-that locks the stitch, where the last arm dives back *under* the first one folded. That one
-contradicts the stacking, so it gets a mask — which is precisely how you'd do it in OpenStrand
-Studio: mask a crossing only where the natural order is wrong.
+the view is a **picture first**, because the question is a picture question. each lace gets its own
+elevation, **measured off the built centreline** rather than drawn from a schematic, so it can't
+disagree with what's on the canvas: the planes ruled across it, the members and C's as a coloured
+band underneath, and every crossing ticked where the weave actually puts it. you point at the part
+you mean instead of naming it — the crossings are buttons, and selecting a row dims everybody else's
+ticks, which is the only way to find one passage on a stitch that makes four hundred.
 
-The geometry comes from a scene built by hand in the app, so the proportions are a real stitch
-rather than an idealised diagram.
+under the picture, one row per **member**, because a member is the only thing a plane can address:
 
-**Box stitch — 10 levels** and **Box stitch — 15 levels** carry on from there: the same four moves,
-worked ten or fifteen times, each round a **level** above the last. Seen from above every round is
-the same square, so the whole thing is three rules repeated — the four arms fold in a rotation
-around that square, the rotation *reverses* every round (that alternation is what makes it the box
-stitch rather than the round stitch), and each round takes exactly one mask, for the last arm
-tucking back under the first. Rounds don't interlock with each other; they rest on each other, which
-is what the level break between them says.
+- a **C has no plane of its own.** it carries the *difference* between the two runs it joins, so its
+  row is a readout, not a control — move either run and the number follows.
+- a **crossing can't have one either.** an arm rides over one lace and ducks under the next inside a
+  single run, and no one resting height says both. the weave settles those, as it always has, and
+  the ticks report it.
 
-Both come out of one generator, so the round count is the only difference. Every round, every mask,
-every start and end point, and the level rule they forced:
+**seven rungs**, half a thickness apart, and the middle five are this storey:
+
+| rung | where | |
+| --- | --- | --- |
+| `+3` | a rung above this storey | clears its ceiling |
+| `+2` | top of this storey | floor of the one above |
+| `+1` | upper half | rests on `−1` |
+| `0` | middle of this storey | |
+| `−1` | lower half | carries `+1` |
+| `−2` | floor of this storey | top of the one below |
+| `−3` | a rung below this storey | hangs under its floor |
+
+half a thickness, not a whole one, and that was measured rather than reasoned: two ribbons rest on
+each other when their centres are one thickness apart, so at a whole-thickness rung `+1` over `−1`
+left a full thickness of daylight — the one thing the control exists for couldn't be said. at half,
+`+1` and `−1` are exactly one thickness apart and the two touch.
+
+`±2` are the seams, and a storey's ceiling is still the next one's floor. `±3` reach one rung *past*
+the seam into the neighbour, because resting **on** a seam isn't the same as clearing a layer
+already sitting on it — and doing that shouldn't cost a level break. further than that is a level
+break's job.
+
+**Draw the planes in the scene** puts the shelves on the canvas as well: three translucent sheets
+per storey, edge-on lines when you orbit down to look along them, with the selected row's ladder lit
+and the rest left as hairlines. off is the default and stays one press away — an untouched layer has
+no entry, an empty map is `setSublevels(null)`, and the banner clears the lot in one go.
+
+## the stitches
+
+**box stitch — starting stitch** is the classic two-colour lanyard at the moment the first stitch
+closes. two laces crossed and pinned, four arms lettered A/B/C/D, each folding back across the
+middle in turn and the last tucking under the first. every fold turns an arm into its own strand, so
+each lace ends up as **three runs** — `1_1` with `1_2` and `1_3` off it, the OpenStrand shape
+exactly. the two laces cross **nine** times and it needs exactly **one** mask: the arms were folded
+in layer order, so eight crossings are already true, and the ninth is the move that locks the stitch.
+the geometry is a scene built by hand in the app, so the proportions are a real stitch and not a
+diagram.
+
+**box stitch — 10 / 15 levels** carry that on, each round a **level** above the last, out of one
+generator so the round count is the only difference. round by round:
 **[docs/box-stitch-levels](docs/box-stitch-levels/)**.
 
-#### The box on any face
+**twist stitch** is three laces on a **2×1** face instead of a square, eight crossings woven plain
+and four masks a stitch, and each stitch lands on the same face turned **26°**. it is the one sample
+that is *not* idealised — solve every fold's reach and the column comes out a cylinder, turned on a
+lathe. in the hand-built stitch the six folds run 461, 405, 211, 267, 303 and 272 units and the
+rotation carries that unevenness all the way up. the turn is one rigid motion applied over and over
+— a discrete screw group — so every level can be written in closed form:
+**[docs/twist-stitch](docs/twist-stitch/)**, and where the 26° comes from:
+**[deriving-the-turn.md](docs/twist-stitch/deriving-the-turn.md)**.
 
-That column is the square box worked round after round. The box also *widens*: **m** ribbons one way
-crossing **n** the other, `?sample=box-lh-3x2` and the other 63, in both hands. It is the twist
-family's own starting stitch with the twist taken out — at **k = 0** the pointer does not move, so
-every end pairs with the end straight opposite and each arm carries on along its own line and back
-over the block. Nothing rotates and nothing is stretched, which is why there is exactly one box per
-size per hand and no angle to derive. Work the same round again and it rises as a column, by the
-rule the 1×1's own column already had: every fold but the last lands the same distance past the
-weave, and only the last runs out to the loose ends. Browse the family as a grid beside the twist
-one, or take it flat and in 3D: **[docs/box-stitch-mxn](docs/box-stitch-mxn/)**.
+**the m×n families** are generated rather than listed: every twist face and every box face from 1×1
+to 8×8, both hands, plus the two-fan columns and the swirl. the browser shows them as grids.
+`?sample=<key>` opens any of them —
+[`/app/?sample=box-stitch-10`](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-stitch-10) —
+and every face has a link of its own in **[docs/links.md](docs/links.md)**.
 
-### The twist stitch
+**placed scenes** are the other kind of thing. a generated sample is really its generator, and the
+scene is whatever it says today. a placed one is coordinates somebody sat down and put there, so it
+ships as a saved file and loads through the same door a dropped file comes through
+([`src/model/placedScenes.ts`](src/model/placedScenes.ts)): a fitted ring — 2×1, k = −1 four times
+over, 33 strands and four storeys — and a swirl column, 1×2 left hand, 41 strands over six storeys,
+which is the scene the swirl notes are read off.
 
-**Twist stitch — 10 twists** is three laces rather than two, on a **2×1** face instead of the box
-stitch's square: four arms lying side by side across the face and two lying through it, eight
-crossings woven plain, four masks a stitch. What makes it a twist is that each stitch lands on the
-same face turned **26°**, so ten of them wind the column 260°.
+## the other pages
 
-It is the one sample that is **not** an idealised diagram. Its first three levels are a scene built
-by hand in the app, coordinate for coordinate, and every level above is that scene turned — because
-the idealised version came out a *cylinder*. Solve every fold's reach and each one travels the same
-distance, every tip lands on one circle, and the column looks turned on a lathe. In the hand-built
-stitch the six folds run 461, 405, 211, 267, 303 and 272 units, and rotation carries that unevenness
-all the way up.
+it isn't one page any more. the build has twelve entries plus one per k board.
 
-The turn is one rigid motion applied over and over — a discrete screw group — so a level's six start
-points ride six circles about a fixed centre and every level can be written down in closed form. The
-matrix, the six radii, the one place two slots are coupled, and what the level-by-level pictures
-show: **[docs/twist-stitch](docs/twist-stitch/)**. Where the 26° itself might come from — a
-proposition that the turn is whatever carries a fold's tip onto its sibling's line, and so is set by
-the face's shape and how hard each fold is pulled, for any m×n stitch —
-**[deriving-the-turn.md](docs/twist-stitch/deriving-the-turn.md)**. Every face of that family,
-level by level, rendered: **[the level gallery](https://ysetbon.github.io/Scoubidou3D/levels/)**.
-
-## The 3D translation, in one picture
-
-| OpenStrand (2D) | Scoubidou3D |
+| | |
 | --- | --- |
-| strand `width` | ribbon width (across) |
-| — | ribbon **thickness** (through) — *new* |
-| layer order in the panel | **default** height in Z (top layer rides over) |
-| `MaskedStrand` (first over second) | a real **over/under weave** — over lifts, under dips |
-| attached strand (glued endpoint) | a lofted **connector** bridging the layer gap |
-| top-down canvas | orbit camera (drops to top view on demand) |
+| **[/](https://ysetbon.github.io/Scoubidou3D/)** | the project site — every sample with a picture of *that sample*, screenshotted out of the real app |
+| **[/app/](https://ysetbon.github.io/Scoubidou3D/app/)** | the studio |
+| **[/twist/](https://ysetbon.github.io/Scoubidou3D/twist/)** | the twist study's front door — the stable link, pointing at the write-up, the gallery and the app |
+| **[/levels/](https://ysetbon.github.io/Scoubidou3D/levels/)** | every level of all 64 twist faces, rendered |
+| **[/mxn/](https://ysetbon.github.io/Scoubidou3D/mxn/)** | the MXN Continuation Lab — m, n and one k per level, every Lᵥ continuation ring drawn with its audit numbers. Pyodide in the tab, no server ([docs](docs/mxn-lab.md)) |
+| **[/mxn/gpu/](https://ysetbon.github.io/Scoubidou3D/mxn/gpu/)** | the compute farm — the same engine driven headlessly over a range of sizes, every answer stored on Cloudflare so the lab reads instead of computing ([docs](docs/mxn-farm.md), [runbook](docs/gpu-runbook.md)) |
+| **[/mxn/ks/](https://ysetbon.github.io/Scoubidou3D/mxn/ks/)** | the k atlas — that shelf read whole and folded by k: for a given k, what happens as m and n grow ([docs](docs/mxn-ks.md)) |
+| **[/mxn/ks/-1/](https://ysetbon.github.io/Scoubidou3D/mxn/ks/-1/)** | the k boards — one k held still, the whole 8×8 size plane on a screen. thirty real pages, `-14` to `+15`, because `/mxn/ks/-1` is a URL somebody types ([docs](docs/mxn-ks-board.md)) |
+| **[/mxn/fit/](https://ysetbon.github.io/Scoubidou3D/mxn/fit/)** | the fitter — m, n, k, a hand and a direction in, and **a file** out: the best ring those parameters admit with each band's arms the same length ([docs](docs/mxn-fit.md)) |
+| **/mxn/fast/**, **/mxn/rate/**, **/mxn/semi/** | the lab on the fast engine, the categoriser, and the near-misses |
+| **/foldlab/** | the fold lab — the studio's own renderer and its own panel over two levels of a box stitch, printing per layer exactly what it rides over and ducks under. a working page, noindex |
 
-## How the weave works
+the lab, the farm, the atlas and the boards are all the same shelf seen from different ends: the
+farm fills it, the lab spends it one parameter set at a time, the atlas reads it whole, the boards
+read one k of it, and the fitter is the one that hands back a file.
 
-At every place two centerlines cross we know who is over: a **mask** if one covers the pair,
-otherwise the higher layer. Each strand collects its crossings and turns them into a smooth **Z
-height field** (`geometry/weave.ts`), then the ribbon is swept along that undulating 3D centerline
-so the laces physically interlock.
+## run it
 
-Two properties make masks behave the way they do in OpenStrand:
-
-**A crossing sets an absolute height, not a nudge.** The over lace goes to `+h` and the under lace
-to `−h` about the weave plane. So a mask means one purely local thing — *this strand crosses over
-that one, here* — and costs the same whether the two strands are neighbours in the layer panel or
-ten layers apart. Masking the bottom strand over the top one leaves every other layer untouched.
-(Sizing the correction *relative* to the layer distance instead is what makes a lace masked over
-several strands ramp upward rather than ride flat.)
-
-**Overlapping crossings blend, they don't add.** Where two crossings fall close together the heights
-are pulse-weighted-averaged, so neighbouring crossings that pull opposite ways resolve instead of
-cancelling or doubling. This also gets the three-way case right for free: where several laces meet
-at one point, the top one lands at `+h`, the bottom at `−h`, and one caught between them settles in
-the middle.
-
-Because each crossing is resolved independently, **cyclic weaves work** — `x` over `y`, `y` over
-`z`, and `z` over `x` is impossible for a rigid stack but is exactly what a real woven knot does.
-
-The base layer height still governs stretches with no crossing at all, which keeps
-overlapping-but-never-crossing strands apart and gives the plain ordered stack when the weave is
-switched off.
-
-## Run it
-
-Nothing to install: the app is live at
-**[ysetbon.github.io/Scoubidou3D/app/](https://ysetbon.github.io/Scoubidou3D/app/)**.
-
-To hack on it you need [Node.js](https://nodejs.org/) 18+.
+nothing to install to *use* it — it's live at
+**[ysetbon.github.io/Scoubidou3D/app/](https://ysetbon.github.io/Scoubidou3D/app/)**. to hack on it
+you want [Node.js](https://nodejs.org/) 18+.
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173/Scoubidou3D/
-```
-
-Build the static site:
-
-```bash
-npm run build    # tsc --noEmit && vite build, outputs to dist/
+npm run dev      # opens /foldlab/ — set OPEN to land somewhere else
+npm run build    # tsc --noEmit && vite build → dist/
 npm run preview
 ```
 
-The build has three pages — the project site at `/`, the studio at `/app/` and the level gallery at
-`/levels/` — and every push to `main` publishes all of them to GitHub Pages
-([deploy.yml](.github/workflows/deploy.yml)); every push and pull request type-checks and builds
-([ci.yml](.github/workflows/ci.yml)). Building for a host that serves from the domain root instead:
-`BASE_PATH=/ npm run build`.
+`npm run dev` opens the fold lab rather than the site root, because the root is the right landing
+for a visitor and the wrong one for whoever is working. point it anywhere:
+
+```powershell
+$env:OPEN = '/Scoubidou3D/app/'; npm run dev      # the studio
+$env:OPEN = 'true'; npm run dev                   # the project site
+```
+
+every push to `main` publishes all the pages to GitHub Pages
+([deploy.yml](.github/workflows/deploy.yml)); every push and PR type-checks and builds
+([ci.yml](.github/workflows/ci.yml)). serving from a domain root instead: `BASE_PATH=/ npm run build`.
+
+### the pictures, and the checks
 
 ```sh
 npm run shots    # reshoot site/shots/*.webp from the running app (needs npm run dev)
 npm run art      # redraw site/art/*.svg from src/model/samples.ts
 ```
 
-Every picture of a sample on the project site is *that sample*, screenshotted. `npm run shots`
-([`scripts/site-shots.mjs`](scripts/site-shots.mjs)) drives the studio in a real browser, loads each
-scene, frames it by projecting the ribbons themselves and correcting until the model fills the frame,
-and reads the WebGL canvas back — so what the card shows is the render, grid and all, not a drawing
-of it. Two files per sample, one per canvas skin (`<key>-light.webp` / `<key>-dark.webp`), because a
-screenshot carries its background with it and a cream canvas dropped into the dark theme is a hole in
-the page; the site swaps them on `[data-theme]`. It needs `npm run dev` up in another shell, since
-the handle it drives is stripped from production builds.
+every picture of a sample on the site is *that sample*. [`scripts/site-shots.mjs`](scripts/site-shots.mjs)
+drives the studio in a real browser, loads the scene, frames it by projecting the ribbons themselves
+until the model fills the frame, and reads the WebGL canvas back — so the card shows the render,
+grid and all. two files per sample, one per canvas skin, because a screenshot carries its background
+with it and a cream canvas dropped into the dark theme is a hole in the page.
 
-`npm run art` is the older, flat generator ([`scripts/sample-art.ts`](scripts/sample-art.ts)): it
-takes each scene's own strands, runs their centerlines through the same curve math the 3D ribbon is
-swept along, and paints the over/unders from the scene's own mask list. The site no longer shows its
-output, but it stays for two reasons — it prints each scene's strand / mask / level / junction
-counts, which are the numbers the cards quote, and because it is deterministic, `site/art`
-re-rendering byte-identical is how the geometry notes check that nothing moved.
+there is a checker per piece of geometry, and CI runs the set:
 
-## How it's built
+```sh
+npm run check:history   npm run check:colour    npm run check:box
+npm run check:ladder    npm run check:board     npm run check:plan
+npm run check:boundary  npm run check:enginekey npm run check:fit
+npm run qa:fold         npm run qa:cache        npm run qa:board
+```
+
+`npm run art` is the older flat generator and the site no longer shows its output, but it stays for
+two reasons: it prints each scene's strand / mask / level / junction counts, which are the numbers
+the cards quote, and it's deterministic — `site/art` re-rendering byte-identical is how the geometry
+notes check that nothing moved.
+
+## how it's built
+
+TypeScript, [Three.js](https://threejs.org/) and Vite. React only on the `/mxn/` pages, which is
+why `plugin-react` is scoped to those four folders and nothing else.
 
 ```
-index.html      # the project site (the landing page you get at /)
-site/site.css   #   its stylesheet — light and dark, the palette both pages share
-site/theme.js   #   the theme switch, sharing its stored choice with the studio
-site/shots/     #   the pictures the site shows: one screenshot of the app's 3D
-                #   canvas per sample per theme, GENERATED — see above
-site/art/       #   the older flat drawing per sample, GENERATED — see above
-app/index.html  # the studio's page, served at /app/
-levels/         # the level gallery: every level of every m x n face
-public/         # copied verbatim to the site root (favicon, level renders)
-scripts/
-  site-shots.mjs # screenshots site/shots/*.webp from the running app (`npm run shots`)
-  sample-art.ts # draws site/art/*.svg from the samples themselves (`npm run art`)
+index.html         the project site
+app/ levels/ twist/ foldlab/ mxn/…    one static page each — see vite.config.ts
+site/              the site's stylesheet, theme switch, and GENERATED pictures
+public/            copied verbatim (favicon, level renders, the lab's engine)
 src/
   geometry/
-    bezier.ts     # port of OpenStrand's eased curve profile -> sampled centerline
-    ribbon.ts     # sweep a (width x thickness) cross-section along a 3D centerline
-    weave.ts      # crossing detection + the Z height field that makes over/under real
-    connector.ts  # lofted bridge that joins an attached strand across the layer gap
+    bezier.ts        port of OpenStrand's eased curve profile → sampled centreline
+    ribbon.ts        sweep a (width × thickness) cross-section along a 3D centreline
+    weave.ts         crossing detection + the Z height field that makes over/under real
+    zturn.ts         the C-return a fold makes when it steps between planes
+    polyline.ts      ownership, turn records, zFolds
+    connector.ts     lofted bridge joining an attached strand across the layer gap
   model/
-    types.ts       # Strand3D / Scene3D / MaskLink (over/under)
-    connections.ts # attach, "connected strands move together", junction detection
-    levels.ts      # storeys in the stack: a break at position k lifts everything above
-    importOss.ts   # read OpenStrand Studio / OpenStrandJS .json (masks -> MaskLinks)
-    samples.ts     # built-in demo scenes
+    types.ts         Strand3D / Scene3D / MaskLink
+    connections.ts   attach, "connected strands move together", junctions
+    levels.ts        storeys: a break at position k lifts everything above
+    colour.ts        this layer vs. every length of the lace
+    history.ts       undo, recorded off the scene's JSON
+    importOss.ts     read OSS / OpenStrandJS .json (masks → MaskLinks)
+    sceneIO.ts       the save format, v2 with levelBreaks
+    samples.ts       the built-ins
+    boxmn.ts twofan.ts swirl.ts    the m×n generators
+    placedScenes.ts  scenes placed by hand, kept as records
   scene/
-    StrandScene.ts # Three.js scene: weave, connectors, lights, orbit camera, handles
-  ui/
-    panel.ts       # the layer stack, the tool strip, the settings dock, About
-  styles.css       # the studio's stylesheet, in the site's design language
-  main.ts
+    StrandScene.ts   Three.js: weave, connectors, sublevels, guides, camera, handles
+  ui/panel.ts        the layer stack, the tool strip, the dock, Layers|Masks|Planes
+  foldlab/           the fold lab
+  mxn-lab/ mxn-farm/ mxn-ks/ mxn-fit/ mxn-rate/    the /mxn/ pages
+scripts/             the generators, the checkers and the QA runners
 ```
 
-The ribbon sweep uses a **fixed frame** (side = in-plane normal, up = world +Z) instead of Frenet
-frames, so a flat ribbon never twists and its face always points toward the camera in top view —
-exactly like the original editor.
+### how the weave works
 
-## The written-up bits
+at every place two centrelines cross we know who's over: a **mask** if one covers the pair,
+otherwise the higher layer. each strand collects its crossings and turns them into a smooth **Z
+height field** (`geometry/weave.ts`), then the ribbon is swept along that undulating centreline.
+
+two properties make masks behave like OpenStrand's:
+
+**a crossing sets an absolute height, not a nudge.** the over lace goes to `+h` and the under to
+`−h` about the weave plane. so a mask means one purely local thing — *this strand crosses over that
+one, here* — and costs the same whether the two are neighbours in the panel or ten layers apart.
+sizing the correction *relative* to the layer distance instead is what makes a lace masked over
+several strands ramp upward rather than ride flat.
+
+**overlapping crossings blend, they don't add.** where two fall close together the heights are
+pulse-weighted-averaged, so neighbouring crossings pulling opposite ways resolve instead of
+cancelling or doubling. that also gets the three-way case right for free: top lands at `+h`, bottom
+at `−h`, and one caught between settles in the middle.
+
+because each crossing is resolved on its own, **cyclic weaves work** — `x` over `y`, `y` over `z`,
+`z` over `x` is impossible for a rigid stack and is exactly what a real woven knot does.
+
+the ribbon sweep uses a **fixed frame** (side = in-plane normal, up = world +Z) rather than Frenet,
+so a flat ribbon never twists and its face points at the camera in top view, like the original.
+
+### the 3D translation, in one table
+
+| OpenStrand (2D) | Scoubidou3D |
+| --- | --- |
+| strand `width` | ribbon width (across) |
+| — | ribbon **thickness** (through) — *new* |
+| layer order in the panel | **default** height in Z (top layer rides over) |
+| — | the **rung** inside the storey — *new* |
+| `MaskedStrand` (first over second) | a real over/under weave: over lifts, under dips |
+| attached strand (glued endpoint) | a lofted connector bridging the layer gap |
+| top-down canvas | orbit camera, dropping to top view on demand |
+
+## the write-ups
 
 | | |
 | --- | --- |
-| [docs/links.md](docs/links.md) | every link the site has, including one per m×n face |
-| [docs/layer-levels.md](docs/layer-levels.md) | levels: what a storey is and why it is two thicknesses |
-| [docs/control-points.md](docs/control-points.md) | OpenStrand's control-point marks and staging, and the one place this differs |
+| [docs/links.md](docs/links.md) | every link the site has, one per m×n face included |
+| [docs/layer-levels.md](docs/layer-levels.md) | levels: what a storey is and why it's two thicknesses |
+| [docs/app-sublevels-handoff.md](docs/app-sublevels-handoff.md) | the brief the Planes view was built from |
+| [docs/control-points.md](docs/control-points.md) | OpenStrand's control-point marks and staging, and the one difference |
 | [docs/box-stitch-levels](docs/box-stitch-levels/) | the box stitch round by round, and the round stitch |
-| [docs/box-stitch-mxn](docs/box-stitch-mxn/) | every m×n box stitch, 1×1 to 8×8, drawn in both hands |
+| [docs/box-stitch-mxn](docs/box-stitch-mxn/) | every m×n box stitch, 1×1 to 8×8, both hands |
 | [docs/twist-stitch](docs/twist-stitch/) | the twist stitch, its screw group, and the turn's derivation |
-| [docs/mxn-lab.md](docs/mxn-lab.md) | the MXN Continuation Lab at `/mxn/`: what was copied, the trace census, the level widget |
-| [docs/mxn-farm.md](docs/mxn-farm.md) | the compute farm at `/mxn/gpu/`: precomputing the lab onto Cloudflare so it loads instead of computing |
-| [docs/gpu-runbook.md](docs/gpu-runbook.md) | the runbook for the machine that runs it — start here on a fresh clone, human or AI assistant alike |
+| [docs/swirl-mxn-k-minus-one](docs/swirl-mxn-k-minus-one/) | the swirl at k = −1, and the turn measured against the fans |
+| [docs/mxn-lab.md](docs/mxn-lab.md) | the lab at `/mxn/`: what was copied, the trace census, the level widget |
+| [docs/mxn-farm.md](docs/mxn-farm.md) · [docs/gpu-runbook.md](docs/gpu-runbook.md) | the farm, and the runbook for the machine that runs it |
+| [docs/mxn-ks.md](docs/mxn-ks.md) · [docs/mxn-ks-board.md](docs/mxn-ks-board.md) | the k atlas and the k boards |
+| [docs/mxn-fit.md](docs/mxn-fit.md) | the fitter: same length arms, and a file out |
+| [docs/picks-shelf.md](docs/picks-shelf.md) | is my ★ best actually saved in Cloudflare — the commands and the diagnosis order |
 | [docs/panel-mocks](docs/panel-mocks/) | the three panel layouts, and which one shipped |
 
-## Roadmap / ideas
+## still to do
 
-- ✅ **Per-crossing undulation** — a strand weaves over-and-under along its length (`weave.ts`).
-- ✅ **Honor masks** from imported files — `MaskedStrand` records drive the weave automatically.
-- ✅ **Really-connected attachments** — a lofted connector bridges the layer gap (`connector.ts`).
-- ✅ **Direct 3D editing** — Move / Attach / Weave tools in the scene. Next: snap-to-grid and
-  dragging in a tilted view.
-- ✅ **Undo / redo** — recorded off the scene's JSON, so every edit is covered and the camera is not
-  (`history.ts`).
-- **Deletion rectangles** — honour OSS's partial-mask edits (`mask_grid_dialog`) so a mask that only
-  covers part of a crossing weaves partially.
-- **Round-trip** back to OpenStrand `.json` (write `MaskedStrand` records from the weave), and
-  PNG/GLTF export.
-- **Materials** — glossy plastic vs. matte cord, per-strand.
+- ✅ per-crossing undulation, imported masks honoured, really-connected attachments, direct 3D
+  editing, undo/redo, and planes inside a storey.
+- **deletion rectangles** — honour OSS's partial-mask edits (`mask_grid_dialog`) so a mask covering
+  part of a crossing weaves partially.
+- **round-trip** back to OpenStrand `.json` (write `MaskedStrand` records from the weave), plus
+  PNG / GLTF export.
+- **materials** — glossy plastic vs. matte cord, per strand.
+- **snap-to-grid** and dragging in a tilted view.
 
-## Relationship to the OpenStrand family
+## the OpenStrand family
 
-- [OpenStrand Studio](https://github.com/ysetbon/OpenStrandStudio) — the original PyQt5 desktop app
-  (the spec).
-- [OpenStrandJS](https://github.com/ysetbon/OpenStrandJS) — the fidelity-first browser port (2D
-  canvas).
+- [OpenStrand Studio](https://github.com/ysetbon/OpenStrandStudio) — the original PyQt5 desktop app,
+  and the spec.
+- [OpenStrandJS](https://github.com/ysetbon/OpenStrandJS) — the fidelity-first browser port, 2D
+  canvas.
 - **Scoubidou3D** — this repo: the same strand model, seen with depth.
 
-## License
+## license
 
 GNU General Public License v3.0, matching OpenStrand Studio.
