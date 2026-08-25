@@ -412,6 +412,10 @@ export class StrandScene {
   // grid sits below.
   private baseZ: number[] = [];
   private lowestZ = 0;
+  /** What computeBaseZ shifted the whole stack by to re-centre it on z = 0. Held
+   *  so a storey's own plane can be named in the same frame afterwards — see
+   *  getStoreyPlane, which is how the planes panel draws one storey at a time. */
+  private baseShift = 0;
   // Which storey each strand rests on, and the plane each storey weaves about
   // (both filled by computeBaseZ, read by the weave).
   private strandLevel: number[] = [];
@@ -1564,6 +1568,20 @@ export class StrandScene {
     return this.levelStepSource();
   }
 
+  /**
+   * Where storey `level`'s own plane sits in the BUILT scene, in world units.
+   *
+   * `computeBaseZ` puts a storey at `level * step` and then shifts the whole
+   * stack to re-centre it, so the plane a storey weaves about is those two terms
+   * together. The planes panel divides this by the lace's own thickness to reach
+   * the frame `LaceFact.profile` is measured in, and subtracts it — which is what
+   * lets one storey's figure be ruled `-1 / 0 / +1` about its own floor, middle
+   * and ceiling rather than about the whole model's centre.
+   */
+  getStoreyPlane(level: number): number {
+    return level * this.levelStepSource() * SCALE + this.baseShift;
+  }
+
   private computeBaseZ(): void {
     const n = this.current.strands.length;
     const root = Array.from({ length: n }, (_, i) => i);
@@ -1635,6 +1653,7 @@ export class StrandScene {
       if (z > max) max = z;
     }
     const shift = n ? -(min + max) / 2 : 0;
+    this.baseShift = shift;
     this.baseZ = rest.map((z) => z + shift);
     this.baseZOut = restOut.map((z) => z + shift);
     // Shifted with everything else, so a plane declared at a crossing is measured
