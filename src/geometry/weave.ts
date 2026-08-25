@@ -200,6 +200,19 @@ export interface Anchor {
   s: number;
   radius: number;
   z: number;
+  /** True when `z` is a DECLARED height — someone placed this passage — rather
+   *  than one computed about a storey plane. A declared height is absolute: when
+   *  a strand's resting base settles onto the terrain below and its computed
+   *  anchors ride down with it, a declared one stays exactly where it was put. */
+  declared?: boolean;
+  /** The other side of this crossing — which strand, and where along it. Set
+   *  for a computed anchor on a SAME-storey pair, and it is what lets the two
+   *  anchors of one crossing ride the settled terrain by the SAME amount: the
+   *  shift is the mean of the two strands' settle deltas, so the over/under gap
+   *  stays exactly 2h whatever the terrain does. Each strand's own delta alone
+   *  would leak the per-lace rank lift into the gap — the exact thing the
+   *  "heights are absolute" rule at the anchor site exists to prevent. */
+  mate?: { index: number; s: number };
 }
 
 // Raised-cosine pulse with finite support: 1 at d=0, smoothly 0 at |d|>=1.
