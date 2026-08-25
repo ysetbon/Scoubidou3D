@@ -10,7 +10,7 @@ a weave you can orbit.
 🧪 **[the MXN lab](https://ysetbon.github.io/Scoubidou3D/mxn/)** ·
 🔗 **[every link](docs/links.md)**
 
-![a woven mat in 3D — the laces physically lift and dip at every crossing](docs/readme/weave.png)
+![two crossing strands in 3D — the yellow lace physically rides over the crossing and the orange dips under](docs/readme/weave.png)
 
 nothing to install, nothing uploaded. it runs in the browser and your files stay on your machine.
 
