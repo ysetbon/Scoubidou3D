@@ -32,14 +32,27 @@ index is its height**. strand `2_1` above strand `1_3` in the panel means `2_1`'
 `1_3`'s — and a **mask** flips that at one single crossing, so one lace goes over its neighbour and
 under the next, which is what a real basket does.
 
-![concept](docs/concept.svg)
+both of these are real screenshots, not diagrams — the same stitch drawn in
+[OpenStrandJS](https://github.com/ysetbon/OpenStrandJS) from straight above, over/under faked by
+masking, and the box + strand sample in this app's studio, where the over lace physically rides:
+
+<table>
+<tr>
+<td width="50%"><img src="docs/readme/openstrand-2d.png" alt="OpenStrandJS: the box stitch top-down — width and masking, no depth"></td>
+<td width="50%"><img src="docs/readme/scoubidou-3d.png" alt="Scoubidou3D: box + strand tilted — ribbons with thickness, really interlocked"></td>
+</tr>
+<tr>
+<td align="center"><em>OpenStrandJS — top-down, masked</em></td>
+<td align="center"><em>Scoubidou3D — tilted, real depth</em></td>
+</tr>
+</table>
 
 ## the studio
 
 <table>
 <tr>
-<td width="50%"><img src="docs/readme/studio-light.png" alt="the studio in the light theme"></td>
-<td width="50%"><img src="docs/readme/studio-dark.png" alt="the studio in the dark theme"></td>
+<td width="50%"><img src="docs/readme/studio-light.png" alt="the studio in the light theme, on the box + strand sample"></td>
+<td width="50%"><img src="docs/readme/studio-dark.png" alt="the studio in the dark theme, on the box + strand sample"></td>
 </tr>
 </table>
 
@@ -127,6 +140,13 @@ fingertip. one finger orbits, pinch zooms, two fingers pan.
 ## where each part of a lace rests — the Planes view
 
 this is the newest thing in the studio, and it's the third side of the stack bar's switch.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/readme/planes-light.png" alt="the Planes view in the light theme — box + strand with three runs and twelve crossings placed, the shelves drawn in the scene"></td>
+<td width="50%"><img src="docs/readme/planes-dark.png" alt="the Planes view in the dark theme"></td>
+</tr>
+</table>
 
 a storey is two thicknesses deep, so a layer doesn't only have a storey — it has somewhere to rest
 *inside* it. the fold lab could always say that; the studio couldn't say it at all. now it can.
