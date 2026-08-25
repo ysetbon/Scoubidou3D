@@ -1,0 +1,11 @@
+kind,handle,url,name,where,company,score,signal,why,first_seen,status,owner,notes
+org,UnstableDesign,https://github.com/UnstableDesign,,,,100,repo:UnstableDesign/AdaCAD-UI ★65,"!jacquard, !weave draft, loom, weave — MIGRATED - AdaCAD is an experimental workspace that applies parametric design to the domain of weave drafting.",2026-08-22,new,,
+org,pinkpixel-dev,https://github.com/pinkpixel-dev,,,,71,repo:pinkpixel-dev/sugarstitch ★1,"!fiber art, stitch, crochet, knit — A local-first scraper for fiber arts pattern sites with a CLI and simple browser UI for crawling, previewing, ",2026-08-22,new,,
+maintainer,adrianhensler,https://github.com/adrianhensler,,,,62,repo:adrianhensler/weave-pattern-visualizer ★0,"!heddle, !weaving pattern, weave, weaving — Interactive web app for designing and visualizing rigid heddle weaving patterns",2026-08-22,new,,
+maintainer,Komorebirumu,https://github.com/Komorebirumu,,,,60,repo:Komorebirumu/awe-ms-20260315-2259-00 ★0,"!fiber art, yarn, crochet, knit — AI Yarn Palette Generator | Artisanal Fiber Art Colors",2026-08-22,new,,
+maintainer,FrancescoLimpias,https://github.com/FrancescoLimpias,,,,52,repo:FrancescoLimpias/yarn-architect ★0,"!fiber art, yarn, crochet, pattern — Precision tooling for fiber arts. Moving pattern management from chaotic PDFs to structured architecture.",2026-08-22,new,,
+maintainer,gg314,https://github.com/gg314,,,,48,repo:gg314/inkle ★0,"!weaving pattern, loom, weaving, pattern — 🧶 Website for an inkle loom weaving pattern designer 🧣",2026-08-22,new,,
+maintainer,Demonsthere,https://github.com/Demonsthere,,,,47,repo:Demonsthere/weavesmith ★1,"!tablet weav, weave, weaving — web based application for tablet weaving | Webowa aplikacja do tworzenia krajek",2026-08-22,new,,
+maintainer,leifrogers,https://github.com/leifrogers,,,,42,repo:leifrogers/krokbragd ★0,"!weaving draft, loom, weaving, pattern — A browser-based studio for designing Krokbragd weaving drafts, exploring colorways, and exporting loom-ready p",2026-08-22,new,,
+maintainer,habemus-papadum,https://github.com/habemus-papadum,,,,38,repo:habemus-papadum/warpsnwefts ★0,"!weft, weaving, warp — ",2026-08-22,new,,
+maintainer,parin23,https://github.com/parin23,,,,35,repo:parin23/ep-utils ★1,"!jacquard, weaving, textile — Utils for Bonas EP files. Bonas Jacquard.",2026-08-22,new,,

@@ -1,0 +1,120 @@
+{
+  "_": [
+    "Config for scripts/prospect-github.mjs. Edit this rather than the script.",
+    "",
+    "queries  — GitHub repository-search queries. Each one is a different way of",
+    "           saying 'this project is about interlacement'. Keep them narrow: a",
+    "           query returning 25 unrelated repos costs a search-API minute and",
+    "           teaches the scorer nothing.",
+    "kin      — repos whose stargazers and forkers are, by definition, people who",
+    "           already care about this exact subject. Add any neighbour that turns",
+    "           out to have the right crowd.",
+    "signals  — software has stolen every word this subject owns, so the vocabulary",
+    "           is tiered. `strong` only ever means the craft. `weak` means it about",
+    "           half the time (loom is also a Java project and a screen recorder;",
+    "           weaving is also what AspectJ does to bytecode; fabric is also a",
+    "           Minecraft mod loader; textile is also a markup language). `subject`",
+    "           means nothing on its own. `veto` proves the other meaning and drops",
+    "           the repo outright. A repo needs two strong hits, or one strong plus",
+    "           anything else, to survive at all.",
+    "boost    — Israeli leads outrank everything of equal strength, because the",
+    "           author is in Israel and a meeting there costs a train ticket."
+  ],
+
+  "queries": [
+    "topic:weaving",
+    "topic:fiber-arts",
+    "topic:kumihimo",
+    "topic:knot-theory",
+    "topic:textile-design",
+    "handweaving draft in:name,description,readme",
+    "\"tablet weaving\" in:name,description,readme",
+    "\"card weaving\" in:name,description,readme",
+    "\"weaving draft\" WIF in:name,description,readme",
+    "\"weave structure\" loom in:name,description,readme",
+    "jacquard weaving in:name,description",
+    "\"warp\" \"weft\" in:name,description,readme",
+    "braid theory in:name,description,readme",
+    "\"braid group\" in:name,description,readme",
+    "braiding machine in:name,description,readme",
+    "kumihimo in:name,description,readme",
+    "\"textile CAD\" in:name,description,readme",
+    "woven fabric geometry simulation in:name,description,readme",
+    "interlacement in:name,description,readme",
+    "\"knot theory\" visualization in:name,description",
+    "knitout knitting machine compiler in:name,description,readme",
+    "basketry basket weave generator in:name,description,readme",
+    "macrame pattern in:name,description,readme",
+    "paracord braid in:name,description,readme",
+    "lanyard scoubidou in:name,description,readme",
+    "rope splice cordage in:name,description,readme",
+    "\"over under\" weave three.js in:name,description,readme",
+    "computational design weaving fabrication in:name,description,readme"
+  ],
+
+  "kin": [
+    "ysetbon/OpenStrandStudio",
+    "ysetbon/OpenStrandJS"
+  ],
+
+  "signals": {
+    "strong": [
+      "braiding", "braided", "kumihimo", "macrame", "macramé", "basketry",
+      "lanyard", "scoubidou", "plait", "weft", "warp thread", "handweav",
+      "tablet weav", "card weav", "jacquard", "dobby", "heddle", "shuttle loom",
+      "knot theory", "braid group", "braid word", "knitout", "cordage",
+      "interlac", "weave pattern", "weaving pattern", "weave draft",
+      "weaving draft", "fiber art", "fibre art",
+      "passementerie", "filament winding", "overbraid"
+    ],
+    "weak": [
+      "loom", "weave", "weaving", "woven", "textile", "fabric", "yarn",
+      "strand", "warp", "knot", "braid", "rope", "cord", "thread", "stitch",
+      "lace", "mesh", "crochet", "tatting", "knit", "knitting"
+    ],
+    "subject": [
+      "3d", "three.js", "threejs", "webgl", "cad", "pattern", "topology",
+      "combinator", "geometry", "simulation", "generative", "fiber", "fibre",
+      "wasm", "pyodide", "parametric", "fabrication", "craft", "loom-controlled"
+    ],
+    "veto": [
+      "aspectj", "aspect-oriented", "bytecode", "fody", "jvm", "openjdk",
+      "virtual thread", "project loom", "coroutine", "actor system",
+      "minecraft", "forge mod", "mod loader", "roblox",
+      "screen record", "video record", "loom video", "youtube",
+      "markup language", "textile markup", "redaxo", "markitup",
+      "package manager", "npm registry", "yarn workspace", "pnpm",
+      "kubernetes", "gitops", "weave gitops", "weaveworks", "service mesh",
+      "terraform", "ci/cd pipeline", "jpa", "eclipselink", "gradle plugin",
+      "maven plugin", "blockchain", "ipfs", "web3", "nft",
+      "warp terminal", "cloudflare warp", "llm agent", "mcp server",
+      "prompt", "chatbot", "denim garment factory", "e-commerce"
+    ]
+  },
+
+  "boost": {
+    "points": 22,
+    "locations": [
+      "israel", "ישראל", "🇮🇱",
+      "tel aviv", "tel-aviv", "telaviv", "jerusalem", "haifa", "herzliya",
+      "netanya", "ramat gan", "rehovot", "petah tikva", "be'er sheva",
+      "beer sheva", "beersheba", "rishon", "holon", "givatayim", "kfar saba",
+      "ra'anana", "raanana", "modiin", "ashdod", "nazareth", "yokneam",
+      "caesarea", "hod hasharon", "kiryat", "ness ziona", "or yehuda"
+    ]
+  },
+
+  "thresholds": {
+    "repo": 24,
+    "person": 34,
+    "profiles": 80,
+    "kinFromNeighbours": 6
+  },
+
+  "stop": [
+    "ysetbon",
+    "github-actions[bot]",
+    "dependabot[bot]",
+    "renovate[bot]"
+  ]
+}
