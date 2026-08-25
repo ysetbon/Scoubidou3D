@@ -328,6 +328,10 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
   // through the fold, and the lace comes away parallel. A fold's second face
   // always turns over, even where the runs part by less than a right angle and the
   // perpendiculars have not yet opposed — that is what makes the pair coincide.
+  //
+  // Winding is only half the bookkeeping. The other half is which way UP the
+  // ring is, and it needs the same treatment for the same reason — see
+  // `rolled` below.
   const mirrored: boolean[] = [false];
   for (let i = 1; i < plan.length; i++) {
     const prev = plan[i - 1].t;
@@ -342,6 +346,49 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     mirrored.push(flipped ? !mirrored[i - 1] : mirrored[i - 1]);
   }
 
+  // Which way UP each ring is — the same problem as `mirrored`, one axis over.
+  //
+  // A turn rolls the strip right over (zturn.ts): its legs are explicitly
+  // `(0, 0, +face)` going in and `(0, 0, -face)` coming away, because that is
+  // what a folded strap does. The RUN either side of the turn carries no frame
+  // of its own, so `upOf` gives it a thickness axis pointing broadly at +Z —
+  // and at the one sample where a leg meets a run, the axis can therefore
+  // reverse outright. `side` is `up x tan`, so it reverses with it: the section
+  // is the SAME shape, rotated a half turn about the path, while ring vertex j
+  // is still numbered j.
+  //
+  // The strip laid between those two rings then joins each vertex to the one
+  // diametrically opposite it. That is a full twist in a single step: the
+  // surface wrings itself through its own axis, and the lace reads as CUT —
+  // a clean gap across the ribbon with a little bowtie in the middle of it,
+  // mid-run, nowhere near anything that should be a crease. Measured on the
+  // reported scene: six such samples, every one of them exactly where a turn's
+  // leg meets its run, and the three that were not buried inside the knot are
+  // the three the report circled. The one lace with no gap is the one whose two
+  // turns butt straight together, so no run ever comes between an upside-down
+  // leg and a right-way-up run.
+  //
+  // So track the roll the way `mirrored` tracks the heading, and answer it the
+  // same way: keep walking the section, but from the vertex a half turn round.
+  // The cross-section is a rounded rectangle walked corner by corner in one
+  // direction, so rotating it by pi maps vertex j onto vertex j + m/2 exactly —
+  // not approximately; the two differ by 8e-17 at the studio's own ribbon.
+  // Vertex j goes on pointing at the same physical edge, the strip stays flat
+  // through the join, and the lace comes away whole. Nothing about the
+  // centreline, the heights or the frame changes — only which vertex is which.
+  //
+  // Winding needs no answer here: the roll reverses `up` AND `side`, two of the
+  // three axes, so the frame keeps its handedness and the ring is still walked
+  // the same way round in the world.
+  const half = m % 2 === 0 ? m / 2 : 0;
+  const rolled: boolean[] = [false];
+  for (let i = 1; i < plan.length; i++) {
+    const a = plan[i - 1].up;
+    const b = plan[i].up;
+    const over = a.x * b.x + a.y * b.y + a.z * b.z < 0;
+    rolled.push(over ? !rolled[i - 1] : rolled[i - 1]);
+  }
+
   for (let i = 0; i < plan.length; i++) {
     const { p, t, up, shear, side } = plan[i];
     // In-plane side normal (perpendicular to tangent, in XY): (-ty, tx). It stays
@@ -352,7 +399,8 @@ export function buildRibbonGeometry(centerline: Vec3[], opts: RibbonOptions): TH
     const sz = side ? side.z : 0;
     const ringIdx: number[] = [];
     for (let j = 0; j < m; j++) {
-      const s = section[mirrored[i] ? m - 1 - j : j];
+      const k = mirrored[i] ? m - 1 - j : j;
+      const s = section[rolled[i] ? (k + half) % m : k];
       const u = s.x; // across width -> along side
       const v = s.y; // through thickness -> along the (pitched) up axis
       const d = shear * u; // slide along the heading to reach the crease line
