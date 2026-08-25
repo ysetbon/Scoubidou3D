@@ -1157,12 +1157,12 @@ export class StrandScene {
           if (masked === null && this.strandLevel[i] !== this.strandLevel[j]) continue;
           const over = masked ?? j;
           const under = over === i ? j : i;
-          // Half-separation: enough that the two ribbons don't interpenetrate, as
-          // much more as Depth asks for, and never more than the storey can hold.
-          const h = this.weaveAmplitude(
-            this.strandThicknessWorld(strands[over]),
-            this.strandThicknessWorld(strands[under]),
-          );
+          const tOver = this.strandThicknessWorld(strands[over]);
+          const tUnder = this.strandThicknessWorld(strands[under]);
+          // Half-separation: enough that the two ribbons don't interpenetrate,
+          // as much more as Depth asks for. Whether a given crossing must also
+          // stay inside its storey is that crossing's own question — see below.
+          const hFree = this.weaveAmplitude(tOver, tUnder);
 
           const wi = strands[i].width * this.params.widthScale * SCALE;
           const wj = strands[j].width * this.params.widthScale * SCALE;
@@ -1171,16 +1171,30 @@ export class StrandScene {
           // nudge off each strand's own resting height: the displacement must not
           // depend on how far apart the two sit in the layer panel, or a lace
           // masked over several strands ramps instead of riding flat.
-          const clearance = ((this.strandThicknessWorld(strands[over]) +
-            this.strandThicknessWorld(strands[under])) / 2) * 1.15;
+          const clearance = ((tOver + tUnder) / 2) * 1.15;
           const declaredClear = this.declaredClears(over, under, clearance);
           const plane = this.crossingPlaneZ(i, j);
+          const stacked = isStacked(this.current);
+          // A masked pair spanning two storeys weaves about their midpoint, with
+          // both storeys' ribbons around it by construction — always capped, as
+          // it always was. A same-storey pair is capped where the neighbouring
+          // storey actually reaches, and swings free where it does not.
+          const crossStorey = this.strandLevel[i] !== this.strandLevel[j];
+          const pairHalf = Math.max(wi, wj) / 2;
           crossings.forEach((c, n) => {
             const sOver = over === i ? c.sA : c.sB;
             const sUnder = under === i ? c.sA : c.sB;
             const key = `${strands[i].id}|${strands[j].id}|${n}`;
             const zOver = this.crossPlaneZ(key, over);
             const zUnder = this.crossPlaneZ(key, under);
+            let h = hFree;
+            if (
+              stacked &&
+              (crossStorey ||
+                this.crowdedAt(this.strandLevel[i] ?? 0, c.x, c.y, pairHalf, worldLines, boxes))
+            ) {
+              h = Math.min(h, this.storeyRoom(tOver, tUnder));
+            }
             // A pair the declared run planes already hold a clear thickness apart
             // needs no swing — anchoring it would drag both back toward one shared
             // plane. But a crossing somebody has PLACED is a statement about this
@@ -1444,15 +1458,72 @@ export class StrandScene {
    * undeclared pairs closed up by a whole thickness, and a scene someone had
    * spent an evening placing rearranged itself the moment they added a level
    * they had not yet put anything on.
+   *
+   * And "in play" is a fact about a CROSSING, not about the scene — the same
+   * bug again, one notch finer. Attach one strand to the new storey and, guarded
+   * per scene, every crossing everywhere got the cap: on box + strand a single
+   * arch parked five ribbon-widths clear of the box flattened the whole knot,
+   * and where a crossing had one side declared the pair's separation is `h`
+   * rather than `2h`, so capping did not read as "resting on" but as ribbons a
+   * half-thickness INSIDE each other. The swing only has to stay inside its
+   * storey where the neighbouring storey actually has a ribbon to hit — so the
+   * caller checks, per crossing, whether one comes close enough in plan to
+   * matter (`crowdedAt`), and the cap fires there and nowhere else.
    */
   private weaveAmplitude(thicknessOver: number, thicknessUnder: number): number {
     const clearance = ((thicknessOver + thicknessUnder) / 2) * 1.15;
-    let h = Math.max(this.params.weaveDepth * SCALE, clearance / 2);
-    if (isStacked(this.current)) {
-      const room = (this.levelStepSource() * SCALE - Math.max(thicknessOver, thicknessUnder)) / 2;
-      h = Math.min(h, Math.max(room, 0));
+    return Math.max(this.params.weaveDepth * SCALE, clearance / 2);
+  }
+
+  /** The most a crossing can swing and still keep both ribbon bodies inside
+   *  their own storey: half of what is left after the thicker body is placed. */
+  private storeyRoom(thicknessOver: number, thicknessUnder: number): number {
+    const room = (this.levelStepSource() * SCALE - Math.max(thicknessOver, thicknessUnder)) / 2;
+    return Math.max(room, 0);
+  }
+
+  /**
+   * Does the storey above or below put a ribbon close enough, in plan, for this
+   * crossing's swing to hit it? Close enough means the two footprints overlap:
+   * the crossing pair's wider half-width plus the neighbour's own half-width.
+   * Everything is in world XY — the frame `worldLines` and the crossings share.
+   *
+   * In a stacked column this is true at every crossing (the next round lies
+   * along the same edges), so those scenes cap exactly as before. It is false
+   * for a knot sitting in the open with the new storey's cord elsewhere, which
+   * is the case that used to flatten.
+   */
+  private crowdedAt(
+    level: number,
+    x: number,
+    y: number,
+    pairHalf: number,
+    worldLines: Array<Vec2[] | null>,
+    boxes: Array<Box | null>,
+  ): boolean {
+    const strands = this.current.strands;
+    for (let k = 0; k < strands.length; k++) {
+      if (Math.abs((this.strandLevel[k] ?? 0) - level) !== 1) continue;
+      const line = worldLines[k];
+      const box = boxes[k];
+      if (!line || !box) continue;
+      const reach = pairHalf + (strands[k].width * this.params.widthScale * SCALE) / 2;
+      if (x < box.minX - reach || x > box.maxX + reach) continue;
+      if (y < box.minY - reach || y > box.maxY + reach) continue;
+      const r2 = reach * reach;
+      for (let s = 1; s < line.length; s++) {
+        const ax = line[s - 1].x;
+        const ay = line[s - 1].y;
+        const dx = line[s].x - ax;
+        const dy = line[s].y - ay;
+        const len2 = dx * dx + dy * dy;
+        const t = len2 > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len2)) : 0;
+        const px = ax + t * dx - x;
+        const py = ay + t * dy - y;
+        if (px * px + py * py <= r2) return true;
+      }
     }
-    return h;
+    return false;
   }
 
   /**
