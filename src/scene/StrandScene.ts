@@ -1337,27 +1337,41 @@ export class StrandScene {
     if (level === 0 || !isStacked(this.current)) return base;
     if (this.sublevels?.get(strand.id)) return base;
 
-    // THE FREE DEFAULT IS THE PLANE ITSELF: a level-L strand with nothing under
-    // it rests at exactly 2L — level 1 at +2.0, level 2 at +4.0 — not at the
-    // plane plus its lace's layer-order lift. The lift spreads laces that share
-    // ONE storey's panel order; carried upstairs it put a cord's free stretch at
-    // +2.77 and the plane names stopped meaning anything. The ground storey
-    // keeps the lift (it is the shipped behaviour of every unstacked scene, and
-    // this function never touches level 0), which is the accepted trade: two
-    // undeclared upper-storey laces that overlap WITHOUT crossing no longer get
-    // the lift's spread between them, and place themselves with the seven marks
-    // if they fight.
+    // A FREE STRETCH CONTINUES AT THE STRAND'S OWN SETTLED HEIGHT. Where the
+    // strand stands on nothing, it holds the height of its supported
+    // neighbourhood — the last place it stood on something — like a cord
+    // cantilevered off the edge of what it lies on: a gap between two supported
+    // stretches is bridged by their two edge heights, and a free tail keeps the
+    // height it left the material at. That is what makes a strand half on
+    // material and half over open floor come out FLAT, and what keeps a tall
+    // column's loose tails up at the top where they left their round — ruled to
+    // any fixed plane instead, the ten-round column's four tails plunged nine
+    // thicknesses down its outside.
+    //
+    // Only a strand that touches nothing at all rests at a plane, and it is
+    // plane L exactly — level 1 at +1.0, level 2 at +2.0 — one thickness above
+    // the storey below's own default, down to the ground at 0. That is what
+    // settling would give if the storey below were there and resting at ITS
+    // default, so the two rules agree wherever they meet. (Two earlier cuts
+    // used the storey's 2L plane, with and without the lace's layer-order lift
+    // on top; both left a free stretch hovering a storey above the material
+    // stretch beside it.) The ground storey keeps the lift untouched — it is
+    // the shipped behaviour of every unstacked scene, and this function never
+    // touches level 0 — and the trade stands: two undeclared upper-storey laces
+    // overlapping WITHOUT crossing don't get the lift's spread between them,
+    // and place themselves with the seven marks if they fight.
     const strands = this.current.strands;
+    const half = (this.levelStepSource() * SCALE) / 2;
     const plane = this.getStoreyPlane(level);
+    const rest = plane - level * half;
     const under: number[] = [];
     for (let j = 0; j < strands.length; j++) {
       if ((this.strandLevel[j] ?? 0) === level - 1 && built[j]) under.push(j);
     }
-    if (under.length === 0) return plane;
+    if (under.length === 0) return rest;
 
     const wSelf = strand.width * this.params.widthScale * SCALE;
     const tSelf = this.strandThicknessWorld(strand);
-    const half = (this.levelStepSource() * SCALE) / 2;
 
     // Per under-strand: its reach from this one (footprints overlapping at all),
     // its lift (surfaces touch = centrelines a mean thickness apart), and its
@@ -1377,6 +1391,7 @@ export class StrandScene {
     });
 
     const raw = new Array<number>(line.length);
+    const supported = new Array<boolean>(line.length).fill(false);
     let touched = false;
     for (let k = 0; k < line.length; k++) {
       const px = line[k].x;
@@ -1404,12 +1419,49 @@ export class StrandScene {
       }
       if (support > -Infinity) {
         raw[k] = Math.min(plane + half, Math.max(plane - half, support));
+        supported[k] = true;
         touched = true;
-      } else {
-        raw[k] = plane;
       }
     }
-    if (!touched) return plane;
+    if (!touched) return rest;
+
+    // Fill the free stretches from the supported ones, by arc length so uneven
+    // sampling doesn't skew anything. A gap BETWEEN two supported stretches is
+    // bridged by its edge heights. A free TAIL leaves at the height it left the
+    // material at and relaxes to the tight-stack plane over a couple of widths
+    // — so a cord that steps off its support right on a weave bump doesn't
+    // carry the bump's height forever, and a short tail (a column round's loose
+    // end, a lace-width long) barely moves from where it let go.
+    const RELAX = 2 * wSelf;
+    let prev = -1;
+    for (let k = 0; k <= line.length; k++) {
+      if (k < line.length && supported[k]) {
+        if (prev < k - 1) {
+          const zb = raw[k];
+          if (prev >= 0) {
+            const za = raw[prev];
+            const sa = cum[prev];
+            const sb = cum[k];
+            for (let m = prev + 1; m < k; m++) {
+              const t = sb > sa ? (cum[m] - sa) / (sb - sa) : 0;
+              raw[m] = za + (zb - za) * t;
+            }
+          } else {
+            for (let m = 0; m < k; m++) {
+              const t = Math.min(1, (cum[k] - cum[m]) / RELAX);
+              raw[m] = zb + (rest - zb) * t;
+            }
+          }
+        }
+        prev = k;
+      } else if (k === line.length && prev >= 0 && prev < line.length - 1) {
+        const za = raw[prev];
+        for (let m = prev + 1; m < line.length; m++) {
+          const t = Math.min(1, (cum[m] - cum[prev]) / RELAX);
+          raw[m] = za + (rest - za) * t;
+        }
+      }
+    }
 
     // The footprint's edge is a step; a lace steps over about its own width, the
     // same measure easeSteps uses. One box average with that window, by arc
