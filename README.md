@@ -4,11 +4,11 @@
 gets a real thickness, its layer number becomes its height, and a mask stops being paint and becomes
 a weave you can orbit.
 
-🧶 **[open the studio](https://ysetbon.github.io/Scoubidou3D/app/)** ·
-🌐 **[the site](https://ysetbon.github.io/Scoubidou3D/)** ·
-🌀 **[the twist study](https://ysetbon.github.io/Scoubidou3D/twist/)** ·
-🧪 **[the MXN lab](https://ysetbon.github.io/Scoubidou3D/mxn/)** ·
-🔗 **[every link](docs/links.md)**
+**[open the studio](https://ysetbon.github.io/Scoubidou3D/app/)** ·
+**[the site](https://ysetbon.github.io/Scoubidou3D/)** ·
+**[the twist study](https://ysetbon.github.io/Scoubidou3D/twist/)** ·
+**[the MXN lab](https://ysetbon.github.io/Scoubidou3D/mxn/)** ·
+**[every link](docs/links.md)**
 
 ![two crossing strands in 3D — the yellow lace physically rides over the crossing and the orange dips under](docs/readme/weave.png)
 
@@ -77,9 +77,9 @@ fingertip. one finger orbits, pinch zooms, two fingers pan.
 
 ### what it does
 
-- 🧵 **strands → ribbons.** every strand extruded into a solid ribbon with a configurable
+- **strands → ribbons.** every strand extruded into a solid ribbon with a configurable
   **thickness**, rounded edges, rounded ends and a stroke-coloured outline.
-- 🧶 **masks → a real over/under weave.** this is the headline. in OpenStrand a `MaskedStrand`
+- <img src="docs/readme/icons/weave.svg" width="15" height="15"> **masks → a real over/under weave.** this is the headline. in OpenStrand a `MaskedStrand`
   paints one strand on top of another where they cross. here the **over** lace lifts and the
   **under** lace dips, so a single strand goes over one neighbour and under the next.
   - the **Weave** tool: click the strand that goes over, then the one it crosses. hovering lights
@@ -91,28 +91,28 @@ fingertip. one finger orbits, pinch zooms, two fingers pan.
   - **imported masks weave by themselves.** `MaskedStrand` records become over/under links, so an
     imported basket interlaces the way it was drawn. no mask on a crossing → the higher layer rides.
   - **Depth / Span / Layer-lift** tune how far the laces rise and dip and how wide the bump is.
-- 🪢 **attached strands are really joined.** an attached strand lives on another layer, so the join
+- <img src="docs/readme/icons/attach.svg" width="15" height="15"> **attached strands are really joined.** an attached strand lives on another layer, so the join
   used to float with a Z gap. now a **lofted bridge** morphs the parent's end cross-section into the
   child's start across that gap, banking gently — one continuous lace stepping between layers.
   derived from coincident endpoints, so imported files reconnect too.
-- 🎨 **colour a layer, or the whole lace.** a layer name is `set_length`, so `1_2` is the second
+- **colour a layer, or the whole lace.** a layer name is `set_length`, so `1_2` is the second
   length of lace `1`. a switch under the palette says where a colour lands — **This layer** paints
   `1_2`, **All layers** paints every length of that lace at once — and either way it's one undo. a
   lace worked through ten rounds is twenty-odd layers; recolouring it used to be twenty-odd presses.
   read off the *name*, exactly as OSS writes it, so it survives a save and a hand edit.
   ([`src/model/colour.ts`](src/model/colour.ts), `npm run check:colour`)
-- 🎡 **any colour, and none of it spent until OK.** six chips are the laces you keep; the **wheel**
+- **any colour, and none of it spent until OK.** six chips are the laces you keep; the **wheel**
   opens a picker window — sat/brightness square over a hue strip, plus a hex field. a window rather
   than a live well because hunting for a colour is a *drag*, and painting every step of that drag
   put a hundred colours through undo on the way to the one you wanted.
-- 📚 **layer order = default depth.** higher layer rides over; masks override single crossings, same
+- <img src="docs/readme/icons/mask.svg" width="15" height="15"> **layer order = default depth.** higher layer rides over; masks override single crossings, same
   as OSS. reorder and it restacks live.
-- 🪜 **levels — storeys in the stack.** **Level** adds a storey, and everything above it rests one
+- <img src="docs/readme/icons/level.svg" width="15" height="15"> **levels — storeys in the stack.** **Level** adds a storey, and everything above it rests one
   storey higher: two thicknesses, the height of a woven round (a lace over plus a lace under), which
   is what it takes for the next round to sit *on* it rather than sink into it. the storey goes in at
   the top so nothing already drawn moves. each storey is its own bar, numbered from **0**, and `▲▼`
   walk it through the stack. ([how it works](docs/layer-levels.md))
-- 🔗 **Attach & Move — OpenStrand's editing, in 3D.** a tool bar across the top of the scene (the
+- <img src="docs/readme/icons/move.svg" width="15" height="15"> **Attach & Move — OpenStrand's editing, in 3D.** a tool bar across the top of the scene (the
   undo pair, then Pan / Orbit / Move / Attach / Weave) turns endpoints into handles.
   - **Attach**: pull from a *free* (green) endpoint and a new strand is born glued to the parent,
     inheriting its look, joining the same set (`1_1` → `1_2`), stacked on top and bridged. occupied
@@ -123,17 +123,17 @@ fingertip. one finger orbits, pinch zooms, two fingers pan.
     untouched strand, pulling it brings out the **circle** and the **square**, on OSS's dashed green
     rig. put every mark home and the set folds away again.
     ([the full behaviour, and the one place it differs](docs/control-points.md))
-- ↩️ **undo, recorded off the scene's own JSON.** a scene whose JSON doesn't match the last
+- <img src="docs/readme/icons/undo.svg" width="15" height="15"> **undo, recorded off the scene's own JSON.** a scene whose JSON doesn't match the last
   recording is a new recording; one that matches isn't. that single test is the whole mechanism — no
   edit declares what it changed, so a canvas drag, a slider and a mask all land in the same history,
   and an edit that ends where it began records nothing. **the camera is the exception:** orbit, pan,
   zoom and Fit change no strand, so they never record, which is also why undo never moves the camera
   back. `⌘/Ctrl+Z` and `⇧⌘/Ctrl+Shift+Z`. ([`src/model/history.ts`](src/model/history.ts),
   `npm run check:history`)
-- 🎥 **full 3D camera.** orbit, pan, zoom. one click snaps back to the familiar top-down view.
-- 📥 **import real files.** load an OpenStrand Studio / OpenStrandJS `.json` and see it in 3D. the
+- **full 3D camera.** orbit, pan, zoom. one click snaps back to the familiar top-down view.
+- **import real files.** load an OpenStrand Studio / OpenStrandJS `.json` and see it in 3D. the
   curve math is a faithful port of `strand.py::_build_curve_profile`, so curves match the original.
-- 💾 **save your own.** **Save** keeps a scene in your browser, so it's still in the dropdown after a
+- **save your own.** **Save** keeps a scene in your browser, so it's still in the dropdown after a
   refresh. **JSON** hands you the text to send on or paste back, and that same text dropped into
   `samples.ts` becomes a permanent built-in. nothing is uploaded.
 
@@ -369,7 +369,7 @@ so a flat ribbon never twists and its face points at the camera in top view, lik
 
 ## still to do
 
-- ✅ per-crossing undulation, imported masks honoured, really-connected attachments, direct 3D
+- done: per-crossing undulation, imported masks honoured, really-connected attachments, direct 3D
   editing, undo/redo, and planes inside a storey.
 - **deletion rectangles** — honour OSS's partial-mask edits (`mask_grid_dialog`) so a mask covering
   part of a crossing weaves partially.
