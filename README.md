@@ -263,9 +263,10 @@ there is a checker per piece of geometry, and CI runs the set:
 
 ```sh
 npm run check:history   npm run check:colour    npm run check:box
-npm run check:ladder    npm run check:board     npm run check:plan
-npm run check:boundary  npm run check:enginekey npm run check:fit
-npm run qa:fold         npm run qa:cache        npm run qa:board
+npm run check:planes    npm run check:roll      npm run check:ladder
+npm run check:board     npm run check:plan      npm run check:fit
+npm run check:boundary  npm run check:enginekey npm run qa:fold
+npm run qa:cache        npm run qa:board
 ```
 
 `npm run art` is the older flat generator and the site no longer shows its output, but it stays for
