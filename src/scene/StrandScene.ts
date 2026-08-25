@@ -1202,23 +1202,210 @@ export class StrandScene {
             // was placed, and the other keeps the height its run gave it.
             if (declaredClear && zOver === null && zUnder === null) return;
             if (!declaredClear || zOver !== null) {
-              anchors[over].push({ s: sOver, radius, z: zOver ?? plane + h });
+              anchors[over].push({
+                s: sOver,
+                radius,
+                z: zOver ?? plane + h,
+                declared: zOver !== null,
+                mate: crossStorey ? undefined : { index: under, s: sUnder },
+              });
             }
             if (!declaredClear || zUnder !== null) {
-              anchors[under].push({ s: sUnder, radius, z: zUnder ?? plane - h });
+              anchors[under].push({
+                s: sUnder,
+                radius,
+                z: zUnder ?? plane - h,
+                declared: zUnder !== null,
+                mate: crossStorey ? undefined : { index: over, s: sOver },
+              });
             }
           });
         }
       }
     }
 
-    return strands.map((_, i) => {
-      const line = worldLines[i];
-      if (!line) return null;
-      const { cum } = arcLengths(line);
-      const z = heightField(cum, anchors[i], this.restingBase(i, cum, strands[i]));
-      return line.map((p, k) => ({ x: p.x, y: p.y, z: z[k] }));
+    // Bottom-up by storey, because an upper strand's resting base is read off
+    // the BUILT strands below it (settledBase): level 0 has to exist before
+    // level 1 can rest on it. Within one storey the order is immaterial — no
+    // strand settles on its own storey — and an unstacked scene is one storey,
+    // where this is the same loop it always was.
+    // Storey by storey, bottom up: an upper strand's resting base is read off
+    // the BUILT strands below it (settledBase), so level 0 has to exist before
+    // level 1 can rest on it. Within one storey, every strand's settle delta is
+    // computed BEFORE any of them builds, because a crossing's two anchors need
+    // both sides' deltas at once — see below. An unstacked scene is one storey
+    // with every delta zero, where all of this is the loop it always was.
+    const out: Array<Vec3[] | null> = strands.map(() => null);
+    const byLevel = new Map<number, number[]>();
+    for (let i = 0; i < strands.length; i++) {
+      const l = this.strandLevel[i] ?? 0;
+      const bucket = byLevel.get(l);
+      if (bucket) bucket.push(i);
+      else byLevel.set(l, [i]);
+    }
+    for (const level of [...byLevel.keys()].sort((a, b) => a - b)) {
+      const here = byLevel.get(level)!;
+      const cums = new Map<number, number[]>();
+      const bases = new Map<number, number | number[]>();
+      // The strand's settle DELTA at an arc position — how far off its nominal
+      // rest the terrain put it. Zero wherever nothing settled.
+      const deltas = new Map<number, (s: number) => number>();
+      for (const i of here) {
+        const line = worldLines[i];
+        if (!line) continue;
+        const { cum } = arcLengths(line);
+        const nominal = this.restingBase(i, cum, strands[i]);
+        const settled = this.settledBase(i, line, cum, strands[i], out, nominal);
+        cums.set(i, cum);
+        bases.set(i, settled);
+        if (settled === nominal) {
+          deltas.set(i, () => 0);
+        } else {
+          const nAt = interpByArc(cum, nominal);
+          const sAt = interpByArc(cum, settled);
+          deltas.set(i, (s: number) => sAt(s) - nAt(s));
+        }
+      }
+      for (const i of here) {
+        const line = worldLines[i];
+        if (!line) continue;
+        const cum = cums.get(i)!;
+        // A crossing rides the settled terrain by ONE amount for both of its
+        // anchors: the mean of the two strands' settle deltas there. A crossing
+        // is woven about the plane of the storey it happens on, and where the
+        // storey settled, that plane moved with it — but shifting each anchor
+        // by its OWN strand's delta alone leaks the per-lace rank lift into
+        // the pair (the two laces' nominal rests differ by the layer gap), and
+        // measured on the ten-round column that closed the over/under gap from
+        // a whole thickness to a hundredth of one. The mean is the same number
+        // on both sides, so the gap stays exactly 2h whatever the terrain
+        // does. Declared heights are absolute and do not move; a cross-storey
+        // mask has no mate and stays woven about the midpoint of its two
+        // storeys, exactly as documented.
+        const dSelf = deltas.get(i) ?? (() => 0);
+        const mine = anchors[i].map((a) => {
+          if (a.declared || !a.mate) return a;
+          const dMate = deltas.get(a.mate.index);
+          const shift = (dSelf(a.s) + (dMate ? dMate(a.mate.s) : 0)) / 2;
+          return shift === 0 ? a : { ...a, z: a.z + shift };
+        });
+        const z = heightField(cum, mine, bases.get(i)!);
+        out[i] = line.map((p, k) => ({ x: p.x, y: p.y, z: z[k] }));
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Where this strand RESTS, per vertex — on top of what is actually beneath it.
+   *
+   * A strand on a storey used to rest at one flat height, the storey's plane,
+   * whatever was underneath: over the woven material below it hovered, and over
+   * nothing it sat at the same height, so a stacked scene read as floors of
+   * glass. This walks the strand and, wherever the storey below has a ribbon
+   * within reach in plan, rests this one exactly ON it — surfaces touching, so
+   * centrelines a mean thickness apart — and leaves the storey plane as the
+   * default where there is nothing to stand on. The strand hugs the terrain:
+   * over a part the weave lifted to +1 it rides at +1.5 (its body's bottom at
+   * the +1.5 surface... measured in planes: bottom where the under's top is),
+   * over a part resting mid-storey it sits a whole thickness above that, and
+   * between the two regimes it ramps over about its own width.
+   *
+   * What it reads is the BUILT height of the storey below — weave dips, declared
+   * planes and all — which is why the z pipeline now runs bottom-up. The settled
+   * height is clamped to the strand's own storey band (plane ± a storey's half),
+   * which is the statement "level L lives between planes 2L−1 and 2L+1".
+   *
+   * Three things opt out, deliberately:
+   * - the ground storey and every unstacked scene (nothing below to stand on —
+   *   and this returning the plain base untouched is what keeps a one-storey
+   *   scene byte-identical);
+   * - a strand whose run plane was DECLARED — the seven marks are the user
+   *   saying where it rests, and a declaration outranks the terrain;
+   * - a storey with an empty storey directly below it (the strand falls back to
+   *   its plane rather than looking further down — a hole is a hole).
+   */
+  private settledBase(
+    i: number,
+    line: Vec2[],
+    cum: number[],
+    strand: Strand3D,
+    built: Array<Vec3[] | null>,
+    base: number | number[],
+  ): number | number[] {
+    const level = this.strandLevel[i] ?? 0;
+    if (level === 0 || !isStacked(this.current)) return base;
+    if (this.sublevels?.get(strand.id)) return base;
+
+    const strands = this.current.strands;
+    const under: number[] = [];
+    for (let j = 0; j < strands.length; j++) {
+      if ((this.strandLevel[j] ?? 0) === level - 1 && built[j]) under.push(j);
+    }
+    if (under.length === 0) return base;
+
+    const wSelf = strand.width * this.params.widthScale * SCALE;
+    const tSelf = this.strandThicknessWorld(strand);
+    const plane = this.getStoreyPlane(level);
+    const half = (this.levelStepSource() * SCALE) / 2;
+
+    // Per under-strand: its reach from this one (footprints overlapping at all),
+    // its lift (surfaces touch = centrelines a mean thickness apart), and its
+    // bbox inflated by the reach so most vertices skip it in four compares.
+    const parts = under.map((j) => {
+      const lineJ = built[j]!;
+      const reach = (wSelf + strands[j].width * this.params.widthScale * SCALE) / 2;
+      const lift = (tSelf + this.strandThicknessWorld(strands[j])) / 2;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of lineJ) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      }
+      return { lineJ, reach, lift, minX: minX - reach, minY: minY - reach, maxX: maxX + reach, maxY: maxY + reach };
     });
+
+    const baseAt = typeof base === 'number' ? () => base as number : (k: number) => (base as number[])[k];
+    const raw = new Array<number>(line.length);
+    let touched = false;
+    for (let k = 0; k < line.length; k++) {
+      const px = line[k].x;
+      const py = line[k].y;
+      let support = -Infinity;
+      for (const part of parts) {
+        if (px < part.minX || px > part.maxX || py < part.minY || py > part.maxY) continue;
+        const r2 = part.reach * part.reach;
+        // Nearest sampled vertex is enough for a height lookup — the polylines
+        // are dense — and striding by two halves the scan without moving it.
+        let best = Infinity;
+        let z = 0;
+        for (let m = 0; m < part.lineJ.length; m += 2) {
+          const dx = part.lineJ[m].x - px;
+          const dy = part.lineJ[m].y - py;
+          const d = dx * dx + dy * dy;
+          if (d < best) {
+            best = d;
+            z = part.lineJ[m].z;
+          }
+        }
+        if (best > r2) continue;
+        const cand = z + part.lift;
+        if (cand > support) support = cand;
+      }
+      if (support > -Infinity) {
+        raw[k] = Math.min(plane + half, Math.max(plane - half, support));
+        touched = true;
+      } else {
+        raw[k] = baseAt(k);
+      }
+    }
+    if (!touched) return base;
+
+    // The footprint's edge is a step; a lace steps over about its own width, the
+    // same measure easeSteps uses. One box average with that window, by arc
+    // length, turns each step into a ramp without flattening the plateaus.
+    return smoothByArc(raw, cum, wSelf);
   }
 
   /** Bridge each attach junction with a lofted connector so the joined ribbons
@@ -2869,6 +3056,54 @@ function bbox(poly: Vec2[]): Box {
 
 function boxesOverlap(a: Box, b: Box): boolean {
   return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+}
+
+/**
+ * Average each value over the vertices within `window/2` of it by ARC length —
+ * a box blur in the lace's own parameter, so a step in a resting profile
+ * becomes a ramp about a window wide and a plateau longer than the window
+ * keeps its height. Vertex spacing is uneven, so the window is found with two
+ * pointers rather than a fixed radius in samples.
+ */
+/** A per-vertex profile as a function of arc length, linearly interpolated —
+ *  how an anchor, which lives at an arc position rather than a vertex, reads
+ *  the resting base it is about to be measured against. A scalar base is the
+ *  common case and stays a constant. */
+function interpByArc(cum: number[], values: number | number[]): (s: number) => number {
+  if (typeof values === 'number') return () => values;
+  return (s: number): number => {
+    if (s <= cum[0]) return values[0];
+    const last = cum.length - 1;
+    if (s >= cum[last]) return values[last];
+    let lo = 0;
+    let hi = last;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (cum[mid] <= s) lo = mid;
+      else hi = mid;
+    }
+    const span = cum[hi] - cum[lo];
+    const t = span > 0 ? (s - cum[lo]) / span : 0;
+    return values[lo] + (values[hi] - values[lo]) * t;
+  };
+}
+
+function smoothByArc(values: number[], cum: number[], window: number): number[] {
+  const n = values.length;
+  if (n === 0 || window <= 0) return values;
+  const half = window / 2;
+  const prefix = new Array<number>(n + 1);
+  prefix[0] = 0;
+  for (let k = 0; k < n; k++) prefix[k + 1] = prefix[k] + values[k];
+  const out = new Array<number>(n);
+  let lo = 0;
+  let hi = 0;
+  for (let k = 0; k < n; k++) {
+    while (cum[lo] < cum[k] - half) lo++;
+    while (hi < n - 1 && cum[hi + 1] <= cum[k] + half) hi++;
+    out[k] = (prefix[hi + 1] - prefix[lo]) / (hi + 1 - lo);
+  }
+  return out;
 }
 
 // Exact RGBA equality — used to decide whether glued strands can share one mesh.

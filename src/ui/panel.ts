@@ -2174,10 +2174,14 @@ export class Panel {
     // Each card is ruled about ITS OWN storey. The profile is in thicknesses of
     // that lace, so the storey's plane is divided by the same thickness before it
     // is taken off — after which `0` is this storey's middle and `±1` its floor
-    // and ceiling, whichever storey it happens to be.
+    // and ceiling, whichever storey it happens to be. The rules then carry their
+    // ABSOLUTE names: level L owns the band 2L−1 … 2L+1, so its three read
+    // `2L−1 / 2L / 2L+1` — level 0 keeps `−1 / 0 / +1`, level 1 reads
+    // `+1 / +2 / +3` — and the shared seam is visible as a shared number:
+    // one storey's ceiling is the next one's floor.
     for (const g of groups) {
       const zero = this.view.getStoreyPlane(level) / (g.fact.thickness || 1);
-      box.appendChild(this.laceCard(g.fact, g.members, zero));
+      box.appendChild(this.laceCard(g.fact, g.members, zero, 2 * level));
     }
     return box;
   }
@@ -2266,7 +2270,12 @@ export class Panel {
    * is the one that has always shipped. A storey passes its own members and gets
    * the same card over that slice: same figure, same rows, same C's, just fewer.
    */
-  private laceCard(fact: LaceFact, members: MemberFact[] = fact.members, zero = 0): HTMLElement {
+  private laceCard(
+    fact: LaceFact,
+    members: MemberFact[] = fact.members,
+    zero = 0,
+    labelBase = 0,
+  ): HTMLElement {
     const shown = new Set(members);
     // A C belongs to this card only when BOTH members it joins are on it —
     // otherwise it is the step out of this storey, and it is the next storey's
@@ -2286,7 +2295,7 @@ export class Panel {
     // a C however many of them a lace has.
     head.appendChild(el('span', 'tag', folds.length ? `${folds.length} C` : 'no C'));
     card.appendChild(head);
-    card.appendChild(this.laceFigure(fact, members, zero));
+    card.appendChild(this.laceFigure(fact, members, zero, labelBase));
     const picked = fact.crossings.find(
       (c) => `${c.key}|${c.ownId}` === this.pickedCross && members.some((m) => m.id === c.ownId),
     );
@@ -2316,6 +2325,7 @@ export class Panel {
     fact: LaceFact,
     members: MemberFact[] = fact.members,
     zero = 0,
+    labelBase = 0,
   ): HTMLElement {
     const W = 300;
     const H = 104;
@@ -2402,11 +2412,16 @@ export class Panel {
     const step = [1, 2, 4, 10, 20, 50].find((k) => k * perT >= 9) ?? 100;
     for (let k = Math.ceil(lo / step) * step; k <= hi; k += step) {
       const y = n(Y(k));
+      // A rule is named by its ABSOLUTE plane, not its place in this card:
+      // `labelBase` is the storey's own plane (2L), so level 1's three read
+      // +1 / +2 / +3 and its floor shares a number with level 0's ceiling.
+      // On an unstacked card labelBase is 0 and the text is what it always was.
+      const v = k + labelBase;
       body +=
         `<line class="pf-rule${k === 0 ? ' pf-zero' : ''}" x1="${LEFT}" y1="${y}" ` +
         `x2="${RIGHT}" y2="${y}" />` +
         `<text class="pf-tick" x="${LEFT - 4}" y="${n(Y(k) + 2.6)}">` +
-        `${k > 0 ? '+' : k < 0 ? '−' : ''}${Math.abs(k)}</text>`;
+        `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v)}</text>`;
     }
 
     // The bands: each member in its own colour, and the stretch a C occupies
