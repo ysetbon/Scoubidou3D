@@ -1337,16 +1337,26 @@ export class StrandScene {
     if (level === 0 || !isStacked(this.current)) return base;
     if (this.sublevels?.get(strand.id)) return base;
 
+    // THE FREE DEFAULT IS THE PLANE ITSELF: a level-L strand with nothing under
+    // it rests at exactly 2L — level 1 at +2.0, level 2 at +4.0 — not at the
+    // plane plus its lace's layer-order lift. The lift spreads laces that share
+    // ONE storey's panel order; carried upstairs it put a cord's free stretch at
+    // +2.77 and the plane names stopped meaning anything. The ground storey
+    // keeps the lift (it is the shipped behaviour of every unstacked scene, and
+    // this function never touches level 0), which is the accepted trade: two
+    // undeclared upper-storey laces that overlap WITHOUT crossing no longer get
+    // the lift's spread between them, and place themselves with the seven marks
+    // if they fight.
     const strands = this.current.strands;
+    const plane = this.getStoreyPlane(level);
     const under: number[] = [];
     for (let j = 0; j < strands.length; j++) {
       if ((this.strandLevel[j] ?? 0) === level - 1 && built[j]) under.push(j);
     }
-    if (under.length === 0) return base;
+    if (under.length === 0) return plane;
 
     const wSelf = strand.width * this.params.widthScale * SCALE;
     const tSelf = this.strandThicknessWorld(strand);
-    const plane = this.getStoreyPlane(level);
     const half = (this.levelStepSource() * SCALE) / 2;
 
     // Per under-strand: its reach from this one (footprints overlapping at all),
@@ -1366,7 +1376,6 @@ export class StrandScene {
       return { lineJ, reach, lift, minX: minX - reach, minY: minY - reach, maxX: maxX + reach, maxY: maxY + reach };
     });
 
-    const baseAt = typeof base === 'number' ? () => base as number : (k: number) => (base as number[])[k];
     const raw = new Array<number>(line.length);
     let touched = false;
     for (let k = 0; k < line.length; k++) {
@@ -1397,10 +1406,10 @@ export class StrandScene {
         raw[k] = Math.min(plane + half, Math.max(plane - half, support));
         touched = true;
       } else {
-        raw[k] = baseAt(k);
+        raw[k] = plane;
       }
     }
-    if (!touched) return base;
+    if (!touched) return plane;
 
     // The footprint's edge is a step; a lace steps over about its own width, the
     // same measure easeSteps uses. One box average with that window, by arc
