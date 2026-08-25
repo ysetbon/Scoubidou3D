@@ -1731,15 +1731,26 @@ export class StrandScene {
   }
 
   /**
-   * Does the storey above or below put a ribbon close enough, in plan, for this
-   * crossing's swing to hit it? Close enough means the two footprints overlap:
+   * Does the storey BELOW put a ribbon close enough, in plan, for this
+   * crossing's dip to hit it? Close enough means the two footprints overlap:
    * the crossing pair's wider half-width plus the neighbour's own half-width.
    * Everything is in world XY — the frame `worldLines` and the crossings share.
    *
-   * In a stacked column this is true at every crossing (the next round lies
+   * In a stacked column this is true at every crossing (the round below lies
    * along the same edges), so those scenes cap exactly as before. It is false
-   * for a knot sitting in the open with the new storey's cord elsewhere, which
-   * is the case that used to flatten.
+   * for a knot sitting in the open on the ground, which is the case that used
+   * to flatten.
+   *
+   * ONLY BELOW, and that asymmetry is the point. What is ABOVE a crossing no
+   * longer crowds it, because since `settledBase` an upper storey does not fly
+   * at a fixed plane — it rests ON what it passes over. Clearance is made by
+   * the upper strand adapting, not by the lower one shrinking to get out of its
+   * way, so a storey has no reason to care what is above it. Testing both
+   * directions meant dragging a level-1 cord across a level-0 knot silently
+   * reshaped the knot: measured on box + strand, thirteen of its fourteen
+   * ground crossings moved, most by half a thickness, while the only one
+   * declared on BOTH sides held. Nothing the user declared had changed — the
+   * cap had simply started firing under a strand a storey up.
    */
   private crowdedAt(
     level: number,
@@ -1751,7 +1762,7 @@ export class StrandScene {
   ): boolean {
     const strands = this.current.strands;
     for (let k = 0; k < strands.length; k++) {
-      if (Math.abs((this.strandLevel[k] ?? 0) - level) !== 1) continue;
+      if ((this.strandLevel[k] ?? 0) !== level - 1) continue;
       const line = worldLines[k];
       const box = boxes[k];
       if (!line || !box) continue;
