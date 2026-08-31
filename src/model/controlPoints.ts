@@ -79,6 +79,18 @@ export function visibleControls(s: Strand3D, thirdEnabled: boolean): VisibleCont
 export function beginControlDrag(s: Strand3D, handle: ControlHandle): void {
   if (handle === 0) {
     s.triangleHasMoved = true;
+    // Grabbing the triangle is the moment the strand stops being parked, so the
+    // passive circle takes up its real home — the end — right here, before the
+    // curve is rebuilt. Left until the next endpoint drag (which is where
+    // `syncPassiveCp2` used to be called from) the circle sat on the START while
+    // the strand was already bent, and the two go wrong together: the profile's
+    // waist is the midpoint of the two control points, so with the circle on the
+    // start it lands a few pixels off the head and the whole strand pivots
+    // around its own start instead of bulging toward the handle; and then the
+    // first nudge of the far end teleported the circle from start to end, which
+    // reshaped a strand nobody had asked to reshape.
+    syncPassiveCp2(s);
+    updateControlCenter(s);
   } else if (handle === 'center') {
     if (!s.control_point_center) s.control_point_center = defaultCenter(s);
     s.control_point_center_locked = true;
@@ -98,6 +110,12 @@ export function dragControl(s: Strand3D, handle: ControlHandle, p: Point): void 
     // Leaving the end makes the circle independent; landing back on it hands the
     // circle back to the endpoint.
     s.cp2Activated = !near(at, s.end, CP_EPS);
+  } else {
+    // Idempotent, and not only belt and braces: a strand can reach `triangleHasMoved`
+    // without passing through `beginControlDrag` (an imported file, a sample that
+    // ships bent), and the first touch of its triangle should still find the
+    // circle where the model says it lives.
+    syncPassiveCp2(s);
   }
   // Moving an END control point never locks the centre — it just carries it
   // along on the midpoint (move_mode.py is explicit about this).
@@ -115,6 +133,12 @@ export function dragControl(s: Strand3D, handle: ControlHandle, p: Point): void 
  * default — out of line mode, carrying a centre, and saving three coordinates
  * that say nothing. Growing an arm with Attach and then nudging its end is the
  * commonest thing there is, so that state ended up all over a hand-built stitch.
+ *
+ * The exception ends the instant the strand is bent, which is why every path that
+ * clears `parked` calls this in the same breath: the circle's home is a function
+ * of the strand's state, not of which gesture happened to run last, and a home
+ * that only got applied on endpoint drags is what made bending an attached arm
+ * jump the first time its far end was touched.
  */
 export function syncPassiveCp2(s: Strand3D): void {
   if (s.cp2Activated) return;
@@ -138,6 +162,30 @@ export function controlsAtDefault(s: Strand3D): boolean {
   return (
     parked(s) && near(s.control_points[1], s.start, CP_EPS) && s.control_point_center === null
   );
+}
+
+/**
+ * Are all three handles sitting where an unbent strand's handles sit — so that
+ * the strand draws as the straight line from its start to its end, and the set
+ * can fold away?
+ *
+ * The triangle has to be back on the start. The circle counts as home in EITHER
+ * of its two resting places: back on the start, or still passive out on the end
+ * it rides — those are the same strand, and after the fix above the second is
+ * where an unclaimed circle actually lives once the triangle has been touched.
+ * A centre is home while it is unlocked (it only tracks the midpoint) or has
+ * been dropped back on the start.
+ */
+function controlsAreHome(s: Strand3D): boolean {
+  const cp1AtStart = near(s.control_points[0], s.start, CP_EPS);
+  const cp2AtHome =
+    near(s.control_points[1], s.start, CP_EPS) ||
+    (!s.cp2Activated && near(s.control_points[1], s.end, CP_EPS));
+  const centerAtHome =
+    !s.control_point_center_locked ||
+    !s.control_point_center ||
+    near(s.control_point_center, s.start, CP_EPS);
+  return cp1AtStart && cp2AtHome && centerAtHome;
 }
 
 /**
@@ -166,7 +214,7 @@ export function resetControlPoints(s: Strand3D): void {
  * A strand that has genuinely been bent is left exactly as saved.
  */
 export function normalizeControlPoints(s: Strand3D): void {
-  if (parked(s)) resetControlPoints(s);
+  if (parked(s) || controlsAreHome(s)) resetControlPoints(s);
 }
 
 /**
@@ -182,16 +230,19 @@ export function normalizeControlPoints(s: Strand3D): void {
  * you can grab but cannot see is a bad trade in a view you can orbit, so the
  * triangle is included in the test here: the set folds away when the strand is
  * genuinely untouched, and never before.
+ *
+ * Folding away is a full reset rather than just clearing the flag. A strand that
+ * has come home is a straight strand, and it should be the SAME straight strand
+ * as a fresh one — otherwise it goes on carrying whatever the gesture left
+ * behind: a circle within a pixel of the start rather than on it, a `cp2Activated`
+ * still set from having dropped the circle on the start, a centre nulled by the
+ * flag but not by the record. Every one of those keeps `controlsAtDefault` false,
+ * so `Straighten` stayed lit on a strand with nothing left to straighten and the
+ * saved file carried a bend it no longer had.
  */
 export function settleControls(s: Strand3D): void {
   if (!s.triangleHasMoved) return;
-  const cp1AtStart = near(s.control_points[0], s.start, CP_EPS);
-  const cp2AtStart = near(s.control_points[1], s.start, CP_EPS);
-  const centerAtStart =
-    !s.control_point_center_locked ||
-    !s.control_point_center ||
-    near(s.control_point_center, s.start, CP_EPS);
-  if (cp1AtStart && cp2AtStart && centerAtStart) s.triangleHasMoved = false;
+  if (controlsAreHome(s)) resetControlPoints(s);
 }
 
 /**

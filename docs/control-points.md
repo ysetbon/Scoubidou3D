@@ -32,6 +32,17 @@ it straight (`buildProfile` reads "both control points at the start" as line
 mode), and it is why the staging below exists at all: with everything stacked in
 one spot, showing three marks would say nothing.
 
+That is the state of an *unbent* strand, and only that. The moment the triangle is
+grabbed the strand is no longer straight, and an unclaimed circle takes up its
+real home — the end — in the same breath, before the curve is rebuilt. A circle
+left behind on the start while the strand is already bent gets it wrong twice
+over: the profile's waist is the midpoint of the two control points, so it lands a
+few pixels off the head and the strand pivots around its own start instead of
+bulging toward the handle you are pulling; and then the first nudge of the far end
+teleports the circle out to it, reshaping a strand nobody asked to reshape. Both
+were plain to see on an attached arm, where the start is a joint and the abandoned
+circle sat buried under it.
+
 **The staged reveal.** An untouched strand offers only the triangle. Grabbing it
 sets `triangle_has_moved`, and *that* is what brings out the circle and the
 square. Put every mark back on the start and the set folds away again.
@@ -68,6 +79,12 @@ through the scene scale, so the marks sit the same size against a strand's width
 as they do on the desktop canvas. The **Middle handle** toggle is
 `enable_third_control_point`.
 
+It is checked by pressing it: `npm run qa:controls` drives the real handles in a
+real browser — attach `1_2` to `1_1`, bend it, walk the pile on the joint, nudge
+the far end, put it back — against a running `npm run dev`. The case only exists
+once two strands are attached, and only a real press can say which of the marks
+stacked on their joint the app hands you.
+
 `triangleHasMoved` and `cp2Activated` are part of the strand and are saved with
 the scene. An imported OSS file brings its own flags across; when a file predates
 them, OSS's fallback applies — a strand counts as touched when its triangle sits
@@ -94,6 +111,49 @@ Both go through `resetControlPoints` in `src/model/controlPoints.ts` — the sam
 function that normalises a straight strand on load, so a reset strand is
 indistinguishable from a freshly drawn one, in the panel and in the saved file
 alike.
+
+Putting the handles back by hand ends in the same place. Dropping the triangle
+back on the start, with the circle either back there too or still passive out on
+the end, folds the set away as a full reset rather than by clearing a flag —
+otherwise the strand goes on carrying whatever the gesture left behind (a circle
+within a pixel of the start rather than on it, a `cp2Activated` still set from
+having dropped the circle *on* the start, a centre nulled by the flag but not by
+the record), every one of which keeps `controlsAtDefault` false. **Straighten**
+stayed lit on a strand with nothing left to straighten, and the saved file carried
+a bend it no longer had.
+
+### Where the handles land on each other
+
+An attachment glues a strand's start to another strand's endpoint, and both
+strands keep their own marks there. On a plain `1_1` with `1_2` grown off its
+end, that one point carries four of them: `1_2`'s triangle (born on its start),
+`1_1`'s passive circle (riding the end it belongs to), and the two endpoint dots.
+Control marks all draw in the same plane, so two of them on one point draw on the
+very same pixel; the endpoint dots ride the woven height of the lace instead, so
+they separate from the marks as soon as you orbit.
+
+Two rules cover it, and both exist because OSS's flat canvas never had to answer
+the question.
+
+**A tie goes to the mark on top.** Where two control marks land on one pixel, the
+press takes the one drawn nearest the viewer — the higher layer, which is the one
+you are actually looking at. The old pass kept whichever it met first, which was
+always the *lower* layer, so on `1_1` + `1_2` the arm's own triangle could not be
+grabbed at all: the parent answered every press on the joint.
+
+**Pressing the same spot again takes the mark underneath.** That is the whole
+escape hatch for a pile: press to walk down it, drag when you reach the one you
+want. Taking the pointer away puts the pile back to its top mark, and so does a
+drag — leaving the spot is what ends the walk, so the press that finally moves
+something is never read as one more request for the mark beneath it.
+
+**And the pass order gives way to the aim.** OSS hands every press to a control
+mark before an endpoint, which costs nothing when the two are the same pixel.
+Here they come apart, and once the endpoint is clearly the nearer of the two it
+wins — otherwise a bent strand could not be moved at all, because its own passive
+circle sits on the end it rides and would answer every press meant for the end.
+Where they really are on top of each other (a top-down view), the pass order takes
+over again, and the pile is still walkable.
 
 ### One deliberate difference
 
