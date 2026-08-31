@@ -407,6 +407,22 @@ export class StrandScene {
   // null for hidden strands), rebuilt every frame the scene changes. Handles and
   // connectors read endpoint heights from here so they follow the weave.
   private world3D: Array<Vec3[] | null> = [];
+  /**
+   * Where each strand is ACTUALLY DRAWN, in world space — the polyline its own
+   * stretch of the built model runs along (indexed like `scene.strands`; null for
+   * a strand with no geometry). Every handle floats at the height it reads here.
+   *
+   * Not the same line as `world3D`, and the difference is the whole reason this
+   * exists. `world3D` is the woven centreline, which is an INPUT to the last
+   * stage of the build: strands glued end to end are merged into one lace, and
+   * that merge settles the lace's folds a thickness apart, ramps away whatever
+   * the crease will not carry, rounds the gentle joints and replaces each fold
+   * with a real turn. All of that moves the ribbon in Z, by up to a thickness,
+   * and none of it reaches `world3D`. So this is filled from the built lace where
+   * a strand is part of one, and falls back to `world3D` for a strand meshed on
+   * its own — which is exactly the same split the drawing itself makes.
+   */
+  private drawnLines: Array<Vec3[] | null> = [];
   // The same lines BEFORE visibility drops any of them (null only for masks).
   // The lace merge reads these: a hidden strand still shapes its lace — it is
   // simply not swept at the end — so the geometry never depends on what is
@@ -758,6 +774,9 @@ export class StrandScene {
     // The floors move whenever anything is placed, so the shelves are redrawn
     // with the model rather than only when the toggle is pressed.
     this.updatePlaneGuides();
+    // Where every strand ended up, now that the laces have been settled — the
+    // handles are placed off this, so it has to be taken after the merge.
+    this.collectDrawnLines();
     this.buildHandles();
     this.buildWeaveOverlays();
   }
@@ -2131,6 +2150,78 @@ export class StrandScene {
     return this.baseZ[layerIndex] ?? 0;
   }
 
+  /**
+   * Take the line each strand is drawn along, off the model that was just built.
+   *
+   * A strand merged into a lace owns a stretch of that lace's centreline — every
+   * point carries the member it came from — and that stretch, not the strand's
+   * own woven line, is where the ribbon is. A strand meshed on its own is drawn
+   * along its woven line, and that is what it gets.
+   */
+  private collectDrawnLines(): void {
+    this.drawnLines = this.world3D.slice();
+    for (const lace of this.laceCenterlines) {
+      const span = new Map<number, { lo: number; hi: number }>();
+      lace.line.forEach((p, k) => {
+        if (p.owner === undefined) return;
+        const s = span.get(p.owner);
+        if (s) s.hi = k;
+        else span.set(p.owner, { lo: k, hi: k });
+      });
+      // Widened by one point at each end. A joint where two members meet is ONE
+      // point on the merged line — the two arrivals are collapsed into it — and
+      // it can only be tagged for one of them, so without the neighbour a
+      // strand's drawn stretch stops just short of the joint its own endpoint
+      // handle sits on.
+      for (const [i, s] of span) {
+        const lo = Math.max(0, s.lo - 1);
+        const hi = Math.min(lace.line.length - 1, s.hi + 1);
+        this.drawnLines[i] = lace.line.slice(lo, hi + 1);
+      }
+    }
+  }
+
+  /**
+   * The height the built model draws strand `i` at, over the drawing-plane point
+   * `p`: the height of its own run where that run passes closest to `p`.
+   *
+   * This is the one number every handle on that strand floats at, and reading it
+   * off the built geometry is what makes it right in cases nothing else covers.
+   * `layerZ` — the resting height `computeBaseZ` works out from the layer stack
+   * and the storey step — is only ever the weave's INPUT, and three things happen
+   * to a strand after it:
+   *
+   *   * an upper storey SETTLES. A strand above level 0 does not rest at
+   *     `level * step`; it comes down onto whatever material is under it, or, if
+   *     it touches nothing, onto `plane - level * half` (settledBase). On a plain
+   *     two-storey scene that is a full thickness below what `layerZ` says, which
+   *     is why the top storey's marks floated over their own lace.
+   *   * the WEAVE lifts and dips the run at every crossing.
+   *   * the LACE MERGE settles the folds, ramps what the crease will not carry,
+   *     and rounds the joints — moving a run by up to a thickness more.
+   *
+   * The endpoint dots used to read the woven line, which covered the first two
+   * and not the third; the control marks read `layerZ`, which covered none. Both
+   * read this now, so a mark and the endpoint it is parked on are at one height,
+   * and both are on the lace.
+   */
+  private drawnZAt(layerIndex: number, p: Point): number {
+    const line = this.drawnLines[layerIndex];
+    if (!line || !line.length) return this.layerZ(layerIndex);
+    const x = (p.x - this.center.x) * SCALE;
+    const y = -(p.y - this.center.y) * SCALE;
+    let best = line[0];
+    let bestD = Infinity;
+    for (const q of line) {
+      const d = (q.x - x) ** 2 + (q.y - y) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = q;
+      }
+    }
+    return best.z;
+  }
+
   // ---- edit handles --------------------------------------------------------
   /**
    * One grab handle. `core` fills it with the strand's own colour at half size,
@@ -2184,12 +2275,13 @@ export class StrandScene {
 
     this.current.strands.forEach((strand, layerIndex) => {
       if (!strand.visible || strand.isMask) return;
-      const line = this.world3D[layerIndex];
-      const z = this.layerZ(layerIndex);
-      // Endpoint handles sit at the strand's woven height so they track the lace
-      // as it rises and dips; control points use the base layer height.
-      const endZ = (side: 0 | 1): number =>
-        line && line.length >= 2 ? (side === 0 ? line[0].z : line[line.length - 1].z) : z;
+      // ONE rule for every handle on this strand: it floats at the height the
+      // built model draws the strand at, over the drawing-plane point it marks.
+      // See `drawnZAt` — a storey that settled, a weave, a fold the lace merge
+      // restacked, all of it is already in there, so nothing here has to know
+      // about levels or planes to place a mark on its own lace.
+      const at = (p: Point, lift = 0): THREE.Vector3 =>
+        this.srcToWorld(p, this.drawnZAt(layerIndex, p) + lift);
 
       ([0, 1] as const).forEach((side) => {
         const occupied = strand.hasCircles[side];
@@ -2200,7 +2292,7 @@ export class StrandScene {
             attachable ? END_R : OCC_R,
             attachable ? COLOR_FREE : COLOR_OCC,
           );
-          mesh.position.copy(this.srcToWorld(endpoint(strand, side), endZ(side)));
+          mesh.position.copy(at(endpoint(strand, side)));
           mesh.userData.kind = 'endpoint';
           mesh.userData.index = layerIndex;
           mesh.userData.side = side;
@@ -2210,7 +2302,7 @@ export class StrandScene {
         } else {
           // move mode: every endpoint is draggable
           const mesh = this.makeHandle(this.handleGeo, END_R, COLOR_END);
-          mesh.position.copy(this.srcToWorld(endpoint(strand, side), endZ(side)));
+          mesh.position.copy(at(endpoint(strand, side)));
           mesh.userData.kind = 'endpoint';
           mesh.userData.index = layerIndex;
           mesh.userData.side = side;
@@ -2227,7 +2319,7 @@ export class StrandScene {
         const vis = visibleControls(strand, this.params.thirdControlPoint);
         const addMark = (handle: ControlHandle, p: Point, geo: THREE.BufferGeometry): void => {
           const mesh = this.makeHandle(geo, CP_R, COLOR_CP, strand.color, 22);
-          mesh.position.copy(this.srcToWorld(p, z + CP_LIFT));
+          mesh.position.copy(at(p, CP_LIFT));
           mesh.userData.kind = 'control';
           mesh.userData.index = layerIndex;
           mesh.userData.cp = handle;
@@ -2244,7 +2336,7 @@ export class StrandScene {
         // every mark at once on a strand nobody has bent yet.
         if (vis.triangle) addMark(0, strand.control_points[0], this.triGeo);
 
-        this.buildControlLines(strand, vis, z);
+        this.buildControlLines(strand, vis, layerIndex);
       }
     });
   }
@@ -2255,7 +2347,7 @@ export class StrandScene {
    * on the start — plus the centre's two spokes. Drawn only once the set is open,
    * so an untouched strand stays clean.
    */
-  private buildControlLines(strand: Strand3D, vis: VisibleControls, z: number): void {
+  private buildControlLines(strand: Strand3D, vis: VisibleControls, layerIndex: number): void {
     if (!vis.circle && !vis.center) return;
     const [cp1, cp2] = strand.control_points;
     const ends: Point[] = [strand.start, cp1];
@@ -2266,7 +2358,10 @@ export class StrandScene {
 
     const positions = new Float32Array(ends.length * 3);
     ends.forEach((p, i) => {
-      const w = this.srcToWorld(p, z + CP_LIFT);
+      // Per point, not once for the rig: a strand that climbs a storey has its
+      // two ends at two heights, and a rig drawn flat at either of them left
+      // half of itself hanging off the lace it is meant to be pinned to.
+      const w = this.srcToWorld(p, this.drawnZAt(layerIndex, p) + CP_LIFT);
       positions[i * 3] = w.x;
       positions[i * 3 + 1] = w.y;
       positions[i * 3 + 2] = w.z;

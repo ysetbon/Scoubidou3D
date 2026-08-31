@@ -85,6 +85,13 @@ the far end, put it back — against a running `npm run dev`. The case only exis
 once two strands are attached, and only a real press can say which of the marks
 stacked on their joint the app hands you.
 
+The heights are checked there too, and measured against the built model rather
+than against the code that places the handles: for every handle in a scene, how
+far it floats over the stretch of the drawn lace its own strand is swept along.
+Endpoint dots have to read zero and control marks one constant lift, on a scene
+with two storeys and again with planes declared by hand. Without the fix the worst
+handle in that scene is two thicknesses out.
+
 `triangleHasMoved` and `cp2Activated` are part of the strand and are saved with
 the scene. An imported OSS file brings its own flags across; when a file predates
 them, OSS's fallback applies — a strand counts as touched when its triangle sits
@@ -122,6 +129,46 @@ the record), every one of which keeps `controlsAtDefault` false. **Straighten**
 stayed lit on a strand with nothing left to straighten, and the saved file carried
 a bend it no longer had.
 
+### What height a handle floats at
+
+Every handle — the endpoint dots and all three marks — sits at the height the
+built model actually draws its strand at, over the drawing-plane point it marks.
+One rule, read off the geometry after it is built (`drawnZAt`), and it is the
+only way to get this right, because the resting height the layer stack works out
+(`layerZ` / `computeBaseZ`) is only ever the *input* to the last three stages of
+the build:
+
+* **an upper storey settles.** A strand above level 0 does not rest at
+  `level × step`. It comes down onto whatever material is under it, or, where it
+  touches nothing, onto its own storey's plane (`settledBase` — see
+  [layer-levels.md](layer-levels.md)). On a plain two-storey scene that is a full
+  thickness below what the layer stack says.
+* **the weave** lifts and dips the run at every crossing.
+* **the lace merge** settles each fold — the two runs really do stack a thickness
+  apart at a turn — ramps away what the crease will not carry, and rounds the
+  gentle joints, moving a run by up to a thickness more.
+
+Handles used to be placed off two different, and both wrong, answers: the
+endpoint dots read the woven line, which covered the weave but not the merge; the
+control marks read the layer stack's figure, which covered none of it. On a
+two-storey scene the top storey's marks floated **two thicknesses** over their own
+lace, and at every fold an endpoint dot sat a thickness off the ribbon it was
+supposed to be the end of. Both read the drawn run now, so a mark and the endpoint
+it is parked on are at one height and both are on the lace — and levels, declared
+planes, settling, weave and folds are all covered without any of this code
+knowing what a storey is.
+
+Control marks keep a hair of lift over the run (`CP_LIFT`) so they stay legible
+against the ribbon, and that lift is the *only* thing that separates them from it.
+The dashed rig is placed the same way per point rather than once for the whole
+rig: a strand that climbs a storey has its two ends at two heights, and a rig
+drawn flat at either of them left half of itself hanging off the lace.
+
+One thing this makes visible rather than hides: at a **fold**, two marks on the
+same drawing-plane point are at two heights, because the lace really does pass
+that point twice, a thickness apart. That is the model being honest, and it is
+also why they stop being one pick — see below.
+
 ### Where the handles land on each other
 
 An attachment glues a strand's start to another strand's endpoint, and both
@@ -146,6 +193,13 @@ escape hatch for a pile: press to walk down it, drag when you reach the one you
 want. Taking the pointer away puts the pile back to its top mark, and so does a
 drag — leaving the spot is what ends the walk, so the press that finally moves
 something is never read as one more request for the mark beneath it.
+
+A pile is smaller than it looks, and that is the point. Two marks are in one only
+while they draw within a couple of pixels of each other; a joint the lace *folds*
+at stacks its two runs a thickness apart, so the marks there separate on screen
+and each is simply aimed at. What is left in a pile is the joint that genuinely
+does not stack — an arm carrying straight on from its parent — where the parent's
+circle and the arm's triangle are the same pixel and always will be.
 
 **And the pass order gives way to the aim.** OSS hands every press to a control
 mark before an endpoint, which costs nothing when the two are the same pixel.
