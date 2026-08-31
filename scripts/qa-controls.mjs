@@ -153,6 +153,94 @@ await page.evaluate(() => {
     return (view.world3D[i] ?? []).map((p) => ({ x: p.x, y: p.y, z: p.z }));
   };
 
+  /**
+   * Every handle, and how far above its own strand's DRAWN run it floats — the
+   * run being the stretch of the built model that strand is actually swept
+   * along, folds settled and storeys settled and all. Endpoint dots should read
+   * zero and control marks one constant lift; anything else is a handle hanging
+   * off its own lace.
+   */
+  api.offsets = () => {
+    const S = view.getScene().strands;
+    // Worked out here from the BUILT model rather than read back off the helper
+    // that places the handles, so this measures the drawing and not the code's
+    // opinion of it: a strand merged into a lace is drawn along the stretch of
+    // that lace's centreline it owns, and one meshed on its own along its woven
+    // line. That is the same split `buildLaceMeshes` makes.
+    const drawn = view.world3D.slice();
+    for (const lace of view.laceCenterlines) {
+      const span = new Map();
+      lace.line.forEach((p, k) => {
+        if (p.owner === undefined) return;
+        const e = span.get(p.owner);
+        if (e) e.hi = k;
+        else span.set(p.owner, { lo: k, hi: k });
+      });
+      for (const [i, e] of span) {
+        drawn[i] = lace.line.slice(Math.max(0, e.lo - 1), Math.min(lace.line.length, e.hi + 2));
+      }
+    }
+    return view.handleGroup.children.map((m) => {
+      const line = drawn[m.userData.index] || [];
+      let bd = Infinity;
+      let bz = m.position.z;
+      for (const q of line) {
+        const d = (q.x - m.position.x) ** 2 + (q.y - m.position.y) ** 2;
+        if (d < bd) {
+          bd = d;
+          bz = q.z;
+        }
+      }
+      return {
+        id: S[m.userData.index].id,
+        kind: m.userData.kind,
+        which: String(m.userData.cp ?? m.userData.side),
+        off: m.position.z - bz,
+      };
+    });
+  };
+
+  /** One thickness, in world units — the unit every offset below is judged in. */
+  api.thickness = () => view.params.thickness * 0.02;
+
+  /** A strand record in the shape a saved scene carries. */
+  api.rec = (id, s, e, o = {}) => ({
+    id,
+    start: { x: s[0], y: s[1] },
+    end: { x: e[0], y: e[1] },
+    control_points: [
+      o.cp1 ? { x: o.cp1[0], y: o.cp1[1] } : { x: s[0], y: s[1] },
+      o.cp2 ? { x: o.cp2[0], y: o.cp2[1] } : { x: s[0], y: s[1] },
+    ],
+    control_point_center: null,
+    control_point_center_locked: false,
+    triangleHasMoved: !!o.cp1,
+    cp2Activated: false,
+    width: 46,
+    stroke_width: 4,
+    color: o.color ?? { r: 226, g: 122, b: 38, a: 255 },
+    stroke_color: { r: 30, g: 30, b: 30, a: 255 },
+    thickness: null,
+    visible: true,
+    isMask: false,
+    hasCircles: [false, false],
+    parentId: o.parentId ?? null,
+    parentSide: o.parentSide ?? null,
+  });
+
+  /** Drop a scene straight in, the way a saved file arrives. */
+  api.load = (scene) => {
+    view.setScene({
+      name: scene.name,
+      strands: scene.strands,
+      masks: scene.masks ?? [],
+      levelBreaks: scene.levelBreaks ?? [],
+      planes: scene.planes,
+      crossPlanes: scene.crossPlanes,
+    });
+    view.setMode('move');
+  };
+
   /** What the press currently down grabbed — the drag is still open when read. */
   api.grabbed = () => {
     const st = view.dragState;
@@ -204,6 +292,40 @@ const maxShift = (a, b) => {
 
 const JOINT = { x: 620, y: 250 };
 
+/**
+ * Every handle sits on its own strand's drawn run: endpoint dots exactly on it,
+ * control marks one constant lift above it, and nothing else.
+ */
+const checkOnTheirLace = async (what) => {
+  const t = await page.evaluate(() => window.__qa.thickness());
+  const rows = await page.evaluate(() => window.__qa.offsets());
+  const ends = rows.filter((r) => r.kind === 'endpoint');
+  const marks = rows.filter((r) => r.kind === 'control');
+  const worstEnd = ends.reduce((a, r) => Math.max(a, Math.abs(r.off)), 0);
+  ok(
+    worstEnd < 1e-6,
+    `${what}: every endpoint dot is ON its strand's run (worst ${(worstEnd / t).toFixed(3)} thicknesses off)`,
+  );
+  const lift = marks.length ? marks[0].off : 0;
+  const spread = marks.reduce((a, r) => Math.max(a, Math.abs(r.off - lift)), 0);
+  ok(
+    spread < 1e-6,
+    `${what}: every control mark rides the same lift over its run (spread ${(spread / t).toFixed(3)} thicknesses)`,
+  );
+  ok(
+    lift > 0 && lift / t < 0.25,
+    `${what}: and that lift is a hair, not a storey (${(lift / t).toFixed(2)} thicknesses)`,
+  );
+  const worst = rows.reduce(
+    (a, r) => (Math.abs(r.off) > Math.abs(a.off) ? r : a),
+    { off: 0, id: '-', kind: '-', which: '-' },
+  );
+  ok(
+    Math.abs(worst.off) / t < 0.25,
+    `${what}: worst handle is ${(Math.abs(worst.off) / t).toFixed(2)} thicknesses off (${worst.id} ${worst.kind} ${worst.which})`,
+  );
+};
+
 // ---- 1. grow `1_2` off `1_1`'s end -----------------------------------------
 await page.evaluate(() => window.__qa.reset());
 await page.evaluate(() => window.__scoubidou.view.setMode('attach'));
@@ -237,10 +359,12 @@ await page.waitForTimeout(50);
   ok(got === '1_2 0', `a press on the joint takes the arm's own triangle (got ${got})`);
 }
 
-// ---- 3. bend the parent, and the joint holds two marks ---------------------
-// `1_1`'s circle is passive, so bending `1_1` sends it out to `1_1`'s END — which
-// is this joint, where `1_2`'s triangle already is. Two control marks, one pixel:
-// the case that used to hand every press to the lower layer.
+// ---- 3. bending the parent puts its circle on the joint --------------------
+// `1_1`'s circle is passive, so bending `1_1` sends it out to `1_1`'s END, which
+// is this joint. The arm leaves it at a right angle, which the lace builds as a
+// FOLD — the two runs really do stack a thickness apart there — so the two marks
+// on that one drawing-plane point are at two heights, each on its own run. That
+// is the thing being checked: a handle is where its strand is.
 {
   const tri = await page.evaluate(() => window.__qa.handle('control', '1_1', '0'));
   const to = await page.evaluate(() => window.__qa.target('control', '1_1', '0', { x: 300, y: 170 }));
@@ -250,26 +374,7 @@ await page.waitForTimeout(50);
     Math.hypot(p.cp2.x - p.end.x, p.cp2.y - p.end.y) < 1,
     "bending `1_1` sends its passive circle to its end — which IS the joint",
   );
-
-  const at = await page.evaluate(() => window.__qa.handle('control', '1_2', '0'));
-  const seen = [];
-  for (let i = 0; i < 3; i++) seen.push(await tapAndRead(at));
-  ok(
-    seen[0] === '1_2 0',
-    `the first press takes the mark drawn on TOP — the arm's triangle (got ${seen[0]})`,
-  );
-  ok(
-    seen[1] === '1_1 1',
-    `pressing the same spot again walks down to the one underneath (got ${seen[1]})`,
-  );
-  ok(seen[2] === '1_2 0', `and round again (got ${seen[2]})`);
-
-  await restPointer();
-  const back = await tapAndRead(at);
-  ok(
-    back === '1_2 0',
-    `taking the pointer away and coming back starts again at the top (got ${back})`,
-  );
+  await checkOnTheirLace('a fold at the joint');
 }
 
 // ---- 4. bending the arm ----------------------------------------------------
@@ -349,23 +454,57 @@ await page.waitForTimeout(50);
   );
 }
 
-// ---- 7. two triangles on one point -----------------------------------------
-// An arm grown off a parent's START is the worst of the pile: both strands are
-// unbent, so both of their triangles sit on that one shared point, and there is
-// nothing to aim between. This is the sample scenes' own shape — `1_1` with arms
-// on both ends — and until the tie-break it meant an arm attached at the head
-// could not be bent at all.
+// ---- 7. the pile: two marks on one point, and the walk down it -------------
+// A gentle continuation — an arm carrying straight on from its parent's end — is
+// the joint that does NOT stack: one lace, one height, so `1_1`'s passive circle
+// and `1_2`'s triangle land on the very same pixel. That is what the pile and the
+// walk are for, and it is the shape a hand-built stitch is full of.
 {
   await restPointer();
-  await page.evaluate(() => window.__qa.reset());
-  await page.evaluate(() => window.__scoubidou.view.setMode('attach'));
+  await page.evaluate(() =>
+    window.__qa.load({
+      name: 'gentle',
+      strands: [
+        window.__qa.rec('1_1', [180, 250], [400, 250], { cp1: [300, 210], cp2: [400, 250] }),
+        window.__qa.rec('1_2', [400, 250], [620, 250], { parentId: '1_1', parentSide: 1 }),
+      ],
+    }),
+  );
   await page.waitForTimeout(50);
-  const from = await page.evaluate(() => window.__qa.handle('endpoint', '1_1', 0));
-  const to = await page.evaluate(() => window.__qa.target('endpoint', '1_1', 0, { x: 120, y: 90 }));
-  await drag(from, to);
-  await page.evaluate(() => window.__scoubidou.view.setMode('move'));
-  await page.waitForTimeout(50);
+  await checkOnTheirLace('a gentle joint');
 
+  const circle = await page.evaluate(() => window.__qa.handle('control', '1_1', '1'));
+  const tri = await page.evaluate(() => window.__qa.handle('control', '1_2', '0'));
+  ok(
+    Math.hypot(circle.x - tri.x, circle.y - tri.y) < 0.5,
+    "the parent's circle and the arm's triangle draw on the very same pixel",
+  );
+  const seen = [];
+  for (let i = 0; i < 4; i++) seen.push(await tapAndRead(tri));
+  ok(seen[0] === '1_2 0', `the press takes the one on top — the arm's (got ${seen[0]})`);
+  ok(seen[1] === '1_1 1', `pressing again walks down to the parent's (got ${seen[1]})`);
+  ok(
+    String(seen[2]).startsWith('joint'),
+    `then the joint itself, under both of them (got ${seen[2]})`,
+  );
+  ok(seen[3] === '1_2 0', `and round again (got ${seen[3]})`);
+}
+
+// ---- 8. two triangles on one point -----------------------------------------
+// An arm grown off a parent's HEAD, carrying on the way the parent came: both
+// strands are unbent, so both of their triangles sit on that shared point.
+{
+  await restPointer();
+  await page.evaluate(() =>
+    window.__qa.load({
+      name: 'head arm',
+      strands: [
+        window.__qa.rec('1_1', [400, 250], [620, 250]),
+        window.__qa.rec('1_2', [400, 250], [180, 250], { parentId: '1_1', parentSide: 0 }),
+      ],
+    }),
+  );
+  await page.waitForTimeout(50);
   const a = await page.evaluate(() => window.__qa.handle('control', '1_1', '0'));
   const b = await page.evaluate(() => window.__qa.handle('control', '1_2', '0'));
   ok(
@@ -377,6 +516,54 @@ await page.waitForTimeout(50);
   ok(first === '1_2 0', `and the press takes the arm's, which is the one on top (got ${first})`);
   const second = await tapAndRead(a);
   ok(second === '1_1 0', `with the parent's one press further down (got ${second})`);
+}
+
+// ---- 9. storeys and planes -------------------------------------------------
+// The one this whole file was extended for. A strand on an upper storey does not
+// rest where the layer stack says: it SETTLES onto the material under it, or onto
+// its storey's own plane where it touches nothing, and then the lace merge moves
+// it again at every fold. A handle placed off the layer stack's figure floated
+// more than a thickness over its own lace on the top storey — which is what a
+// two-storey scene is, every time.
+{
+  // Built in the page, where `rec` lives. `planes` is what the dock's plane
+  // controls write: a rung per layer, measured off its own storey.
+  const loadTwoStorey = (planes) =>
+    page.evaluate((pl) => {
+      const r = window.__qa.rec;
+      const YELLOW = { r: 245, g: 200, b: 55, a: 255 };
+      const WHITE = { r: 240, g: 240, b: 240, a: 255 };
+      window.__qa.load({
+        name: 'two storeys',
+        planes: pl,
+        levelBreaks: [4],
+        masks: [{ overId: '1_2', underId: '2_2' }],
+        strands: [
+          r('1_1', [200, 250], [520, 250]),
+          r('1_2', [520, 250], [520, 470], { parentId: '1_1', parentSide: 1 }),
+          r('2_1', [300, 150], [300, 430], { color: YELLOW }),
+          r('2_2', [300, 430], [640, 430], { parentId: '2_1', parentSide: 1, color: YELLOW }),
+          r('3_1', [230, 330], [600, 330], { cp1: [330, 200], cp2: [600, 330], color: WHITE }),
+          r('3_2', [600, 330], [600, 120], { parentId: '3_1', parentSide: 1, color: WHITE }),
+        ],
+      });
+    }, planes);
+
+  await restPointer();
+  await loadTwoStorey(undefined);
+  await page.waitForTimeout(80);
+  const upper = await page.evaluate(() => {
+    const { view } = window.__scoubidou;
+    return view.getScene().strands.filter((_, i) => (view.strandLevel[i] ?? 0) > 0).length;
+  });
+  ok(upper > 0, `the scene really has an upper storey (${upper} strands on it)`);
+  await checkOnTheirLace('two storeys');
+
+  // The same scene with the top storey placed by hand. A declared plane moves the
+  // run somewhere else again, and the handles have to go with it.
+  await loadTwoStorey({ '3_1': 2, '3_2': 3 });
+  await page.waitForTimeout(80);
+  await checkOnTheirLace('declared planes');
 }
 
 await browser.close();
