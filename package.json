@@ -39,6 +39,7 @@
     "qa:board": "node scripts/qa-board.mjs",
     "qa:cache": "node scripts/qa-cache.mjs",
     "qa:fold": "node scripts/qa-fold.mjs",
+    "qa:controls": "node scripts/qa-controls.mjs",
     "qa:fold-compare": "node scripts/fold-compare.mjs",
     "mock:shelf": "node scripts/mock-shelf.mjs",
     "shots": "node scripts/site-shots.mjs",

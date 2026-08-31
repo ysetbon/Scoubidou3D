@@ -31,6 +31,7 @@ import {
 } from '../model/connections';
 import { isStacked, levelAt, removeStrandAt } from '../model/levels';
 import {
+  CP_EPS,
   ControlHandle,
   VisibleControls,
   beginControlDrag,
@@ -247,6 +248,26 @@ function grabPx(e: PointerEvent): (typeof GRAB_PX)['fine'] {
   return e.pointerType === 'mouse' ? GRAB_PX.fine : GRAB_PX.coarse;
 }
 
+// How close two marks have to draw before they count as ONE spot. Deliberately
+// tiny: this is about marks that are genuinely on top of each other — two control
+// marks on the same drawing-plane point project to the very same pixel, because
+// they are drawn on the same plane — and not about marks that are merely near,
+// which the scores already rank.
+const COINCIDE_PX = 2;
+
+// A press counts as landing on the spot the last one did within this much, and
+// the memory of that spot is dropped once the pointer strays further than a whole
+// control-point reach from it. Derived from the reach so touch, which aims worse
+// and gets a bigger reach, gets proportionally more slack on both.
+const repressPx = (e: PointerEvent): number => grabPx(e).control / 3;
+
+/** A handle's identity across rebuilds — the meshes are thrown away and remade on
+ *  every edit, so the pile cannot be remembered by object. */
+function handleKey(mesh: THREE.Mesh): string {
+  const ud = mesh.userData;
+  return ud.kind === 'control' ? `c${ud.index}:${String(ud.cp)}` : `e${ud.index}:${ud.side}`;
+}
+
 // Control marks float a hair above their layer so they stay legible against the
 // ribbon (and above the endpoint dot they share a spot with on a fresh strand).
 const CP_LIFT = 0.1;
@@ -377,6 +398,10 @@ export class StrandScene {
   // finger, a stylus resting on the glass) is ignored until it lifts.
   private activePointerId: number | null = null;
   private hovered: THREE.Mesh | null = null;
+  /** The last handle a press took, and where on the canvas that press landed —
+   *  all `pickHandle` needs to hand the next press on the same spot the next
+   *  handle down the pile. */
+  private lastGrab: { key: string; x: number; y: number } | null = null;
 
   // The woven world-space centerline of each strand (indexed like scene.strands;
   // null for hidden strands), rebuilt every frame the scene changes. Handles and
@@ -528,6 +553,10 @@ export class StrandScene {
 
   setScene(scene: Scene3D, refit = true): void {
     this.current = scene;
+    // A handle remembered from the scene before this one names a strand that may
+    // not be there any more; a press on the same pixel must not walk a pile it
+    // was never shown.
+    this.lastGrab = null;
     recomputeOccupancy(scene); // keep endpoint occupancy in sync with the geometry
     this.computeCenter();
     this.rebuild();
@@ -610,6 +639,7 @@ export class StrandScene {
     }
     this.mode = mode;
     this.hovered = null;
+    this.lastGrab = null;
     this.weavePendingOverId = null;
     this.weaveHoverId = null;
     this.onWeaveHover?.(null);
@@ -2174,6 +2204,7 @@ export class StrandScene {
           mesh.userData.kind = 'endpoint';
           mesh.userData.index = layerIndex;
           mesh.userData.side = side;
+          mesh.userData.src = { ...endpoint(strand, side) };
           mesh.userData.attachable = attachable;
           this.handleGroup.add(mesh);
         } else {
@@ -2183,6 +2214,7 @@ export class StrandScene {
           mesh.userData.kind = 'endpoint';
           mesh.userData.index = layerIndex;
           mesh.userData.side = side;
+          mesh.userData.src = { ...endpoint(strand, side) };
           this.handleGroup.add(mesh);
         }
       });
@@ -2199,6 +2231,9 @@ export class StrandScene {
           mesh.userData.kind = 'control';
           mesh.userData.index = layerIndex;
           mesh.userData.cp = handle;
+          // The drawing-plane point, kept alongside the world position: it is what
+          // says two marks are on the same spot however the camera is standing.
+          mesh.userData.src = { x: p.x, y: p.y };
           this.handleGroup.add(mesh);
         };
         if (vis.circle) addMark(1, strand.control_points[1], this.circGeo);
@@ -2287,28 +2322,60 @@ export class StrandScene {
   }
 
   /**
-   * The handle a press should grab: a proximity test in screen space, not a
-   * raycast, so a fingertip that lands *near* a mark still takes it (see GRAB_PX).
+   * Everything a press could be aiming at, best first: a proximity test in screen
+   * space, not a raycast, so a fingertip that lands *near* a mark still takes it
+   * (see GRAB_PX). Within a kind the closest mark wins — measured as a fraction of
+   * each mark's own reach so a small tight one isn't swamped by a big loose
+   * neighbour.
    *
-   * OSS's pass order is preserved: a control point anywhere under the pointer beats
-   * every endpoint (move_mode.py runs try_move_control_points first), and within a
-   * kind the closest mark wins — measured as a fraction of each mark's own reach so
-   * a small tight one isn't swamped by a big loose neighbour.
+   * Two things OSS's flat canvas never had to answer, and both of them are what a
+   * press on an attachment joint runs into.
+   *
+   * WHICH KIND. OSS runs try_move_control_points before its endpoint pass, so a
+   * control mark under the pointer beats an endpoint under it, full stop. That is
+   * the right answer while the two are ON TOP of each other, which on a 2D canvas
+   * they always are: a triangle is born on its strand's start and there is nothing
+   * to aim between. Here they come apart — control marks lie in the drawing plane
+   * and endpoint dots ride the woven height of the lace — so on any orbited view
+   * the pair draws several pixels apart and you can see which is which. So the
+   * pass order holds where it means something (same spot, nothing to aim at) and
+   * gives way to the aim once the endpoint is clearly the nearer of the two.
+   * Without that, a bent strand could not be moved at all: its own passive circle
+   * sits on the end it rides and answered every press meant for the end.
+   *
+   * WHICH OF TWO MARKS ON ONE SPOT. Control marks share the drawing plane, so two
+   * of them on the same point draw on the very same pixel — and an attachment puts
+   * them there by construction: `1_2`'s triangle is born on its start, which IS
+   * `1_1`'s end, where `1_1`'s own passive circle rides. The old pass kept
+   * whichever it met first, which was always the lower layer, so the arm's
+   * triangle could not be grabbed at all — the parent answered every press on the
+   * joint. A tie now goes to the mark drawn on TOP, the one being looked at, and
+   * the rest of the pile is returned behind it for `pickHandle` to walk.
    */
-  private pickHandle(e: PointerEvent): THREE.Mesh | null {
+  private pickStack(e: PointerEvent): THREE.Mesh[] {
     const rect = this.canvas.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return null;
+    if (rect.width === 0 || rect.height === 0) return [];
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
     const tol = grabPx(e);
 
-    let bestControl: { mesh: THREE.Mesh; score: number } | null = null;
-    let bestEndpoint: { mesh: THREE.Mesh; score: number } | null = null;
-
-    for (const obj of this.handleGroup.children) {
+    interface Cand {
+      mesh: THREE.Mesh;
+      center: Vec2;
+      /** Where the mark sits in the drawing plane — the model's own answer to
+       *  "are these two the same spot", and the one an orbit cannot change. */
+      src: Point;
+      dist: number;
+      score: number;
+      control: boolean;
+      /** Position in the draw order — higher is nearer the viewer. */
+      depth: number;
+    }
+    const cands: Cand[] = [];
+    this.handleGroup.children.forEach((obj, depth) => {
       const mesh = obj as THREE.Mesh;
       const center = this.toScreen(mesh.position, rect);
-      if (!center) continue;
+      if (!center) return;
       const control = mesh.userData.kind === 'control';
       // Attach mode's free endpoints get OSS's roomier circle; an occupied one
       // keeps the plain endpoint area (it is only there to swallow the press).
@@ -2318,15 +2385,86 @@ export class StrandScene {
           ? tol.attach
           : tol.endpoint;
       const reach = Math.max(this.screenRadius(mesh, center, rect), min);
-      const score = Math.hypot(px - center.x, py - center.y) / reach;
-      if (score > 1) continue;
-      const slot = control ? bestControl : bestEndpoint;
-      if (!slot || score < slot.score) {
-        if (control) bestControl = { mesh, score };
-        else bestEndpoint = { mesh, score };
+      const dist = Math.hypot(px - center.x, py - center.y);
+      const score = dist / reach;
+      if (score > 1) return;
+      cands.push({ mesh, center, src: mesh.userData.src as Point, dist, score, control, depth });
+    });
+    if (!cands.length) return [];
+
+    const topFirst = (a: Cand, b: Cand): number => b.depth - a.depth;
+    // Indistinguishable to a pointer: nothing to aim between, so the draw order
+    // decides. This is a SCREEN test on purpose — it is about what the eye and the
+    // fingertip can separate, not about what the model calls one point.
+    const stacked = (a: Cand, b: Cand): boolean =>
+      Math.hypot(a.center.x - b.center.x, a.center.y - b.center.y) <= COINCIDE_PX;
+    // One pile: the same point in the drawing plane, however far the camera has
+    // pulled the two marks apart on screen, or simply the same pixel.
+    const sameSpot = (a: Cand, b: Cand): boolean =>
+      (!!a.src && !!b.src && pointsClose(a.src, b.src, CP_EPS)) || stacked(a, b);
+    const nearest = (list: Cand[]): Cand | null =>
+      list.length ? list.reduce((a, b) => (b.score < a.score ? b : a)) : null;
+
+    const controls = cands.filter((c) => c.control);
+    const ends = cands.filter((c) => !c.control);
+    // Only the control marks get the draw-order tie-break. They are the ones that
+    // genuinely land on the same pixel, and they all do the same kind of work, so
+    // taking the top one costs nothing. Two endpoints within a pixel of each other
+    // are a different matter — in Attach mode they name different parents, and one
+    // may be free where the other is not — so those stay on the plain nearest.
+    const near = nearest(controls);
+    const bestControl = near ? controls.filter((c) => stacked(c, near)).sort(topFirst)[0] : null;
+    const bestEnd = nearest(ends);
+    // The pass order, and where it gives way to the aim.
+    const win =
+      bestControl &&
+      (!bestEnd || stacked(bestControl, bestEnd) || bestControl.dist <= bestEnd.dist + COINCIDE_PX)
+        ? bestControl
+        : (bestEnd ?? (bestControl as Cand));
+
+    // The pile behind the winner: the rest of the marks on its spot, control marks
+    // first (the pile is walked in the pass order too), then the endpoints — of
+    // which every one glued to the same point drags the same set of strands
+    // (connectedEndpoints), so one stands for all of them.
+    const stack = [win];
+    for (const c of controls.filter((c) => c !== win && sameSpot(c, win)).sort(topFirst)) {
+      stack.push(c);
+    }
+    const seen: Cand[] = win.control ? [] : [win];
+    for (const c of ends.filter((c) => c !== win && sameSpot(c, win)).sort(topFirst)) {
+      if (seen.some((u) => u.src && c.src && pointsClose(u.src, c.src, CP_EPS))) continue;
+      seen.push(c);
+      stack.push(c);
+    }
+    return stack.map((c) => c.mesh);
+  }
+
+  /**
+   * The handle a press should grab — the top of `pickStack`, except that pressing
+   * the same spot twice takes the next handle down.
+   *
+   * That is the whole escape hatch for a pile of coincident marks. Without it the
+   * only way to reach the one underneath is to drag the top one out of the way and
+   * put it back afterwards, which on an attachment joint means bending a strand to
+   * get at the strand it is attached to.
+   */
+  private pickHandle(e: PointerEvent): THREE.Mesh | null {
+    const stack = this.pickStack(e);
+    if (!stack.length) return null;
+    // Attach mode's handles mean different things (this endpoint, not that one),
+    // so its press stays the plain one OSS describes.
+    if (this.mode !== 'move') return stack[0];
+    const last = this.lastGrab;
+    if (last) {
+      const rect = this.canvas.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      if (Math.hypot(px - last.x, py - last.y) <= repressPx(e)) {
+        const i = stack.findIndex((m) => handleKey(m) === last.key);
+        if (i >= 0) return stack[(i + 1) % stack.length];
       }
     }
-    return (bestControl ?? bestEndpoint)?.mesh ?? null;
+    return stack[0];
   }
 
   // Topmost strand id under the pointer (skips outline shells and connectors,
@@ -2611,6 +2749,12 @@ export class StrandScene {
     e.preventDefault();
     this.controls.enabled = false;
     this.activePointerId = e.pointerId;
+    // Remember what this press took and where, so pressing the same spot again
+    // walks down the pile of marks stacked there instead of re-taking this one.
+    {
+      const r = this.canvas.getBoundingClientRect();
+      this.lastGrab = { key: handleKey(hit), x: e.clientX - r.left, y: e.clientY - r.top };
+    }
     try {
       this.canvas.setPointerCapture(e.pointerId);
     } catch {
@@ -2674,8 +2818,23 @@ export class StrandScene {
     return this.activePointerId !== null && e.pointerId !== this.activePointerId;
   }
 
+  /**
+   * Leave the spot and the pile you were walking is behind you: the next press
+   * there starts again at the mark on top. Which is also what ends the walk after
+   * a drag — a drag leaves the spot by definition — so the press that finally
+   * moves something is not read as one more request for the mark beneath it.
+   */
+  private forgetGrabIfAway(e: PointerEvent): void {
+    const last = this.lastGrab;
+    if (!last) return;
+    const r = this.canvas.getBoundingClientRect();
+    const away = Math.hypot(e.clientX - r.left - last.x, e.clientY - r.top - last.y);
+    if (away > grabPx(e).control) this.lastGrab = null;
+  }
+
   private onPointerMove = (e: PointerEvent): void => {
     if (this.isStrayPointer(e)) return;
+    this.forgetGrabIfAway(e);
     if (this.dragState) {
       this.applyDrag(e);
       return;
