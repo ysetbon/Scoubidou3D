@@ -24,6 +24,7 @@ Mocks 1–3 are the original three, and they obey the same rules:
 | [3 — Layers only](./mock-3-dock.html) | Settings leave the panel for a dock over the canvas; a card per level; per-strand inspector in its row | The panel holds nothing but the stack |
 | [4 — Layers / Masks switch](./mock-4-layer-mask-switch.html) | The stack bar's title becomes a two-way switch, and the masks get a view of their own | The panel says what it is showing by showing you how to change it |
 | [5 — A reach for every action](./mock-5-scoped-layer-actions.html) | Straighten, Hide and a new Hide others each get a row and their own `This layer / All layers` | One press reaches a whole `N_x` branch, not just one layer |
+| [6 — Handle focus](./mock-6-move-handle-focus.html) | Move gets a scope — `All / Level / Layer` — so the grab marks belong to one storey or one layer | The handles stop being 126 of them; nothing is hidden to get there |
 
 ## What shipped
 
@@ -206,3 +207,54 @@ to hold the whole page in both cases: an `<iframe>` below the fold does not pain
 The scene shown is the same in mocks 1–4 — a box stitch of 3 rounds, 9 strands, 3 masks,
 3 levels — so those panels are compared on layout alone. Mock 5 is the one that changes
 it, and says why above.
+
+## Mock 6 — handle focus
+
+The one the twists have wanted from the other side. Mock 5 gave the panel a way to
+*hide* everything but one lace; this gives the **Move tool** a way to stop drawing
+handles on everything but one storey, without hiding anything at all.
+
+`buildHandles()` marks every visible non-mask strand: two endpoint spheres, the control
+marks, the dashed rig. On `box-stitch-10` that is **126 marks over 42 layers**; on
+`twistStitchMN(7, 3, 10)` it is **690 over 230**. They are drawn with `depthTest: false`
+so they stay grabbable behind the ribbons, which is exactly why ten storeys of them stack
+up in front of the one you are editing.
+
+So Move gets one control, `Handles · All | Level | Layer`, with a target chip and a live
+mark count. Level 6 of the box stitch is 12 marks instead of 126; one layer is 3.
+
+Three homes were drawn, and the mock is really about which one:
+
+| | Where | Costs |
+| --- | --- | --- |
+| **A** ✔ | a Move options strip under the toolbar | one more strip over the canvas |
+| **B** | a third row in the dock's View card, beside `Middle handle` | the card closes itself on a commit, floats over the model, and replaces the panel on a phone — and scope changes every few edits |
+| **C** | a ◎ on every level bar and layer row, and nowhere else | the stack has three views and two of them have no rows, so the control disappears while the mode it governs is still armed |
+
+**A, with C's affordance kept as the picker.** The scope belongs to the tool, so it is on
+screen whenever that tool is armed; the thing it points *at* is a row, so the bar and the
+row each grow a ◎ that sets the target. Neither can go missing while the other is showing.
+
+Four rules make it safe to leave running, and they are the point of the proposal as much
+as the control is:
+
+* **Focus is not hide.** Every lace keeps its colour and its place. Only the marks go —
+  which is what makes this worth having *next to* `Hide others` rather than instead of it.
+* **A drag still reaches everything glued to it.** Focus limits what you can grab, never
+  what can move; `connectedEndpoints` is untouched.
+* **Two ways out, always visible** — the strip's `All`, and a sticky coral banner on the
+  stack beside the solo's own.
+* **A target that goes away falls back to `All`** and says so, so the canvas is never
+  quietly un-grabbable.
+
+The build is small: a guard at the top of the `forEach` in `buildHandles`, a scope pair in
+the scene's params, the strip in `syncToolbar`, and the ◎ in `levelBar` / `layerRow`.
+`levelAt(scene, i)` is already the whole test, and scope moves no strand, so it takes no
+undo step.
+
+Drawn self-contained rather than over `../../src/styles.css` the way mocks 4 and 5 are:
+this one spans the toolbar, the canvas and the stack rather than restyling one strip of a
+panel, so it carries the tokens it needs and draws its own chrome at the shipping sizes.
+The scene figures are generated, not hand-drawn — 126 marks is the whole argument, and the
+counts in them are the shipping generators' own.
+
