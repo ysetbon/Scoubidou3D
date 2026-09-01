@@ -1,0 +1,1296 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Panel mock 6 — Handle focus</title>
+<style>
+  /* ---------------------------------------------------------------------------
+     Panel mock 6 — Handle focus.
+
+     Drawn in the studio's own design language, with the tokens lifted straight
+     out of src/styles.css and site/site.css so the proposal is judged against
+     the app that ships rather than against a fresh palette: cream paper,
+     Georgia over a grotesque, hairline rules, coral, hard offset shadows.
+
+     Self-contained rather than <link>-ing ../../src/styles.css the way mocks 4
+     and 5 do, because this proposal is not one strip of the panel — it spans
+     the toolbar, the canvas and the stack — so it draws its own chrome at the
+     shipping sizes instead of borrowing the panel's.
+     ------------------------------------------------------------------------ */
+
+  :root {
+    color-scheme: light;
+
+    --cream: #f5efdf;
+    --paper: #fffaf0;
+    --ink: #171713;
+    --muted: #6f6c62;
+    --line: rgba(23, 23, 19, 0.2);
+    --hair: rgba(23, 23, 19, 0.12);
+    --edge2: rgba(23, 23, 19, 0.28);
+    --shadow: #171713;
+    --hover: rgba(23, 23, 19, 0.08);
+    --fill: #171713;
+    --fill-ink: #ffffff;
+
+    --coral: #ff5c35;
+    --gold: #ffd447;
+    --teal: #087e8b;
+    --danger: #cc4b4b;
+
+    /* The scene's own colours — StrandScene.ts, unchanged. */
+    --end: #2f7bd6;      /* COLOR_END — a move-mode endpoint */
+    --cp: #008000;       /* COLOR_CP — a control point */
+    --lace-a: #e27a26;   /* 1_x on the box stitch */
+    --lace-b: #f5c837;   /* 2_x */
+    --canvas: #efe7d3;
+    --canvas-far: rgba(23, 23, 19, 0.1);
+
+    --serif: Georgia, 'Times New Roman', serif;
+    --sans: 'Avenir Next', 'Segoe UI', Arial, sans-serif;
+    --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      color-scheme: dark;
+      --cream: #191410;
+      --paper: #221c15;
+      --ink: #f3e9d9;
+      --muted: #9c9284;
+      --line: rgba(243, 233, 217, 0.17);
+      --hair: rgba(243, 233, 217, 0.1);
+      --edge2: rgba(243, 233, 217, 0.24);
+      --shadow: rgba(0, 0, 0, 0.72);
+      --hover: rgba(243, 233, 217, 0.09);
+      --fill: #ff6540;
+      --fill-ink: #171713;
+      --coral: #ff6540;
+      --teal: #3fb0b8;
+      --danger: #ff6b6b;
+      --end: #5c9fe8;
+      --cp: #4faf4f;
+      --canvas: #14100c;
+      --canvas-far: rgba(243, 233, 217, 0.12);
+    }
+  }
+
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+    --cream: #191410;
+    --paper: #221c15;
+    --ink: #f3e9d9;
+    --muted: #9c9284;
+    --line: rgba(243, 233, 217, 0.17);
+    --hair: rgba(243, 233, 217, 0.1);
+    --edge2: rgba(243, 233, 217, 0.24);
+    --shadow: rgba(0, 0, 0, 0.72);
+    --hover: rgba(243, 233, 217, 0.09);
+    --fill: #ff6540;
+    --fill-ink: #171713;
+    --coral: #ff6540;
+    --teal: #3fb0b8;
+    --danger: #ff6b6b;
+    --end: #5c9fe8;
+    --cp: #4faf4f;
+    --canvas: #14100c;
+    --canvas-far: rgba(243, 233, 217, 0.12);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--cream);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+
+  /* ---- masthead ---------------------------------------------------------- */
+
+  .mast {
+    padding: 56px 0 28px;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  .eyebrow {
+    margin: 0 0 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--coral);
+  }
+
+  h1 {
+    margin: 0;
+    font-family: var(--serif);
+    font-size: clamp(38px, 7vw, 66px);
+    font-weight: 400;
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  .stand {
+    max-width: 62ch;
+    margin: 18px 0 0;
+    font-size: 18px;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+
+  .stand b { color: var(--ink); font-weight: 650; }
+
+  /* ---- the count strip --------------------------------------------------- */
+
+  .counts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0;
+    margin: 28px 0 0;
+    border: 1.5px solid var(--edge2);
+    background: var(--paper);
+    box-shadow: 4px 5px 0 var(--shadow);
+  }
+
+  .count {
+    padding: 16px 18px;
+    border-right: 1.5px solid var(--hair);
+  }
+
+  .count:last-child { border-right: 0; }
+
+  .count u {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    text-decoration: none;
+    color: var(--muted);
+  }
+
+  .count b {
+    display: block;
+    margin-top: 6px;
+    font-family: var(--serif);
+    font-size: 30px;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  .count b.hot { color: var(--coral); }
+
+  .count span {
+    display: block;
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--muted);
+  }
+
+  /* ---- sections ---------------------------------------------------------- */
+
+  section { padding-top: 54px; }
+
+  h2 {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin: 0 0 6px;
+    font-family: var(--serif);
+    font-size: clamp(24px, 3.4vw, 33px);
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  h2 i {
+    flex: 0 0 auto;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 700;
+    color: var(--coral);
+  }
+
+  h3 {
+    margin: 30px 0 8px;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  p { max-width: 68ch; margin: 0 0 14px; }
+
+  .lede { max-width: 66ch; font-size: 16.5px; color: var(--muted); }
+  .lede b { color: var(--ink); font-weight: 650; }
+
+  code {
+    padding: 1px 5px;
+    border: 1px solid var(--hair);
+    border-radius: 4px;
+    background: var(--paper);
+    font-family: var(--mono);
+    font-size: 0.86em;
+  }
+
+  .rule { height: 0; margin: 0; border-top: 1.5px solid var(--edge2); }
+
+  /* ---- figures ----------------------------------------------------------- */
+
+  figure {
+    margin: 22px 0 0;
+    padding: 0;
+  }
+
+  figcaption {
+    margin-top: 10px;
+    max-width: 74ch;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+
+  figcaption b { color: var(--ink); font-weight: 700; }
+
+  .scene {
+    position: relative;
+    border: 1.5px solid var(--edge2);
+    background: var(--canvas);
+    box-shadow: 4px 5px 0 var(--shadow);
+    overflow: hidden;
+  }
+
+  .scene svg { display: block; width: 100%; height: auto; }
+
+  .scene-tag {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    padding: 5px 10px;
+    border: 1px solid var(--edge2);
+    border-radius: 999px;
+    background: var(--paper);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+
+  .two {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 22px;
+    align-items: start;
+  }
+
+  /* ---- app chrome: the toolbar strip -------------------------------------- */
+
+  .chrome {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 24px 16px;
+    border: 1.5px dashed var(--line);
+    background: color-mix(in srgb, var(--canvas) 70%, transparent);
+  }
+
+  .bar {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    padding: 5px;
+    border: 1.5px solid var(--edge2);
+    border-radius: 999px;
+    background: var(--paper);
+    box-shadow: 4px 5px 0 var(--shadow);
+  }
+
+  .bar.wrapable { flex-wrap: wrap; row-gap: 6px; border-radius: 22px; }
+
+  .tool {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 14px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 750;
+    white-space: nowrap;
+  }
+
+  .tool.on { background: var(--fill); color: var(--fill-ink); }
+  .tool.act { padding: 9px 11px; font-family: var(--mono); opacity: 0.45; }
+  .sep { align-self: stretch; width: 1.5px; margin: 3px; background: var(--edge2); }
+
+  /* The proposal itself: a second strip that only exists while Move is live. */
+  .opts { border-color: var(--coral); }
+
+  .opts-label {
+    padding-left: 11px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .seg {
+    display: inline-flex;
+    padding: 3px;
+    border: 1.5px solid var(--edge2);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 5%, transparent);
+  }
+
+  .seg button {
+    padding: 6px 13px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: 750;
+    white-space: nowrap;
+  }
+
+  .seg button.on { background: var(--fill); color: var(--fill-ink); }
+
+  .target {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 12px;
+    border: 1.5px solid var(--coral);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--coral) 12%, transparent);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .target.ghost {
+    border-color: var(--edge2);
+    background: transparent;
+    color: var(--muted);
+  }
+
+  .target.gone { border-style: dashed; color: var(--danger); border-color: var(--danger); }
+
+  .marks {
+    padding: 0 12px 0 4px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .marks b { color: var(--coral); }
+
+  /* ---- app chrome: the layer panel --------------------------------------- */
+
+  .panel {
+    width: 100%;
+    max-width: 344px;
+    padding: 12px;
+    border: 1.5px solid var(--edge2);
+    background: var(--paper);
+    box-shadow: 4px 5px 0 var(--shadow);
+  }
+
+  .banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 7px 8px 7px 11px;
+    border: 1.5px solid var(--coral);
+    background: var(--paper);
+  }
+
+  .banner b { margin-right: auto; font-size: 11px; font-weight: 800; }
+
+  .pill {
+    padding: 5px 11px;
+    border: 1.5px solid var(--edge2);
+    border-radius: 999px;
+    background: var(--paper);
+    box-shadow: 2px 2px 0 var(--shadow);
+    color: inherit;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 750;
+    white-space: nowrap;
+  }
+
+  .pill.coral { border-color: var(--coral); color: var(--coral); }
+
+  .level-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0;
+    padding: 7px 9px;
+    border: 1.5px solid var(--edge2);
+    background: color-mix(in srgb, var(--ink) 4%, transparent);
+  }
+
+  .level-bar.focus { border-color: var(--coral); background: color-mix(in srgb, var(--coral) 12%, transparent); }
+
+  .badge {
+    display: inline-grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border: 1.5px solid var(--edge2);
+    border-radius: 50%;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 800;
+  }
+
+  .level-bar b { font-size: 12px; font-weight: 800; }
+  .level-bar small { margin-right: auto; font-size: 10.5px; color: var(--muted); }
+
+  .acts { display: inline-flex; gap: 3px; }
+
+  .ico {
+    display: inline-grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border: 1px solid var(--hair);
+    border-radius: 5px;
+    background: transparent;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 10px;
+    line-height: 1;
+  }
+
+  .ico.on { border-color: var(--coral); background: var(--coral); color: #171713; }
+
+  .group {
+    margin: 0 0 6px;
+    padding: 5px 5px 5px 12px;
+    border-left: 1.5px solid var(--hair);
+  }
+
+  .group.focus { border-left: 2.5px solid var(--coral); }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 3px 0;
+    padding: 6px 7px;
+    border: 1px solid transparent;
+  }
+
+  .row.focus { border-color: var(--coral); background: color-mix(in srgb, var(--coral) 9%, transparent); }
+  .row.dim { opacity: 0.42; }
+
+  .swatch {
+    width: 13px;
+    height: 13px;
+    flex: 0 0 auto;
+    border: 1px solid var(--edge2);
+    border-radius: 3px;
+  }
+
+  .row-id {
+    margin-right: auto;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+
+  /* ---- tables ------------------------------------------------------------ */
+
+  .tablewrap { overflow-x: auto; margin-top: 20px; }
+
+  table {
+    width: 100%;
+    min-width: 560px;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+
+  th, td {
+    padding: 11px 12px;
+    border-bottom: 1px solid var(--hair);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  thead th {
+    border-bottom: 1.5px solid var(--ink);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  tbody td:first-child { min-width: 168px; }
+  td.verdict { white-space: nowrap; font-weight: 750; }
+  .win { color: var(--coral); }
+  tr.picked td { background: color-mix(in srgb, var(--coral) 8%, transparent); }
+
+  /* ---- the numbered rules ------------------------------------------------ */
+
+  .rules { display: grid; gap: 0; margin-top: 20px; border-top: 1.5px solid var(--edge2); }
+
+  .ruleitem {
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    gap: 14px;
+    padding: 16px 2px;
+    border-bottom: 1px solid var(--hair);
+  }
+
+  .ruleitem u {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 800;
+    text-decoration: none;
+    color: var(--coral);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ruleitem h4 {
+    margin: 0 0 4px;
+    font-size: 15px;
+    font-weight: 750;
+  }
+
+  .ruleitem p { margin: 0; font-size: 14px; color: var(--muted); }
+  .ruleitem p b { color: var(--ink); font-weight: 700; }
+
+  /* ---- state cards ------------------------------------------------------- */
+
+  .states { display: grid; gap: 18px; margin-top: 22px; }
+
+  .state {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    padding: 16px;
+    border: 1.5px solid var(--edge2);
+    background: var(--paper);
+    box-shadow: 4px 5px 0 var(--shadow);
+  }
+
+  @media (min-width: 760px) {
+    .state { grid-template-columns: minmax(0, 1fr) 300px; align-items: start; }
+  }
+
+  .state-note h4 {
+    margin: 0 0 6px;
+    font-family: var(--serif);
+    font-size: 19px;
+    font-weight: 400;
+  }
+
+  .state-note p { margin: 0 0 10px; font-size: 13.5px; line-height: 1.5; color: var(--muted); }
+  .state-note p:last-child { margin-bottom: 0; }
+  .state-note b { color: var(--ink); font-weight: 700; }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin-top: 12px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .key { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+
+  kbd {
+    padding: 1px 6px;
+    border: 1px solid var(--edge2);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: var(--paper);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .foot {
+    margin-top: 56px;
+    padding-top: 18px;
+    border-top: 1.5px solid var(--edge2);
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+
+  .foot code { font-size: 11.5px; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .seg button, .pill, .ico { transition: background 0.12s ease, color 0.12s ease; }
+  }
+
+  :focus-visible { outline: 2px solid var(--coral); outline-offset: 2px; }
+</style>
+
+</head>
+
+<body>
+<div class="wrap">
+
+  <header class="mast">
+    <p class="eyebrow">Panel mock 6 · Move mode</p>
+    <h1>Handle focus</h1>
+    <p class="stand">
+      Move draws a grab mark on <b>every visible layer in the scene</b>, always. On a ten-storey
+      box stitch that is 126 marks over a model twelve laces wide; on the 7×3 twist it is 690.
+      This proposal gives Move one control — <b>a scope</b> — that limits the marks to a single
+      storey or a single layer, without hiding anything.
+    </p>
+
+    <div class="counts">
+      <div class="count">
+        <u>Box stitch · 10 levels</u>
+        <b>126</b>
+        <span>grab marks in Move today — 84 endpoints, 42 control triangles, over 42 layers</span>
+      </div>
+      <div class="count">
+        <u>Focused on level 6</u>
+        <b class="hot">12</b>
+        <span>4 layers of that storey: 8 endpoints, 4 triangles. Everything else stays drawn</span>
+      </div>
+      <div class="count">
+        <u>Twist stitch · 7×3</u>
+        <b>690</b>
+        <span>230 layers over 11 storeys — the scene the proposal is really for</span>
+      </div>
+      <div class="count">
+        <u>Focused on one layer</u>
+        <b class="hot">3</b>
+        <span>two endpoints and the triangle they share, anywhere in the stack</span>
+      </div>
+    </div>
+  </header>
+
+  <section>
+    <h2><i>01</i> The problem is that every layer answers at once</h2>
+    <p class="lede">
+      <code>buildHandles()</code> walks <b>every visible, non-mask strand</b> and gives each one two
+      endpoint spheres, its control marks and a dashed rig. That is right on the opening sample,
+      which has six layers. It stops being right the moment a scene has storeys: the marks of ten
+      rounds land on top of each other in screen space, the pick has to cycle through the pile to
+      reach the one you meant, and the model you are editing is under a fog of blue and green.
+    </p>
+
+    <figure>
+      <div class="scene">
+        <svg id="fig-all" viewBox="0 0 900 430" role="img"
+             aria-label="A ten-storey box stitch in Move mode, with a grab mark on every layer of every storey"></svg>
+        <span class="scene-tag">Box stitch — 10 levels · Move · 126 marks</span>
+      </div>
+      <figcaption>
+        Schematic, at the density the app actually draws. <b>Blue</b> is an endpoint you can drag,
+        <b>green</b> a control point. The marks ignore depth on purpose — <code>depthTest: false</code>,
+        so they stay grabbable behind the ribbons — which is exactly why ten storeys of them pile up
+        in front of the one you are working on.
+      </figcaption>
+    </figure>
+
+    <div class="legend">
+      <span><i class="key" style="background: var(--end)"></i> endpoint · draggable</span>
+      <span><i class="key" style="background: var(--cp)"></i> control point</span>
+      <span><i class="key" style="background: var(--lace-a)"></i> 1_x</span>
+      <span><i class="key" style="background: var(--lace-b)"></i> 2_x</span>
+    </div>
+  </section>
+
+  <section>
+    <h2><i>02</i> The control: one scope, three reaches</h2>
+    <p class="lede">
+      <b>All · Level · Layer.</b> It says what counts as “in reach of the Move tool”, the way the
+      inspector's <code>Applies to</code> switch says what counts as “this”. It carries a target chip
+      naming the storey or the layer it is pointed at, and a live count of the marks it leaves on
+      screen, so the strip can be read before it is used.
+    </p>
+
+    <figure>
+      <div class="chrome">
+        <div class="bar" role="group" aria-label="The toolbar as it ships">
+          <span class="tool act">↶</span>
+          <span class="tool act">↷</span>
+          <span class="sep"></span>
+          <span class="tool">Pan</span>
+          <span class="tool">Orbit</span>
+          <span class="tool on">Move</span>
+          <span class="tool">Attach</span>
+          <span class="tool">Weave</span>
+        </div>
+        <div class="bar opts wrapable" role="group" aria-label="The proposed Move options strip">
+          <span class="opts-label">Handles</span>
+          <span class="seg">
+            <button type="button">All</button>
+            <button type="button" class="on">Level</button>
+            <button type="button">Layer</button>
+          </span>
+          <span class="target">◎ Level 6 ▾</span>
+          <span class="marks"><b>12</b> of 126 marks</span>
+        </div>
+      </div>
+      <figcaption>
+        The strip hangs under the tool bar, centred on the canvas the way <code>#toolbar</code> and
+        <code>#dock</code> already are, and it <b>only exists while Move is the live tool</b> — the same
+        rule the <code>Middle handle</code> tick already follows. Pick another tool and it is gone;
+        come back to Move and it is where you left it.
+      </figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2><i>03</i> Where it goes, and the two places it must not</h2>
+    <p class="lede">
+      Three homes were drawn. The question is not which is prettiest but <b>which one is reachable at
+      the moment you need it</b> — which is mid-edit, with a card closed, on a panel that may be
+      showing masks instead of layers.
+    </p>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Where</th>
+            <th>What it looks like</th>
+            <th>What it costs</th>
+            <th>Verdict</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="picked">
+            <td><b>A · A Move options strip</b><br /><small>under the toolbar</small></td>
+            <td>A second pill bar, drawn only in Move: <code>Handles · All | Level | Layer</code>, a
+              target chip, a mark count.</td>
+            <td>One more strip over the canvas — 40px of the top edge, on the side the panel does not
+              take.</td>
+            <td class="verdict win">Build this</td>
+          </tr>
+          <tr>
+            <td><b>B · The View card</b><br /><small>in the dock</small></td>
+            <td>A third row in the popover that already carries <code>Middle handle</code>, which is
+              itself Move-only.</td>
+            <td>The card is a <em>settings drawer</em>: it closes itself once a press commits
+              (<code>commitDock</code>), it floats over the very model you are aiming at, and on a
+              phone it replaces the panel. Scope is not a setting you tune once — it changes every
+              few edits.</td>
+            <td class="verdict">No</td>
+          </tr>
+          <tr>
+            <td><b>C · The layer stack only</b><br /><small>a ◎ on each bar and row</small></td>
+            <td>Every level bar and every layer row grows a focus target; pressing one scopes Move
+              to it.</td>
+            <td>The stack has three views — Layers, Masks, Planes — and two of them have no bars and
+              no rows, so the control vanishes while the mode it governs is still armed. On a phone
+              the panel is a folded sheet and the control folds with it.</td>
+            <td class="verdict">Not on its own</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p style="margin-top: 20px">
+      <b>A, with C's affordance kept as the picker.</b> The scope belongs to the tool, so it lives with
+      the tool and is always on screen while that tool is armed. But the thing it points <em>at</em> is
+      a row in the stack, and the stack is where you already point at rows — so the level bar and the
+      layer row each grow a ◎ that sets the target, and the strip states it. One control, two ways in,
+      and neither can go missing while the other is showing.
+    </p>
+  </section>
+
+  <section>
+    <h2><i>04</i> The four states</h2>
+    <p class="lede">
+      Every state the strip can be in, drawn against the same scene: the ten-storey box stitch,
+      42 layers, its level 6 carrying <code>1_14</code>, <code>2_14</code>, <code>1_15</code> and
+      <code>2_15</code>.
+    </p>
+
+    <div class="states">
+
+      <article class="state">
+        <div>
+          <div class="scene">
+            <svg id="fig-state-all" viewBox="0 0 620 300" role="img"
+                 aria-label="All layers carry handles"></svg>
+          </div>
+        </div>
+        <div class="state-note">
+          <div class="bar opts wrapable" style="box-shadow: 3px 3px 0 var(--shadow)">
+            <span class="opts-label">Handles</span>
+            <span class="seg">
+              <button type="button" class="on">All</button>
+              <button type="button">Level</button>
+              <button type="button">Layer</button>
+            </span>
+          </div>
+          <h4>All — what ships today</h4>
+          <p>The default, and the state a new scene opens in. No target chip, no count: nothing is
+            being withheld, so there is nothing to report. <b>Six-layer scenes never see this feature
+            at all.</b></p>
+        </div>
+      </article>
+
+      <article class="state">
+        <div>
+          <div class="scene">
+            <svg id="fig-state-level" viewBox="0 0 620 300" role="img"
+                 aria-label="Only level 6 carries handles"></svg>
+          </div>
+        </div>
+        <div class="state-note">
+          <div class="bar opts wrapable" style="box-shadow: 3px 3px 0 var(--shadow)">
+            <span class="opts-label">Handles</span>
+            <span class="seg">
+              <button type="button">All</button>
+              <button type="button" class="on">Level</button>
+              <button type="button">Layer</button>
+            </span>
+            <span class="target">◎ Level 6 ▾</span>
+          </div>
+          <h4>Level — one woven round</h4>
+          <p><b>12 marks instead of 126.</b> A level is exactly the unit you edit as a unit: one
+            round of the weave, two thicknesses tall, which is what
+            <code>docs/layer-levels.md</code> says a storey <em>is</em>.</p>
+          <p>The nine storeys around it are still drawn, still coloured, still in the way of the
+            camera — you are working <em>inside</em> the model, not on a stripped copy of it.</p>
+        </div>
+      </article>
+
+      <article class="state">
+        <div>
+          <div class="scene">
+            <svg id="fig-state-layer" viewBox="0 0 620 300" role="img"
+                 aria-label="Only layer 1_15 carries handles"></svg>
+          </div>
+        </div>
+        <div class="state-note">
+          <div class="bar opts wrapable" style="box-shadow: 3px 3px 0 var(--shadow)">
+            <span class="opts-label">Handles</span>
+            <span class="seg">
+              <button type="button">All</button>
+              <button type="button">Level</button>
+              <button type="button" class="on">Layer</button>
+            </span>
+            <span class="target">◎ 1_15 ▾</span>
+          </div>
+          <h4>Layer — one arm</h4>
+          <p>Three marks in the whole scene: two endpoints and the triangle parked on the start.
+            This is the state for bending <b>one arm</b> of a stitch that has forty of them within a
+            few pixels of each other.</p>
+          <p>Opening a strand's row in the panel sets this target, so the reach you already use to
+            colour a layer is the reach that hands you its handles.</p>
+        </div>
+      </article>
+
+      <article class="state">
+        <div>
+          <div class="scene">
+            <svg id="fig-state-gone" viewBox="0 0 620 300" role="img"
+                 aria-label="The focused layer was hidden, so the scope falls back to all"></svg>
+          </div>
+        </div>
+        <div class="state-note">
+          <div class="bar opts wrapable" style="box-shadow: 3px 3px 0 var(--shadow)">
+            <span class="opts-label">Handles</span>
+            <span class="seg">
+              <button type="button">All</button>
+              <button type="button">Level</button>
+              <button type="button" class="on">Layer</button>
+            </span>
+            <span class="target gone">◎ 1_15 — hidden</span>
+          </div>
+          <h4>The target went away</h4>
+          <p>Hide the focused layer, delete it, or drag the level break out from under it, and the
+            scope has nothing to point at. <b>It says so and falls back to All</b> rather than
+            leaving a canvas with no handles on it and no explanation.</p>
+          <p>The one failure this feature can have is “I clicked the endpoint and nothing happened”.
+            Every state above is built so that sentence is never true.</p>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <h2><i>05</i> The stack is the picker</h2>
+    <p class="lede">
+      The ◎ is the same mark on a level bar and on a layer row, and it means the same thing in both
+      places: <b>point Move here</b>. It is drawn only while Move is armed, so the panel does not grow
+      a control that does nothing in Orbit.
+    </p>
+
+    <div class="two">
+      <figure>
+        <div class="panel">
+          <div class="banner">
+            <b>Handles on level 6 only</b>
+            <button type="button" class="pill coral">All</button>
+          </div>
+
+          <div class="level-bar">
+            <span class="badge">7</span><b>Level 7</b>
+            <small>+7 storeys · 4 layers</small>
+            <span class="acts"><button type="button" class="ico" title="Focus Move here">◎</button></span>
+          </div>
+
+          <div class="group focus">
+            <div class="row">
+              <span class="swatch" style="background: var(--lace-b)"></span>
+              <span class="row-id">2_15</span>
+              <span class="acts"><button type="button" class="ico">◎</button><button type="button" class="ico">●</button></span>
+            </div>
+            <div class="row">
+              <span class="swatch" style="background: var(--lace-a)"></span>
+              <span class="row-id">1_15</span>
+              <span class="acts"><button type="button" class="ico">◎</button><button type="button" class="ico">●</button></span>
+            </div>
+            <div class="row">
+              <span class="swatch" style="background: var(--lace-b)"></span>
+              <span class="row-id">2_14</span>
+              <span class="acts"><button type="button" class="ico">◎</button><button type="button" class="ico">●</button></span>
+            </div>
+            <div class="row">
+              <span class="swatch" style="background: var(--lace-a)"></span>
+              <span class="row-id">1_14</span>
+              <span class="acts"><button type="button" class="ico">◎</button><button type="button" class="ico">●</button></span>
+            </div>
+          </div>
+
+          <div class="level-bar focus">
+            <span class="badge">6</span><b>Level 6</b>
+            <small>+6 storeys · 4 layers</small>
+            <span class="acts"><button type="button" class="ico on" title="Move is focused here">◎</button></span>
+          </div>
+
+          <div class="group">
+            <div class="row dim">
+              <span class="swatch" style="background: var(--lace-a)"></span>
+              <span class="row-id">1_13</span>
+              <span class="acts"><button type="button" class="ico">◎</button><button type="button" class="ico">●</button></span>
+            </div>
+            <div class="row dim">
+              <span class="swatch" style="background: var(--lace-b)"></span>
+              <span class="row-id">2_13</span>
+              <span class="acts"><button type="button" class="ico">◎</button><button type="button" class="ico">●</button></span>
+            </div>
+          </div>
+
+          <div class="level-bar">
+            <span class="badge">5</span><b>Level 5</b>
+            <small>+5 storeys · 4 layers</small>
+            <span class="acts"><button type="button" class="ico" title="Focus Move here">◎</button></span>
+          </div>
+        </div>
+        <figcaption>
+          The focused storey is boxed in coral and its bar's ◎ is lit; the rows outside it are
+          <b>faint, not hidden</b> — the same weight the panel already uses for a layer that is off,
+          at half the distance, because these layers are still on screen and still selectable.
+        </figcaption>
+      </figure>
+
+      <div>
+        <h3>Why a banner as well</h3>
+        <p>
+          The panel already carries one sticky coral strip — <code>hidden-banner</code>, the way back
+          from a solo — for exactly this reason: a state you can leave running is a state you have to
+          be able to undo without remembering how you got into it. Focus is that kind of state.
+        </p>
+        <p>
+          It reads <b>Handles on level 6 only</b> with one press back to <b>All</b>, and it appears in
+          the stack even when the strip over the canvas is scrolled behind a card, on a phone, or
+          on a panel switched to Masks.
+        </p>
+
+        <h3>The press that already exists</h3>
+        <p>
+          Opening a layer's row is already how you reach its colour, its width and its Straighten.
+          With the scope on <b>Layer</b>, that same press points Move at it — so in the common case
+          you never touch the ◎ at all: you open the row you were going to open anyway, and the
+          handles come to you.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><i>06</i> The rules that keep it safe</h2>
+    <p class="lede">
+      A scope that limits what you can grab is one bad rule away from a scene that feels broken.
+      These are the rules that stop that.
+    </p>
+
+    <div class="rules">
+      <div class="ruleitem">
+        <u>01</u>
+        <div>
+          <h4>Focus is not hide</h4>
+          <p>Nothing is dimmed, ghosted or removed from the canvas. Every lace keeps its colour, its
+            weave and its place in the stack. <b>Only the grab marks go</b> — which is the difference
+            between this and <code>Hide others</code>, and the reason both are worth having.</p>
+        </div>
+      </div>
+      <div class="ruleitem">
+        <u>02</u>
+        <div>
+          <h4>A drag still reaches everything glued to it</h4>
+          <p>Move's whole point is that connected endpoints travel together. Focus limits what you can
+            <b>grab</b>, never what can <b>move</b>: drag <code>1_15</code>'s end and the attached
+            <code>1_16</code> follows out of the focused storey exactly as it does today.
+            <code>connectedEndpoints</code> is untouched.</p>
+        </div>
+      </div>
+      <div class="ruleitem">
+        <u>03</u>
+        <div>
+          <h4>Off by default, sticky once used</h4>
+          <p>Scope opens on <b>All</b>, so nothing changes for the six-layer samples the project opens
+            with. Once set, it is remembered between visits — like the theme and like the inspector's
+            reaches — because it is how you are working, not a property of the scene.</p>
+        </div>
+      </div>
+      <div class="ruleitem">
+        <u>04</u>
+        <div>
+          <h4>Two ways out, always visible</h4>
+          <p>The strip's <b>All</b> button while the canvas has focus; the stack's coral banner while
+            the panel does. <kbd>Esc</kbd> clears to All from either. The scope never survives a state
+            where neither of those is on screen.</p>
+        </div>
+      </div>
+      <div class="ruleitem">
+        <u>05</u>
+        <div>
+          <h4>Attach inherits it; Weave ignores it</h4>
+          <p>Attach draws the same endpoint marks and gets the same scope for free — pulling a new
+            strand off one storey of a twist has the same problem. Weave picks strand <em>bodies</em>,
+            not handles, so it is untouched and shows no strip.</p>
+        </div>
+      </div>
+      <div class="ruleitem">
+        <u>06</u>
+        <div>
+          <h4>The keys walk the stack</h4>
+          <p><kbd>[</kbd> and <kbd>]</kbd> step the focused storey down and up — which on a twist is
+            how you actually work, one round at a time — and the camera does not move, so the model
+            stays where your eye left it.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><i>07</i> What it costs to build</h2>
+    <p class="lede">
+      The filter is four lines in the loop that already exists. Everything else is chrome and
+      state.
+    </p>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Where</th><th>What changes</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>src/scene/StrandScene.ts</code><br /><small>buildHandles</small></td>
+            <td>One guard at the top of the <code>forEach</code>: skip a strand whose level or id is
+              out of scope. The rig in <code>buildControlLines</code> is inside the same block, so it
+              follows for free.</td>
+          </tr>
+          <tr>
+            <td><code>src/scene/StrandScene.ts</code><br /><small>params + setters</small></td>
+            <td><code>handleScope: 'all' | 'level' | 'layer'</code> and a target, beside
+              <code>thirdControlPoint</code>. A change rebuilds handles only — no geometry, no
+              re-weave.</td>
+          </tr>
+          <tr>
+            <td><code>src/ui/panel.ts</code><br /><small>syncToolbar</small></td>
+            <td>The second strip, drawn when <code>getMode() === 'move'</code> — the condition the
+              <code>Middle handle</code> tick already uses.</td>
+          </tr>
+          <tr>
+            <td><code>src/ui/panel.ts</code><br /><small>levelBar, layerRow, hiddenBanner</small></td>
+            <td>The ◎ on the bar and the row, the focus classes, and a second sticky banner beside
+              the one the solo already puts there.</td>
+          </tr>
+          <tr>
+            <td><code>src/model/levels.ts</code></td>
+            <td>Nothing. <code>levelAt(scene, i)</code> is already the whole test.</td>
+          </tr>
+          <tr>
+            <td>History</td>
+            <td>Nothing. Scope moves no strand, so it is not an edit and takes no undo step — the
+              same call <code>history.ts</code> already makes for Orbit, Pan and Fit.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="foot">
+    Counts are read off the shipping generators, not estimated: <code>box-stitch-10</code> is 42
+    layers over 10 storeys (6 on the ground, 4 per storey above it) and
+    <code>twistStitchMN(7, 3, 10)</code> is 230 layers over 11. Marks per layer are two endpoints
+    plus the triangle an untouched strand shows, which is the floor — a strand whose controls have
+    been opened carries up to three.
+  </p>
+
+</div>
+
+<script>
+  // The canvas schematics. Drawn rather than hand-authored: the whole point of
+  // the figures is the DENSITY of the marks, and 126 of them is not something to
+  // type out by hand.
+  //
+  // The projection is a plain isometric of the studio's own stack: a storey is
+  // four arms crossing at the middle (the ground carries six, as box-stitch-10
+  // does), and each storey sits one rise above the one below it.
+
+  const COUNT_PER_LEVEL = [6, 4, 4, 4, 4, 4, 4, 4, 4, 4]; // box-stitch-10, ground first
+
+  // Which id sits where. Level 0 opens 1_1 / 2_1 …; every storey above it adds
+  // two lengths per lace, as the sample's own attach order does.
+  function idsFor(level) {
+    if (level === 0) return ['1_1', '2_1', '1_2', '2_2', '1_3', '2_3'];
+    const n = 3 + (level - 1) * 2;
+    return ['1_' + (n + 1), '2_' + (n + 1), '1_' + (n + 2), '2_' + (n + 2)];
+  }
+
+  const NS = 'http://www.w3.org/2000/svg';
+  const node = (name, attrs) => {
+    const e = document.createElementNS(NS, name);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  };
+
+  /**
+   * @param {SVGElement} svg
+   * @param {{levels:number, cx:number, cy:number, rise:number, arm:number,
+   *          band:number, focusLevel:number|null, focusId:string|null,
+   *          hiddenId?:string|null, marks:boolean}} o
+   */
+  function drawStack(svg, o) {
+    svg.textContent = '';
+    const lit = [];   // marks that are in scope, drawn last so they sit on top
+    const armFor = (i, n) => {
+      // Arms radiate from the middle. Four is a round of a box stitch; the
+      // ground's six just add a diagonal pair.
+      const a = (Math.PI * 2 * i) / n + Math.PI / 4;
+      return { dx: Math.cos(a), dy: Math.sin(a) };
+    };
+
+    for (let level = 0; level < o.levels; level++) {
+      const count = COUNT_PER_LEVEL[level] ?? 4;
+      const ids = idsFor(level);
+      const y = o.cy - level * o.rise;
+      const near = o.focusLevel === null || level === o.focusLevel;
+
+      for (let i = 0; i < count; i++) {
+        const id = ids[i % ids.length];
+        if (id === o.hiddenId) continue; // the layer the scope was pointed at, now hidden
+        const { dx, dy } = armFor(i, count);
+        // Isometric: y is squashed so the arms read as lying flat.
+        const ex = o.cx + dx * o.arm;
+        const ey = y + dy * o.arm * 0.42;
+
+        const laceA = id.startsWith('1_');
+        const colour = laceA ? 'var(--lace-a)' : 'var(--lace-b)';
+
+        svg.appendChild(node('line', {
+          x1: o.cx, y1: y, x2: ex, y2: ey,
+          stroke: colour,
+          'stroke-width': o.band,
+          'stroke-linecap': 'round',
+          opacity: near ? 0.95 : 0.72,
+        }));
+
+        if (!o.marks) continue;
+
+        const inScope =
+          (o.focusLevel === null && o.focusId === null) ||
+          (o.focusLevel !== null && level === o.focusLevel) ||
+          (o.focusId !== null && id === o.focusId);
+        if (!inScope) continue;
+
+        // Two endpoints per arm — the outer tip and the one at the middle, where
+        // it is glued to its neighbour — and the control triangle parked on the
+        // start, which is what an untouched strand shows.
+        const r = o.markR ?? 4.6;
+        lit.push(node('circle', { cx: ex, cy: ey, r, fill: 'var(--end)', stroke: 'var(--paper)', 'stroke-width': 1.2 }));
+        lit.push(node('circle', { cx: o.cx + dx * 4, cy: y + dy * 2, r, fill: 'var(--end)', stroke: 'var(--paper)', 'stroke-width': 1.2 }));
+        const tx = o.cx + dx * o.arm * 0.42;
+        const ty = y + dy * o.arm * 0.18 - 7;
+        const t = r * 1.15;
+        lit.push(node('polygon', {
+          points: `${tx},${ty - t} ${tx + t},${ty + t * 0.8} ${tx - t},${ty + t * 0.8}`,
+          fill: 'var(--cp)', stroke: 'var(--paper)', 'stroke-width': 1,
+        }));
+      }
+    }
+    for (const m of lit) svg.appendChild(m);
+  }
+
+  // Figure 1 — the whole stack, every mark.
+  drawStack(document.getElementById('fig-all'), {
+    levels: 10, cx: 450, cy: 348, rise: 31, arm: 150, band: 13,
+    focusLevel: null, focusId: null, marks: true,
+  });
+
+  // The four states, on a smaller stage.
+  const state = (id, focusLevel, focusId, hiddenId) =>
+    drawStack(document.getElementById(id), {
+      levels: 10, cx: 310, cy: 242, rise: 20, arm: 108, band: 10, markR: 6,
+      focusLevel, focusId, hiddenId, marks: true,
+    });
+
+  state('fig-state-all', null, null, null);
+  state('fig-state-level', 6, null, null);
+  state('fig-state-layer', null, '1_15', null);
+  // 1_15 was hidden while the scope pointed at it: the arm is gone from the
+  // canvas and the scope has fallen back to All, so every other layer is
+  // grabbable again.
+  state('fig-state-gone', null, null, '1_15');
+</script>
+</body>
+
+</html>
