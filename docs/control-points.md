@@ -277,6 +277,13 @@ narrow view and the panel scrolls: the lit segment, the target chip, and a coral
 ring on the Move button itself. The mark count is always on — `12 of 126` says
 what was put away as well as what is left.
 
+**Every part of it is gated on Move being the live tool** — the strip, the `◎` on
+each bar and row, the banner, and the ring. A focus is *remembered* across a trip
+to another tool, but it is not in force there: `buildHandles` only consults it
+under Move, so Attach draws all 84 of its endpoints whatever Move is pointed at.
+A ring left lit on an inactive Move claimed a state the canvas was not in, which
+is the one way this leaked before it was gated the same way as the rest.
+
 One thing worth knowing if you touch the press path: the focus aims with
 `pickStrandAt`, not `pickStrand`. The latter rays the per-layer pick ribbons,
 which `buildWeaveOverlays` only builds for the weave tool and the fold lab, so

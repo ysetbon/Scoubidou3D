@@ -835,7 +835,13 @@ export class Panel {
       // Move says whether it is focused from the button itself, not only from the
       // control beside it: the toolbar wraps on a narrow view and the segment can
       // end up on the second line, and "am I focused" has to survive that.
-      if (t.key === 'move' && this.view.getHandleFocus().kind !== 'all') {
+      //
+      // Only while Move is the live tool, though. A focus is remembered across a
+      // trip to another tool, but it is not IN FORCE there — Attach draws every
+      // endpoint it has — so a ring left lit on an inactive Move would claim a
+      // state the canvas is not in. Everything else this control owns is gated
+      // the same way: the strip, the ◎ on the bars and rows, the banner.
+      if (t.key === 'move' && mode === 'move' && this.view.getHandleFocus().kind !== 'all') {
         b.classList.add('tool-focused');
       }
       b.addEventListener('click', () => {
