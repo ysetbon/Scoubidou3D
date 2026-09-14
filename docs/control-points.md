@@ -222,3 +222,76 @@ Scoubidou3D includes the triangle in the test. The set folds away when the stran
 is genuinely back to untouched, and never before. Everything else — the shapes,
 the staging, the passive circle, the self-unlocking centre, the pick order — is
 the desktop behaviour as written.
+
+## Which strands carry handles
+
+`buildHandles` marked every visible non-mask strand, which is right on the
+opening sample and wrong the moment a scene has storeys: 126 marks over 42
+layers on `box-stitch-10`, 690 over 230 on `twistStitchMN(7, 3, 10)`. They are
+drawn with `depthTest: false` so they stay grabbable behind the ribbons, which is
+exactly why ten storeys of them pile up in front of the one round you are
+editing.
+
+So Move carries a **focus** — `HandleFocus` in `src/scene/StrandScene.ts` — and
+it is the one thing that decides what gets a mark. The control is in the toolbar
+next to Move, because it belongs to that tool and to no other:
+
+    Handles  [ All | Focus | Pick ]   ◎ Level 6   12 of 126
+
+**All** is what the app has always done, and what a scene opens on.
+
+**Focus** is a storey or a single layer, aimed from the **layer stack** — every
+level bar and every layer row grows a `◎` while Move is armed, and pressing the
+one it is already on lets it go. Level 6 of the box stitch is 12 marks instead of
+126; one layer is 3. On the 7×3 twist a storey is 60 instead of 690.
+
+**Pick** is a strand, aimed from the **canvas** — press the lace and Move marks
+it and everything glued to it. Armed and unpressed it shows *nothing*, which is
+the point: you choose, then you edit. The joints come along because
+`connectedEndpoints` is the set a drag already moves, so leaving their marks off
+would mean dragging strands whose handles you cannot see.
+
+Why a lace is not the unit: on a box stitch the `2_x` branch is 21 of the 42
+layers, so "press the lace" hands back half the model. The strand plus its
+joints is 9 marks, and it is also the honest answer to "what am I editing".
+
+Four rules make it safe to leave running, and they are as much the feature as the
+control is:
+
+* **Focus is not hide.** Every lace keeps its colour and its place; only the
+  marks go. That is what makes this worth having *next to* `Hide others` rather
+  than instead of it.
+* **A drag still reaches everything glued to it.** Focus limits what you can
+  grab, never what can move.
+* **Two ways back, always on screen** — the strip's `All` and a dashed banner on
+  the stack beside the solo's own — plus `Escape`, and a click on bare stage.
+  A *drag* from bare stage is an orbit and keeps the focus (`CLEAR_CLICK_PX`).
+* **A target that goes away falls back to `All`** rather than leaving a canvas
+  nobody can grab. `resolveFocus` tests the thing the focus NAMES, not whether
+  the set is empty: a `pick` carries its neighbours, so hiding the strand you
+  picked would otherwise leave their marks up and a chip naming a layer that is
+  gone.
+
+Move says which state it is in three times over, because the toolbar wraps on a
+narrow view and the panel scrolls: the lit segment, the target chip, and a coral
+ring on the Move button itself. The mark count is always on — `12 of 126` says
+what was put away as well as what is left.
+
+**Every part of it is gated on Move being the live tool** — the strip, the `◎` on
+each bar and row, the banner, and the ring. A focus is *remembered* across a trip
+to another tool, but it is not in force there: `buildHandles` only consults it
+under Move, so Attach draws all 84 of its endpoints whatever Move is pointed at.
+A ring left lit on an inactive Move claimed a state the canvas was not in, which
+is the one way this leaked before it was gated the same way as the rest.
+
+One thing worth knowing if you touch the press path: the focus aims with
+`pickStrandAt`, not `pickStrand`. The latter rays the per-layer pick ribbons,
+which `buildWeaveOverlays` only builds for the weave tool and the fold lab, so
+under Move it answers null for every strand there is. `pickStrandAt` falls
+through to the drawn bodies and attributes the hit through the lace's own
+ownership map, which also gets a press on a **fold** right.
+
+It is checked by pressing it: `npm run qa:controls` covers the handles
+themselves; the focus is driven the same way — arm each mode, aim it from the bar,
+the row and the canvas, and confirm the counts, the fallback, and that an orbit
+off bare stage keeps what a click lets go.

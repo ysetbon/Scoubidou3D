@@ -34,7 +34,7 @@
 // Reordering a layer here restacks it in Z — the direct 3D analogue of moving a
 // layer in OpenStrand's layer panel.
 
-import { StrandScene, EditMode, Sublevel } from '../scene/StrandScene';
+import { StrandScene, EditMode, HandleFocus, Sublevel } from '../scene/StrandScene';
 import { CrossFact, FoldFact, LaceFact, MemberFact, PROFILE } from '../scene/sections';
 import { MaskLink, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, TWIST_FAMILY, TWIST_MAX, makeSample } from '../model/samples';
@@ -278,6 +278,12 @@ export class Panel {
     // cursor, so the lit ribbon is not the only thing telling you which of a
     // stitch's arms a click would take.
     this.view.onWeaveHover = (id) => this.showHoverChip(id);
+    // A press on the canvas aims the focus, and a target that goes away drops it.
+    // Both happen without the panel asking, and both are drawn in two places.
+    this.view.onFocusChange = () => {
+      this.syncToolbar();
+      this.renderStack();
+    };
     initTheme(view);
     this.buildChrome();
     this.render();
@@ -389,7 +395,18 @@ export class Panel {
         this.closeAbout();
         return;
       }
-      if (this.dockOpen) this.openDock(null);
+      if (this.dockOpen) {
+        this.openDock(null);
+        return;
+      }
+      // Last, because it is the only one of the three that is not a thing sitting
+      // ON the screen — closing a sheet you can see beats releasing a focus you
+      // have to read a chip for.
+      if (this.view.getMode() === 'move' && this.view.getHandleFocus().kind !== 'all') {
+        this.view.setHandleFocus({ kind: 'all' });
+        this.syncToolbar();
+        this.renderStack();
+      }
     });
 
     // The shortcuts every editor has, on the same history the arrows drive.
@@ -480,6 +497,10 @@ export class Panel {
     // which for a scene with none is none.
     this.pickedCross = null;
     this.pickedSide = null;
+    // A focus names a storey or a layer in the scene that is going away. Ids
+    // repeat across samples (`box-stitch-10` and `-15` both have a `2_14`), so
+    // the view's own fallback would not catch it — a new scene starts unfocused.
+    this.view.setHandleFocus({ kind: 'all' });
     this.view.setScene(scene, true);
     this.record(label);
     this.render();
@@ -811,6 +832,18 @@ export class Panel {
       b.innerHTML = `${TOOL_ICONS[t.key]}<span>${t.label}</span>`;
       b.title = t.hint;
       b.setAttribute('aria-pressed', String(active));
+      // Move says whether it is focused from the button itself, not only from the
+      // control beside it: the toolbar wraps on a narrow view and the segment can
+      // end up on the second line, and "am I focused" has to survive that.
+      //
+      // Only while Move is the live tool, though. A focus is remembered across a
+      // trip to another tool, but it is not IN FORCE there — Attach draws every
+      // endpoint it has — so a ring left lit on an inactive Move would claim a
+      // state the canvas is not in. Everything else this control owns is gated
+      // the same way: the strip, the ◎ on the bars and rows, the banner.
+      if (t.key === 'move' && mode === 'move' && this.view.getHandleFocus().kind !== 'all') {
+        b.classList.add('tool-focused');
+      }
       b.addEventListener('click', () => {
         this.view.setMode(t.key);
         this.syncToolbar();
@@ -818,9 +851,138 @@ export class Panel {
         // Move is the one tool with an option of its own; it rides in the dock's
         // View card, which has to be redrawn to show it.
         this.renderDock();
+        this.renderStack(); // the ◎ on every bar and row comes and goes with it
       });
       bar.appendChild(b);
+      // The focus control belongs to Move, so it sits next to Move rather than at
+      // the end of the bar — a tool and its one option, read left to right.
+      if (t.key === 'move' && mode === 'move') bar.appendChild(this.focusControl());
     }
+  }
+
+  // ---- Move's focus --------------------------------------------------------
+  /**
+   * `Handles · All | Focus | Pick`, with a target chip and a live mark count.
+   *
+   * Three states, because there are three questions and not four:
+   *
+   *   * **All** — today, and the state a scene opens in.
+   *   * **Focus** — a storey or a single layer, aimed from the LAYER STACK, where
+   *     storeys and layers already have rows. `level` and `layer` are one segment
+   *     because they are one question ("which part of the stack") and the chip
+   *     already says which answer is in force.
+   *   * **Pick** — a strand, aimed from the CANVAS, carrying whatever is glued to
+   *     it. Armed it shows nothing at all: you choose, then you edit.
+   *
+   * The count is the argument for the whole control, so it is always on: `12 of
+   * 126` says what was just put away as well as what is left.
+   */
+  private focusControl(): HTMLElement {
+    const focus = this.view.getHandleFocus();
+    const { shown, total } = this.view.getHandleCount();
+    const wrap = el('span', 'focus-ctl');
+    wrap.setAttribute('role', 'group');
+    wrap.setAttribute('aria-label', 'Which strands Move puts handles on');
+    wrap.appendChild(el('span', 'focus-label', 'Handles'));
+
+    const seg = el('span', 'focus-seg');
+    const segBtn = (key: 'all' | 'focus' | 'pick', label: string, hint: string): void => {
+      const on =
+        key === 'all'
+          ? focus.kind === 'all'
+          : key === 'pick'
+            ? focus.kind === 'pick'
+            : focus.kind === 'level' || focus.kind === 'layer';
+      const b = el('button', 'focus-opt' + (on ? ' on' : '')) as HTMLButtonElement;
+      b.type = 'button';
+      b.textContent = label;
+      b.title = hint;
+      b.setAttribute('aria-pressed', String(on));
+      b.addEventListener('click', () => this.chooseFocus(key));
+      seg.appendChild(b);
+    };
+    segBtn('all', 'All', 'Every strand carries its grab marks — the way Move has always worked');
+    segBtn(
+      'focus',
+      'Focus',
+      'One storey or one layer, chosen with the ◎ on a level bar or a layer row',
+    );
+    segBtn('pick', 'Pick', 'One strand and whatever is glued to it, chosen by pressing it on the canvas');
+    wrap.appendChild(seg);
+
+    // Armed Pick with nothing chosen has no target to name, so it says what to do
+    // instead — in the count's place rather than in a chip beside it, because two
+    // elements for one message is what pushed a tool onto a second line.
+    const waiting = focus.kind === 'pick' && !focus.id;
+    if (focus.kind !== 'all' && !waiting) {
+      const chip = el('span', 'focus-target');
+      const span = this.view.getFocusSpan();
+      chip.textContent =
+        focus.kind === 'level'
+          ? `◎ Level ${focus.level}`
+          : focus.kind === 'layer'
+            ? `◎ ${focus.id}`
+            : // `+2` rather than `+ joints`: the reach is the reason to use Pick at
+              // all, and the number is both shorter and worth more than the word.
+              `◎ ${focus.id}${span > 1 ? ` +${span - 1}` : ''}`;
+      chip.title =
+        focus.kind === 'pick'
+          ? `Move is on ${focus.id} and the ${span - 1} strand(s) glued to it. Escape puts every handle back.`
+          : 'What Move is focused on. Escape, or All, puts every handle back.';
+      wrap.appendChild(chip);
+    }
+
+    const count = el('span', 'focus-count');
+    if (waiting) {
+      count.classList.add('waiting');
+      count.textContent = 'press a strand';
+      count.title = 'Nothing chosen yet — press a strand on the canvas to put its handles on';
+    } else {
+      count.innerHTML = focus.kind === 'all' ? `<b>${total}</b> marks` : `<b>${shown}</b> of ${total}`;
+      count.title = `${shown} grab marks on screen; ${total} without a focus`;
+    }
+    wrap.appendChild(count);
+    return wrap;
+  }
+
+  /**
+   * A press on one of the three segments.
+   *
+   * Switching INTO a mode has to leave something usable on screen, and the two
+   * modes answer that differently: `Focus` keeps whatever target it had, or takes
+   * the open layer row, or the top storey — never nothing, because a Focus with
+   * no target is just All with extra steps. `Pick` deliberately starts empty: no
+   * marks, and a chip that says to press a strand.
+   */
+  private chooseFocus(key: 'all' | 'focus' | 'pick'): void {
+    const focus = this.view.getHandleFocus();
+    let next: HandleFocus;
+    if (key === 'all') next = { kind: 'all' };
+    else if (key === 'pick') {
+      // Carry a layer target across as the picked strand: switching modes should
+      // not throw away the thing you were already working on.
+      const id = focus.kind === 'layer' ? focus.id : focus.kind === 'pick' ? focus.id : null;
+      next = { kind: 'pick', id };
+    } else if (focus.kind === 'level' || focus.kind === 'layer') next = focus;
+    else if (focus.kind === 'pick' && focus.id) next = { kind: 'layer', id: focus.id };
+    else if (this.selectedId) next = { kind: 'layer', id: this.selectedId };
+    else next = { kind: 'level', level: this.scene.levelBreaks.length };
+    this.view.setHandleFocus(next);
+    this.syncToolbar();
+    this.renderStack();
+  }
+
+  /** Aim the focus from the stack. Pressing the ◎ of the row or bar it is already
+   *  on lets it go, so the same press is the way in and the way out. */
+  private focusOn(target: HandleFocus): void {
+    const focus = this.view.getHandleFocus();
+    const same =
+      (focus.kind === 'level' && target.kind === 'level' && focus.level === target.level) ||
+      (focus.kind === 'layer' && target.kind === 'layer' && focus.id === target.id) ||
+      (focus.kind === 'pick' && target.kind === 'layer' && focus.id === target.id);
+    this.view.setHandleFocus(same ? { kind: 'all' } : target);
+    this.syncToolbar();
+    this.renderStack();
   }
 
   // ---- The settings dock ---------------------------------------------------
@@ -1912,6 +2074,8 @@ export class Panel {
 
     const back = this.hiddenBanner();
     if (back) host.appendChild(back);
+    const focused = this.focusBanner();
+    if (focused) host.appendChild(focused);
 
     const top = this.scene.levelBreaks.length;
     for (let level = top; level >= 0; level--) {
@@ -1959,6 +2123,25 @@ export class Panel {
       level === 0
         ? 'The ground storey — everything here rests on the base plane.'
         : `Rests ${level} × ${step} above the ground — the strand thickness plus the band the weave lifts and dips through.`;
+
+    const focus = this.view.getHandleFocus();
+    if (count && this.view.getMode() === 'move') {
+      // The picker for Move's focus, on the thing it points AT. The control that
+      // ARMS the mode is on the toolbar, where it is on screen whichever of the
+      // stack's three views is showing; this is the aim, and it belongs on the row.
+      const lit = focus.kind === 'level' && focus.level === level;
+      const aim = iconBtn(
+        '◎',
+        lit ? 'Move is focused here — press again for every handle' : `Put Move's handles on level ${level} only`,
+        () => this.focusOn({ kind: 'level', level }),
+      );
+      aim.classList.add('focus-aim');
+      if (lit) {
+        aim.classList.add('on');
+        bar.classList.add('focus-in');
+      }
+      bar.appendChild(aim);
+    }
 
     if (level > 0) {
       const index = level - 1;
@@ -2909,6 +3092,49 @@ export class Panel {
     return box;
   }
 
+  /**
+   * The second way back to every handle, and the reason a focus is safe to leave
+   * running: it sits on the stack, where the solo's own banner already does, so
+   * the state is visible even with the toolbar wrapped away or the panel scrolled
+   * to the other end of a 230-layer twist.
+   *
+   * It is deliberately NOT the same object as `hiddenBanner`: hiding takes layers
+   * out of the model and this takes marks off the screen, and a banner that meant
+   * either would be a banner that means neither.
+   */
+  private focusBanner(): HTMLElement | null {
+    if (this.view.getMode() !== 'move') return null;
+    const focus = this.view.getHandleFocus();
+    if (focus.kind === 'all') return null;
+    const { shown, total } = this.view.getHandleCount();
+
+    const box = el('div', 'focus-banner');
+    const what =
+      focus.kind === 'level'
+        ? `level ${focus.level}`
+        : focus.kind === 'layer'
+          ? focus.id
+          : focus.id
+            ? `${focus.id} and its joints`
+            : null;
+    box.appendChild(
+      el('b', undefined, what ? `Handles on ${what}` : 'Press a strand to put handles on it'),
+    );
+    box.appendChild(el('span', 'focus-banner-n', what ? `${shown} of ${total}` : `0 of ${total}`));
+    const all = pill(
+      'All handles',
+      () => {
+        this.view.setHandleFocus({ kind: 'all' });
+        this.syncToolbar();
+        this.renderStack();
+      },
+      'Put the grab marks back on every strand (Escape does this too)',
+    );
+    all.classList.add('coral');
+    box.appendChild(all);
+    return box;
+  }
+
   private layerRow(index: number): HTMLElement {
     const strand = this.scene.strands[index];
     const selected = strand.id === this.selectedId;
@@ -2945,6 +3171,36 @@ export class Panel {
     row.appendChild(name);
 
     const controls = el('span', 'row-acts');
+    // Move's aim, on the layer it aims at. First in the row because it is the one
+    // control here that changes nothing about the scene — it only changes what you
+    // can grab — so it reads as a different kind of thing from ● ▲ ▼.
+    if (this.view.getMode() === 'move' && !strand.isMask) {
+      const focus = this.view.getHandleFocus();
+      const lit =
+        (focus.kind === 'layer' && focus.id === strand.id) ||
+        (focus.kind === 'pick' && focus.id === strand.id);
+      const aim = iconBtn(
+        '◎',
+        lit
+          ? 'Move is focused here — press again for every handle'
+          : `Put Move's handles on ${strand.id} only`,
+        () =>
+          this.focusOn(
+            // Stay in Pick if that is the mode we are in: its answer to one layer
+            // is the layer PLUS its joints, and switching the kind under the user
+            // because they used the stack rather than the canvas would be a trap.
+            this.view.getHandleFocus().kind === 'pick'
+              ? { kind: 'pick', id: strand.id }
+              : { kind: 'layer', id: strand.id },
+          ),
+      );
+      aim.classList.add('focus-aim');
+      if (lit) {
+        aim.classList.add('on');
+        row.classList.add('focus-in');
+      }
+      controls.appendChild(aim);
+    }
     controls.appendChild(
       iconBtn(strand.visible ? '●' : '○', 'Show / hide', () => {
         strand.visible = !strand.visible;

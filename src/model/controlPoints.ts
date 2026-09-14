@@ -72,6 +72,21 @@ export function visibleControls(s: Strand3D, thirdEnabled: boolean): VisibleCont
 }
 
 /**
+ * How many control marks this strand would be given, read off `visibleControls`
+ * rather than counted a second way — so the figure the Move strip prints and the
+ * marks the scene builds cannot drift apart. The `center` test mirrors
+ * `buildHandles`: a centre that is flagged but null has nowhere to draw.
+ */
+export function controlMarkCount(s: Strand3D, thirdEnabled: boolean): number {
+  const vis = visibleControls(s, thirdEnabled);
+  return (
+    (vis.triangle ? 1 : 0) +
+    (vis.circle ? 1 : 0) +
+    (vis.center && s.control_point_center ? 1 : 0)
+  );
+}
+
+/**
  * Press side effects, applied the moment a handle is grabbed (OSS does this in
  * try_move_control_points, before any movement): grabbing the triangle reveals
  * the rest of the set, and grabbing the centre is itself the act of locking it.

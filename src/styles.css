@@ -52,6 +52,9 @@
   --danger: #cc4b4b;
 
   --panel-w: 344px;
+  /* What #corner takes out of the canvas's top-right: two 38px rounds, the 8px
+     between them, and a gap. #toolbar measures from it so the two never stack. */
+  --corner-w: 96px;
   /* How much of the bottom of the screen the panel occupies. Zero on a desktop,
      where the panel is a column beside the canvas; a fixed slice on a phone,
      where it is a bottom sheet — and back to zero when that sheet is folded away.
@@ -1089,6 +1092,56 @@ button {
   font-size: 10px;
 }
 
+/* Move's focus, on the stack. Same shape as the solo's banner, because both say
+   "something is narrowed and here is the way back" — and deliberately not the
+   same object, since one takes layers out of the model and the other only takes
+   marks off the screen. */
+.focus-banner {
+  position: sticky;
+  z-index: 2;
+  top: -12px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 7px 8px 7px 11px;
+  border: 1.5px dashed var(--coral);
+  background: var(--paper);
+}
+
+.focus-banner b {
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.focus-banner-n {
+  margin-right: auto;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.focus-banner .pill {
+  flex: 0 0 auto;
+  min-height: 26px;
+  padding: 0 11px;
+  font-size: 10px;
+}
+
+/* The row or bar Move is pointing at. A rail rather than a fill: the row still
+   has to read as its layer — swatch, name, lineage — with one more fact on it. */
+.row.focus-in,
+.level-bar.focus-in {
+  box-shadow: inset 3px 0 0 var(--coral);
+}
+
+.icon-btn.focus-aim.on {
+  border-color: var(--coral);
+  background: var(--coral);
+  color: #fff;
+}
+
 /* ---- controls ------------------------------------------------------------ */
 
 .pill-row {
@@ -1401,6 +1454,12 @@ button {
   z-index: 6;
   display: flex;
   gap: 4px;
+  /* Move's focus control makes the toolbar the one strip that can outgrow the
+     canvas. Wrapping is what it should do about it: the segment drops to a
+     second line rather than pushing the tools off the left edge, and the tool
+     button's own ring keeps the state readable when it does. */
+  flex-wrap: wrap;
+  justify-content: center;
   padding: 5px;
   border: 1.5px solid var(--edge2);
   border-radius: 999px;
@@ -1416,7 +1475,11 @@ button {
 #toolbar {
   top: calc(14px + env(safe-area-inset-top));
   left: 14px;
-  right: calc(var(--panel-w) + 14px);
+  /* Clear of #corner, which owns the canvas's top-right (two 38px rounds and the
+     gap between them). The toolbar grew a focus control and started sliding under
+     the theme switch; reserving the strip is what keeps the two from stacking,
+     and it costs nothing while the bar is short. */
+  right: calc(var(--panel-w) + 14px + var(--corner-w));
   width: fit-content;
   margin-inline: auto;
 }
@@ -1452,6 +1515,140 @@ button {
 .tool-btn.on:hover {
   background: var(--fill);
   color: var(--fill-ink);
+}
+
+/* Move, while its handles are narrowed. The toolbar can wrap to a second line on
+   a narrow view and take the focus control with it, so the tool button carries
+   the fact too — a ring in the accent, which reads on the dark fill of an active
+   button and on the paper of an inactive one alike. */
+.tool-btn.tool-focused {
+  position: relative;
+}
+
+.tool-btn.tool-focused {
+  /* Room for the ring, taken on the right so the label does not shift when the
+     focus comes and goes. */
+  padding-right: 22px;
+}
+
+.tool-btn.tool-focused::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border: 2px solid var(--coral);
+  border-radius: 50%;
+}
+
+/* Move's focus control: it belongs to the tool, so it sits inside the toolbar
+   next to Move rather than in a strip of its own, separated by a hairline the
+   way the undo pair is. */
+.focus-ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  /* NOT shrinkable, and that is the whole reason the toolbar wraps at all. Left
+     free to shrink it would squeeze below its own contents — the segment and the
+     count cannot give — and the tools would silently overflow the strip and slide
+     under the theme buttons instead of dropping to a second line. */
+  flex: 0 0 auto;
+  /* Ruled on BOTH sides. One rule reads as "Move and its option"; two read as a
+     group that starts and ends, which is what it is — the tools carry on after
+     it, and without the second rule the mark count runs straight into Attach. */
+  margin-inline: 4px;
+  padding-inline: 10px;
+  border-inline: 1px solid var(--line);
+}
+
+.focus-label {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.focus-seg {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border: 1.5px solid var(--edge2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.focus-opt {
+  padding: 4px 10px;
+  border: 0;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 750;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.focus-opt + .focus-opt {
+  border-left: 1.5px solid var(--edge2);
+}
+
+.focus-opt:hover {
+  background: var(--hover);
+}
+
+.focus-opt.on {
+  background: var(--fill);
+  color: var(--fill-ink);
+}
+
+/* What it is pointing at. Dashed, like the banner on the stack and unlike every
+   solid pill around it, so the chip reads as a state and not as a button. */
+.focus-target {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 190px;
+  overflow: hidden;
+  padding: 3px 9px;
+  border: 1.5px dashed var(--coral);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Pick, armed and waiting for its first press: nothing on screen and nothing
+   wrong, so the count's place says what to do instead of showing a 0. */
+.focus-count.waiting {
+  color: var(--coral);
+  font-weight: 750;
+}
+
+.focus-count {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.focus-count b {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+/* The word "Handles" is the first thing to go when the strip runs out of canvas:
+   the segment beside it is three plain words, the chip states the target, and
+   losing a tool to a second line costs more than losing a label. The tooltip on
+   the group keeps the name for anyone who wants it. */
+@media (max-width: 1420px) {
+  .focus-label {
+    display: none;
+  }
+
+  .focus-ctl {
+    gap: 7px;
+  }
 }
 
 /* The undo pair. Square rather than pill-shaped padding, because they carry an
@@ -1935,6 +2132,13 @@ button {
     left: calc(10px + env(safe-area-inset-left));
     right: auto;
     margin-inline: 0;
+    /* `right: auto` takes away the bound that makes the bar wrap on a desktop, so
+       the cap has to be stated here instead — otherwise Move's focus control
+       pushes the tools off the side of a phone rather than onto a second line.
+       The 62px is the fold toggle, which owns this corner at this width. */
+    max-width: calc(
+      100vw - 20px - 62px - env(safe-area-inset-left) - env(safe-area-inset-right)
+    );
   }
 
   /* The fold toggle owns the top-right corner on a phone, so the theme switch and
