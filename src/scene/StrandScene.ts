@@ -35,6 +35,7 @@ import {
   ControlHandle,
   VisibleControls,
   beginControlDrag,
+  controlMarkCount,
   dragControl,
   settleControls,
   syncPassiveCp2,
@@ -253,7 +254,22 @@ function grabPx(e: PointerEvent): (typeof GRAB_PX)['fine'] {
 // marks on the same drawing-plane point project to the very same pixel, because
 // they are drawn on the same plane — and not about marks that are merely near,
 // which the scores already rank.
+/** How far a press may travel and still count as a click rather than an orbit.
+ *  Generous enough for a finger, tight enough that a deliberate drag keeps the
+ *  focus it was working under. */
+const CLEAR_CLICK_PX = 5;
+
 const COINCIDE_PX = 2;
+
+/** Two focuses that would build the same marks. Guards `setHandleFocus` against
+ *  the rebuild a re-render would otherwise cost on every toolbar sync. */
+function sameFocus(a: HandleFocus, b: HandleFocus): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === 'level' && b.kind === 'level') return a.level === b.level;
+  if (a.kind === 'layer' && b.kind === 'layer') return a.id === b.id;
+  if (a.kind === 'pick' && b.kind === 'pick') return a.id === b.id;
+  return true;
+}
 
 // A press counts as landing on the spot the last one did within this much, and
 // the memory of that spot is dropped once the pointer strays further than a whole
@@ -278,6 +294,53 @@ const CP_LIFT = 0.1;
 // is the only way to reach it on a trackpad with no second button, or on a phone,
 // where two fingers are already a pinch.
 export type EditMode = 'orbit' | 'pan' | 'move' | 'attach' | 'weave';
+
+/**
+ * WHICH strands Move draws its grab marks on.
+ *
+ * `buildHandles` marks every visible non-mask strand: two endpoint spheres, the
+ * control marks, the dashed rig, all with `depthTest: false` so they stay
+ * grabbable behind the ribbons. On the opening sample that is right. On
+ * `box-stitch-10` it is 126 marks over 42 layers and on `twistStitchMN(7, 3, 10)`
+ * it is 690 over 230 — ten storeys of marks piled in front of the one round you
+ * are editing. So the tool carries a focus, and it is the ONE thing that decides
+ * what gets a mark.
+ *
+ * Two ways to aim it, because they answer two different questions:
+ *
+ *   * `level` / `layer` — "which storey am I working on". Set from the layer
+ *     stack, where storeys and layers already live.
+ *   * `pick` — "which strand am I working on". Set by pressing the strand on the
+ *     canvas, and it carries everything GLUED to that strand with it, because
+ *     that is the set a drag already moves (`connectedEndpoints`).
+ *
+ * Four rules keep it safe to leave running, and they matter as much as the
+ * control does:
+ *
+ *   1. FOCUS IS NOT HIDE. Every lace keeps its colour and its place. Only the
+ *      marks go — which is what makes this worth having next to `Hide others`
+ *      rather than instead of it.
+ *   2. A drag still reaches everything glued to it. Focus limits what you can
+ *      GRAB, never what can move.
+ *   3. There are always two ways back to `all` — the toolbar's own segment and
+ *      the banner on the stack — plus Escape.
+ *   4. A target that goes away falls back to `all` rather than leaving a canvas
+ *      nobody can grab. See `resolveFocus`.
+ */
+export type HandleFocus =
+  | { kind: 'all' }
+  | { kind: 'level'; level: number }
+  | { kind: 'layer'; id: string }
+  /** `id` is null while the mode is armed and nothing has been pressed yet:
+   *  no marks at all, which is the point — you choose before you edit. */
+  | { kind: 'pick'; id: string | null };
+
+/** How many marks are on screen, and how many there would be without a focus.
+ *  The pair is the whole argument for the control, so the strip prints it. */
+export interface HandleCount {
+  shown: number;
+  total: number;
+}
 
 interface MoveTarget {
   strand: Strand3D;
@@ -402,6 +465,22 @@ export class StrandScene {
    *  all `pickHandle` needs to hand the next press on the same spot the next
    *  handle down the pile. */
   private lastGrab: { key: string; x: number; y: number } | null = null;
+
+  /** Which strands Move marks. See `HandleFocus`. */
+  private focus: HandleFocus = { kind: 'all' };
+  /** Where a press landed on bare stage while a focus was armed. A RELEASE near
+   *  the same spot is a click and lets the focus go; a release anywhere else was
+   *  an orbit and leaves it alone. */
+  private clearPress: Vec2 | null = null;
+  /** Marks on screen, and marks there would be with no focus — filled by
+   *  `buildHandles`, which is the only place that knows both. */
+  private handleCount: HandleCount = { shown: 0, total: 0 };
+  /**
+   * The focus changed WITHOUT the panel asking — a press on the canvas set it,
+   * or a target went away and it fell back. The toolbar and the stack both draw
+   * it, so both have to be told.
+   */
+  onFocusChange: ((focus: HandleFocus) => void) | null = null;
 
   // The woven world-space centerline of each strand (indexed like scene.strands;
   // null for hidden strands), rebuilt every frame the scene changes. Handles and
@@ -656,12 +735,126 @@ export class StrandScene {
     this.mode = mode;
     this.hovered = null;
     this.lastGrab = null;
+    this.clearPress = null;
     this.weavePendingOverId = null;
     this.weaveHoverId = null;
     this.onWeaveHover?.(null);
     this.applyCameraBindings();
     this.rebuild();
     this.setCursor(this.defaultCursor());
+  }
+
+  getHandleFocus(): HandleFocus {
+    return this.focus;
+  }
+
+  /**
+   * Aim the Move tool's marks. Takes no undo step and moves no strand: it
+   * changes what you can GRAB, never what is there.
+   */
+  setHandleFocus(focus: HandleFocus): void {
+    if (sameFocus(this.focus, focus)) return;
+    this.focus = focus;
+    // A focus change can pull the marks out from under a half-walked pile, so
+    // the next press on that spot must start at the top again.
+    this.lastGrab = null;
+    this.hovered = null;
+    this.rebuild();
+  }
+
+  /**
+   * Point the armed focus at a strand the user just pressed.
+   *
+   * Which KIND it becomes is the mode's own: `pick` stays `pick` (and so carries
+   * the strand's joints), while a level or layer focus narrows to that one layer
+   * — pressing a strand is an unambiguous "this one", and a press that only
+   * changed the storey would be a worse answer to it.
+   */
+  private aimFocusAt(id: string): void {
+    const next: HandleFocus =
+      this.focus.kind === 'pick' ? { kind: 'pick', id } : { kind: 'layer', id };
+    if (sameFocus(this.focus, next)) return;
+    this.setHandleFocus(next);
+    this.onFocusChange?.(next);
+  }
+
+  /** How many LAYERS the focus currently reaches. One for a layer, the storey's
+   *  count for a level, and for a pick the strand plus everything glued to it —
+   *  which is the number worth printing, since that reach is the whole point of
+   *  the mode and is not otherwise visible. */
+  getFocusSpan(): number {
+    const set = this.focusedIndices(this.focus);
+    return set === null ? this.current.strands.filter((s) => !s.isMask).length : set.size;
+  }
+
+  /** Marks drawn, and marks there would be with none of this. */
+  getHandleCount(): HandleCount {
+    return { ...this.handleCount };
+  }
+
+  /**
+   * The strand indices a focus names, or null for "everything".
+   *
+   * `pick` carries the strands GLUED to the pressed one, not just the strand
+   * itself: a drag on a joint already moves all of them (`connectedEndpoints`),
+   * so hiding their marks would leave you dragging strands whose handles you
+   * cannot see. Both sides are collected, so an arm in the middle of a lace
+   * brings its parent and its child.
+   */
+  private focusedIndices(focus: HandleFocus): Set<number> | null {
+    if (focus.kind === 'all') return null;
+    const out = new Set<number>();
+    if (focus.kind === 'level') {
+      this.current.strands.forEach((s, i) => {
+        if (!s.isMask && levelAt(this.current, i) === focus.level) out.add(i);
+      });
+      return out;
+    }
+    const id = focus.id;
+    if (id === null) return out; // pick, armed but nothing chosen: no marks yet
+    const index = this.current.strands.findIndex((s) => s.id === id);
+    if (index < 0) return out;
+    out.add(index);
+    if (focus.kind === 'layer') return out;
+    ([0, 1] as const).forEach((side) => {
+      for (const ref of connectedEndpoints(this.current, index, side)) out.add(ref.index);
+    });
+    return out;
+  }
+
+  /**
+   * The focus to actually build with, and rule 4 of `HandleFocus`.
+   *
+   * A focus can be left pointing at something that is no longer there — a layer
+   * deleted or hidden, a storey emptied by a reorder, a scene replaced under a
+   * `pick`. Building it literally would leave a canvas with no grabbable mark
+   * and no sign of why, so a focus that names NOTHING VISIBLE gives way to
+   * `all`, and the caller is told so the strip can say it.
+   *
+   * `pick` with nothing pressed yet is the one empty focus that is meant: it is
+   * the mode waiting for its first press, not a target that went away.
+   */
+  private resolveFocus(): Set<number> | null {
+    const focus = this.focus;
+    if (focus.kind === 'all') return null;
+    const wanted = this.focusedIndices(focus) as Set<number>;
+    if (focus.kind === 'pick' && focus.id === null) return wanted;
+
+    // Is the thing the focus NAMES still there? Not "is anything left in the
+    // set" — a `pick` carries its neighbours, so hiding the strand you picked
+    // leaves their marks behind and a chip still claiming a layer that is gone.
+    // The target is what the user aimed at, so the target is what has to survive.
+    const usable = (s: Strand3D | undefined): boolean => !!s && s.visible && !s.isMask;
+    const held =
+      focus.kind === 'level'
+        ? [...wanted].some((i) => usable(this.current.strands[i]))
+        : usable(this.current.strands.find((x) => x.id === focus.id));
+    if (held) return wanted;
+
+    // Nothing left to point at. Fall back rather than hand back a dead canvas.
+    this.focus = { kind: 'all' };
+    queueMicrotask(() => this.onFocusChange?.(this.focus));
+    return null;
   }
 
   /** True for the tools that only drive the camera — nothing in the scene can be
@@ -2269,12 +2462,22 @@ export class StrandScene {
 
   private buildHandles(): void {
     this.disposeHandles();
+    this.handleCount = { shown: 0, total: 0 };
     // The camera tools have no handles; the weave tool picks strand bodies,
     // not endpoints.
     if (this.isCameraMode() || this.mode === 'weave') return;
 
+    // WHICH strands get marked, and the one place that decides it. Null is
+    // "every one of them", which is what Attach always wants and what Move
+    // wants until it is focused. See `HandleFocus`.
+    const inFocus = this.mode === 'move' ? this.resolveFocus() : null;
+
     this.current.strands.forEach((strand, layerIndex) => {
       if (!strand.visible || strand.isMask) return;
+      // Counted before the guard, so the strip can say "12 of 126" rather than
+      // "12" — the pair is the whole argument for having a focus at all.
+      this.handleCount.total += 2 + (this.mode === 'move' ? controlMarkCount(strand, this.params.thirdControlPoint) : 0);
+      if (inFocus && !inFocus.has(layerIndex)) return;
       // ONE rule for every handle on this strand: it floats at the height the
       // built model draws the strand at, over the drawing-plane point it marks.
       // See `drawnZAt` — a storey that settled, a weave, a fold the lace merge
@@ -2339,6 +2542,7 @@ export class StrandScene {
         this.buildControlLines(strand, vis, layerIndex);
       }
     });
+    this.handleCount.shown = this.handleGroup.children.length;
   }
 
   /**
@@ -2828,7 +3032,32 @@ export class StrandScene {
     }
 
     const hit = this.pickHandle(e);
-    if (!hit) return; // missed every handle -> let OrbitControls orbit
+    if (!hit) {
+      // Missed every mark. In Move that is not nothing: while a focus is armed,
+      // a press on a strand BODY is how you aim it — the press you were going to
+      // make anyway — and a click on bare stage is how you let it go. Anything
+      // else falls through to OrbitControls, which is what an empty drag is for.
+      if (this.mode === 'move' && this.focus.kind !== 'all') {
+        // `pickStrandAt`, not `pickStrand`: the latter rays the per-layer pick
+        // ribbons, which `buildWeaveOverlays` only puts up for the weave tool and
+        // the fold lab, so under Move it answers null for every strand there is.
+        // `pickStrandAt` falls through to the drawn bodies and attributes the hit
+        // through the lace's own ownership map, which also gets a press on a
+        // FOLD right — the turn belongs to no single strand's own run.
+        const id = this.pickStrandAt(e.clientX, e.clientY);
+        if (id) {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          this.aimFocusAt(id);
+          return;
+        }
+        // Not cleared here: an orbit starts on bare stage too, so the release
+        // decides (see `clearPress` in onPointerUp) and a drag keeps the focus.
+        const r = this.canvas.getBoundingClientRect();
+        this.clearPress = { x: e.clientX - r.left, y: e.clientY - r.top };
+      }
+      return; // missed every handle -> let OrbitControls orbit
+    }
 
     const ud = hit.userData;
     if (this.mode === 'attach' && ud.kind === 'endpoint' && !ud.attachable) {
@@ -2975,6 +3204,20 @@ export class StrandScene {
 
   private onPointerUp = (e: PointerEvent): void => {
     if (this.isStrayPointer(e)) return;
+    // A press on bare stage that did not turn into an orbit: a click, and the
+    // way out of a focus without reaching for the toolbar.
+    const clear = this.clearPress;
+    this.clearPress = null;
+    if (clear && this.mode === 'move' && this.focus.kind !== 'all') {
+      const r = this.canvas.getBoundingClientRect();
+      const moved = Math.hypot(e.clientX - r.left - clear.x, e.clientY - r.top - clear.y);
+      if (moved <= CLEAR_CLICK_PX) {
+        const next: HandleFocus =
+          this.focus.kind === 'pick' ? { kind: 'pick', id: null } : { kind: 'all' };
+        this.setHandleFocus(next);
+        this.onFocusChange?.(next);
+      }
+    }
     const st = this.dragState;
     if (!st) return;
     this.dragState = null;
