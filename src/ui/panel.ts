@@ -34,7 +34,7 @@
 // Reordering a layer here restacks it in Z — the direct 3D analogue of moving a
 // layer in OpenStrand's layer panel.
 
-import { StrandScene, EditMode, HandleFocus, Sublevel } from '../scene/StrandScene';
+import { StrandScene, EditMode, HandleFocus, RenderParams, Sublevel } from '../scene/StrandScene';
 import { CrossFact, FoldFact, LaceFact, MemberFact, PROFILE } from '../scene/sections';
 import { MaskLink, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, TWIST_FAMILY, TWIST_MAX, makeSample } from '../model/samples';
@@ -407,6 +407,17 @@ export class Panel {
         this.syncToolbar();
         this.renderStack();
       }
+    });
+
+    // OpenStrand Studio's own shortcut for this button (main_window.py presses
+    // the layer panel's Draw Names on `1`), on a strip that shows its state, so
+    // the key and the button never disagree about what is on.
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== '1' || e.ctrlKey || e.metaKey || e.altKey) return;
+      // Not while typing: `1` is a character in the scene name and the JSON box.
+      if (isTypingIn(e.target)) return;
+      e.preventDefault();
+      this.toggleNames();
     });
 
     // The shortcuts every editor has, on the same history the arrows drive.
@@ -800,6 +811,77 @@ export class Panel {
   // new strand out of a free endpoint; Weave masks one strand over another.
   private toolbarHost: HTMLElement | null = null;
 
+  // ---- Draw names ----------------------------------------------------------
+  /**
+   * OSS's Draw Names (layer_panel.py's `draw_names_button`, and the `1` key),
+   * carried into 3D — with the one control a stack needs that a flat canvas
+   * never did.
+   *
+   * On the 2D canvas "draw names" is one switch, because there is one plane. A
+   * scene here is a TOWER: the ten-level box stitch is forty-two strands, and
+   * naming all forty-two is not a reading of the model, it is fog. So the switch
+   * carries a SCOPE, in the segment the toolbar already uses for Move's handles:
+   *
+   *   * **All**   — every visible strand, which is what OSS means by the button.
+   *   * **Level** — the strands resting on the selected layer's storey.
+   *   * **Layer** — the selected layer alone.
+   *
+   * Level and Layer aim at the LAYER PANEL's selection, the way the plane guides
+   * already do — you pick the row, and the names follow. With nothing picked
+   * they name nothing and say so, rather than quietly naming everything.
+   */
+  private nameScopeControl(): HTMLElement {
+    const p = this.view.getParams();
+    const wrap = el('span', 'focus-ctl');
+    wrap.setAttribute('role', 'group');
+    wrap.setAttribute('aria-label', 'Which strands are named');
+    // No word in front of the segment: it sits immediately after the lit Names
+    // button, which has already said what this is, and the toolbar is the one
+    // strip in the app that can outgrow the canvas.
+    const seg = el('span', 'focus-seg');
+    const opt = (key: RenderParams['nameScope'], label: string, hint: string): void => {
+      const on = p.nameScope === key;
+      const b = el('button', 'focus-opt' + (on ? ' on' : '')) as HTMLButtonElement;
+      b.type = 'button';
+      b.textContent = label;
+      b.title = hint;
+      b.setAttribute('aria-pressed', String(on));
+      b.addEventListener('click', () => {
+        this.view.setNameTarget(this.selectedId);
+        this.view.setParams({ nameScope: key });
+        this.syncToolbar();
+      });
+      seg.appendChild(b);
+    };
+    opt('all', 'All', 'Name every visible strand');
+    opt('level', 'Level', 'Name only the strands resting on the selected layer’s level');
+    opt('layer', 'Layer', 'Name only the selected layer');
+    wrap.appendChild(seg);
+
+    // Same shape as Move's focus: the target when there is one, and what to do
+    // when there is not.
+    if (p.nameScope !== 'all') {
+      const chip = el('span', 'focus-target');
+      if (this.selectedId) {
+        chip.textContent = `◎ ${this.selectedId}`;
+        chip.title = 'The layer the names are narrowed to. Press another row to move it.';
+      } else {
+        chip.classList.add('waiting');
+        chip.textContent = 'press a layer';
+        chip.title = 'Nothing picked yet — press a row in the layer panel to aim the names';
+      }
+      wrap.appendChild(chip);
+    }
+    return wrap;
+  }
+
+  /** The toggle itself, from the toolbar button and from the `1` key alike. */
+  private toggleNames(): void {
+    this.view.setNameTarget(this.selectedId);
+    this.view.setParams({ showNames: !this.view.getParams().showNames });
+    this.syncToolbar();
+  }
+
   private static readonly TOOLS: Array<{ key: EditMode; label: string; hint: string }> = [
     { key: 'pan', label: 'Pan', hint: 'Slide the camera sideways with a plain drag' },
     { key: 'orbit', label: 'Orbit', hint: 'Move the camera only — nothing in the scene can be edited' },
@@ -858,6 +940,29 @@ export class Panel {
       // the end of the bar — a tool and its one option, read left to right.
       if (t.key === 'move' && mode === 'move') bar.appendChild(this.focusControl());
     }
+    // Names rides at the END of the strip, behind a rule of its own — the same
+    // rule the undo pair sits in front of, and for the same reason: nothing here
+    // is armed by pressing it. It is a way of LOOKING, it holds whichever tool is
+    // up, and its state has to be readable without opening anything, which is
+    // what buys it a permanent place rather than a line in a dock card.
+    const on = this.view.getParams().showNames;
+    bar.appendChild(el('span', 'tool-sep'));
+    // The button and its scope are ONE item in the strip, not two: with Move up
+    // the bar carries two segments and has to wrap (#toolbar's flex-wrap), and a
+    // scope that wrapped on its own would land on the line below under Move's
+    // handles — pointing at the wrong control. Wrapped as a group it takes its
+    // button with it and stays legible.
+    const group = el('span', 'names-ctl');
+    const names = el('button', 'tool-btn' + (on ? ' on' : '')) as HTMLButtonElement;
+    names.type = 'button';
+    names.innerHTML = `${NAMES_ICON}<span>Names</span>`;
+    names.title = 'Draw each strand\u2019s layer name on the model (1)';
+    names.setAttribute('aria-pressed', String(on));
+    names.addEventListener('click', () => this.toggleNames());
+    group.appendChild(names);
+    // Only once it is on: an off switch has no scope to talk about.
+    if (on) group.appendChild(this.nameScopeControl());
+    bar.appendChild(group);
   }
 
   // ---- Move's focus --------------------------------------------------------
@@ -3166,6 +3271,11 @@ export class Panel {
     if (strand.parentId) name.appendChild(el('span', 'tag', `↳ ${strand.parentId}`));
     name.addEventListener('click', () => {
       this.selectedId = selected ? null : strand.id;
+      // A narrowed Names follows the selection, the way the plane guides already
+      // follow it — you pick the layer, not the label. The strip carries the
+      // target chip, so it is redrawn with the row.
+      this.view.setNameTarget(this.selectedId);
+      if (this.view.getParams().nameScope !== 'all') this.syncToolbar();
       this.renderStack();
     });
     row.appendChild(name);
@@ -4085,6 +4195,14 @@ const MARK =
 const LAYERS_ICON = svg(
   '<path d="M12 3 22 9.2 12 15.4 2 9.2Z" />' +
     '<path d="M12 17.7 3.7 12.5 2 13.6 12 19.8 22 13.6 20.3 12.5Z" />',
+);
+
+// The Draw-names mark: a luggage tag, punched. Every other mark in this strip is
+// a solid silhouette (the icons are filled, never stroked), and a letterform at
+// 13px is a smudge — a tag is the one shape that says "this thing carries a
+// name" without trying to spell one.
+const NAMES_ICON = svg(
+  '<path fill-rule="evenodd" d="M13.1 2.2h7.3a1.4 1.4 0 0 1 1.4 1.4v7.3a2 2 0 0 1-.6 1.4l-8.6 8.6a2 2 0 0 1-2.8 0l-6.7-6.7a2 2 0 0 1 0-2.8l8.6-8.6a2 2 0 0 1 1.4-.6Zm4.5 3.4a1.7 1.7 0 1 0 0 3.4 1.7 1.7 0 0 0 0-3.4Z" />',
 );
 
 // The planes side of the stack bar's switch: a storey seen edge-on — its floor
