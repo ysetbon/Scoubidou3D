@@ -1618,6 +1618,22 @@ button {
   text-overflow: ellipsis;
 }
 
+/* Names, narrowed to a level or a layer with nothing picked yet: the chip's
+   place says what to do rather than naming a target it does not have — the same
+   answer Pick's count gives to the same question. */
+.focus-target.waiting {
+  color: var(--coral);
+}
+
+/* Draw names and its scope, as one item in the strip: the two wrap together or
+   not at all, so the segment is never left sitting under Move's handles. */
+.names-ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
 /* Pick, armed and waiting for its first press: nothing on screen and nothing
    wrong, so the count's place says what to do instead of showing a 0. */
 .focus-count.waiting {
@@ -2135,9 +2151,13 @@ button {
     /* `right: auto` takes away the bound that makes the bar wrap on a desktop, so
        the cap has to be stated here instead — otherwise Move's focus control
        pushes the tools off the side of a phone rather than onto a second line.
-       The 62px is the fold toggle, which owns this corner at this width. */
+       The 104px is the fold toggle, which owns this corner at this width: it is
+       a LABELLED pill ("Hide layers", or the open card's name), ~90px wide plus
+       its own inset, and the 62px this used to reserve was a button's width
+       rather than that pill's — so Move's control already ran under it at 430px
+       before anything else was asked of the strip. */
     max-width: calc(
-      100vw - 20px - 62px - env(safe-area-inset-left) - env(safe-area-inset-right)
+      100vw - 20px - 104px - env(safe-area-inset-left) - env(safe-area-inset-right)
     );
   }
 
@@ -2207,6 +2227,13 @@ button {
     padding: 10px;
   }
 
+  /* The rules that group the strip — undo pair, tools, Names — go where the
+     words went. At this width every button is a bare mark and the strip is
+     within a dozen pixels of wrapping, and a second line over the canvas costs
+     more than a hairline does. The order still groups them. */
+  #toolbar .tool-sep {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

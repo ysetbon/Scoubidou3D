@@ -369,6 +369,10 @@ export interface RenderParams {
   outline: boolean; // draw the stroke-colored outline shell
   roundCaps: boolean; // rounded strand ends
   showGrid: boolean;
+  /** OSS `should_draw_names`: write each strand's layer name on the model. */
+  showNames: boolean;
+  /** How many of them get one — every strand, one storey, or one layer. */
+  nameScope: 'all' | 'level' | 'layer';
   weave: boolean; // realise over/under as real depth at crossings
   weaveDepth: number; // weave amplitude — how far a lace lifts/dips, source units
   weaveSpan: number; // crossing pulse width, as a multiple of the crossing widths
@@ -388,6 +392,8 @@ export const DEFAULT_PARAMS: RenderParams = {
   outline: true,
   roundCaps: true,
   showGrid: true,
+  showNames: false,
+  nameScope: 'all',
   weave: true,
   weaveDepth: 26,
   weaveSpan: 1.3,
@@ -427,6 +433,7 @@ export class StrandScene {
   onWeaveHover: ((id: string | null) => void) | null = null;
 
   private strandGroup = new THREE.Group();
+  private nameGroup = new THREE.Group();
   private handleGroup = new THREE.Group();
   // One ribbon per strand LAYER, laid over the visible geometry, built only while
   // the weave tool is up. See buildWeaveOverlays: this is both what the weave
@@ -598,6 +605,7 @@ export class StrandScene {
 
     this.addLights();
     this.scene.add(this.strandGroup);
+    this.scene.add(this.nameGroup);
     this.scene.add(this.weaveGroup);
     this.scene.add(this.controlLines);
     this.scene.add(this.handleGroup);
@@ -970,6 +978,7 @@ export class StrandScene {
     // Where every strand ended up, now that the laces have been settled — the
     // handles are placed off this, so it has to be taken after the merge.
     this.collectDrawnLines();
+    this.updateNameLabels();
     this.buildHandles();
     this.buildWeaveOverlays();
   }
@@ -2037,6 +2046,9 @@ export class StrandScene {
     this.theme = theme;
     (this.scene.background as THREE.Color).set(PALETTE[theme].bg);
     this.updateGrid();
+    // The name pills are drawn into a canvas in the ink of one theme, so they are
+    // repainted rather than recoloured.
+    this.updateNameLabels();
   }
 
   /**
@@ -3340,6 +3352,164 @@ export class StrandScene {
     const halfW = ((maxX - minX) / 2) * SCALE;
     const halfH = ((maxY - minY) / 2) * SCALE;
     this.contentRadius = Math.max(2, Math.hypot(halfW, halfH));
+  }
+
+
+  // ---- Draw names -----------------------------------------------------------
+  //
+  // OpenStrand Studio writes a strand's layer name at the middle of the strand
+  // (strand.py's label). That does not survive the third dimension, and not
+  // because of the camera: in a box stitch the middle of every strand is the
+  // same knot, so six labels land in one pile and the pile says nothing. Each
+  // label therefore picks, from five points along its OWN run, the one furthest
+  // from the labels already placed — still unmistakably on its strand, and
+  // legible on a stitch rather than stacked.
+  //
+  // The labels are sprites, so they face the camera from wherever you orbit, and
+  // they are drawn with `depthTest: false` so a name is never swallowed by the
+  // ribbon it belongs to. They are OVERLAY: nothing here is saved into a scene
+  // file, exactly like the grid.
+
+  /** Which single layer the names narrow to when the scope is 'layer' / 'level'. */
+  private nameTargetId: string | null = null;
+  /**
+   * The drawn pills, by what is drawn ON them — `id|colour|theme`.
+   *
+   * `rebuild()` runs on every frame of a drag, and a name is a canvas, a texture
+   * and an upload. Rebuilding forty of those per frame is how a smooth Move turns
+   * into a slideshow with the switch on, so the pills are kept and only moved;
+   * the key carries everything painted into one, so a recolour or a theme flip
+   * misses the cache and repaints, which is exactly when it should.
+   */
+  private nameSprites = new Map<string, THREE.Sprite>();
+
+  setNameTarget(id: string | null): void {
+    if (this.nameTargetId === id) return;
+    this.nameTargetId = id;
+    this.updateNameLabels();
+  }
+
+  private disposeNameSprite(sp: THREE.Sprite): void {
+    const mat = sp.material as THREE.SpriteMaterial;
+    mat.map?.dispose();
+    mat.dispose();
+  }
+
+  private nameSprite(text: string, colour: RGBA, dark: boolean): THREE.Sprite {
+    // Drawn big and scaled down by the sprite: a pill rendered at its on-screen
+    // size is mush the moment anyone zooms in.
+    const FONT = 64;
+    const PAD = 22;
+    const font = `600 ${FONT}px 'Avenir Next', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif`;
+    const cv = document.createElement('canvas');
+    const ctx = cv.getContext('2d')!;
+    ctx.font = font;
+    cv.width = Math.ceil(ctx.measureText(text).width) + PAD * 2;
+    cv.height = Math.round(FONT + PAD * 1.4);
+    // Sizing the canvas clears it AND resets the context, so the font is set
+    // again — measuring and drawing cannot share one setting here.
+    ctx.font = font;
+    ctx.textBaseline = 'middle';
+    ctx.beginPath();
+    ctx.roundRect(0, 0, cv.width, cv.height, cv.height / 2);
+    ctx.fillStyle = dark ? 'rgba(25,20,16,0.92)' : 'rgba(255,253,247,0.94)';
+    ctx.fill();
+    // The strand's own colour, on the rim rather than the fill: it is what makes
+    // a pill point at one ribbon instead of floating over the pile, and it has to
+    // do that without swallowing the name written on it.
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = `rgb(${colour.r},${colour.g},${colour.b})`;
+    ctx.stroke();
+    ctx.fillStyle = dark ? '#f5efdf' : '#1b1611';
+    ctx.fillText(text, PAD, cv.height / 2 + 2);
+
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    const sp = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }),
+    );
+    sp.renderOrder = 900;
+    return sp;
+  }
+
+  /** Where on its own run this strand's pill goes: of five points along it, the
+   *  one furthest from every pill already placed. */
+  private namePoint(line: Vec3[]): Vec3 {
+    const at = (t: number): Vec3 =>
+      line[Math.min(line.length - 1, Math.round(t * (line.length - 1)))];
+    const cands = [at(0.5), at(0.28), at(0.72), at(0.14), at(0.86)];
+    let best = cands[0];
+    let bestGap = -1;
+    for (const c of cands) {
+      let gap = Infinity;
+      for (const placed of this.nameGroup.children) {
+        gap = Math.min(gap, Math.hypot(placed.position.x - c.x, placed.position.y - c.y));
+      }
+      // The first pill in the scene has nothing to stand clear of, so the middle
+      // of its run — where OSS puts it — wins outright.
+      if (gap === Infinity) return c;
+      if (gap > bestGap) {
+        bestGap = gap;
+        best = c;
+      }
+    }
+    return best;
+  }
+
+  private updateNameLabels(): void {
+    this.nameGroup.clear();
+    const keep = new Set<string>();
+    if (this.params.showNames) {
+      const dark = this.theme === 'dark';
+      const scope = this.params.nameScope;
+      const targetIndex = this.nameTargetId
+        ? this.current.strands.findIndex((s) => s.id === this.nameTargetId)
+        : -1;
+      const targetLevel = targetIndex >= 0 ? levelAt(this.current, targetIndex) : -1;
+      // A pill is sized off the scene, not off the strand: every name is the same
+      // size, the way every row in the layer panel is.
+      const h = Math.max(0.55, this.contentRadius * 0.085);
+      const lift = this.params.thickness * SCALE * 1.5;
+
+      this.current.strands.forEach((strand, i) => {
+        // Hiding stops the drawing, and a name is drawing. A mask is not a ribbon
+        // at all — it is a relationship between two layers — so it has nothing to
+        // carry a name.
+        if (strand.isMask || !strand.visible) return;
+        // Narrowed with nothing picked names NOTHING: the control says "press a
+        // layer", and quietly naming all forty-two instead would be the opposite
+        // of what was asked for.
+        if (scope === 'layer' && i !== targetIndex) return;
+        if (scope === 'level' && (targetLevel < 0 || levelAt(this.current, i) !== targetLevel)) {
+          return;
+        }
+        const line = this.drawnLines[i];
+        if (!line || line.length < 2) return;
+
+        const c = strand.color;
+        const key = `${strand.id}|${c.r},${c.g},${c.b}|${dark ? 'd' : 'l'}`;
+        let sp = this.nameSprites.get(key);
+        if (!sp) {
+          sp = this.nameSprite(strand.id, c, dark);
+          this.nameSprites.set(key, sp);
+        }
+        keep.add(key);
+        const tex = (sp.material as THREE.SpriteMaterial).map;
+        const aspect = tex ? tex.image.width / tex.image.height : 2;
+        sp.scale.set(h * aspect, h, 1);
+        const at = this.namePoint(line);
+        sp.position.set(at.x, at.y, at.z + lift);
+        this.nameGroup.add(sp);
+      });
+    }
+    // Anything not drawn this time is a name that has been renamed, recoloured,
+    // hidden or scoped away: the cache exists to survive a drag, not a session.
+    for (const [key, sp] of this.nameSprites) {
+      if (keep.has(key)) continue;
+      this.disposeNameSprite(sp);
+      this.nameSprites.delete(key);
+    }
   }
 
   private updateGrid(): void {

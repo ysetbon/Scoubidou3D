@@ -123,6 +123,11 @@ fingertip. one finger orbits, pinch zooms, two fingers pan.
     untouched strand, pulling it brings out the **circle** and the **square**, on OSS's dashed green
     rig. put every mark home and the set folds away again.
     ([the full behaviour, and the one place it differs](docs/control-points.md))
+- <img src="docs/readme/icons/level.svg" width="15" height="15"> **Names — OpenStrand's Draw Names, in 3D.** the last button on the tool bar (or `1`) writes every
+  strand's layer name on the model itself, in that strand's colour, facing you from wherever you
+  orbit. it changes nothing and it holds whichever tool is up — the grid's kind of switch. and
+  because a scene here is a tower rather than a canvas, it carries a scope: **All**, the **Level**
+  of the layer you picked, or that **Layer** alone. ([how it works](docs/draw-names.md))
 - <img src="docs/readme/icons/undo.svg" width="15" height="15"> **undo, recorded off the scene's own JSON.** a scene whose JSON doesn't match the last
   recording is a new recording; one that matches isn't. that single test is the whole mechanism — no
   edit declares what it changed, so a canvas drag, a slider and a mask all land in the same history,
@@ -354,6 +359,7 @@ so a flat ribbon never twists and its face points at the camera in top view, lik
 | --- | --- |
 | [docs/links.md](docs/links.md) | every link the site has, one per m×n face included |
 | [docs/layer-levels.md](docs/layer-levels.md) | levels: what a storey is and why it's two thicknesses |
+| [docs/draw-names.md](docs/draw-names.md) | the Names button: where it sits, its scope, and where a label goes |
 | [docs/app-sublevels-handoff.md](docs/app-sublevels-handoff.md) | the brief the Planes view was built from |
 | [docs/control-points.md](docs/control-points.md) | OpenStrand's control-point marks and staging, and the one difference |
 | [docs/box-stitch-levels](docs/box-stitch-levels/) | the box stitch round by round, and the round stitch |
