@@ -41,13 +41,26 @@ in the segment the strip already uses for Move's handles:
 | scope | what it names |
 | --- | --- |
 | **All** | Every visible strand — what OSS's button means. |
-| **Level** | The strands resting on the selected layer's storey (`levelAt`, levels.ts). |
-| **Layer** | The selected layer alone. |
+| **Level** | The strands resting on one storey (`levelAt`, levels.ts). |
+| **Layer** | One layer alone. |
 
-Level and Layer aim at the **layer panel's selection**, the way the plane guides
-already do — you press the row, and the names follow it. With nothing picked they
-name **nothing**, and the chip says `press a layer` rather than quietly naming all
-forty-two: the same answer Pick's count gives to the same question.
+Each narrowed scope is aimed at **its own kind of thing**, which the first draft
+got wrong: it kept one "target layer" and worked a level out of it, so pressing
+**Level** asked for a *layer*, and with none picked it named nothing at all.
+
+* **Level** is aimed from the **level bar** — the `▣` beside its `▲▼✕`, lit on the
+  storey being named. Its own mark rather than a second `◎`, because with Move up
+  both aims can be on one bar, and two identical rings pointing at different
+  things is worse than none.
+* **Layer** is aimed by pressing a **row**, which is what selecting a row already
+  means. A row is *on* a storey, so a press aims both scopes at once.
+
+And both aims **resolve** rather than being trusted (`getNameLevel` /
+`getNameLayer`): a scope that has never been aimed, or was aimed at a layer since
+deleted or a storey since emptied, falls back to the top of the stack — the
+storey or layer you are looking at. "Level with nothing aimed" is not an error to
+report, it is a question with an obvious answer, so the control always names what
+it says it is naming. The chip says which: `▣ Level 6`, or `▣ 1_14`.
 
 Nothing is hidden, dimmed or moved by any of this. **Hide others** is the control
 that does that, and it is still the one to reach for.
@@ -70,6 +83,14 @@ The rest of the drawing:
 * `depthTest: false`, so a name is never swallowed by the ribbon it belongs to.
 * The pill is drawn in the theme's ink, outlined in the **strand's own colour** —
   which is what makes a label point at one ribbon rather than float over the pile.
+* **The light theme's glyphs are stroked before they are filled; the dark theme's
+  are not.** Ink on near-white reads thinner than cream on near-black at the same
+  weight, and the pill is then a texture mip-mapped down to whatever the camera
+  makes of it, which takes the thin stems first — side by side, the light labels
+  read a weight lighter than the dark ones. Asking for a heavier face cannot fix
+  it: in a canvas this stack has one usable weight (600, 700 and 800 all measure
+  the same ink to the pixel), so the weight is drawn on, at `1.6px` on a 64px
+  face — about the fifth of a stem the two themes measured apart.
 * Anchored on `drawnLines` — where the strand is actually drawn, after the lace
   merge — not on the woven centreline, which is that merge's input.
 
@@ -85,6 +106,6 @@ The rest of the drawing:
 
 | where | what |
 | --- | --- |
-| `src/scene/StrandScene.ts` | `showNames` / `nameScope` in `RenderParams`; `updateNameLabels`, `nameSprite`, `setNameTarget`. Rebuilt with the model (`rebuild`) and repainted with the theme (`setTheme`). |
-| `src/ui/panel.ts` | The toolbar button in `syncToolbar`, `nameScopeControl`, `toggleNames`, and the `1` key. |
+| `src/scene/StrandScene.ts` | `showNames` / `nameScope` in `RenderParams`; `updateNameLabels`, `nameSprite`, the two aims (`setNameLayer` / `setNameLevel`) and their resolvers (`getNameLayer` / `getNameLevel`). Rebuilt with the model (`rebuild`) and repainted with the theme (`setTheme`). |
+| `src/ui/panel.ts` | The toolbar button in `syncToolbar`, `nameScopeControl`, `toggleNames`, the `▣` on the level bar, and the `1` key. |
 | `src/styles.css` | `.names-ctl`, `.focus-target.waiting`, and the narrow `#toolbar` corner reserve. |

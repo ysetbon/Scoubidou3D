@@ -847,28 +847,39 @@ export class Panel {
       b.title = hint;
       b.setAttribute('aria-pressed', String(on));
       b.addEventListener('click', () => {
-        this.view.setNameTarget(this.selectedId);
+        // A row already picked in the panel is what you meant; with none picked
+        // the scene resolves the aim itself (top storey / top layer), so no
+        // scope can land on nothing.
+        if (this.selectedId) this.view.setNameLayer(this.selectedId);
         this.view.setParams({ nameScope: key });
         this.syncToolbar();
+        this.renderStack(); // the level bars carry the aim mark
       });
       seg.appendChild(b);
     };
     opt('all', 'All', 'Name every visible strand');
-    opt('level', 'Level', 'Name only the strands resting on the selected layer’s level');
-    opt('layer', 'Layer', 'Name only the selected layer');
+    opt('level', 'Level', 'Name one storey — aim it with the ▣ on a level bar');
+    opt('layer', 'Layer', 'Name one layer — aim it by pressing its row');
     wrap.appendChild(seg);
 
-    // Same shape as Move's focus: the target when there is one, and what to do
-    // when there is not.
+    // What it is actually naming — the RESOLVED aim, not the raw one, so the chip
+    // and the model can never disagree. A level scope says a level; asking for a
+    // layer there was the bug this replaced.
     if (p.nameScope !== 'all') {
+      const level = p.nameScope === 'level' ? this.view.getNameLevel() : null;
+      const layer = p.nameScope === 'layer' ? this.view.getNameLayer() : null;
       const chip = el('span', 'focus-target');
-      if (this.selectedId) {
-        chip.textContent = `◎ ${this.selectedId}`;
-        chip.title = 'The layer the names are narrowed to. Press another row to move it.';
+      if (p.nameScope === 'level' && level !== null) {
+        chip.textContent = `▣ Level ${level}`;
+        chip.title = 'The storey being named. Press the ▣ on another level bar to move it.';
+      } else if (p.nameScope === 'layer' && layer) {
+        chip.textContent = `▣ ${layer}`;
+        chip.title = 'The layer being named. Press another row in the panel to move it.';
       } else {
+        // Only reachable with nothing in the scene to name at all.
         chip.classList.add('waiting');
-        chip.textContent = 'press a layer';
-        chip.title = 'Nothing picked yet — press a row in the layer panel to aim the names';
+        chip.textContent = 'nothing to name';
+        chip.title = 'Every layer is hidden, or the scene is empty';
       }
       wrap.appendChild(chip);
     }
@@ -877,9 +888,10 @@ export class Panel {
 
   /** The toggle itself, from the toolbar button and from the `1` key alike. */
   private toggleNames(): void {
-    this.view.setNameTarget(this.selectedId);
+    if (this.selectedId) this.view.setNameLayer(this.selectedId);
     this.view.setParams({ showNames: !this.view.getParams().showNames });
     this.syncToolbar();
+    this.renderStack(); // the level bars' aim mark comes and goes with it
   }
 
   private static readonly TOOLS: Array<{ key: EditMode; label: string; hint: string }> = [
@@ -2248,6 +2260,27 @@ export class Panel {
       bar.appendChild(aim);
     }
 
+    // Names, narrowed to a storey, is aimed from the storey — the aim belongs on
+    // the thing it points AT, which is the rule the ◎ beside it already follows.
+    // Its own mark rather than a second ◎: with Move up both can be on one bar,
+    // and two identical rings pointing at different things is worse than none.
+    const p = this.view.getParams();
+    if (count && p.showNames && p.nameScope === 'level') {
+      const lit = this.view.getNameLevel() === level;
+      const aim = iconBtn(
+        '▣',
+        lit ? 'The names are on this storey' : `Put the names on level ${level}`,
+        () => {
+          this.view.setNameLevel(level);
+          this.syncToolbar(); // the chip names the storey
+          this.renderStack();
+        },
+      );
+      aim.classList.add('focus-aim');
+      if (lit) aim.classList.add('on');
+      bar.appendChild(aim);
+    }
+
     if (level > 0) {
       const index = level - 1;
       const at = this.scene.levelBreaks[index];
@@ -3272,9 +3305,10 @@ export class Panel {
     name.addEventListener('click', () => {
       this.selectedId = selected ? null : strand.id;
       // A narrowed Names follows the selection, the way the plane guides already
-      // follow it — you pick the layer, not the label. The strip carries the
-      // target chip, so it is redrawn with the row.
-      this.view.setNameTarget(this.selectedId);
+      // follow it — you pick the layer, not the label. A row is ON a storey, so
+      // this aims both scopes at once. The strip carries the chip, so it is
+      // redrawn with the row.
+      if (this.selectedId) this.view.setNameLayer(this.selectedId);
       if (this.view.getParams().nameScope !== 'all') this.syncToolbar();
       this.renderStack();
     });
