@@ -3370,8 +3370,17 @@ export class StrandScene {
   // ribbon it belongs to. They are OVERLAY: nothing here is saved into a scene
   // file, exactly like the grid.
 
-  /** Which single layer the names narrow to when the scope is 'layer' / 'level'. */
-  private nameTargetId: string | null = null;
+  // WHAT A NARROWED Names IS AIMED AT — two aims, not one.
+  //
+  // The first cut had a single "target layer" and worked a level out of it, which
+  // is the wrong shape for the question: pressing **Level** then asked for a
+  // LAYER, and with none picked it named nothing at all. A level is a thing in
+  // the panel with a bar of its own, so it is aimed at directly — and both aims
+  // RESOLVE (see below) rather than being trusted, so a scope that has never been
+  // aimed, or was aimed at something since deleted, still names the obvious thing
+  // instead of going blank.
+  private nameLayerId: string | null = null;
+  private nameLevel: number | null = null;
   /**
    * The drawn pills, by what is drawn ON them — `id|colour|theme`.
    *
@@ -3383,10 +3392,60 @@ export class StrandScene {
    */
   private nameSprites = new Map<string, THREE.Sprite>();
 
-  setNameTarget(id: string | null): void {
-    if (this.nameTargetId === id) return;
-    this.nameTargetId = id;
+  /** Aim a narrowed Names at one layer — and at the storey it rests on, because
+   *  a row is on a level and following the press is what the panel means. */
+  setNameLayer(id: string | null): void {
+    const i = id ? this.current.strands.findIndex((s) => s.id === id) : -1;
+    const level = i >= 0 ? levelAt(this.current, i) : this.nameLevel;
+    if (this.nameLayerId === id && this.nameLevel === level) return;
+    this.nameLayerId = id;
+    this.nameLevel = level;
     this.updateNameLabels();
+  }
+
+  /** Aim a narrowed Names at one storey, from its bar in the layer panel. */
+  setNameLevel(level: number): void {
+    if (this.nameLevel === level) return;
+    this.nameLevel = level;
+    this.updateNameLabels();
+  }
+
+  /** Does this storey carry anything a name could go on? */
+  private levelIsNameable(level: number): boolean {
+    return this.current.strands.some(
+      (s, i) => !s.isMask && s.visible && levelAt(this.current, i) === level,
+    );
+  }
+
+  /**
+   * The storey a Level-scoped Names is actually on: the aimed one while it still
+   * carries a visible layer, and otherwise the top storey that does.
+   *
+   * The fallback is the whole point. "Level" with nothing ever aimed is not an
+   * error to report, it is a question with an obvious answer — the storey at the
+   * top of the panel, which is the one you are looking at — and the same answer
+   * covers a level emptied or deleted under the aim.
+   */
+  getNameLevel(): number | null {
+    if (this.nameLevel !== null && this.levelIsNameable(this.nameLevel)) return this.nameLevel;
+    for (let lv = this.current.levelBreaks.length; lv >= 0; lv--) {
+      if (this.levelIsNameable(lv)) return lv;
+    }
+    return null;
+  }
+
+  /** The layer a Layer-scoped Names is on: the aimed one while it is still there
+   *  and still shown, else the top of the stack. */
+  getNameLayer(): string | null {
+    const aimed = this.nameLayerId
+      ? this.current.strands.find((s) => s.id === this.nameLayerId && !s.isMask && s.visible)
+      : undefined;
+    if (aimed) return aimed.id;
+    for (let i = this.current.strands.length - 1; i >= 0; i--) {
+      const s = this.current.strands[i];
+      if (!s.isMask && s.visible) return s.id;
+    }
+    return null;
   }
 
   private disposeNameSprite(sp: THREE.Sprite): void {
@@ -3420,7 +3479,29 @@ export class StrandScene {
     ctx.lineWidth = 6;
     ctx.strokeStyle = `rgb(${colour.r},${colour.g},${colour.b})`;
     ctx.stroke();
-    ctx.fillStyle = dark ? '#f5efdf' : '#1b1611';
+    // The light theme's glyphs are stroked before they are filled, and the dark
+    // theme's are not. Not a flourish — it is what makes one control out of two:
+    //
+    //   * Ink on near-white reads THINNER than cream on near-black at the same
+    //     weight (the light ground eats into the stems; the light ink bleeds out
+    //     of them), and the pill is then a texture mip-mapped down to whatever
+    //     the camera makes of it, which takes the thin stems first. Side by side
+    //     the light labels looked a weight lighter than the dark ones.
+    //   * Asking for a heavier face cannot fix it: in a canvas this stack has one
+    //     usable weight — 600, 700 and 800 all measure the same ink to the pixel —
+    //     so the weight has to be drawn on.
+    //
+    // 1.6px at a 64px face is about a fifth of a stem, which is what the two
+    // themes measured apart.
+    const ink = dark ? '#f5efdf' : '#1b1611';
+    if (!dark) {
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = ink;
+      ctx.lineJoin = 'round';
+      ctx.miterLimit = 2;
+      ctx.strokeText(text, PAD, cv.height / 2 + 2);
+    }
+    ctx.fillStyle = ink;
     ctx.fillText(text, PAD, cv.height / 2 + 2);
 
     const tex = new THREE.CanvasTexture(cv);
@@ -3463,10 +3544,8 @@ export class StrandScene {
     if (this.params.showNames) {
       const dark = this.theme === 'dark';
       const scope = this.params.nameScope;
-      const targetIndex = this.nameTargetId
-        ? this.current.strands.findIndex((s) => s.id === this.nameTargetId)
-        : -1;
-      const targetLevel = targetIndex >= 0 ? levelAt(this.current, targetIndex) : -1;
+      const targetId = scope === 'layer' ? this.getNameLayer() : null;
+      const targetLevel = scope === 'level' ? this.getNameLevel() : null;
       // A pill is sized off the scene, not off the strand: every name is the same
       // size, the way every row in the layer panel is.
       const h = Math.max(0.55, this.contentRadius * 0.085);
@@ -3477,13 +3556,11 @@ export class StrandScene {
         // at all — it is a relationship between two layers — so it has nothing to
         // carry a name.
         if (strand.isMask || !strand.visible) return;
-        // Narrowed with nothing picked names NOTHING: the control says "press a
-        // layer", and quietly naming all forty-two instead would be the opposite
-        // of what was asked for.
-        if (scope === 'layer' && i !== targetIndex) return;
-        if (scope === 'level' && (targetLevel < 0 || levelAt(this.current, i) !== targetLevel)) {
-          return;
-        }
+        // Both narrowed scopes are RESOLVED above, so neither can land on nothing
+        // while the scene has a visible strand in it: the control always names
+        // what it says it is naming.
+        if (scope === 'layer' && strand.id !== targetId) return;
+        if (scope === 'level' && levelAt(this.current, i) !== targetLevel) return;
         const line = this.drawnLines[i];
         if (!line || line.length < 2) return;
 
