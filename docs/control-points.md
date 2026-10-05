@@ -1,10 +1,42 @@
 # Control points, the OpenStrand Studio way
 
-Scoubidou3D already had OSS's curve *maths* (`src/geometry/bezier.ts`, a port of
-`strand.py`'s profile builder). What it did not have was OSS's control-point
-**UX**: what a strand offers you to grab, what each handle looks like, and what
-grabbing one does to the others. This is that half, read out of the desktop app
-and reimplemented in `src/model/controlPoints.ts`.
+Two halves. The curve *maths* — what path a strand takes through its handles —
+is `src/geometry/bezier.ts`, a port of `strand.py`'s profile builder and of
+`AttachedStrand.get_path`; [the curve itself](#the-curve-itself) below is how it
+is held to OSS. The control-point **UX** — what a strand offers you to grab, what
+each handle looks like, and what grabbing one does to the others — is the rest of
+this page, read out of the desktop app and reimplemented in
+`src/model/controlPoints.ts`.
+
+## The curve itself
+
+OSS never draws a cubic straight through the triangle and the circle. It puts a
+waist at their midpoint (or at the square, once that is locked) and eases two
+cubics through start → waist → end, each Bézier handle pulled a *fraction* of the
+way toward the control point it answers to. Those fractions are the whole shape,
+and three things set them:
+
+| input | where OSS gets it | what the port used to do |
+| --- | --- | --- |
+| the curve tuning — *Control point influence*, *Distance boost*, *Curve response* | the canvas settings, pushed onto every strand OSS creates or loads (`save_load_manager.py`); `main.py` defaults them to **1.0 / 2.0 / 2.0** | carried **0.5 / 1.0 / 1.0**, values OSS never draws with — the triangle's pull at the start came out at 0.2 instead of 0.77, so every bend was about four times flatter |
+| the strand's class | an `AttachedStrand` eases a **locked-centre** curve with its own formula: one fraction for both halves, capped at 0.49, and a re-normalised waist tangent | used the base strand's formula for every strand |
+| the curvature bias | `bias_control.triangle_bias / circle_bias`, saved per strand while the bias controls are on | dropped on import |
+
+All three are in now: `CURVE` is OSS's shipped tuning, a strand with a parent is
+drawn with the attached formula, and a non-neutral bias comes across on import
+and survives a save (`Strand3D.bias`). A record with no control points at all is
+OSS's fresh strand — both on the start, a straight line — rather than one with the
+circle on the end. `curveInput` in `controlPoints.ts` is the one place a strand is
+turned into curve input, for the 3D ribbon and the sample art alike.
+
+**It is checked against OSS itself.** `scripts/oss-curve-fixtures.py` runs OSS's
+own `Strand` / `AttachedStrand` classes (PyQt5, offscreen) on four of its sample
+files and records the exact path each strand paints; `npm run check:curve` imports
+the same files through the app's importer and holds every Bézier handle to that
+path, to a millionth of a pixel, and the drawn path again after a save and reload.
+It runs in CI. Across all 33 OSS sample files (455 strands, 370 of them bent) the
+old port drew curves up to 91 canvas units off OSS's — about two strand widths —
+and the new one is within 3·10⁻¹³.
 
 ![the three marks and when they appear](control-points-marks.svg)
 

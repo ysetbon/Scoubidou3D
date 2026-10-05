@@ -30,6 +30,8 @@ interface RawStrand {
   // Control-point UX flags OSS writes out (save_load_manager.py).
   triangle_has_moved?: boolean;
   control_point2_activated?: boolean;
+  /** Written only while OSS's curvature bias controls are switched on. */
+  bias_control?: { triangle_bias?: number; circle_bias?: number } | null;
   width?: number;
   stroke_width?: number;
   color?: RawColor;
@@ -50,6 +52,15 @@ function color(c: RawColor | undefined, fallback: RGBA): RGBA {
     b: c.b ?? fallback.b,
     a: c.a ?? fallback.a,
   };
+}
+
+/** A file's bias controls, or null when they leave the curve neutral. */
+function curveBias(b: RawStrand['bias_control']): Strand3D['bias'] {
+  if (!b) return null;
+  const clamp = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.5);
+  const triangle = clamp(b.triangle_bias);
+  const circle = clamp(b.circle_bias);
+  return triangle === 0.5 && circle === 0.5 ? null : { triangle, circle };
 }
 
 function point(p: Point | undefined, fallback: Point): Point {
@@ -122,7 +133,10 @@ export function sceneFromOss(data: unknown, name = 'imported'): Scene3D {
     const end = point(s.end, { x: 100, y: 0 });
     const cps = (s.control_points ?? []) as Point[];
     const cp1 = point(cps[0], start);
-    const cp2 = point(cps[1], end);
+    // A record without its control points is OSS's fresh strand: both on the
+    // start (Strand.__init__), which is the straight line.
+    const cp2 = point(cps[1], start);
+    const bias = curveBias(s.bias_control);
     strands.push({
       id: s.layer_name ?? `strand_${i}`,
       start,
@@ -137,6 +151,7 @@ export function sceneFromOss(data: unknown, name = 'imported'): Scene3D {
           ? s.triangle_has_moved
           : inferTriangleHasMoved({ start, control_points: [cp1, cp2] }),
       cp2Activated: !!s.control_point2_activated,
+      ...(bias ? { bias } : {}),
       width: typeof s.width === 'number' ? s.width : 46,
       stroke_width: typeof s.stroke_width === 'number' ? s.stroke_width : 4,
       color: color(s.color, DEFAULT_COLOR),

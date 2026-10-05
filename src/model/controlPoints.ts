@@ -10,6 +10,7 @@
 // The shapes named below are OSS's own: control point 1 is drawn as a TRIANGLE,
 // control point 2 as a CIRCLE, the centre as a SQUARE.
 
+import { StrandCurveInput } from '../geometry/bezier';
 import { Point, Strand3D } from './types';
 
 /** OSS's "these are the same point" tolerance for control points — 1 pixel. */
@@ -269,4 +270,29 @@ export function inferTriangleHasMoved(s: {
   control_points: [Point, Point];
 }): boolean {
   return !near(s.control_points[0], s.start, CP_EPS);
+}
+
+/**
+ * What OSS's path reads off a strand, in the one place both the 3D ribbon and
+ * the flat sample art take it from — so the two can never disagree about the
+ * shape of a lace.
+ *
+ * With the third control point switched off a locked centre is ignored by the
+ * curve as well as by the handles — OSS gates its path on the setting
+ * (strand.py: `third_locked = third_enabled and ...locked`), so turning the
+ * option off restores the plain two-handle shape without losing the centre.
+ *
+ * `attached` is OSS's class split: a strand that hangs off another is an
+ * AttachedStrand there, and its locked-centre curve has a formula of its own.
+ */
+export function curveInput(s: Strand3D, thirdEnabled: boolean): StrandCurveInput {
+  return {
+    start: s.start,
+    end: s.end,
+    control_points: s.control_points,
+    control_point_center: thirdEnabled ? s.control_point_center : null,
+    control_point_center_locked: s.control_point_center_locked,
+    attached: s.parentId !== null,
+    bias: s.bias ?? null,
+  };
 }

@@ -36,6 +36,7 @@ import {
   VisibleControls,
   beginControlDrag,
   controlMarkCount,
+  curveInput,
   dragControl,
   settleControls,
   syncPassiveCp2,
@@ -1302,17 +1303,7 @@ export class StrandScene {
 
   // Sample a strand's OSS-faithful centerline and map it to world XY (y flipped).
   private strandCenterlineWorld(strand: Strand3D): Vec2[] {
-    const src = sampleCenterline({
-      start: strand.start,
-      end: strand.end,
-      control_points: strand.control_points,
-      // With the third control point switched off, a locked centre is ignored by
-      // the curve as well as by the handles — OSS gates its path on the setting
-      // (strand.py: `third_locked = third_enabled and ...locked`), so turning the
-      // option off restores the plain two-handle shape without losing the centre.
-      control_point_center: this.params.thirdControlPoint ? strand.control_point_center : null,
-      control_point_center_locked: strand.control_point_center_locked,
-    });
+    const src = sampleCenterline(curveInput(strand, this.params.thirdControlPoint));
     return src.map((p) => ({ x: (p.x - this.center.x) * SCALE, y: -(p.y - this.center.y) * SCALE }));
   }
 
