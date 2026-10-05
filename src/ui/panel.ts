@@ -502,11 +502,6 @@ export class Panel {
   private syncStatus(): void {
     const host = this.statusHost;
     if (!host) return;
-    if (this.view.isDrawArmed()) {
-      host.innerHTML = 'Press and drag to draw a strand · <b>Esc</b> cancels';
-      host.hidden = false;
-      return;
-    }
     const pending = this.view.getWeavePending();
     if (!pending) {
       host.textContent = '';
