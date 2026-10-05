@@ -36,7 +36,7 @@
 
 import { StrandScene, EditMode, HandleFocus, RenderParams, Sublevel } from '../scene/StrandScene';
 import { CrossFact, FoldFact, LaceFact, MemberFact, PROFILE } from '../scene/sections';
-import { MaskLink, Scene3D, Strand3D, RGBA } from '../model/types';
+import { MaskLink, Point, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, TWIST_FAMILY, TWIST_MAX, makeSample } from '../model/samples';
 import { GAP, HANDS, TWOFAN_COLUMN_FAMILY, TWOFAN_MAX, columnKey } from '../model/twofan';
 import { BOX_FAMILY, BOX_MAX, BOX_ROUNDS, boxColumnKey, column } from '../model/boxmn';
@@ -213,7 +213,7 @@ const DOCK_LABELS: Record<DockKey, string> = {
  * list of scene records at all, but the built lace read back — see planesList.
  *
  * Only the side that is DOWN carries its word. Three words and three marks do
- * not fit beside the Level and Strand pills (the bar is 311px of content and the
+ * not fit beside the Level pill (the bar is 311px of content and the
  * two-word switch already used 171 of it), and the choice was between cramming
  * three labels, dropping all three, or printing the one that is actually saying
  * something. The switch still names what is on screen; the other two are marks,
@@ -345,6 +345,8 @@ export class Panel {
     this.popHost = pops;
     document.body.appendChild(pops);
 
+    this.buildNewMenu();
+
     const status = el('div');
     status.id = 'status';
     // Empty until the weave has a half-made pick, which is the only thing it
@@ -391,6 +393,16 @@ export class Panel {
     // open dock popover.
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
+      // The + New menu and an armed Draw strand are the most recent things you
+      // asked for, so they are the first to go.
+      if (this.newMenuOpen) {
+        this.closeNewMenu();
+        return;
+      }
+      if (this.view.isDrawArmed()) {
+        this.view.disarmDraw();
+        return;
+      }
       if (this.aboutOpen) {
         this.closeAbout();
         return;
@@ -490,6 +502,11 @@ export class Panel {
   private syncStatus(): void {
     const host = this.statusHost;
     if (!host) return;
+    if (this.view.isDrawArmed()) {
+      host.innerHTML = 'Press and drag to draw a strand · <b>Esc</b> cancels';
+      host.hidden = false;
+      return;
+    }
     const pending = this.view.getWeavePending();
     if (!pending) {
       host.textContent = '';
@@ -660,10 +677,11 @@ export class Panel {
     }
 
     bar.appendChild(this.viewSwitch());
-    // Both adders make a LAYER, so either one takes you back to the layers if you
-    // were in the masks — otherwise the press appears to do nothing at all.
-    // "Level" drops a storey marker at the top of the stack, so everything added
-    // from here on rests a full storey higher. See levels.ts.
+    // Level makes a storey, so it takes you back to the layers if you were in the
+    // masks — otherwise the press appears to do nothing at all. It drops a storey
+    // marker at the top of the stack, so everything added from here on rests a
+    // full storey higher. See levels.ts. (New strands are made from the toolbar's
+    // + New, over the canvas they land on.)
     const addLevel = iconPill(LAYERS_ICON, 'Level', () => {
       this.stackView = 'layers';
       addLevelBreak(this.scene);
@@ -672,16 +690,6 @@ export class Panel {
     addLevel.classList.add('coral');
     addLevel.title = 'Add a level: from now on, new layers rest one storey higher';
     bar.appendChild(addLevel);
-    bar.appendChild(
-      pill(
-        'Strand',
-        () => {
-          this.stackView = 'layers';
-          this.addStrand();
-        },
-        'Drop a new straight strand into the scene',
-      ),
-    );
     this.renderStack();
     // Last, with every pill in the bar: the switch may shrink to make room for
     // them, and the thumb has to land on the tab where it finally sits.
@@ -709,7 +717,7 @@ export class Panel {
    * one broken where it passes beneath, which is the whole of what a mask says.
    * Two words and two marks, and nothing else: the Masks side used to print the
    * count, which is three digits on a woven mat and pushed the switch into the
-   * Level and Strand pills beside it. The number is in the tooltip instead — a
+   * Level pill beside it. The number is in the tooltip instead — a
    * switch is a control, not a readout.
    */
   private viewSwitch(): HTMLElement {
@@ -920,6 +928,9 @@ export class Panel {
     bar.append(this.undoBtn, this.redoBtn, el('span', 'tool-sep'));
     this.syncHistory();
     for (const t of Panel.TOOLS) {
+      // + New sits in front of Attach: the two ways a strand comes into being,
+      // side by side — from nothing, and out of an endpoint.
+      if (t.key === 'attach') bar.appendChild(this.newButton());
       const active = mode === t.key;
       const b = el('button', 'tool-btn' + (active ? ' on' : '')) as HTMLButtonElement;
       b.type = 'button';
@@ -2104,6 +2115,131 @@ export class Panel {
     }, warn ? 5200 : 2600);
   }
 
+  // ---- + New ---------------------------------------------------------------
+  /**
+   * The toolbar's + New, and the two ways it makes a strand:
+   *
+   *   * **Quick strand** — one press, a straight strand dropped in the middle.
+   *     What the layer panel's Strand pill used to do.
+   *   * **Draw strand** — OpenStrand Studio's way: press on the canvas for the
+   *     start and drag out the end. Armed for one strand, on top of whatever
+   *     tool is up (see StrandScene.armDraw).
+   *
+   * Like the undo pair it is not a tool — nothing stays armed by pressing it —
+   * so it is lit only while its menu is open or a draw is waiting for its press.
+   */
+  private newBtn: HTMLButtonElement | null = null;
+  private newMenu: HTMLElement | null = null;
+  private newMenuOpen = false;
+
+  private newButton(): HTMLButtonElement {
+    const lit = this.newMenuOpen || this.view.isDrawArmed();
+    const b = el('button', 'tool-btn tool-new' + (lit ? ' on' : '')) as HTMLButtonElement;
+    b.type = 'button';
+    b.innerHTML = `${PLUS_ICON}<span>New</span>`;
+    b.title = 'New strand';
+    b.setAttribute('aria-haspopup', 'menu');
+    b.setAttribute('aria-expanded', String(this.newMenuOpen));
+    b.addEventListener('click', () => {
+      if (this.newMenuOpen) this.closeNewMenu();
+      // A second press while a draw waits is a change of mind, not a new menu.
+      else if (this.view.isDrawArmed()) this.view.disarmDraw();
+      else this.openNewMenu();
+    });
+    this.newBtn = b;
+    // The toolbar is redrawn on every edit, so an open menu follows the new
+    // button rather than pointing at the one that was just thrown away.
+    if (this.newMenuOpen) requestAnimationFrame(() => this.placeNewMenu());
+    return b;
+  }
+
+  /** Built once and kept: a menu of two fixed rows has nothing to redraw. */
+  private buildNewMenu(): void {
+    const menu = el('div', 'new-menu');
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', 'New strand');
+    menu.hidden = true;
+    menu.appendChild(el('div', 'new-menu-head', 'New strand'));
+    const item = (icon: string, label: string, note: string, run: () => void): void => {
+      const b = el('button', 'new-item') as HTMLButtonElement;
+      b.type = 'button';
+      b.setAttribute('role', 'menuitem');
+      b.innerHTML = `${icon}<b>${label}</b><span>${note}</span>`;
+      b.addEventListener('click', () => {
+        this.closeNewMenu();
+        run();
+      });
+      menu.appendChild(b);
+    };
+    item(QUICK_STRAND_ICON, 'Quick strand', 'Drops a straight strand in the middle', () => {
+      this.stackView = 'layers';
+      this.addStrand();
+    });
+    item(DRAW_STRAND_ICON, 'Draw strand', 'Press and drag on the canvas', () => this.armDraw());
+    // Anywhere else closes it, the way every menu closes. In the capture phase,
+    // because a press that grabs a handle stops there and never bubbles up.
+    document.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (!this.newMenuOpen) return;
+        const t = e.target as Node | null;
+        if (t && (menu.contains(t) || this.newBtn?.contains(t))) return;
+        this.closeNewMenu();
+      },
+      true,
+    );
+    this.newMenu = menu;
+    document.body.appendChild(menu);
+  }
+
+  private openNewMenu(): void {
+    const menu = this.newMenu;
+    if (!menu) return;
+    this.newMenuOpen = true;
+    menu.hidden = false;
+    this.syncToolbar();
+    this.placeNewMenu();
+    (menu.querySelector('.new-item') as HTMLButtonElement | null)?.focus();
+  }
+
+  private closeNewMenu(): void {
+    if (!this.newMenuOpen) return;
+    this.newMenuOpen = false;
+    if (this.newMenu) this.newMenu.hidden = true;
+    this.syncToolbar();
+  }
+
+  /** Under the button, kept on screen: the toolbar wraps and the button moves. */
+  private placeNewMenu(): void {
+    const menu = this.newMenu;
+    const btn = this.newBtn;
+    if (!menu || !btn || !this.newMenuOpen || !btn.isConnected) return;
+    const r = btn.getBoundingClientRect();
+    const w = menu.offsetWidth;
+    const left = Math.min(Math.max(10, r.left), window.innerWidth - w - 10);
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(r.bottom + 10)}px`;
+  }
+
+  /** Draw strand: the scene waits for one press-and-drag on the canvas. */
+  private armDraw(): void {
+    this.view.armDraw(
+      (at) => this.newStrand(at, at),
+      (drawn) => {
+        if (drawn) {
+          // Where the strand just landed, and picked, so Attach can take it on.
+          this.stackView = 'layers';
+          this.selectedId = drawn.id;
+          this.renderPanelBody();
+        }
+        this.syncToolbar();
+        this.syncStatus();
+      },
+    );
+    this.syncToolbar();
+    this.syncStatus();
+  }
+
   private addStrand(): void {
     const n = this.scene.strands.length;
     const angle = (n * 37) % 360;
@@ -2111,18 +2247,32 @@ export class Panel {
     const cx = 400;
     const cy = 250;
     const len = 220;
+    const s = this.newStrand(
+      { x: cx - Math.cos(rad) * len, y: cy - Math.sin(rad) * len },
+      { x: cx + Math.cos(rad) * len, y: cy + Math.sin(rad) * len },
+    );
+    // New strand goes on top of the stack (highest layer).
+    this.scene.strands.push(s);
+    this.selectedId = s.id;
+    this.apply('add a strand');
+  }
+
+  /** A free, straight strand from `start` to `end`, as the next set — the look
+   *  both of + New's ways share. Not yet in the scene. */
+  private newStrand(start: Point, end: Point): Strand3D {
+    const n = this.scene.strands.length;
     // Start a new set (OSS-style `N_1`) so a later Attach grows it into `N_2`…
     let maxSet = 0;
     for (const st of this.scene.strands) {
       const m = /^(\d+)_/.exec(st.id);
       if (m) maxSet = Math.max(maxSet, parseInt(m[1], 10));
     }
-    const sx = cx - Math.cos(rad) * len;
-    const sy = cy - Math.sin(rad) * len;
-    const s: Strand3D = {
+    const sx = start.x;
+    const sy = start.y;
+    return {
       id: `${maxSet + 1}_1`,
       start: { x: sx, y: sy },
-      end: { x: cx + Math.cos(rad) * len, y: cy + Math.sin(rad) * len },
+      end: { x: end.x, y: end.y },
       // Straight out of the box: OSS parks both control points on the start, which
       // is what buildProfile reads as line mode and what leaves the strand
       // offering just its triangle until someone bends it.
@@ -2142,10 +2292,6 @@ export class Panel {
       parentId: null,
       parentSide: null,
     };
-    // New strand goes on top of the stack (highest layer).
-    this.scene.strands.push(s);
-    this.selectedId = s.id;
-    this.apply('add a strand');
   }
 
   // ---- The layer stack -----------------------------------------------------
@@ -4011,6 +4157,14 @@ const ABOUT: Array<[string, string]> = [
       'free endpoint · <b>Weave</b> masks one strand over another.',
   ],
   [
+    'New strands',
+    '<b>+ New</b> on the toolbar makes a strand from nothing, two ways. <b>Quick strand</b> ' +
+      'drops a straight one in the middle of the scene. <b>Draw strand</b> works the way ' +
+      'OpenStrand Studio does: press on the canvas where it should start and drag out its end. ' +
+      'It works whichever tool is up, lasts for one strand, and <b>Esc</b> puts it away. Either ' +
+      'way the strand starts a new set on top of the stack, ready to Attach to.',
+  ],
+  [
     'Undo',
     'Every edit that changes the scene is recorded: the <b>↩ ↪</b> pair on the toolbar steps ' +
       'back and forward through them, and so do <b>⌘/Ctrl+Z</b> and <b>⇧⌘/Ctrl+Shift+Z</b>. The ' +
@@ -4374,6 +4528,20 @@ const TOOL_ICONS: Record<EditMode, string> = {
       '<rect x="-1.5" y="9.5" width="27" height="5" rx="2.5" transform="rotate(45 12 12)" />',
   ),
 };
+
+// + New: a plain plus, the mark every editor puts on "make one more".
+const PLUS_ICON = svg('<path d="M10.5 3h3v7.5H21v3h-7.5V21h-3v-7.5H3v-3h7.5Z" />');
+
+// The menu's two rows. Quick strand is the finished thing — a straight strand,
+// both ends on; Draw strand is a start dot with the drag pulling out of it.
+const QUICK_STRAND_ICON = svg(
+  '<rect x="3" y="10.5" width="18" height="3" rx="1.5" />' +
+    '<circle cx="4.5" cy="12" r="2.8" /><circle cx="19.5" cy="12" r="2.8" />',
+);
+const DRAW_STRAND_ICON = svg(
+  '<circle cx="5.4" cy="18.6" r="3" />' +
+    '<path d="M6.7 15.2 16 5.9h-3.3V3H21v8.3h-2.9V8L8.8 17.3Z" />',
+);
 
 // A bin: lid, body, and two staves. Unmistakably "this is thrown away", which is
 // the whole point of it not being another ✕.

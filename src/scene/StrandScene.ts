@@ -353,12 +353,14 @@ interface MoveTarget {
 
 type DragState =
   | { kind: 'attach'; child: Strand3D; plane: THREE.Plane }
+  | { kind: 'draw'; child: Strand3D; plane: THREE.Plane }
   | { kind: 'move-endpoint'; plane: THREE.Plane; targets: MoveTarget[] }
   | { kind: 'move-control'; plane: THREE.Plane; strand: Strand3D; handle: ControlHandle };
 
 /** What each finished gesture is called in the undo history. */
 const EDIT_NAMES: Record<DragState['kind'], string> = {
   attach: 'attach a strand',
+  draw: 'draw a strand',
   'move-endpoint': 'move a strand',
   'move-control': 'bend a strand',
 };
@@ -432,6 +434,21 @@ export class StrandScene {
   /** Called with the strand LAYER under the pointer in the weave tool (null when
    *  the pointer is over nothing), so the UI can name what a click would take. */
   onWeaveHover: ((id: string | null) => void) | null = null;
+
+  /**
+   * Draw strand, armed and waiting for its press — OSS's `is_drawing_new_strand`.
+   *
+   * It is not a tool: it rides on top of whichever one is up, Orbit included, so
+   * "+ New → Draw strand" never asks you to switch tools first, and it lasts for
+   * ONE strand, the way OSS clears its flag on the press that starts the drag.
+   * `make` builds the strand at the pressed point (the panel owns naming and
+   * colour); `done` hears how it ended — the strand that landed, or null for a
+   * click with no drag, Esc, or a change of tool.
+   */
+  private drawArm: {
+    make: (at: Point) => Strand3D;
+    done: (drawn: Strand3D | null) => void;
+  } | null = null;
 
   private strandGroup = new THREE.Group();
   private nameGroup = new THREE.Group();
@@ -735,9 +752,41 @@ export class StrandScene {
     return this.mode;
   }
 
+  /** Arm Draw strand: the next press on the canvas starts a new strand there
+   *  and the drag pulls its end out. See `drawArm`. */
+  armDraw(make: (at: Point) => Strand3D, done: (drawn: Strand3D | null) => void): void {
+    if (this.dragState) this.cancelDrag();
+    this.disarmDraw();
+    this.drawArm = { make, done };
+    if (this.hovered) this.restoreHandle(this.hovered);
+    this.hovered = null;
+    this.setCursor(this.defaultCursor());
+  }
+
+  /** Put an armed Draw strand away without drawing anything. */
+  disarmDraw(): void {
+    // Mid-drag, the half-pulled strand goes too; cancelDrag reports the end.
+    if (this.dragState?.kind === 'draw') {
+      this.cancelDrag();
+      this.rebuild();
+      return;
+    }
+    const arm = this.drawArm;
+    if (!arm) return;
+    this.drawArm = null;
+    this.setCursor(this.defaultCursor());
+    arm.done(null);
+  }
+
+  isDrawArmed(): boolean {
+    return this.drawArm !== null;
+  }
+
   /** Switch edit tool. Cancels any in-flight drag and rebuilds the handles. */
   setMode(mode: EditMode): void {
     if (this.mode === mode) return;
+    // Picking a tool is a change of mind about what the next press does.
+    this.disarmDraw();
     if (this.dragState) {
       this.cancelDrag();
     }
@@ -883,6 +932,7 @@ export class StrandScene {
   }
 
   private defaultCursor(): string {
+    if (this.drawArm) return 'crosshair';
     if (this.mode === 'pan') return 'move';
     return this.mode === 'orbit' ? '' : 'crosshair';
   }
@@ -900,7 +950,7 @@ export class StrandScene {
     this.dragState = null;
     this.activePointerId = null;
     this.controls.enabled = true;
-    if (st && st.kind === 'attach') {
+    if (st && (st.kind === 'attach' || st.kind === 'draw')) {
       removeStrandAt(this.current, this.current.strands.indexOf(st.child));
       recomputeOccupancy(this.current);
     }
@@ -910,7 +960,54 @@ export class StrandScene {
     // Which of the two it was decides whether there is anything to record: the
     // cancelled attach writes the JSON it started from and so is no step, while
     // the half-finished move is a real edit and lands as one.
-    if (st) this.onSceneChanged?.(st.kind === 'attach' ? 'abandon an attach' : EDIT_NAMES[st.kind]);
+    if (st) {
+      const abandoned =
+        st.kind === 'attach' ? 'abandon an attach' : st.kind === 'draw' ? 'abandon a draw' : null;
+      this.onSceneChanged?.(abandoned ?? EDIT_NAMES[st.kind]);
+    }
+    if (st && st.kind === 'draw') this.finishDraw(null);
+  }
+
+  /** Draw strand is spent — one press, one strand — so say how it went. */
+  private finishDraw(drawn: Strand3D | null): void {
+    const arm = this.drawArm;
+    this.drawArm = null;
+    this.setCursor(this.defaultCursor());
+    arm?.done(drawn);
+  }
+
+  /**
+   * The press that starts a Draw strand: the strand is born zero-length under
+   * the pointer, on top of the stack, and the drag pulls its end out.
+   *
+   * The pointer is read off the plane the new strand will actually REST on, not
+   * the ground: a strand added above a level break sits a full storey up, and a
+   * start read off z = 0 would land visibly off the press under any tilted
+   * camera. That height is only known once the strand is in the stack, so it
+   * goes in first (at a rough spot) and is moved under the pointer after.
+   */
+  private beginDraw(e: PointerEvent): boolean {
+    const arm = this.drawArm;
+    if (!arm) return false;
+    const ground = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    const rough = this.rayToSrc(e, ground);
+    if (!rough) return false; // looking edge-on: nothing to press on
+    const child = arm.make(rough);
+    this.current.strands.push(child); // a new strand stacks on top (highest Z)
+    this.rebuild();
+    const plane = new THREE.Plane(
+      new THREE.Vector3(0, 0, 1),
+      -this.layerZ(this.current.strands.length - 1),
+    );
+    const at = this.rayToSrc(e, plane) ?? rough;
+    child.start = { ...at };
+    child.end = { ...at };
+    child.control_points = [{ ...at }, { ...at }];
+    this.dragState = { kind: 'draw', child, plane };
+    this.rebuild();
+    // null, as for an attach: a zero-length strand is not a state to step back to.
+    this.onSceneChanged?.(null);
+    return true;
   }
 
   /** Rebuild all ribbon meshes, connectors and edit handles from the current
@@ -3021,6 +3118,16 @@ export class StrandScene {
       e.preventDefault();
       return;
     }
+
+    // Draw strand, armed: this press is the new strand's start, whatever the tool.
+    if (this.drawArm && e.button === 0) {
+      if (!this.beginDraw(e)) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      this.claimPointer(e);
+      return;
+    }
+
     if (this.isCameraMode() || e.button !== 0) return;
 
     // Weave tool: click the OVER strand, then the UNDER strand — pick bodies,
@@ -3074,18 +3181,12 @@ export class StrandScene {
     // Claim the gesture: stop OrbitControls, keep receiving moves.
     e.stopImmediatePropagation();
     e.preventDefault();
-    this.controls.enabled = false;
-    this.activePointerId = e.pointerId;
+    this.claimPointer(e);
     // Remember what this press took and where, so pressing the same spot again
     // walks down the pile of marks stacked there instead of re-taking this one.
     {
       const r = this.canvas.getBoundingClientRect();
       this.lastGrab = { key: handleKey(hit), x: e.clientX - r.left, y: e.clientY - r.top };
-    }
-    try {
-      this.canvas.setPointerCapture(e.pointerId);
-    } catch {
-      /* not all environments support pointer capture */
     }
 
     const anchorWorld = hit.position.clone();
@@ -3140,6 +3241,18 @@ export class StrandScene {
     this.setCursor('grabbing');
   };
 
+  /** Take the pointer for a drag: OrbitControls stands down and every move comes
+   *  here, even off the canvas. */
+  private claimPointer(e: PointerEvent): void {
+    this.controls.enabled = false;
+    this.activePointerId = e.pointerId;
+    try {
+      this.canvas.setPointerCapture(e.pointerId);
+    } catch {
+      /* not all environments support pointer capture */
+    }
+  }
+
   /** Events from a finger that isn't the one driving the current drag. */
   private isStrayPointer(e: PointerEvent): boolean {
     return this.activePointerId !== null && e.pointerId !== this.activePointerId;
@@ -3166,6 +3279,9 @@ export class StrandScene {
       this.applyDrag(e);
       return;
     }
+    // Armed to draw, a press makes a strand rather than grabbing a mark, so no
+    // mark lights up to suggest otherwise.
+    if (this.drawArm) return;
     // Hover is a mouse-only idea: a touch "move" only ever happens mid-gesture, so
     // reading it as hover would light up handles under a finger that is orbiting.
     if (!this.isCameraMode() && e.buttons === 0 && e.pointerType === 'mouse') {
@@ -3180,7 +3296,7 @@ export class StrandScene {
     const src = this.rayToSrc(e, st.plane);
     if (!src) return;
 
-    if (st.kind === 'attach') {
+    if (st.kind === 'attach' || st.kind === 'draw') {
       // Only the child's end grows; its start (and control points) stay pinned to
       // the parent junction, so it reads as a straight strand while dragging.
       setEndpoint(st.child, 1, src);
@@ -3232,11 +3348,14 @@ export class StrandScene {
       /* ignore */
     }
 
-    if (st.kind === 'attach') {
+    let drawn: Strand3D | null = null;
+    if (st.kind === 'attach' || st.kind === 'draw') {
       const child = st.child;
       const len = Math.hypot(child.end.x - child.start.x, child.end.y - child.start.y);
       if (len < MIN_ATTACH_LEN) {
         removeStrandAt(this.current, this.current.strands.indexOf(child));
+      } else {
+        drawn = child;
       }
       recomputeOccupancy(this.current);
       this.rebuild();
@@ -3256,6 +3375,7 @@ export class StrandScene {
     // This is also the point an edit becomes a recording: one step per gesture,
     // not one per pointermove.
     this.onSceneChanged?.(EDIT_NAMES[st.kind]);
+    if (st.kind === 'draw') this.finishDraw(drawn);
     this.setCursor(this.defaultCursor());
   };
 
