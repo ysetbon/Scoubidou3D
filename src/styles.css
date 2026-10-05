@@ -1682,6 +1682,71 @@ button {
   background: transparent;
 }
 
+/* + New's menu. Fixed and measured under the button by the panel, like the dock
+   cards: the toolbar's backdrop-filter would make it the containing block for a
+   fixed child, and the bar is rebuilt on every edit. */
+.new-menu {
+  position: fixed;
+  z-index: 8;
+  display: grid;
+  gap: 2px;
+  width: 260px;
+  max-width: calc(100vw - 20px);
+  padding: 6px;
+  border: 1.5px solid var(--edge2);
+  border-radius: 14px;
+  background: var(--paper);
+  box-shadow: 4px 5px 0 var(--shadow);
+  animation: pop-in 0.18s cubic-bezier(0.22, 0.8, 0.28, 1);
+}
+
+/* `display: grid` above would otherwise outrank the browser's own [hidden]. */
+.new-menu[hidden] {
+  display: none;
+}
+
+.new-menu-head {
+  padding: 6px 10px 4px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.new-item {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 1px 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+}
+
+.new-item:hover,
+.new-item:focus-visible {
+  background: var(--hover);
+}
+
+.new-item svg {
+  grid-row: span 2;
+  width: 18px;
+  height: 18px;
+}
+
+.new-item b {
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.new-item span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 /* A hairline between what acts and what arms, so the strip reads as two groups
    rather than seven buttons in a row. */
 .tool-sep {
