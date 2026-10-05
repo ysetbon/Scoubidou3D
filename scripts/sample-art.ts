@@ -18,6 +18,7 @@ import { resolve } from 'node:path';
 import { SAMPLE_LABELS, SAMPLES } from '../src/model/samples';
 import { Point, RGBA, Scene3D, Strand3D } from '../src/model/types';
 import { sampleCenterline } from '../src/geometry/bezier';
+import { curveInput } from '../src/model/controlPoints';
 
 // Relative to where npm run puts you, which is the repo root. The script is
 // bundled to a temp file before it runs, so its own path is no help here.
@@ -42,16 +43,8 @@ function d(pts: Point[]): string {
 
 /** The strand's centerline, exactly as the 3D ribbon builder gets it. */
 function centerline(s: Strand3D): Point[] {
-  return sampleCenterline(
-    {
-      start: s.start,
-      end: s.end,
-      control_points: [s.control_points[0], s.control_points[1]],
-      control_point_center: s.control_point_center,
-      control_point_center_locked: s.control_point_center_locked,
-    },
-    18,
-  );
+  // The scene's own default has the middle handle on.
+  return sampleCenterline(curveInput(s, true), 18);
 }
 
 /** Outline underneath, colour on top — the order OpenStrand draws a lace in. */

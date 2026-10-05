@@ -38,6 +38,13 @@ export interface Strand3D {
    * back on the end makes it passive again.
    */
   cp2Activated: boolean;
+  /**
+   * OSS `bias_control` (curvature_bias_control.py): how hard each half of the
+   * curve leans on its handle, 0..1 with 0.5 neutral. Absent or null is neutral,
+   * which is every strand Scoubidou3D draws itself; only an imported file that
+   * was saved with the bias controls on carries one.
+   */
+  bias?: { triangle: number; circle: number } | null;
 
   /** OSS strand width (across the ribbon), in source/pixel units. */
   width: number;

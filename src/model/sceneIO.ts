@@ -82,6 +82,7 @@ function cloneStrand(s: Strand3D): Strand3D {
     end: { ...s.end },
     control_points: [{ ...s.control_points[0] }, { ...s.control_points[1] }],
     control_point_center: s.control_point_center ? { ...s.control_point_center } : null,
+    ...(s.bias ? { bias: { ...s.bias } } : {}),
     color: { ...s.color },
     stroke_color: { ...s.stroke_color },
     hasCircles: [s.hasCircles[0], s.hasCircles[1]],
@@ -116,6 +117,19 @@ function rgba(v: unknown, fallback: RGBA): RGBA {
   };
 }
 
+/** A curvature bias, each half clamped to OSS's 0..1; null when neutral. */
+function parseBias(v: unknown): Strand3D['bias'] {
+  const o = v as { triangle?: unknown; circle?: unknown } | null | undefined;
+  if (!o || typeof o !== 'object') return null;
+  const triangle = Math.max(0, Math.min(1, num(o.triangle, 0.5)));
+  const circle = Math.max(0, Math.min(1, num(o.circle, 0.5)));
+  return triangle === 0.5 && circle === 0.5 ? null : { triangle, circle };
+}
+
+function withBias(bias: Strand3D['bias']): Pick<Strand3D, 'bias'> {
+  return bias ? { bias } : {};
+}
+
 const FALLBACK_COLOR: RGBA = { r: 200, g: 170, b: 230, a: 255 };
 const FALLBACK_STROKE: RGBA = { r: 30, g: 30, b: 30, a: 255 };
 
@@ -137,6 +151,8 @@ function parseStrand(raw: unknown, i: number): Strand3D {
         ? s.triangleHasMoved
         : inferTriangleHasMoved({ start, control_points: [pt(cps[0], start), pt(cps[1], start)] }),
     cp2Activated: !!s.cp2Activated,
+    // Only when it bends something, so a file nobody biased saves as it always did.
+    ...withBias(parseBias(s.bias)),
     width: Math.max(1, num(s.width, 46)),
     stroke_width: Math.max(0, num(s.stroke_width, 4)),
     color: rgba(s.color, FALLBACK_COLOR),

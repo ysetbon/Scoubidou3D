@@ -69,5 +69,12 @@ jobs:
       - name: The engine-file key is in step with the Python
         run: npm run check:enginekey
 
+      # The curve against OpenStrand Studio's own path, recorded from OSS's own
+      # classes. The port once carried OSS's formulas with a curve tuning OSS
+      # never draws with, and every bent strand came out four times flatter than
+      # on the desktop without anything failing.
+      - name: The curve is OpenStrand Studio's
+        run: npm run check:curve
+
       - name: Type-check and build
         run: npm run build
