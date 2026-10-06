@@ -124,6 +124,23 @@ export interface Scene3D {
    */
   levelBreaks: number[];
   /**
+   * CONTACT WEAVE — what an UNPLACED crossing does, and where an unplaced lace
+   * rests.
+   *
+   * Off or absent is the studio's behaviour exactly: a lace rests at its layer
+   * rank times the layer lift, and a crossing swings the Depth either side of the
+   * plane the two share, which at the defaults leaves a full thickness of air
+   * between them.
+   *
+   * On, a lace rests on the MIDDLE of its storey (rung 0) wherever nothing
+   * crosses it, and at a crossing the two meet: the one that rides over sits half
+   * a thickness above the middle and the one that ducks under half a thickness
+   * below, so their surfaces touch with no air and no overlap. Depth only opens
+   * air beyond that (anything over a thickness). Placed planes still outrank it.
+   * See docs/over-under-default.md.
+   */
+  contact?: boolean;
+  /**
    * WHERE EACH LAYER'S RUN RESTS, by strand id, as a RUNG: `-2` the floor of its
    * storey, `0` the middle, `+2` the ceiling, and `±3` one rung past those into
    * the storey next door. A rung is half a thickness, so two rungs apart is one

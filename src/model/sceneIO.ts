@@ -18,7 +18,8 @@ import { sceneFromOss } from './importOss';
 export const SCENE_FORMAT = 'scoubidou3d-scene';
 // v2 added `levelBreaks`; v3 added `planes` and `crossPlanes` — where each layer
 // and each crossing was PLACED. Every step is additive: an older file loads as a
-// scene with nothing placed, and an older reader ignores the fields.
+// scene with nothing placed, and an older reader ignores the fields. `contact`
+// (the contact weave) rides in v3 the same way: absent means off.
 export const SCENE_VERSION = 3;
 
 export interface SceneFile {
@@ -30,6 +31,8 @@ export interface SceneFile {
   levelBreaks: number[];
   planes?: Record<string, number>;
   crossPlanes?: Record<string, number>;
+  /** Contact weave — see Scene3D.contact. Omitted when off. */
+  contact?: boolean;
 }
 
 export function sceneToFile(scene: Scene3D): SceneFile {
@@ -47,6 +50,7 @@ export function sceneToFile(scene: Scene3D): SceneFile {
     ...(scene.crossPlanes && Object.keys(scene.crossPlanes).length
       ? { crossPlanes: { ...scene.crossPlanes } }
       : {}),
+    ...(scene.contact ? { contact: true } : {}),
   };
 }
 
@@ -71,6 +75,7 @@ export function sceneFromSnapshot(file: SceneFile): Scene3D {
     levelBreaks: [...file.levelBreaks],
     ...(file.planes ? { planes: { ...file.planes } } : {}),
     ...(file.crossPlanes ? { crossPlanes: { ...file.crossPlanes } } : {}),
+    ...(file.contact ? { contact: true } : {}),
     name: file.name,
   };
 }
@@ -250,6 +255,7 @@ export function sceneFromFile(data: unknown, fallbackName = 'saved scene'): Scen
     levelBreaks: normalizeLevelBreaks(obj.levelBreaks, strands.length),
     ...(placed(obj.planes, (id) => ids.has(id)) ?? {}),
     ...(placedCross(obj.crossPlanes, ids) ?? {}),
+    ...(obj.contact === true ? { contact: true } : {}),
     name: typeof obj.name === 'string' && obj.name ? obj.name : fallbackName,
   };
   recomputeOccupancy(scene);

@@ -1501,7 +1501,7 @@ export class StrandScene {
           // Half-separation: enough that the two ribbons don't interpenetrate,
           // as much more as Depth asks for. Whether a given crossing must also
           // stay inside its storey is that crossing's own question — see below.
-          const hFree = this.weaveAmplitude(tOver, tUnder);
+          const hFree = this.crossingSwing(tOver, tUnder);
 
           const wi = strands[i].width * this.params.widthScale * SCALE;
           const wj = strands[j].width * this.params.widthScale * SCALE;
@@ -2062,6 +2062,21 @@ export class StrandScene {
     return Math.max(this.params.weaveDepth * SCALE, clearance / 2);
   }
 
+  /**
+   * How far each lace leaves the plane at an UNPLACED crossing, in world units.
+   *
+   * The contact weave puts the two exactly one mean thickness apart centre to
+   * centre — each half of that off the plane — so the surfaces touch. Depth only
+   * opens air past that: a Depth at or under a thickness changes nothing, and
+   * anything over it adds the excess to each side.
+   */
+  private crossingSwing(thicknessOver: number, thicknessUnder: number): number {
+    if (!this.current.contact) return this.weaveAmplitude(thicknessOver, thicknessUnder);
+    const touch = (thicknessOver + thicknessUnder) / 4;
+    const air = Math.max(0, this.params.weaveDepth * SCALE - Math.max(thicknessOver, thicknessUnder));
+    return touch + air;
+  }
+
   /** The most a crossing can swing and still keep both ribbon bodies inside
    *  their own storey: half of what is left after the thicker body is placed. */
   private storeyRoom(thicknessOver: number, thicknessUnder: number): number {
@@ -2310,7 +2325,10 @@ export class StrandScene {
       // mean one height for the whole scene or it cannot be used to put one thing
       // exactly on another, which is the thing it is for.
       const storey = level[i] * step;
-      const floor = (rankZ.get(find(i)) ?? 0) + storey;
+      // The contact weave rests every lace on the middle of its storey: the layer
+      // lift is what put one lace above the next even where nothing touches them,
+      // and "away from a crossing, rung 0" is the statement this mode makes.
+      const floor = (this.current.contact ? 0 : rankZ.get(find(i)) ?? 0) + storey;
       floors[i] = storey;
       rest[i] = p ? storey + (p.in ?? 0) * sub : floor;
       restOut[i] = p ? storey + (p.out ?? p.in ?? 0) * sub : floor;
