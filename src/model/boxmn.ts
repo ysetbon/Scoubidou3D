@@ -281,8 +281,12 @@ export function boxStitchMN(
     return a.x === b.x && a.y === b.y ? 0 : 1;
   };
 
-  for (const s of warp) lay(s, 1);
-  for (const s of weft) lay(s, 1);
+  // The slants are the one place the stack and the hand-placed box disagree: the
+  // family lays the warp slant first, so the weft slant rides over it, where
+  // `box + strand` has the vertical (warp) slant on top. Placed, the stack follows
+  // the sample, so the slant that is on top is the same one.
+  const slantsFirst = placed ? [weft, warp] : [warp, weft];
+  for (const set of slantsFirst) for (const s of set) lay(s, 1);
   for (const s of warp) lay(s, 2, [`${s.set}_1`, side(s, 2)]);
   for (const s of weft) lay(s, 2, [`${s.set}_1`, side(s, 2)]);
   for (const s of warp) lay(s, 3, [`${s.set}_1`, side(s, 3)]);
@@ -351,7 +355,7 @@ export function boxStitchMN(
   }
 
   const scene: Scene3D = { name, strands, masks, levelBreaks };
-  return placed ? { ...scene, ...boxPlacements(scene, n) } : scene;
+  return placed ? { ...scene, ...boxPlacements(scene, n, m > 1 || n > 1) } : scene;
 }
 
 // ---- WHERE THE BOX WAS PLACED -----------------------------------------------
@@ -384,7 +388,8 @@ export function boxStitchMN(
 //   2. Where two slants cross, the one underneath is dropped to -3 — a rung past
 //      its own floor — and the one on top is brought to the middle.
 //   3. An arm passing over a slant is brought to the middle, rung 0. (The slant
-//      it passes over is placed on the floor, -2 — see `floor`.)
+//      it passes over is placed on the floor, -2, on faces bigger than 1×1 —
+//      see `floor`.)
 //   4. Where two arms cross, the one underneath is brought to the middle, rung 0.
 //      The one on top is not placed: it keeps its run. (Once the scene has more
 //      than one storey the top arm IS placed, at +2 — see `ceiling`.)
@@ -404,10 +409,11 @@ export const BOX_PLACEMENT = {
   /** Everything else that is placed at a crossing: the middle of its storey. */
   middle: 0,
   /**
-   * The slant an arm passes over. The hand-placed box leaves it alone and it sits
-   * about a thickness below the arm because it is short and there is only one arm
-   * to cross. On a larger face one slant is crossed by many arms and rises to meet
-   * them, so it is told to stay on the floor of its storey.
+   * The slant an arm passes over, on any face bigger than 1×1. The hand-placed box
+   * leaves it alone and it sits about a thickness below the arm because it is
+   * short and there are only two arms to cross. On a larger face one slant is
+   * crossed by many arms and rises to meet them, so it is told to stay on the
+   * floor of its storey.
    */
   floor: -2,
   /**
@@ -428,6 +434,8 @@ export const BOX_PLACEMENT = {
 export function boxPlacements(
   scene: Scene3D,
   n: number,
+  /** Whether a slant can be crossed by more arms than the hand-placed box has. */
+  wide = false,
 ): { planes: Record<string, number>; crossPlanes: Record<string, number> } {
   const { strands, masks } = scene;
   const order = new Map(strands.map((s, i) => [s.id, i]));
@@ -479,7 +487,7 @@ export function boxPlacements(
       else if (slants.length === 1) {
         const arm = slants[0] === v ? h : v;
         const slant = slants[0];
-        place(v, h, { [arm.id]: middle, [slant.id]: floor });
+        place(v, h, wide ? { [arm.id]: middle, [slant.id]: floor } : { [arm.id]: middle });
       } else if (!stacked) place(v, h, { [under.id]: middle });
       else place(v, h, { [under.id]: middle, [over.id]: ceiling });
     }

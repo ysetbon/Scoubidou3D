@@ -1,6 +1,6 @@
 {
   "title": "Box stitch — before and after placing",
-  "description": "Every m×n box face at 10 or 15 levels, as the studio builds it today beside the same face placed the way the box in 'box + strand' was placed. Both sides are the real renderer.",
+  "description": "The 1×1 box at its first level: the box from box + strand, the family box as built today, and the family box placed the way the reference was, with each crossing height read back off the ribbons.",
   "favicon": "🧶",
   "live": true
 }
