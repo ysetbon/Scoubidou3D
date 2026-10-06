@@ -39,8 +39,16 @@ crossings come out 26 px apart and every free end rests at 0.
 
 ## Where it is on
 
-The opening sample (`two-crossing`) and `two-crossing-attached`. The stitch
-samples are not switched on: they were built and checked against the old heights.
+- **The empty scene the app opens on.** Every strand you draw, add with **+ New**
+  or grow with **Attach** lands in that scene, so it follows the contact weave.
+  Checked in the running app: two new strands meet at +13 / −13 with 0 px of air,
+  a strand attached to one of them and dragged back across the other meets it the
+  same way, and every free end rests at 0.
+- The `two-crossing` and `two-crossing-attached` samples.
+
+Not switched on: the stitch samples, which were built and checked against the old
+heights, and loaded files (a saved scene keeps its own setting, an OpenStrand
+import comes in with it off).
 
 ## Open
 
