@@ -63,9 +63,39 @@ function twoCrossing(): Scene3D {
     name: 'Two crossing strands',
     masks: [],
     levelBreaks: [],
+    // The contact weave: both laces rest on the middle of the storey, and at the
+    // crossing they meet, half a thickness either side, instead of hovering a
+    // full thickness apart. See docs/over-under-default.md.
+    contact: true,
     strands: [
       mk('1_1', { x: 120, y: 250 }, { x: 680, y: 250 }, ORANGE, { width: 54 }),
       mk('2_1', { x: 400, y: 90 }, { x: 400, y: 410 }, YELLOW, { width: 54 }),
+    ],
+  };
+}
+
+// 1a) The same two strands, with one more ATTACHED to the end of the orange one,
+//     all on the same storey and no mask anywhere.
+//
+//     This is the scene the contact weave is judged on. Two bare strands cross
+//     once, so any default looks fine on them; a lace that crosses the SAME
+//     strand twice is where it has to hold up. Stacked 1_1, 2_1, 1_2, the layer
+//     order alone sends the orange lace UNDER the yellow one on the way out and
+//     OVER it on the way back — an over/under with no mask — and the attach
+//     doubles it back at a fold on the far end, so the lace also turns while it
+//     is changing height. Every other height in the scene is the middle.
+function twoCrossingAttached(): Scene3D {
+  const W = { width: 54 };
+  const END = { x: 600, y: 300 }; // 1_1 end, 1_2 start
+  return {
+    name: 'Two crossing strands — one attached',
+    masks: [],
+    levelBreaks: [],
+    contact: true,
+    strands: [
+      mk('1_1', { x: 150, y: 300 }, END, ORANGE, W),
+      mk('2_1', { x: 400, y: 80 }, { x: 400, y: 430 }, YELLOW, W),
+      mk('1_2', END, { x: 300, y: 120 }, ORANGE, { ...W, parentId: '1_1', parentSide: 1 }),
     ],
   };
 }
@@ -944,6 +974,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
   ...BOX_COLUMN_SAMPLES,
   ...PLACED_SAMPLES,
   'two-crossing': twoCrossing,
+  'two-crossing-attached': twoCrossingAttached,
   'two-crossing-arms': twoCrossingArms,
   'box-and-strand': boxAndStrand,
   'box-stitch': boxStitch,
@@ -982,6 +1013,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
  */
 export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }> = [
   { key: 'two-crossing', label: 'Two crossing strands', group: 'Basics' },
+  { key: 'two-crossing-attached', label: 'Two crossing strands — one attached', group: 'Basics' },
   { key: 'two-crossing-arms', label: 'Two crossing strands — with arms', group: 'Basics' },
   { key: 'box-and-strand', label: 'box + strand', group: 'Basics' },
   { key: 'box-stitch', label: 'Box stitch — starting stitch', group: 'Stitches' },

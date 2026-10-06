@@ -48,6 +48,26 @@ function twoStrands(maskVOver) {
   };
 }
 
+// The same two strands with one more attached to the end of the orange one, all on one
+// storey. It is the studio's own sample (`two-crossing-attached`), rebuilt here with the
+// contact flag as an input so the same scene can be shown both ways.
+function attachedScene() {
+  const END = { x: 600, y: 300 };
+  const child = mk('1_2', END, { x: 300, y: 120 }, ORANGE, 54);
+  child.parentId = '1_1';
+  child.parentSide = 1;
+  return {
+    name: 'Two crossing strands, one attached',
+    strands: [
+      mk('1_1', { x: 150, y: 300 }, END, ORANGE, 54),
+      mk('2_1', { x: 400, y: 80 }, { x: 400, y: 430 }, YELLOW, 54),
+      child,
+    ],
+    masks: [],
+    levelBreaks: [],
+  };
+}
+
 // THE PLANES. The studio's panel places a lace on a ladder of seven rungs; a rung is
 // half a strand thickness, so rung 0 is the middle of the storey, ±2 its floor and
 // ceiling, and ±1 the halves between. A run plane (`setSublevels`) says where a whole
@@ -73,6 +93,8 @@ const half = (r) => r / 2; // thicknesses off the storey middle
 // today's answer.
 const PLACED = { rest: 0, depth: 26 };
 const OPTIONS = {
+  builtin: { label: 'Built in', over: 'v', contact: true, rest: null, h: null, v: null, depth: 26,
+    blurb: 'The studio\'s own default, now that the contact weave is in the engine. Nothing is placed: both laces rest on the middle, and at the crossing the one that rides over sits half a thickness above it and the one that ducks under half a thickness below, touching exactly.' },
   today: { label: 'Today', over: 'v', rest: null, h: null, v: null, depth: 26,
     blurb: 'Nothing placed. Away from the crossing the laces rest at their layer rank, and at it the higher layer swings 26 px over the lower one, so there is a clear thickness of air between them.' },
   meet: { label: 'Meet in the middle', over: 'v', ...PLACED, h: -1, v: 1,
@@ -104,11 +126,18 @@ const prop = new StrandScene(document.getElementById('c-prop'));
 const views = [today, prop];
 views.forEach((v) => { v.renderer.shadowMap.enabled = false; });
 
-const state = { opt: 'meet', link: true };
+const state = { opt: 'builtin', sample: 'two', link: true };
 
 function apply(view, o) {
   view.setParams({ weaveDepth: o.depth });
-  view.setScene(twoStrands(o.over === 'v' ? null : false), false);
+  const scene = state.sample === 'attached' ? attachedScene() : twoStrands(o.over === 'v' ? null : false);
+  if (o.contact) scene.contact = true;
+  view.setScene(scene, false);
+  if (state.sample === 'attached') {
+    view.setSublevels(null);
+    view.setCrossingPlanes(null);
+    return;
+  }
   // Run planes: where each whole lace rests. Null is no map at all, not an empty
   // one: a declared map turns the fold easing off, so "no planes" has to reach the
   // scene as nothing.
@@ -135,7 +164,50 @@ function nearest(line, x, y) {
 const px = (w) => Math.round(w / SCALE);
 const fmt = (n) => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n);
 
+function measureCrossings(view, host) {
+  const thick = view.getThicknessWorld();
+  const plane = view.getStoreyPlane(0);
+  const lines = {};
+  for (const st of view.getScene().strands) lines[st.id] = view.getStrandCentrelineWorld(st.id);
+  const rows = [];
+  view.getCrossPoints().forEach((c, i) => {
+    const over = c.overIndex === c.aIndex ? c.aId : c.bId;
+    const under = over === c.aId ? c.bId : c.aId;
+    const zo = nearest(lines[over], c.x, c.y).z;
+    const zu = nearest(lines[under], c.x, c.y).z;
+    const air = zo - zu - thick;
+    rows.push([`Crossing ${i + 1}`, `${over} over ${under}`]);
+    rows.push(['Heights', `${over} ${fmt(px(zo - plane))} · ${under} ${fmt(px(zu - plane))} px`]);
+    rows.push(['Air between', px(air) >= 0 ? `${px(air)} px` : `overlap ${px(-air)} px`]);
+  });
+  // Free ends only: an end glued to another strand is where a lace changes height.
+  const ends = view.getScene().strands
+    .map((st) => {
+      const l = lines[st.id];
+      const free = [st.hasCircles[0] ? null : l[0], st.hasCircles[1] ? null : l[l.length - 1]].filter(Boolean);
+      return free.length ? `${st.id} ${fmt(px(free.reduce((a, q) => a + q.z, 0) / free.length - plane))}` : null;
+    })
+    .filter(Boolean)
+    .join(' · ');
+  rows.push(['Free ends', `${ends} px`]);
+  fill(host, rows);
+}
+
+function fill(host, rows) {
+  host.textContent = '';
+  for (const [k, v] of rows) {
+    const d = document.createElement('div');
+    const dt = document.createElement('dt');
+    const dd = document.createElement('dd');
+    dt.textContent = k;
+    dd.textContent = v;
+    d.append(dt, dd);
+    host.appendChild(d);
+  }
+}
+
 function measure(view, host) {
+  if (state.sample === 'attached') return measureCrossings(view, host);
   const cross = view.getCrossings()[0];
   const pt = view.getCrossPoints()[0];
   const thick = view.getThicknessWorld();
@@ -162,16 +234,7 @@ function measure(view, host) {
     ['Away from it', `h ${fmt(px(away.h - plane))} · v ${fmt(px(away.v - plane))} px`],
     ['Level', `${cross.levelA} and ${cross.levelB}${cross.woven ? ' · woven' : ''}`],
   ];
-  host.textContent = '';
-  for (const [k, v] of rows) {
-    const d = document.createElement('div');
-    const dt = document.createElement('dt');
-    const dd = document.createElement('dd');
-    dt.textContent = k;
-    dd.textContent = v;
-    d.append(dt, dd);
-    host.appendChild(d);
-  }
+  fill(host, rows);
 }
 
 // ---- the ladder: which planes this build uses ------------------------------------
@@ -226,6 +289,15 @@ function render() {
   const o = OPTIONS[state.opt];
   apply(today, OPTIONS.today);
   apply(prop, o);
+  const attached = state.sample === 'attached';
+  document.getElementById('pick').hidden = attached;
+  document.querySelectorAll('[data-opt]').forEach((b) => {
+    b.hidden = attached && !['builtin', 'first'].includes(b.dataset.opt);
+  });
+  document.querySelectorAll('[data-sample]').forEach((b) =>
+    b.setAttribute('aria-pressed', String(b.dataset.sample === state.sample)));
+  document.querySelectorAll('.ladder, .json').forEach((e) => { e.hidden = attached; });
+  document.querySelectorAll('.under').forEach((u) => u.classList.toggle('solo', attached));
   if (first) {
     low(today);
     syncFrom(today);
@@ -284,6 +356,12 @@ document.getElementById('link').addEventListener('click', (e) => {
 });
 document.querySelectorAll('[data-opt]').forEach((b) =>
   b.addEventListener('click', () => { state.opt = b.dataset.opt; render(); }));
+document.querySelectorAll('[data-sample]').forEach((b) =>
+  b.addEventListener('click', () => {
+    state.sample = b.dataset.sample;
+    if (state.sample === 'attached' && !['builtin', 'first'].includes(state.opt)) state.opt = 'builtin';
+    render();
+  }));
 
 // The picker: any rung for either lace, and who is over. Touching it makes the build "Your own".
 const selH = document.getElementById('sel-h');

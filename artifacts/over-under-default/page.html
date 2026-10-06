@@ -81,6 +81,7 @@
   .meas div { border: 1px solid var(--line); background: var(--panel); border-radius: 3px; padding: 7px 10px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
   .meas dt { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
   .meas dd { margin: 0; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .under.solo { grid-template-columns: 1fr; }
   .under { display: grid; grid-template-columns: minmax(0, 15.5rem) minmax(0, 1fr); gap: 10px; align-items: start; }
   .ladder { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 3px; background: var(--panel); font-family: var(--mono); font-size: 10.5px; min-width: 0; }
   .rung { display: flex; align-items: center; gap: 6px; padding: 0 8px; height: 24px; border-bottom: 1px dashed var(--line); color: var(--muted); white-space: nowrap; }
@@ -138,16 +139,25 @@
   <header>
     <span class="eyebrow">Scoubidou3D · weave · one plane</span>
     <h1>Who rides over, and on which planes?</h1>
-    <p class="lede">Two strands cross at 90° on the same level. Nobody has masked them or
-    placed them, so the studio answers on its own: <b>the higher layer rides over</b>, and each
-    lace swings away from the plane by the Depth setting. Left is exactly what the app builds
-    today. Right is the same two strands placed on the studio's own planes, shown on the ladder under the view. Orbit either one; the other follows.</p>
+    <p class="lede">The studio now has a <b>contact weave</b>. Left is a scene without it, exactly
+    what the app built before: the laces rest at their layer rank and the one on top hovers a full
+    thickness above the other. Right is the same strands with it on, which is the new default for
+    the opening sample and for the new attached-strand sample. Both laces rest on the middle of
+    the storey, and at a crossing they meet, half a thickness each way. Orbit either one; the other
+    follows.</p>
   </header>
 
   <div class="strip">
-    <div class="grp"><span>Proposed planes</span>
+    <div class="grp"><span>Sample</span>
       <div class="seg">
-        <button type="button" data-opt="meet" aria-pressed="true">Meet in the middle</button>
+        <button type="button" data-sample="two" aria-pressed="true">Two strands</button>
+        <button type="button" data-sample="attached" aria-pressed="false">With an attached strand</button>
+      </div>
+    </div>
+    <div class="grp"><span>Right view</span>
+      <div class="seg">
+        <button type="button" data-opt="builtin" aria-pressed="true">Built in</button>
+        <button type="button" data-opt="meet" aria-pressed="false">Meet in the middle (placed)</button>
         <button type="button" data-opt="low" aria-pressed="false">Both low</button>
         <button type="button" data-opt="high" aria-pressed="false">Both high</button>
         <button type="button" data-opt="spread" aria-pressed="false">Floor and ceiling</button>
@@ -166,7 +176,7 @@
       </div>
     </div>
   </div>
-  <div class="pick" aria-label="Place the laces yourself">
+  <div class="pick" id="pick" aria-label="Place the laces yourself">
     <div class="grp"><span>Orange at the crossing</span><select id="sel-h"></select></div>
     <div class="grp"><span>Yellow at the crossing</span><select id="sel-v"></select></div>
     <div class="grp"><span>Both rest on</span><select id="sel-rest"></select></div>
@@ -176,7 +186,7 @@
 
   <div class="pair">
     <div class="col">
-      <div class="cap"><h2>Today</h2><small>layer order · Depth 26</small></div>
+      <div class="cap"><h2>Before</h2><small>contact weave off</small></div>
       <div class="stage">
         <span class="hint">Drag to orbit</span>
         <canvas id="c-today"></canvas>
@@ -189,7 +199,7 @@
       <pre class="json" id="json-today"></pre>
     </div>
     <div class="col">
-      <div class="cap"><h2>Proposed</h2><small id="prop-name">Meet in the middle</small></div>
+      <div class="cap"><h2>Proposed</h2><small id="prop-name">Built in</small></div>
       <div class="stage">
         <span class="hint">Same two strands</span>
         <canvas id="c-prop"></canvas>
@@ -213,8 +223,8 @@
   crossing.</p>
 
   <div class="rule">
-    <span class="tag">What the studio does today</span>
-    <h3>No plane placed. The top layer rides over and each lace swings 26 px</h3>
+    <span class="tag">What the studio did before</span>
+    <h3>Nothing placed. The top layer rides over and each lace swings 26 px</h3>
     <p>With nothing placed, the higher layer in the panel wins
     (<code>StrandScene.weaveCenterlines</code>, <code>over = masked ?? j</code>). The over lace is
     lifted <b>Depth</b> above the plane the two share, and the under lace is lowered by the same,
@@ -232,6 +242,33 @@
     about a point 5 px above the middle, so the crossing reads +31 and −21 rather than ±26. At the
     crossing the two end up 52 px apart, centre to centre. A ribbon is 26 px thick, so there is a
     full thickness of daylight between them.</p>
+  </div>
+
+  <h2 class="sub">What the attached strand shows</h2>
+  <div class="note">
+    <section>
+      <h3>One lace, two heights</h3>
+      <p>Switch the sample to <em>With an attached strand</em>. Orange now continues past its end as a
+      second member, 1_2, which doubles back across the yellow one. Stacked 1_1, 2_1, 1_2, the layer
+      order alone puts the orange lace <b>under</b> yellow on the way out and <b>over</b> it on the way
+      back, with no mask anywhere. That is a woven S from the default, and yellow is over at the
+      first crossing and under at the second.</p>
+    </section>
+    <section>
+      <h3>Heights, measured</h3>
+      <p>Every crossing comes out 26 px apart centre to centre with 0 px of air: the over lace
+      +13 and the under lace −13 against the middle of the storey. Before, the same three crossings
+      were 52 px apart (+31 and −21). The free ends of all three strands rest at 0. Before, yellow's
+      ends sat +10 up from the layer lift.</p>
+    </section>
+    <section>
+      <h3>What it also shows</h3>
+      <p>The engine counts the glued joint, where 1_2 starts on the end of 1_1, as a crossing of its
+      own: 1_2 over 1_1. That asks the two halves of one lace to be 26 px apart at the point where they
+      are joined (52 px before), and the fold has to bridge it. The contact weave halves that step but
+      does not remove it. A lace's own consecutive members probably should not be anchored against each
+      other at their joint. That was already true before this change and I have not touched it.</p>
+    </section>
   </div>
 
   <h2 class="sub">Proposals: rest on the middle, move only at the crossing</h2>
@@ -287,19 +324,21 @@
       </ul>
     </section>
     <section>
-      <h3>What it would touch</h3>
+      <h3>What changed in the engine</h3>
       <ul>
-        <li><code>weaveCenterlines</code>: with nothing placed, a lace rests on the storey middle instead of its layer rank, and an unplaced crossing anchors at ∓½ thickness instead of ±Depth, with no 1.15 margin.</li>
-        <li><code>weaveAmplitude</code> and the Depth slider would then add swing on top of contact rather than set it.</li>
-        <li>Placing laces on rungs by hand through the Planes view stays as it is.</li>
+        <li><code>Scene3D.contact</code> turns it on, and it is saved and restored with the scene. Absent means off, so every saved file and every other sample builds exactly as before.</li>
+        <li><code>computeBaseZ</code>: with it on, a lace rests on the middle of its storey instead of at its layer rank.</li>
+        <li><code>crossingSwing</code>: an unplaced crossing meets at half a thickness each way. Depth only opens air beyond a full thickness, so the default of 26 changes nothing further.</li>
+        <li>Placed planes and crossing planes still outrank it, and the Planes view is unchanged.</li>
+        <li>On for the opening sample and the new attached-strand sample. The stitch samples are left alone.</li>
       </ul>
     </section>
     <section>
       <h3>The catch</h3>
       <ul>
-        <li>Resting every lace on the middle drops the layer lift, so a stack of laces that do not cross would overlap. The layer lift would have to stay for strands that never cross anything, or a placed rest plane could apply only near crossings.</li>
-        <li>Scenes people have already built would change. Gate it on a scene setting and read old saves as today's.</li>
+        <li>Resting every lace on the middle drops the layer lift, so strands that overlap without crossing would sit in the same space. I have not looked for a scene that does.</li>
         <li>With no margin, curved or thick laces can flicker where the surfaces meet. A 1 to 2 px margin would hide that.</li>
+        <li>The stitch samples were not switched on, because they were built and checked against the old heights.</li>
       </ul>
     </section>
   </div>
