@@ -25,6 +25,7 @@ own light or dark theme, so both are designed rather than one inverted.
 | [`box-level2-editor`](box-level2-editor/) | An editor for the 1×1 box's second level: rung pickers for each level-2 arm and each crossing, a flip for who is on top, the heights read back off the built ribbons, and a Copy button that hands the plan back as JSON in a saved scene's own keys. **Live**: one `StrandScene`; level 1 is the box in `box + strand`. |
 | [`box-level3-editor`](box-level3-editor/) | The same editor one level up: levels 1 and 2 fixed as they were settled, level 3 opening on the plan learned from level 2. Both editors are `artifacts/lib/box-level-editor.js`, called with the level. |
 | [`box-placed-check`](box-placed-check/) | The 1×1 box at 1, 2, 3, 10 and 15 levels and a 2×1, both hands, as the family builds them beside the same boxes placed by the rules learned from `box + strand` and the hand-placed levels 2 and 3 (`boxStitchMN(..., placed, 'hand')`). **Live**; ledgers read back off the built ribbons. |
+| [`box-fold-fix`](box-fold-fix/) | Where a box level turns back into the one above it and touches its neighbouring arm, and three candidate fixes (fold stops pushed out two amounts, tips lifted) — with a camera that goes straight to a fold end. **Live**; `boxStitchMN`'s `stop` argument. |
 
 ---
 

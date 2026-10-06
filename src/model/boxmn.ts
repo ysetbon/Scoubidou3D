@@ -127,6 +127,14 @@ export function boxStitchMN(
   placed = false,
   /** How the rounds above the first are placed; see `UPPER_PLANS`. */
   upper: UpperPlan = 'hand',
+  /**
+   * Extra px every fold stop is pushed out past where `POKE` puts it. The stops
+   * sit 32 px past the neighbouring arm's centre and a ribbon is 46 wide, so a
+   * fold end touches the arm beside it; this is the room to clear it. The loose
+   * tails at the very top are not folds and are not moved. 0 is the family as it
+   * stood.
+   */
+  stop = 0,
 ): Scene3D {
   const cx = 400;
   const cy = 300;
@@ -250,7 +258,7 @@ export function boxStitchMN(
   };
   /** How far along its own line, from the middle, an arm's `f`th fold ends. */
   const reach = (f: number, band: number, tail: number): number =>
-    (f % 2 === 0 ? 1 : -1) * (f === rounds ? tail : band + over(f));
+    (f % 2 === 0 ? 1 : -1) * (f === rounds ? tail : band + over(f) + stop);
 
   // `_2` and `_3` are folds too, so they take their own slot in the spread — at
   // one and two rounds there is nothing to spread and they land exactly where a
