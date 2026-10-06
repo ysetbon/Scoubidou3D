@@ -7,6 +7,7 @@ settle: *is this model actually right?* You orbit it and find out.
 ```
 npm run artifact -- twist-level-9      # -> artifacts/built/twist-level-9.html
 npm run artifact -- box-family
+npm run artifact -- box-before-after
 ```
 
 Open the file in a browser, or publish it (Claude Code's Artifact tool takes the
@@ -20,6 +21,15 @@ own light or dark theme, so both are designed rather than one inverted.
 | [`box-family`](box-family/) | Every m×n box face, both hands, worked to ten rounds — whether a round really lands on the one below rather than through it, and whether the over/under flips the way a box's has to. **Live**: it carries `StrandScene` and builds what you pick. |
 | [`four-twists-2x1`](four-twists-2x1/) | One hand-fitted 2×1 ring, `k = −1` four times over, imported from the MXN lab — whether its four *rounds* stand as four *storeys* once the level breaks are put in, and what the same ring looks like with none. **Live**: it carries `StrandScene`, so its joints can be slid and its points dragged with the app's own move tool. |
 | [`over-under-default`](over-under-default/) | What the studio does at one crossing of two strands at 90° on one level when nothing is masked or placed, placed on the studio's own planes in several ways. **Live**: two linked `StrandScene` views, with the over/under heights read back off the built ribbons. |
+| [`box-before-after`](box-before-after/) | The 1×1 box at its second level: today's unplaced build beside the level placed by hand in `box-level2-editor` (`boxStitchMN(..., placed)`), each checked to keep level 1 exactly the box in `box + strand`, with every crossing height read back off the ribbons. **Live**: two linked `StrandScene` views, with the over/under heights read back off the built ribbons. |
+| [`box-level2-editor`](box-level2-editor/) | An editor for the 1×1 box's second level: rung pickers for each level-2 arm and each crossing, a flip for who is on top, the heights read back off the built ribbons, and a Copy button that hands the plan back as JSON in a saved scene's own keys. **Live**: one `StrandScene`; level 1 is the box in `box + strand`. |
+| [`box-level3-editor`](box-level3-editor/) | The same editor one level up: levels 1 and 2 fixed as they were settled, level 3 opening on the plan learned from level 2. Both editors are `artifacts/lib/box-level-editor.js`, called with the level. |
+| [`box-level4-editor`](box-level4-editor/) | Level 4, with levels 1–3 fixed as placed and level 4 opening on the rule learned from them (rests alternating +1 / −1, crossings ±1, folds ending on 0 and starting on +1). |
+| [`box-levels`](box-levels/) | Every m×n box face, both hands, placed as the studio now opens it — level 1 from `box + strand`, every level above by the rule placed by hand — at any level from 1 to 10, with every crossing and fold read back off the built ribbons. **Live**. |
+| [`box-1x1-levels`](box-1x1-levels/) | The 1×1 box one level at a time up to 10 as placed by hand: step or "Build up", each level's own placement listed from the scene, a camera at the fold into it, and every crossing and fold read back off the ribbons. **Live**. |
+| [`box-2x1-level1-editor`](box-2x1-level1-editor/), [`…level2…`](box-2x1-level2-editor/), [`…level3…`](box-2x1-level3-editor/) | The same level editor on the 2×1: every strand's rest, every crossing's rungs, who is on top, and (levels 2 and up) the folds. Level 1 is editable too, slants included. The shared editor takes a face: `startEditor(level, { m, n })`. |
+| [`box-placed-check`](box-placed-check/) | The 1×1 box at 1, 2, 3, 10 and 15 levels and a 2×1, both hands, as the family builds them beside the same boxes placed by the rules learned from `box + strand` and the hand-placed levels 2 and 3 (`boxStitchMN(..., placed, 'hand')`). **Live**; ledgers read back off the built ribbons. |
+| [`box-fold-fix`](box-fold-fix/) | Where a box level turns back into the one above it and touches its neighbouring arm, and three candidate fixes (fold stops pushed out two amounts, tips lifted) — with a camera that goes straight to a fold end. **Live**; `boxStitchMN`'s `stop` argument. |
 
 ---
 

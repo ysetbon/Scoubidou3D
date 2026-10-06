@@ -1,0 +1,124 @@
+<title>Box Fold Ends</title>
+
+<style>
+  /* Layout: one control strip, two linked canvases side by side with a ledger under
+     each, then the written case. One column on a phone. */
+  :root {
+    --ground: #f5efdf;
+    --panel: #fbf7ec;
+    --ink: #241f18;
+    --muted: #7d735f;
+    --line: #ded3ba;
+    --accent: #3d3a8c;
+    --weft: #c4621a;
+    --ok: #2c6b52;
+    --off: #8a6320;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --serif: Georgia, "Times New Roman", serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #14110e; --panel: #1d1913; --ink: #efe7d6; --muted: #9b907d; --line: #352e23;
+      --accent: #9a97e8; --weft: #e9944f; --ok: #77c39c; --off: #d6ab63; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #14110e; --panel: #1d1913; --ink: #efe7d6; --muted: #9b907d; --line: #352e23;
+    --accent: #9a97e8; --weft: #e9944f; --ok: #77c39c; --off: #d6ab63; color-scheme: dark;
+  }
+
+  body { background: var(--ground); color: var(--ink); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 24px 16px 56px; display: flex; flex-direction: column; gap: 18px; }
+  .eyebrow { display: block; font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(26px, 4vw, 36px); line-height: 1.08; letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+  .lede { margin: 10px 0 0; max-width: 70ch; color: var(--muted); font-size: 14.5px; line-height: 1.6; }
+
+  .bar { display: flex; flex-wrap: wrap; gap: 12px 22px; align-items: flex-end; }
+  .grp { display: flex; flex-direction: column; gap: 5px; }
+  .grp > span { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+  .seg button { appearance: none; background: var(--panel); color: var(--muted); border: 0; border-right: 1px solid var(--line); padding: 8px 13px; font-family: var(--mono); font-size: 12px; cursor: pointer; }
+  .seg button:last-child { border-right: 0; }
+  .seg button:hover { color: var(--ink); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .face { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .face .n { font-family: var(--serif); font-size: 30px; line-height: 1; }
+  .face span { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+  .pair, #panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .side p { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
+  .side h2 { margin: 0; font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .side h2 b { color: var(--ink); }
+  .stage { position: relative; height: min(46vh, 420px); min-height: 280px; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; background: var(--ground); }
+  .stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 12px; color: var(--muted); background: var(--ground); }
+  .ledger { display: grid; grid-template-columns: 1fr auto; gap: 3px 14px; margin: 0; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .ledger dt { color: var(--muted); }
+  .ledger dd { margin: 0; text-align: right; }
+  .ledger dd.good { color: var(--ok); }
+  .ledger dd.bad { color: var(--off); }
+  .note { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 22px 34px; }
+  .note section { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+  .note h2 { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin: 0; font-weight: 600; }
+  .note p { margin: 0; font-size: 14px; line-height: 1.65; }
+  .note code { font-family: var(--mono); font-size: 12.5px; background: var(--panel); border: 1px solid var(--line); border-radius: 2px; padding: 1px 5px; overflow-wrap: anywhere; }
+  @media (max-width: 760px) { #panels, .pair { grid-template-columns: minmax(0, 1fr); } .stage { height: 52vh; } }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <div>
+    <span class="eyebrow">Scoubidou3D · box stitch · 1×1 · level 3 · fold ends</span>
+    <h1>Where a level meets the one above it.</h1>
+    <p class="lede">At the end of each level-2 arm the ribbon turns back and carries on as a level-3 arm. That turning
+    end sits close beside the neighbouring level-2 arm and touches it. Below, today's box and three ways to clear it,
+    all placed exactly as before. Press <b>Fold end</b> to look straight at one. Orbit one panel and the others follow.</p>
+  </div>
+
+  <div class="bar">
+    <div class="grp"><span>Levels</span><div class="seg">
+      <button type="button" data-levels="3" aria-pressed="true">3</button>
+      <button type="button" data-levels="10" aria-pressed="false">10</button></div></div>
+    <div class="grp"><span>Hand</span><div class="seg">
+      <button type="button" data-hand="lh" aria-pressed="false">LH · cw</button>
+      <button type="button" data-hand="rh" aria-pressed="true">RH · ccw</button></div></div>
+    <div class="grp"><span>Camera</span><div class="seg">
+      <button type="button" id="v-fit">Whole</button>
+      <button type="button" id="v-side">Side</button>
+      <button type="button" id="v-plan">Plan</button>
+      <button type="button" id="v-fold">Fold end</button>
+      <button type="button" id="link" aria-pressed="true">Linked</button></div></div>
+  </div>
+
+  <div id="panels"><div id="loading">building the boxes…</div></div>
+
+  <div class="note">
+    <section>
+      <h2>What touches</h2>
+      <p>A fold stops 32 px past the neighbouring arm's centre. The neighbour is 46 wide, so its edge is only 9 px
+      from the turning end, and a ribbon turning back needs about half a thickness (13 px) to curl. At the same
+      time the tip is only about 12 px from the neighbour's height, and a ribbon is 26 thick.</p>
+    </section>
+    <section>
+      <h2>Stops out</h2>
+      <p>Moves every fold stop further out. Nothing is re-placed: the rungs are the same, and the crossings
+      stay where they are. The box gets wider by twice the move.</p>
+    </section>
+    <section>
+      <h2>Tips lifted</h2>
+      <p>Keeps the footprint and lifts the last stretch of each folding arm a full thickness. This is a preview:
+      a saved scene holds one rung per arm and cannot say a ramp, so building it in would need a new field.</p>
+    </section>
+    <section>
+      <h2>Reading the figures</h2>
+      <p>For every arm that has a level above it, the page takes its turning end and the nearest arm on the same
+      level, and reads two distances off the built ribbons: from the end to that arm's near edge as seen from above,
+      and in height. Touching means under 13 px from the edge and under 26 px in height. The picture is the
+      judgement, so use <b>Fold end</b>.</p>
+    </section>
+  </div>
+</div>
+
+<script>__VIEWER__</script>

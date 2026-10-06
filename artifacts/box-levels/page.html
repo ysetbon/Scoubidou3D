@@ -1,0 +1,211 @@
+<title>Box Family Levels</title>
+
+<style>
+  /* Layout: the model on the left, kept in view; the controls, the rule and the read-back
+     on the right. One column on a phone. */
+  :root {
+    --ground: #f5efdf;
+    --panel: #fbf7ec;
+    --ink: #241f18;
+    --muted: #7d735f;
+    --line: #ded3ba;
+    --accent: #3d3a8c;
+    --weft: #c4621a;
+    --ok: #2c6b52;
+    --off: #8a6320;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --serif: Georgia, "Times New Roman", serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #14110e; --panel: #1d1913; --ink: #efe7d6; --muted: #9b907d; --line: #352e23;
+      --accent: #9a97e8; --weft: #e9944f; --ok: #77c39c; --off: #d6ab63; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #14110e; --panel: #1d1913; --ink: #efe7d6; --muted: #9b907d; --line: #352e23;
+    --accent: #9a97e8; --weft: #e9944f; --ok: #77c39c; --off: #d6ab63; color-scheme: dark;
+  }
+
+  body { background: var(--ground); color: var(--ink); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 24px 16px 56px; display: flex; flex-direction: column; gap: 18px; }
+  .eyebrow { display: block; font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(26px, 4vw, 36px); line-height: 1.08; letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+  .lede { margin: 10px 0 0; max-width: 70ch; color: var(--muted); font-size: 14.5px; line-height: 1.6; }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+  .stagecol { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .stage { position: relative; height: min(70vh, 640px); min-height: 340px; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; background: var(--ground); }
+  .stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 12px; color: var(--muted); background: var(--ground); }
+
+  .bar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+  .seg button, .btn, select {
+    appearance: none; background: var(--panel); color: var(--muted); border: 0; border-right: 1px solid var(--line);
+    padding: 8px 12px; font-family: var(--mono); font-size: 12px; cursor: pointer;
+  }
+  .seg button:last-child { border-right: 0; }
+  .seg button:hover, .btn:hover { color: var(--ink); }
+  .btn, select { border: 1px solid var(--line); border-radius: 3px; }
+  select { color: var(--ink); }
+  .btn.primary { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+  label.chk { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+  label.chk input { accent-color: var(--accent); }
+  button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .controls { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  h2 { margin: 0; font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .help { margin: 4px 0 0; font-size: 13px; line-height: 1.55; color: var(--muted); }
+  .section { display: flex; flex-direction: column; gap: 8px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .row > b { font-family: var(--mono); font-size: 13px; min-width: 3.4ch; }
+  .row > b.wide { min-width: 10ch; }
+  .ideas { display: flex; flex-wrap: wrap; gap: 8px; }
+  .weft { color: var(--weft); }
+  .warp { color: var(--accent); }
+  i.weft, i.warp { font-style: normal; font-weight: 600; }
+  .rungs { display: flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+  .rungs button {
+    appearance: none; background: var(--panel); color: var(--muted); border: 0; border-right: 1px solid var(--line);
+    min-width: 38px; padding: 6px 7px; font-family: var(--mono); font-size: 12px; cursor: pointer; font-variant-numeric: tabular-nums;
+  }
+  .rungs button:first-child { min-width: 44px; }
+  .rungs button:last-child { border-right: 0; }
+  .rungs button:hover { color: var(--ink); }
+  .rungs button[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
+
+  .cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .card { border: 1px solid var(--line); border-radius: 3px; background: var(--panel); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .card .head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-family: var(--mono); font-size: 12.5px; }
+  .card .head span { color: var(--muted); }
+  .flip { margin-left: auto; appearance: none; background: var(--ground); color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 5px 9px; font-family: var(--mono); font-size: 11.5px; cursor: pointer; }
+  .flip:hover { color: var(--ink); }
+  .flip[aria-pressed="true"] { color: var(--ink); border-color: var(--ink); }
+  .read { margin: 0; font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .read.ok { color: var(--ok); }
+  .read.off { color: var(--off); }
+
+  .copybox { display: flex; flex-direction: column; gap: 8px; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 150px; resize: vertical; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 3px; padding: 10px; font-family: var(--mono); font-size: 11.5px; line-height: 1.45; }
+  #copied { font-family: var(--mono); font-size: 12px; color: var(--ok); min-height: 1.2em; }
+
+  .ladder { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-family: var(--mono); font-size: 11.5px; color: var(--muted); margin: 0; }
+  .ladder dt { color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
+  .ladder dd { margin: 0; }
+
+  @media (max-width: 860px) {
+    .grid { grid-template-columns: minmax(0, 1fr); }
+    .stagecol { position: static; }
+    .stage { height: 58vh; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 3px; }
+  table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; background: var(--panel); }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.ok { color: var(--ok); }
+  td.off { color: var(--off); }
+  .rule td:first-child { color: var(--muted); white-space: nowrap; }
+  .grp { display: flex; flex-direction: column; gap: 5px; }
+  .grp > span { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
+  code { font-family: var(--mono); font-size: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 2px; padding: 1px 5px; overflow-wrap: anywhere; }
+  .picker { display: grid; grid-template-columns: 22px repeat(8, minmax(30px, 1fr)); gap: 3px; align-items: center; }
+  .ax { font-family: var(--mono); font-size: 10px; color: var(--muted); text-align: center; line-height: 1.15; }
+  .ax.corner { font-size: 9px; }
+  .cell { appearance: none; background: var(--panel); color: var(--muted); border: 1px solid var(--line); border-radius: 2px; padding: 5px 0; font-family: var(--mono); font-size: 10.5px; cursor: pointer; }
+  .cell:hover { color: var(--ink); border-color: var(--ink); }
+  .cell[aria-pressed="true"] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+  .cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<div class="wrap">
+  <div>
+    <span class="eyebrow">Scoubidou3D · box stitch · every m×n face · levels 1–10</span>
+    <h1>Every box face, placed, up to ten levels.</h1>
+    <p class="lede">Level 1 is the box from box + strand, carried to every face. Every level above is the rule you placed
+    by hand on the 1×1: arms resting on −1, crossings ±1, each fold ending on −1 below and starting on +1 above. This is
+    now how the studio opens every box sample. Pick a face on the grid and a level; the table reads every crossing and
+    fold back off the built ribbons.</p>
+  </div>
+
+  <div class="grid">
+    <div class="stagecol">
+      <div class="stage"><canvas id="c"></canvas><div id="loading">building the box…</div></div>
+      <div class="bar">
+        <div class="seg">
+          <button type="button" id="v-fit">Whole</button>
+          <button type="button" id="v-side">Side</button>
+          <button type="button" id="v-plan">Plan</button>
+          <button type="button" id="v-fold">Fold end</button>
+        </div>
+        <span id="sample"></span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="bar">
+        <div class="grp"><span>Levels</span><div class="seg">
+          <button type="button" data-levels="1">1</button>
+          <button type="button" data-levels="2">2</button>
+          <button type="button" data-levels="3">3</button>
+          <button type="button" data-levels="4">4</button>
+          <button type="button" data-levels="5">5</button>
+          <button type="button" data-levels="6">6</button>
+          <button type="button" data-levels="7">7</button>
+          <button type="button" data-levels="8">8</button>
+          <button type="button" data-levels="9">9</button>
+          <button type="button" data-levels="10">10</button></div></div>
+        <div class="grp"><span>Hand</span><div class="seg">
+          <button type="button" data-hand="rh">RH · ccw</button>
+          <button type="button" data-hand="lh">LH · cw</button></div></div>
+      </div>
+      <div class="bar">
+        <div class="grp"><span>Build</span><div class="seg">
+          <button type="button" data-placed="true">Placed</button>
+          <button type="button" data-placed="false">Today, unplaced</button></div></div>
+        <div class="grp"><span>Show</span><div class="seg">
+          <button type="button" data-only="false">Every level</button>
+          <button type="button" data-only="true">Top level only</button></div></div>
+      </div>
+
+      <div class="section">
+        <h2>Face</h2>
+        <div class="picker" id="grid" role="grid" aria-label="Box faces, m by n"></div>
+      </div>
+
+      <div class="section">
+        <h2>The rule</h2>
+        <div class="tablewrap"><table class="rule"><tbody>
+          <tr><td>Level 1</td><td>The box from box + strand: vertical arms rest on −1, the slant underneath drops to −3,
+            an arm over a slant sits on 0, the arm underneath at an arm crossing sits on 0.</td></tr>
+          <tr><td>Every level above</td><td>Arms rest on −1. At each crossing the arm on top goes to +1 and the arm
+            underneath to −1.</td></tr>
+          <tr><td>Every fold</td><td>The arm below ends on −1 and the arm above starts on +1, so the turn rises clear
+            instead of climbing through the arm beside it.</td></tr>
+        </tbody></table></div>
+      </div>
+
+      <div class="section">
+        <h2>Read back off the ribbons</h2>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Level</th><th>Crossings</th><th>How close</th><th>Folds up out of it</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table></div>
+        <p class="help">Folds give the turning end's distance from the neighbouring arm's edge as seen from above, and in
+        height. Ribbons are 46 px wide and 26 px thick.</p>
+      </div>
+
+      <div class="section">
+        <h2>In the studio</h2>
+        <p class="help">Every face at ten levels is the Browse grid's column, <code>?sample=box-col-rh-3x2-10</code>
+        (and <code>box-col-lh-…</code>); one level over the starting stitch is <code>box-rh-3x2</code>. Both are placed now.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>__VIEWER__</script>

@@ -5,7 +5,13 @@ Two things, and they are the same object seen twice.
 **In the studio**, all 64 faces are samples in both hands — `box-lh-3x2`,
 `box-rh-8x8` and the rest — built by
 [`src/model/boxmn.ts`](../../src/model/boxmn.ts) and listed as a grid in
-Browse samples…, beside the twist family. Orbit one:
+Browse samples…, beside the twist family. The grid opens each face as a column of
+ten levels, and every box sample is **placed**: level 1 the way the box in
+`box + strand` was placed, every level above by the rule placed by hand on the
+1×1 (arms on −1, crossings ±1, each fold ending on −1 below and starting on +1
+above) — see `UpperPlan` and `boxPlacements` in boxmn.ts, and
+[Box Family Levels](https://claude.ai/artifact/8PPxxfyQ1Q74J2VK74uthu) to look at
+any face. The drawn sheet below, and `check:box`, measure the unplaced build. Orbit one:
 [3×2 LH](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-lh-3x2),
 [8×8 LH](https://ysetbon.github.io/Scoubidou3D/app/?sample=box-lh-8x8).
 Every link is in [links.md](../links.md#the-mn-faces-in-the-studio).

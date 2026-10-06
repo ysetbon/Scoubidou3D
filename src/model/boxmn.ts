@@ -46,16 +46,21 @@ export const SPLAY = 2;
 export const boxKey = (hand: Hand, m: number, n: number): string => `box-${hand}-${m}x${n}`;
 
 /**
- * How many rounds the family's COLUMNS are worked to.
+ * How many LEVELS the family's columns are worked to — storeys, as the studio's
+ * Level panel counts them: the starting stitch is level 1 and every round worked
+ * over it is one more. `BOX_ROUNDS` is the same depth counted in rounds over the
+ * starting stitch, which is what `boxStitchMN` takes.
  *
  * The same split the twist family makes: `boxKey` is one stitch — the block and
  * the arms carried back over it, the thing the drawn sheet measures — and
  * `boxColumnKey` is that stitch worked again and again, which is the object you
- * would actually end up holding.
+ * would actually end up holding. The key keeps its `-10`: it now means ten levels,
+ * which is the depth the placement was settled at (artifacts/box-1x1-levels).
  */
-export const BOX_ROUNDS = 10;
+export const BOX_LEVELS = 10;
+export const BOX_ROUNDS = BOX_LEVELS - 1;
 export const boxColumnKey = (hand: Hand, m: number, n: number): string =>
-  `box-col-${hand}-${m}x${n}-${BOX_ROUNDS}`;
+  `box-col-${hand}-${m}x${n}-${BOX_LEVELS}`;
 
 export interface BoxShape {
   key: string;
@@ -124,6 +129,17 @@ export function boxStitchMN(
   name: string,
   hand: Hand = 'lh',
   rounds = 1,
+  placed = false,
+  /** How the rounds above the first are placed; see `UPPER_PLANS`. */
+  upper: UpperPlan = 'hand',
+  /**
+   * Extra px every fold stop is pushed out past where `POKE` puts it. The stops
+   * sit 32 px past the neighbouring arm's centre and a ribbon is 46 wide, so a
+   * fold end touches the arm beside it; this is the room to clear it. The loose
+   * tails at the very top are not folds and are not moved. 0 is the family as it
+   * stood.
+   */
+  stop = 0,
 ): Scene3D {
   const cx = 400;
   const cy = 300;
@@ -247,7 +263,7 @@ export function boxStitchMN(
   };
   /** How far along its own line, from the middle, an arm's `f`th fold ends. */
   const reach = (f: number, band: number, tail: number): number =>
-    (f % 2 === 0 ? 1 : -1) * (f === rounds ? tail : band + over(f));
+    (f % 2 === 0 ? 1 : -1) * (f === rounds ? tail : band + over(f) + stop);
 
   // `_2` and `_3` are folds too, so they take their own slot in the spread — at
   // one and two rounds there is nothing to spread and they land exactly where a
@@ -280,8 +296,12 @@ export function boxStitchMN(
     return a.x === b.x && a.y === b.y ? 0 : 1;
   };
 
-  for (const s of warp) lay(s, 1);
-  for (const s of weft) lay(s, 1);
+  // The slants are the one place the stack and the hand-placed box disagree: the
+  // family lays the warp slant first, so the weft slant rides over it, where
+  // `box + strand` has the vertical (warp) slant on top. Placed, the stack follows
+  // the sample, so the slant that is on top is the same one.
+  const slantsFirst = placed ? [weft, warp] : [warp, weft];
+  for (const set of slantsFirst) for (const s of set) lay(s, 1);
   for (const s of warp) lay(s, 2, [`${s.set}_1`, side(s, 2)]);
   for (const s of weft) lay(s, 2, [`${s.set}_1`, side(s, 2)]);
   for (const s of warp) lay(s, 3, [`${s.set}_1`, side(s, 3)]);
@@ -349,9 +369,264 @@ export function boxStitchMN(
     }
   }
 
-  return { name, strands, masks, levelBreaks };
+  const scene: Scene3D = { name, strands, masks, levelBreaks };
+  return placed ? { ...scene, ...boxPlacements(scene, n, m > 1 || n > 1, upper) } : scene;
 }
 
+// ---- WHERE THE BOX WAS PLACED -----------------------------------------------
+// The `box + strand` sample (samples.ts) is a box somebody drew by hand and then
+// placed on the studio's plane ladder, crossing by crossing. Nothing in it is
+// derived: it is a six-strand scene with a `planes` map and a `crossPlanes` map,
+// and those two maps ARE the way that box was done. This reads them back out as a
+// rule about ROLES, so any m × n face, in either hand and to any number of rounds,
+// can be placed the same way.
+//
+// What the hand-placed box says, in the sample's own ids (orange = the horizontal
+// set `1`, yellow = the vertical set `2`; `_1` the buried slant, `_2` / `_3` the
+// two arms):
+//
+//   planes       2_2 -1   2_3 -1
+//   crossPlanes  1_1|2_1  1_1 -3   2_1 0      slant over slant
+//                1_1|2_2  2_2 0                arm over a slant
+//                1_1|2_3  2_3 0
+//                2_1|1_2  1_2 0
+//                2_1|1_3  1_3 0
+//                1_2|2_2  1_2 0                arm under an arm
+//                1_3|2_3  1_3 0
+//                1_3|2_2  2_2 0
+//                1_2|2_3  2_3 0
+//
+// Read as roles, that is four sentences and nothing else:
+//
+//   1. The vertical (warp) arms rest on the lower half, rung -1. Every other run
+//      is left where the layer stack puts it.
+//   2. Where two slants cross, the one underneath is dropped to -3 — a rung past
+//      its own floor — and the one on top is brought to the middle.
+//   3. An arm passing over a slant is brought to the middle, rung 0. (The slant
+//      it passes over is placed on the floor, -2, on faces bigger than 1×1 —
+//      see `floor`.)
+//   4. Where two arms cross, the one underneath is brought to the middle, rung 0.
+//      The one on top is not placed: it keeps its run. (On a face bigger than 1×1
+//      with a storey above, the top arm IS placed, at +2 — see `ceiling`.)
+//
+// That is the first level, and only the first level: the sample has nothing above
+// it. The second level was placed by hand separately — see `UpperPlan`.
+//
+// Which arm is "underneath" is whatever the scene's own weave says — a mask if
+// there is one, the layer stack if not — so the rule follows the alternation a
+// box has to have and needs no table of its own. And a rung is relative to the
+// storey a layer is on, so a round worked a storey up is placed exactly like the
+// one below it.
+
+/** One rung of the studio's plane ladder is half a thickness; 0 is the middle. */
+export const BOX_PLACEMENT = {
+  /** Where the warp arms rest, along their whole run. */
+  warpArmRest: -1,
+  /** The slant that ends up underneath, at the one crossing of the two slants. */
+  slantUnder: -3,
+  /** Everything else that is placed at a crossing: the middle of its storey. */
+  middle: 0,
+  /**
+   * The slant an arm passes over, on any face bigger than 1×1. The hand-placed box
+   * leaves it alone and it sits about a thickness below the arm because it is
+   * short and there are only two arms to cross. On a larger face one slant is
+   * crossed by many arms and rises to meet them, so it is told to stay on the
+   * floor of its storey.
+   */
+  floor: -2,
+  /**
+   * The arm on top, at a first-level arm-over-arm crossing on a face bigger than
+   * 1×1, once there is more than one storey. The hand-placed box leaves it free and it rises about a thickness by
+   * itself, because nothing is above it. With a storey above it is capped and
+   * cannot, so it has to be told: the top of its storey is one thickness over the
+   * middle, which is exactly resting on the arm below.
+   */
+  ceiling: 2,
+} as const;
+
+/**
+ * How a round above the first is placed. A round above the first has no slants,
+ * only arms crossing arms, so a plan says where the round's arms rest, the rung of
+ * the arm underneath and of the arm on top at each crossing, and where an arm
+ * starts at the fold it comes out of.
+ *
+ * `hand` is what was placed by hand in the level editors (artifacts/box-level*-
+ * editor) on the 1×1 right hand, levels 2, 3 and 4, each the same way:
+ *
+ *   every level above the first   arms rest on -1
+ *   at each crossing              the arm on top +1, the arm underneath -1
+ *   at each fold into it          the arm below ends on -1, the arm above
+ *                                 starts on +1
+ *
+ * Above level 1 an arm's own rest is already -1, so "ends on -1" only says
+ * anything at the fold out of level 1: the horizontal arms there have no plane
+ * of their own, and are brought down to -1 at their ends.
+ *
+ * The fold is what keeps a level from cutting through the one under it: an arm's
+ * last crossing before it turns is UNDER its neighbour, and starting the arm
+ * above on +1 lets the turn rise clear instead of climbing through that
+ * neighbour.
+ *
+ * `woven` and `loose` are the editors' other starting points: the same rest on
+ * every level, nothing at the folds.
+ */
+export type UpperPlan = 'hand' | 'woven' | 'loose';
+export interface UpperPlanSpec {
+  label: string;
+  /** Where every arm of a level above the first rests. */
+  rest: number;
+  under: number;
+  over: number;
+  /**
+   * At a fold between levels: where the arm above `start`s and, when set, where
+   * the arm below `end`s (absent: it ends on its own rest). Only the END of a
+   * level-1 arm can be moved here; the rest of level 1 is the box from
+   * `box + strand`.
+   */
+  fold?: { start: number; end?: number };
+}
+export const UPPER_PLANS: Record<UpperPlan, UpperPlanSpec> = {
+  hand: { label: 'Placed by hand', rest: -1, under: -1, over: 1, fold: { end: -1, start: 1 } },
+  woven: { label: 'Woven, touching', rest: 0, under: -1, over: 1 },
+  loose: { label: 'Woven, with air', rest: 0, under: -2, over: 2 },
+};
+
+/**
+ * The `planes` and `crossPlanes` that place a box scene the way `box + strand`
+ * was placed. `n` is the number of weft sets — sets 1 … n are weft, the rest warp,
+ * which is how `boxStitchMN` numbers them.
+ */
+export function boxPlacements(
+  scene: Scene3D,
+  n: number,
+  /** Whether a slant can be crossed by more arms than the hand-placed box has. */
+  wide = false,
+  upper: UpperPlan = 'hand',
+): {
+  planes: Record<string, number>;
+  crossPlanes: Record<string, number>;
+  planeEnds?: Record<string, { in?: number; out?: number }>;
+} {
+  const { strands, masks } = scene;
+  const order = new Map(strands.map((s, i) => [s.id, i]));
+  const masked = new Map(masks.map((k) => [`${k.overId}|${k.underId}`, true]));
+  const parse = (id: string): { set: number; layer: number } => {
+    const [set, layer] = id.split('_').map(Number);
+    return { set, layer };
+  };
+  const isWarp = (id: string): boolean => parse(id).set > n;
+  /** Round a layer belongs to; `_1`, `_2` and `_3` are all round 0, then two to a round. */
+  const round = (id: string): number => Math.max(0, Math.floor((parse(id).layer - 2) / 2));
+  const planes: Record<string, number> = {};
+  const crossPlanes: Record<string, number> = {};
+
+  const cross = (a: Strand3D, b: Strand3D): boolean => {
+    const d = (p: Point, q: Point, r: Point): number =>
+      (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+    const d1 = d(a.start, a.end, b.start);
+    const d2 = d(a.start, a.end, b.end);
+    const d3 = d(b.start, b.end, a.start);
+    const d4 = d(b.start, b.end, a.end);
+    return d1 * d2 < 0 && d3 * d4 < 0;
+  };
+  /** Place strands at the pair's one crossing, keyed in the order the scene lists the pair. */
+  const place = (a: Strand3D, b: Strand3D, rung: { [id: string]: number }): void => {
+    const [lo, hi] = order.get(a.id)! < order.get(b.id)! ? [a, b] : [b, a];
+    for (const [id, v] of Object.entries(rung)) crossPlanes[`${lo.id}|${hi.id}|0|${id}`] = v;
+  };
+  const overOf = (v: Strand3D, h: Strand3D): Strand3D => {
+    if (masked.has(`${v.id}|${h.id}`)) return v;
+    if (masked.has(`${h.id}|${v.id}`)) return h;
+    return order.get(v.id)! > order.get(h.id)! ? v : h;
+  };
+
+  const plan = UPPER_PLANS[upper];
+  for (const s of strands) {
+    const { layer } = parse(s.id);
+    const level = round(s.id) + 1;
+    if (layer > 1 && level > 1) planes[s.id] = plan.rest;
+    else if (layer > 1 && isWarp(s.id)) planes[s.id] = BOX_PLACEMENT.warpArmRest;
+  }
+  // The hand-placed box is one storey with nothing above it; any scene that has
+  // a round on top of the starting stitch is not.
+  const stacked = strands.some((s) => parse(s.id).layer >= 4);
+  const { middle, slantUnder, ceiling, floor } = BOX_PLACEMENT;
+  for (const v of strands.filter((s) => isWarp(s.id))) {
+    for (const h of strands.filter((s) => !isWarp(s.id))) {
+      if (round(v.id) !== round(h.id) || !cross(v, h)) continue;
+      const slants = [v, h].filter((s) => parse(s.id).layer === 1);
+      const over = overOf(v, h);
+      const under = over === v ? h : v;
+      if (slants.length === 2) place(v, h, { [over.id]: middle, [under.id]: slantUnder });
+      else if (slants.length === 1) {
+        const arm = slants[0] === v ? h : v;
+        const slant = slants[0];
+        place(v, h, wide ? { [arm.id]: middle, [slant.id]: floor } : { [arm.id]: middle });
+      } else if (round(v.id) > 0) {
+        place(v, h, { [under.id]: plan.under, [over.id]: plan.over });
+      } else if (wide && stacked) place(v, h, { [under.id]: middle, [over.id]: ceiling });
+      else place(v, h, { [under.id]: middle });
+    }
+  }
+  // The folds: the arm carrying on from an arm of the level below starts on
+  // `fold.start`, and, when the plan says so, the arm below ends on `fold.end`.
+  // Each end is said only where it differs from that arm's own rest, so nothing
+  // redundant is stored.
+  const planeEnds: Record<string, { in?: number; out?: number }> = {};
+  if (plan.fold) {
+    for (const s of strands) {
+      if (round(s.id) < 1 || !s.parentId || parse(s.parentId).layer < 2) continue;
+      const low = s.parentId;
+      const { start, end } = plan.fold;
+      if (end !== undefined && planes[low] !== end) {
+        planeEnds[low] = { ...planeEnds[low], out: end };
+      }
+      if (planes[s.id] !== start) planeEnds[s.id] = { ...planeEnds[s.id], in: start };
+    }
+  }
+  return { planes, crossPlanes, ...(Object.keys(planeEnds).length ? { planeEnds } : {}) };
+}
+
+// The family placed the way `box + strand`'s box was, level by level: the first
+// level as the sample places it, every level above as it was placed by hand (see
+// `UpperPlan`). Only the faces that have been checked by eye are here — 1×1, and
+// 2×1 to see whether the idea carries — at the depths the stitch samples use.
+// Right hand is the hand the sample was drawn in; `box-placed-lh-…` is its mirror.
+const PLACED_FACES: Array<[number, number]> = [[1, 1], [2, 1]];
+const PLACED_LEVELS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15];
+/** The ones listed by name; the rest open by `?sample=` and in the artifact. */
+const LISTED_LEVELS = [1, 2, 3, 4, 10, 15];
+export const placedKey = (hand: Hand, m: number, n: number, levels: number): string =>
+  `box-placed-${hand === 'lh' ? 'lh-' : ''}${m}x${n}-l${levels}`;
+const placedName = (hand: Hand, m: number, n: number, levels: number): string =>
+  `Box ${m}×${n} ${hand.toUpperCase()} placed — ` +
+  (levels <= 4 ? `level ${levels}` : `${levels} levels`);
+
+export const BOX_PLACED_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
+  HANDS.flatMap(({ hand }) =>
+    PLACED_FACES.flatMap(([m, n]) =>
+      PLACED_LEVELS.map((levels) => [
+        placedKey(hand, m, n, levels),
+        () => boxStitchMN(m, n, placedName(hand, m, n, levels), hand, levels - 1, true, 'hand'),
+      ]),
+    ),
+  ),
+);
+export const BOX_PLACED_LABELS: Array<{ key: string; label: string; group: string }> = HANDS.flatMap(
+  ({ hand, label }) =>
+    PLACED_FACES.flatMap(([m, n]) =>
+      LISTED_LEVELS.map((levels) => ({
+        key: placedKey(hand, m, n, levels),
+        label: `${label} · box ${m}×${n} placed — ${levels} level${levels === 1 ? '' : 's'}`,
+        group: 'Box — placed like box + strand',
+      })),
+    ),
+);
+
+// The family, as the browser and the dropdown open it: PLACED, every face, both
+// hands — level 1 as `box + strand` places its box, every level above by the rule
+// placed by hand (see `UpperPlan`). `boxStitchMN` itself still defaults to
+// unplaced, which is what the drawn sheet and check:box measure.
 export const BOX_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
   HANDS.flatMap(({ hand, sense }) =>
     BOX_FAMILY.map((s) => [
@@ -363,6 +638,8 @@ export const BOX_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
           `Box stitch — ${s.m}×${s.n} ${hand.toUpperCase()} (${sense}), ` +
             `${s.strands} strands, ${s.masks} masks, ${s.width}×${s.height}`,
           hand,
+          1,
+          true,
         ),
     ]),
   ),
@@ -377,9 +654,10 @@ export const BOX_COLUMN_SAMPLES: Record<string, () => Scene3D> = Object.fromEntr
           s.m,
           s.n,
           `Box column — ${s.m}×${s.n} ${hand.toUpperCase()} (${sense}), ` +
-            `${BOX_ROUNDS} rounds, ${column(s).strands} strands`,
+            `${BOX_LEVELS} levels, ${column(s).strands} strands`,
           hand,
           BOX_ROUNDS,
+          true,
         ),
     ]),
   ),
@@ -410,7 +688,7 @@ export const BOX_LABELS: Array<{ key: string; label: string; group: string }> = 
       const s = BOX_FAMILY.find((f) => f.m === m && f.n === n)!;
       return {
         key: boxColumnKey(hand, m, n),
-        label: `${label} · box column ${m}×${n} — ${BOX_ROUNDS} rounds, ${column(s).strands} strands`,
+        label: `${label} · box column ${m}×${n} — ${BOX_LEVELS} levels, ${column(s).strands} strands`,
         group: GROUP,
       };
     }),

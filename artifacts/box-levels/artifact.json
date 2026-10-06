@@ -1,0 +1,6 @@
+{
+  "title": "Box Family Levels",
+  "description": "Every m×n box face, placed by the rules settled on the 1×1 and the 2×1, at any level from 1 to 10, with every crossing and fold read back off the ribbons.",
+  "favicon": "🧶",
+  "live": true
+}

@@ -1,0 +1,389 @@
+<title>Box Before After</title>
+
+<style>
+  :root {
+    --ground: #f5efdf;
+    --panel: #fbf7ec;
+    --ink: #241f18;
+    --muted: #867c6a;
+    --line: #ded3ba;
+    --accent: #3d3a8c;
+    --ok: #2c6b52;
+    --ok-wash: #d9e8df;
+    --off: #8a6320;
+    --off-wash: #f2e6cd;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #14110e;
+      --panel: #1d1913;
+      --ink: #efe7d6;
+      --muted: #9b907d;
+      --line: #352e23;
+      --accent: #9a97e8;
+      --ok: #77c39c;
+      --ok-wash: #1e2f27;
+      --off: #d6ab63;
+      --off-wash: #302615;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #14110e;
+    --panel: #1d1913;
+    --ink: #efe7d6;
+    --muted: #9b907d;
+    --line: #352e23;
+    --accent: #9a97e8;
+    --ok: #77c39c;
+    --ok-wash: #1e2f27;
+    --off: #d6ab63;
+    --off-wash: #302615;
+  }
+  :root[data-theme="light"] {
+    --ground: #f5efdf;
+    --panel: #fbf7ec;
+    --ink: #241f18;
+    --muted: #867c6a;
+    --line: #ded3ba;
+    --accent: #3d3a8c;
+    --ok: #2c6b52;
+    --ok-wash: #d9e8df;
+    --off: #8a6320;
+    --off-wash: #f2e6cd;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 26px 20px 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  /* ---- masthead ---------------------------------------------------------- */
+  .head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px 28px; }
+  .head > div:first-child { flex: 1 1 100%; }
+  .head > p { flex: 1 1 34ch; }
+  .head h1 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: clamp(26px, 4vw, 38px);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .eyebrow {
+    display: block;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .head p { margin: 0; max-width: 46ch; color: var(--muted); font-size: 14.5px; line-height: 1.6; }
+
+  /* ---- the faces --------------------------------------------------------- */
+  .states { display: flex; flex-wrap: wrap; gap: 0; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+  .states button {
+    appearance: none;
+    background: var(--panel);
+    color: var(--muted);
+    border: 0;
+    border-right: 1px solid var(--line);
+    padding: 9px 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+  }
+  .states button:last-child { border-right: 0; }
+  .states button:hover { color: var(--ink); }
+  .states button[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
+  .states button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+
+  .ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; }
+  .depth { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .depth b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; min-width: 4.5ch; }
+  .depth input { accent-color: var(--accent); width: 160px; cursor: pointer; }
+  .depth input:disabled { cursor: default; opacity: 0.45; }
+  .depth input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  .picker {
+    display: grid;
+    grid-template-columns: 22px repeat(8, minmax(34px, 1fr));
+    gap: 3px;
+    max-width: 560px;
+    align-items: center;
+  }
+  .ax { font-family: var(--mono); font-size: 10px; color: var(--muted); text-align: center; line-height: 1.15; }
+  .ax.corner { font-size: 9px; }
+  .cell {
+    appearance: none;
+    background: var(--panel);
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 5px 0;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    cursor: pointer;
+  }
+  .cell:hover { color: var(--ink); border-color: var(--ink); }
+  .cell[aria-pressed="true"] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+  .cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---- stage ------------------------------------------------------------- */
+  .stage {
+    position: relative;
+    height: min(66vh, 620px);
+    min-height: 380px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+    background: var(--ground);
+  }
+  .stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  .readout {
+    position: absolute;
+    left: 14px;
+    bottom: 14px;
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 11px 15px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    backdrop-filter: blur(6px);
+    pointer-events: none;
+    max-width: calc(100% - 28px);
+  }
+  .readout .n {
+    font-family: Georgia, serif;
+    font-size: 30px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .readout .n span { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-left: 9px; letter-spacing: 0.06em; text-transform: none; }
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 14px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .facts b { color: var(--ink); font-weight: 600; }
+  #load {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    padding: 3px 9px;
+    border-radius: 11px;
+    align-self: flex-start;
+  }
+  #load.ok { color: var(--ok); background: var(--ok-wash); }
+  #load.off { color: var(--off); background: var(--off-wash); }
+
+  .tools { position: absolute; right: 14px; bottom: 14px; display: flex; gap: 8px; }
+  .tools button {
+    appearance: none;
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 7px 12px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+  }
+  .tools button:hover { color: var(--ink); }
+  .tools button[aria-pressed="true"] { color: var(--ink); border-color: var(--ink); }
+  .tools button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .hint {
+    position: absolute;
+    left: 14px;
+    top: 14px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    pointer-events: none;
+  }
+  #loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--ground);
+  }
+
+  /* ---- the note ---------------------------------------------------------- */
+  .note { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 22px 34px; }
+  .note section { display: flex; flex-direction: column; gap: 7px; }
+  .note h2 {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0;
+    font-weight: 600;
+  }
+  .note p { margin: 0; font-size: 14px; line-height: 1.65; color: var(--ink); }
+  .note code {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 1px 5px;
+  }
+  .note em { font-style: normal; color: var(--accent); }
+  .note a { color: var(--accent); }
+
+  @media (max-width: 640px) {
+    .hint { display: none; }
+    .readout { top: 12px; bottom: auto; }
+    .tools { flex-wrap: wrap; justify-content: flex-end; max-width: calc(100% - 28px); }
+    .stage { height: min(58vh, 460px); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  /* ---- panels and tables ------------------------------------------------- */
+  .quad { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; max-width: 760px; }
+  .side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .side h2 { margin: 0; font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; gap: 6px 10px; flex-wrap: wrap; }
+  .side h2 b { color: var(--ink); }
+  .side h2 span { text-transform: none; letter-spacing: 0; font-weight: 400; overflow-wrap: anywhere; }
+  .side p { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
+  .quad .stage { height: min(52vh, 460px); min-height: 300px; }
+  .duo .stage { height: 220px; min-height: 0; }
+  .bar { display: flex; flex-wrap: wrap; gap: 12px 22px; align-items: center; }
+  h3 { margin: 6px 0 0; font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 3px; }
+  table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; background: var(--panel); }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.ok { color: var(--ok); }
+  td.mid { color: var(--ink); }
+  td.off { color: var(--off); }
+  @media (max-width: 900px) { .quad { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 600px) { .quad, .duo { grid-template-columns: minmax(0, 1fr); } }
+</style>
+
+<div class="wrap">
+  <div class="head">
+    <div>
+      <span class="eyebrow">Scoubidou3D · box stitch · 1×1 right hand · level 2</span>
+      <h1>The second level, as you placed it.</h1>
+    </div>
+    <p>Level 1 is settled: it is the box from <em>box + strand</em>, placed the way
+    you placed it, and every panel below keeps it exactly. Level 2 follows what you placed for
+    levels 3 and 4: every level-2 arm rests on −1, at each crossing the arm on top goes to +1 and the one
+    underneath to −1, and at the fold out of level 1 each level-2 arm starts on +1. Beside it, today's
+    unplaced build. Orbit either and the other follows.</p>
+  </div>
+
+  <div class="bar">
+    <div class="states">
+      <button type="button" id="v-fit">Whole</button>
+      <button type="button" id="v-side">Side</button>
+      <button type="button" id="v-plan">Plan</button>
+      <button type="button" id="link" aria-pressed="true">Linked</button>
+    </div>
+  </div>
+
+  <div class="quad" id="panels"><div id="loading">building the boxes…</div></div>
+
+  <h3>Level 2, crossing by crossing</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr data-cols><th>Crossing</th></tr></thead>
+      <tbody id="l2-rows"></tbody>
+    </table>
+  </div>
+
+  <h3>Level 2 on top of level 1</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr data-cols><th></th></tr></thead>
+      <tbody id="stack-rows"></tbody>
+    </table>
+  </div>
+
+  <h3>Level 1, still your box?</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr data-cols><th></th><th>Level 1 alone</th></tr></thead>
+      <tbody id="l1-rows"></tbody>
+    </table>
+  </div>
+
+  <div class="duo">
+    <div class="side">
+      <h2><b>Reference</b><span>box + strand, without 3_1</span></h2>
+      <div class="stage"><canvas id="c-ref"></canvas></div>
+    </div>
+    <div class="side">
+      <h2><b>Level 1, placed</b><span>?sample=box-placed-1x1-l1</span></h2>
+      <div class="stage"><canvas id="c-l1"></canvas></div>
+    </div>
+  </div>
+
+  <div class="note">
+    <section>
+      <h2>What level 1 taught</h2>
+      <p>Your box places four things. The vertical arms rest on rung −1. The slant
+      underneath drops to −3 and the one on top sits on the middle. An arm over a
+      slant sits on the middle. Where two arms cross, the arm underneath sits on the
+      middle and the arm on top is left free, and it rises about one and a half
+      rungs by itself.</p>
+    </section>
+    <section>
+      <h2>What level 2 has</h2>
+      <p>No slants, only the four arms carried on as <code>_4</code> and
+      <code>_5</code>, crossing each other four times. Each arm goes over one and
+      under the other, and the over/under flips from level 1, as a box's has to.
+      Your plan rests every one of them on −1, waves it up to +1 over one arm and
+      down to −1 under the next, and starts it on +1 where it folds out of level 1.</p>
+    </section>
+    <section>
+      <h2>Reading the tables</h2>
+      <p>Heights are in rungs, half a thickness each, off the middle of the storey.
+      Air is what is left between two ribbons, in thicknesses. Green is clear. Plain
+      is touching or slightly overlapping. Amber overlaps by more than half a
+      thickness. Ids are the family's; level 1's check uses the sample's ids.</p>
+    </section>
+    <section>
+      <h2>Open it in the studio</h2>
+      <p>Both levels are samples, under <em>Box — placed like box + strand</em>:
+      <code>box-placed-1x1-l1</code> and <code>box-placed-1x1-l2</code>.</p>
+    </section>
+  </div>
+</div>
+
+<script>__VIEWER__</script>
