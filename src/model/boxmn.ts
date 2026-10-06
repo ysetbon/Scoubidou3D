@@ -124,6 +124,7 @@ export function boxStitchMN(
   name: string,
   hand: Hand = 'lh',
   rounds = 1,
+  placed = false,
 ): Scene3D {
   const cx = 400;
   const cy = 300;
@@ -349,7 +350,141 @@ export function boxStitchMN(
     }
   }
 
-  return { name, strands, masks, levelBreaks };
+  const scene: Scene3D = { name, strands, masks, levelBreaks };
+  return placed ? { ...scene, ...boxPlacements(scene, n) } : scene;
+}
+
+// ---- WHERE THE BOX WAS PLACED -----------------------------------------------
+// The `box + strand` sample (samples.ts) is a box somebody drew by hand and then
+// placed on the studio's plane ladder, crossing by crossing. Nothing in it is
+// derived: it is a six-strand scene with a `planes` map and a `crossPlanes` map,
+// and those two maps ARE the way that box was done. This reads them back out as a
+// rule about ROLES, so any m × n face, in either hand and to any number of rounds,
+// can be placed the same way.
+//
+// What the hand-placed box says, in the sample's own ids (orange = the horizontal
+// set `1`, yellow = the vertical set `2`; `_1` the buried slant, `_2` / `_3` the
+// two arms):
+//
+//   planes       2_2 -1   2_3 -1
+//   crossPlanes  1_1|2_1  1_1 -3   2_1 0      slant over slant
+//                1_1|2_2  2_2 0                arm over a slant
+//                1_1|2_3  2_3 0
+//                2_1|1_2  1_2 0
+//                2_1|1_3  1_3 0
+//                1_2|2_2  1_2 0                arm under an arm
+//                1_3|2_3  1_3 0
+//                1_3|2_2  2_2 0
+//                1_2|2_3  2_3 0
+//
+// Read as roles, that is four sentences and nothing else:
+//
+//   1. The vertical (warp) arms rest on the lower half, rung -1. Every other run
+//      is left where the layer stack puts it.
+//   2. Where two slants cross, the one underneath is dropped to -3 — a rung past
+//      its own floor — and the one on top is brought to the middle.
+//   3. An arm passing over a slant is brought to the middle, rung 0. (The slant
+//      it passes over is placed on the floor, -2 — see `floor`.)
+//   4. Where two arms cross, the one underneath is brought to the middle, rung 0.
+//      The one on top is not placed: it keeps its run. (Once the scene has more
+//      than one storey the top arm IS placed, at +2 — see `ceiling`.)
+//
+// Which arm is "underneath" is whatever the scene's own weave says — a mask if
+// there is one, the layer stack if not — so the rule follows the alternation a
+// box has to have and needs no table of its own. And a rung is relative to the
+// storey a layer is on, so a round worked a storey up is placed exactly like the
+// one below it.
+
+/** One rung of the studio's plane ladder is half a thickness; 0 is the middle. */
+export const BOX_PLACEMENT = {
+  /** Where the warp arms rest, along their whole run. */
+  warpArmRest: -1,
+  /** The slant that ends up underneath, at the one crossing of the two slants. */
+  slantUnder: -3,
+  /** Everything else that is placed at a crossing: the middle of its storey. */
+  middle: 0,
+  /**
+   * The slant an arm passes over. The hand-placed box leaves it alone and it sits
+   * about a thickness below the arm because it is short and there is only one arm
+   * to cross. On a larger face one slant is crossed by many arms and rises to meet
+   * them, so it is told to stay on the floor of its storey.
+   */
+  floor: -2,
+  /**
+   * The arm on top, at an arm-over-arm crossing, once there is more than one
+   * storey. The hand-placed box leaves it free and it rises about a thickness by
+   * itself, because nothing is above it. With a storey above it is capped and
+   * cannot, so it has to be told: the top of its storey is one thickness over the
+   * middle, which is exactly resting on the arm below.
+   */
+  ceiling: 2,
+} as const;
+
+/**
+ * The `planes` and `crossPlanes` that place a box scene the way `box + strand`
+ * was placed. `n` is the number of weft sets — sets 1 … n are weft, the rest warp,
+ * which is how `boxStitchMN` numbers them.
+ */
+export function boxPlacements(
+  scene: Scene3D,
+  n: number,
+): { planes: Record<string, number>; crossPlanes: Record<string, number> } {
+  const { strands, masks } = scene;
+  const order = new Map(strands.map((s, i) => [s.id, i]));
+  const masked = new Map(masks.map((k) => [`${k.overId}|${k.underId}`, true]));
+  const parse = (id: string): { set: number; layer: number } => {
+    const [set, layer] = id.split('_').map(Number);
+    return { set, layer };
+  };
+  const isWarp = (id: string): boolean => parse(id).set > n;
+  /** Round a layer belongs to; `_1`, `_2` and `_3` are all round 0, then two to a round. */
+  const round = (id: string): number => Math.max(0, Math.floor((parse(id).layer - 2) / 2));
+  const planes: Record<string, number> = {};
+  const crossPlanes: Record<string, number> = {};
+
+  const cross = (a: Strand3D, b: Strand3D): boolean => {
+    const d = (p: Point, q: Point, r: Point): number =>
+      (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+    const d1 = d(a.start, a.end, b.start);
+    const d2 = d(a.start, a.end, b.end);
+    const d3 = d(b.start, b.end, a.start);
+    const d4 = d(b.start, b.end, a.end);
+    return d1 * d2 < 0 && d3 * d4 < 0;
+  };
+  /** Place strands at the pair's one crossing, keyed in the order the scene lists the pair. */
+  const place = (a: Strand3D, b: Strand3D, rung: { [id: string]: number }): void => {
+    const [lo, hi] = order.get(a.id)! < order.get(b.id)! ? [a, b] : [b, a];
+    for (const [id, v] of Object.entries(rung)) crossPlanes[`${lo.id}|${hi.id}|0|${id}`] = v;
+  };
+  const overOf = (v: Strand3D, h: Strand3D): Strand3D => {
+    if (masked.has(`${v.id}|${h.id}`)) return v;
+    if (masked.has(`${h.id}|${v.id}`)) return h;
+    return order.get(v.id)! > order.get(h.id)! ? v : h;
+  };
+
+  for (const s of strands) {
+    if (parse(s.id).layer > 1 && isWarp(s.id)) planes[s.id] = BOX_PLACEMENT.warpArmRest;
+  }
+  // The hand-placed box is one storey with nothing above it; any scene that has
+  // a round on top of the starting stitch is not.
+  const stacked = strands.some((s) => parse(s.id).layer >= 4);
+  const { middle, slantUnder, ceiling, floor } = BOX_PLACEMENT;
+  for (const v of strands.filter((s) => isWarp(s.id))) {
+    for (const h of strands.filter((s) => !isWarp(s.id))) {
+      if (round(v.id) !== round(h.id) || !cross(v, h)) continue;
+      const slants = [v, h].filter((s) => parse(s.id).layer === 1);
+      const over = overOf(v, h);
+      const under = over === v ? h : v;
+      if (slants.length === 2) place(v, h, { [over.id]: middle, [under.id]: slantUnder });
+      else if (slants.length === 1) {
+        const arm = slants[0] === v ? h : v;
+        const slant = slants[0];
+        place(v, h, { [arm.id]: middle, [slant.id]: floor });
+      } else if (!stacked) place(v, h, { [under.id]: middle });
+      else place(v, h, { [under.id]: middle, [over.id]: ceiling });
+    }
+  }
+  return { planes, crossPlanes };
 }
 
 export const BOX_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(

@@ -7,6 +7,7 @@ settle: *is this model actually right?* You orbit it and find out.
 ```
 npm run artifact -- twist-level-9      # -> artifacts/built/twist-level-9.html
 npm run artifact -- box-family
+npm run artifact -- box-before-after
 ```
 
 Open the file in a browser, or publish it (Claude Code's Artifact tool takes the
@@ -20,6 +21,7 @@ own light or dark theme, so both are designed rather than one inverted.
 | [`box-family`](box-family/) | Every m×n box face, both hands, worked to ten rounds — whether a round really lands on the one below rather than through it, and whether the over/under flips the way a box's has to. **Live**: it carries `StrandScene` and builds what you pick. |
 | [`four-twists-2x1`](four-twists-2x1/) | One hand-fitted 2×1 ring, `k = −1` four times over, imported from the MXN lab — whether its four *rounds* stand as four *storeys* once the level breaks are put in, and what the same ring looks like with none. **Live**: it carries `StrandScene`, so its joints can be slid and its points dragged with the app's own move tool. |
 | [`over-under-default`](over-under-default/) | What the studio does at one crossing of two strands at 90° on one level when nothing is masked or placed, placed on the studio's own planes in several ways. **Live**: two linked `StrandScene` views, with the over/under heights read back off the built ribbons. |
+| [`box-before-after`](box-before-after/) | Every m×n box face at 1, 10 or 15 levels, as the family builds it today beside the same face placed the way the box in `box + strand` was placed (`boxStitchMN(..., placed)`). **Live**: two linked `StrandScene` views, with the over/under heights read back off the built ribbons. |
 
 ---
 
