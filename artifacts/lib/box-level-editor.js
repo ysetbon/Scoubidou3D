@@ -8,11 +8,16 @@
 // (the 'hand' plan carried up), and Copy hands the result back as JSON, in the same
 // rungs and keys a saved studio scene uses, so it can be built in as it stands.
 //
-// Shared by box-level2-editor and box-level3-editor; each calls `startEditor(level)`.
+// Shared by the box-level…-editor artifacts; each calls `startEditor(level)` for the 1×1
+// or `startEditor(level, { m, n })` for a wider face. Level 1 is editable too: it is
+// the starting stitch, slants and all, and there is nothing below it to fix.
 import { StrandScene } from '../../src/scene/StrandScene';
 import { boxStitchMN, UPPER_PLANS } from '../../src/model/boxmn';
 
-export function startEditor(LEVEL) {
+export function startEditor(LEVEL, face = { m: 1, n: 1 }) {
+  const FM = face.m;
+  const FN = face.n;
+  const FACE = `${FM}×${FN}`;
 
 const RUNG = 0.5; // a rung is half a thickness (PLANE_RUNGS in the panel)
 const RUNGS = [3, 2, 1, 0, -1, -2, -3];
@@ -21,14 +26,16 @@ const RUNG_NAMES = {
   '-1': 'lower half', '-2': 'floor of this storey', '-3': 'rung below this storey',
 };
 const ROUND = LEVEL - 1; // rounds worked over the starting stitch
-const LAYERS = [2 + 2 * ROUND, 3 + 2 * ROUND];
-const ARMS = ['1', '2'].flatMap((set) => LAYERS.map((l) => `${set}_${l}`));
-const STORE = `box-level${LEVEL}-editor`;
+const STORE = FM === 1 && FN === 1 ? `box-level${LEVEL}-editor` : `box-${FM}x${FN}-level${LEVEL}-editor`;
+const setOf = (id) => Number(id.split('_')[0]);
+/** Sets 1 … n are weft (horizontal), the rest warp — how `boxStitchMN` numbers them. */
+const isWeft = (id) => setOf(id) <= FN;
 
 const layer = (id) => Number(id.split('_')[1]);
 /** The level a layer is on, from 1: `_1` … `_3` are level 1, then two layers to a level. */
 const levelOf = (id) => (layer(id) < 4 ? 1 : Math.floor((layer(id) - 2) / 2) + 1);
 const isEdited = (id) => levelOf(id) === LEVEL;
+const lace = (id) => id.split('_')[0];
 const sign = (r) => (r > 0 ? `+${r}` : r < 0 ? `−${-r}` : '0');
 
 // ---- the base: the levels below placed, this one bare --------------------------------
@@ -37,7 +44,7 @@ const sign = (r) => (r > 0 ? `+${r}` : r < 0 ? `−${-r}` : '0');
 const bases = new Map();
 function base(stop = 0) {
   if (!bases.has(stop)) {
-    const sc = boxStitchMN(1, 1, `Box 1×1 RH — level ${LEVEL} edited`, 'rh', ROUND, true, 'hand', stop);
+    const sc = boxStitchMN(FM, FN, `Box ${FACE} RH — level ${LEVEL} edited`, 'rh', ROUND, true, 'hand', stop);
     const keepL1 = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => !k.split('|').some(isEdited)));
     bases.set(stop, {
       ...sc,
@@ -69,6 +76,9 @@ function foldEnds(ends) {
   return out;
 }
 const BASE = base();
+/** Every strand of the level being edited, in the order the scene lists them. */
+const ARMS = BASE.strands.filter((s) => isEdited(s.id)).map((s) => s.id)
+  .sort((a, b) => setOf(a) - setOf(b) || layer(a) - layer(b));
 
 /**
  * The plan: what the reader has set, and nothing else. `rest`, `cross` and `flip` are
@@ -82,7 +92,7 @@ let plan = empty();
 function presetPlan(name) {
   const p = empty();
   if (name === 'none') return p;
-  const full = boxStitchMN(1, 1, 'preset', 'rh', ROUND, true, name);
+  const full = boxStitchMN(FM, FN, 'preset', 'rh', ROUND, true, name);
   for (const [id, r] of Object.entries(full.planes ?? {})) if (isEdited(id)) p.rest[id] = r;
   for (const [k, r] of Object.entries(full.crossPlanes ?? {})) if (k.split('|').slice(0, 2).every(isEdited)) p.cross[k] = r;
   p.ends = foldEnds(full.planeEnds ?? {});
@@ -155,7 +165,7 @@ function nearest(line, x, y) {
 /** This level's four crossings as the view found them: key, the pair, who is on top. */
 function crossings() {
   return view.getCrossPoints()
-    .filter((c) => isEdited(c.aId) && isEdited(c.bId) && c.aId[0] !== c.bId[0])
+    .filter((c) => isEdited(c.aId) && isEdited(c.bId) && lace(c.aId) !== lace(c.bId))
     .map((c) => ({ c, key: c.key, ids: [c.aId, c.bId], over: c.overIndex === c.aIndex ? c.aId : c.bId }))
     .sort((a, b) => pairKey(...a.ids).localeCompare(pairKey(...b.ids)));
 }
@@ -257,7 +267,7 @@ function renderFolds(sc) {
       row.className = 'row';
       const name = document.createElement('b');
       name.textContent = `${id} ${label}`;
-      name.className = (id.startsWith('1_') ? 'weft' : 'warp') + ' wide';
+      name.className = (isWeft(id) ? 'weft' : 'warp') + ' wide';
       const cur = plan.ends[id]?.[end];
       row.append(name, ladder(cur, (r) => {
         const e = { ...(plan.ends[id] ?? {}) };
@@ -299,7 +309,7 @@ function renderControls(xs) {
     row.className = 'row';
     const name = document.createElement('b');
     name.textContent = id;
-    name.className = id.startsWith('1_') ? 'weft' : 'warp';
+    name.className = isWeft(id) ? 'weft' : 'warp';
     row.append(name, ladder(plan.rest[id], (r) => set(plan.rest, id, r)));
     rest.appendChild(row);
   }
@@ -318,7 +328,7 @@ function renderControls(xs) {
     const t = document.createElement('b');
     t.textContent = `${x.ids[0]} × ${x.ids[1]} ·`;
     const top = document.createElement('span');
-    top.innerHTML = `<i class="${x.over.startsWith('1_') ? 'weft' : 'warp'}">${x.over}</i> on top`;
+    top.innerHTML = `<i class="${isWeft(x.over) ? 'weft' : 'warp'}">${x.over}</i> on top`;
     const flip = document.createElement('button');
     flip.type = 'button';
     flip.className = 'flip';
@@ -347,7 +357,7 @@ function renderControls(xs) {
       row.className = 'row';
       const name = document.createElement('b');
       name.textContent = id;
-      name.className = id.startsWith('1_') ? 'weft' : 'warp';
+      name.className = isWeft(id) ? 'weft' : 'warp';
       row.append(name, ladder(plan.cross[key], (r) => set(plan.cross, key, r)));
       card.appendChild(row);
     }
@@ -376,7 +386,8 @@ function output() {
     },
   };
   return JSON.stringify({
-    what: `box 1×1 RH, level ${LEVEL} placed by hand (rungs; levels below as built)`,
+    what: `box ${FACE} RH, level ${LEVEL} placed by hand (rungs; levels below as built)`,
+    face: { m: FM, n: FN },
     [`level${LEVEL}`]: level2,
     scene: {
       name: sc.name,
@@ -479,8 +490,10 @@ document.getElementById('v-fold')?.addEventListener('click', () => {
 
 const sel = document.getElementById('preset');
 sel.add(new Option('Nothing placed', 'none'));
-for (const [k, p] of Object.entries(UPPER_PLANS)) {
-  const hand = LEVEL === 2 ? 'Learned from your levels 3 and 4' : LEVEL <= 4 ? 'Yours, as you placed it' : 'Learned from your levels 3 and 4';
+for (const [k, p] of Object.entries(UPPER_PLANS).filter(([k]) => LEVEL > 1 || k === 'hand')) {
+  const hand = FM === 1 && FN === 1
+    ? (LEVEL === 2 ? 'Learned from your levels 3 and 4' : LEVEL <= 4 ? 'Yours, as you placed it' : 'Learned from your levels 3 and 4')
+    : 'As built now';
   sel.add(new Option(k === 'hand' ? hand : p.label, k));
 }
 document.querySelectorAll('.lvl').forEach((e) => { e.textContent = String(LEVEL); });
