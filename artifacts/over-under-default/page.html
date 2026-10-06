@@ -77,6 +77,11 @@
   .lrow i { font-style: normal; padding: 1px 6px; border-radius: 2px; min-width: 4em; text-align: center; letter-spacing: 0.02em; }
   .lrow i.o { background: var(--over); color: var(--over-ink); }
   .lrow i.u { border: 1px solid var(--line); color: var(--muted); padding: 0 5px; }
+  .meas { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; margin: 0; }
+  .meas div { border: 1px solid var(--line); background: var(--panel); border-radius: 3px; padding: 7px 10px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .meas dt { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .meas dd { margin: 0; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .sub { margin: 6px 0 -6px; font-family: var(--serif); font-weight: 400; font-size: 24px; }
   .legend { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
 
   /* ---- the written case ---- */
@@ -117,31 +122,19 @@
   <header>
     <span class="eyebrow">Scoubidou3D · weave · one plane</span>
     <h1>Who rides over, when nobody says?</h1>
-    <p class="lede">On a single plane, with no masks, the studio does one thing at every
-    crossing: <b>the higher layer rides over.</b> Draw a row, then a column, and the whole
-    column sits on top of the whole row. That is a stack, not a weave. Left is exactly what
-    the app builds today. Right is the same strands under a different default. Orbit either
-    one; the other follows.</p>
+    <p class="lede">Two strands cross at 90° on the same level. Nobody has masked them or
+    placed them, so the studio answers on its own: <b>the higher layer rides over</b>, and each
+    lace swings away from the plane by the Depth setting. Left is exactly what the app builds
+    today. Right is the same two strands under another default. Orbit either one; the other follows.</p>
   </header>
 
   <div class="strip">
-    <div class="grp"><span>Sample</span>
-      <div class="seg">
-        <button type="button" data-sample="g3" aria-pressed="true">3 × 3</button>
-        <button type="button" data-sample="g5" aria-pressed="false">5 × 5</button>
-        <button type="button" data-sample="diamond" aria-pressed="false">Diamond 4 × 4</button>
-        <button type="button" data-sample="curved" aria-pressed="false">Curved 3 × 3</button>
-      </div>
-    </div>
     <div class="grp"><span>Proposed default</span>
       <div class="seg">
-        <button type="button" data-rule="plain" aria-pressed="true">Plain weave</button>
-        <button type="button" data-rule="twill" aria-pressed="false">Twill 2/1</button>
-        <button type="button" data-rule="basket" aria-pressed="false">Basket 2×2</button>
+        <button type="button" data-opt="flat" aria-pressed="true">Under lace stays flat</button>
+        <button type="button" data-opt="touch" aria-pressed="false">Resting on it</button>
+        <button type="button" data-opt="first" aria-pressed="false">First drawn on top</button>
       </div>
-    </div>
-    <div class="grp"><span>Phase</span>
-      <button type="button" class="btn" id="flip" aria-pressed="false">Flip over ↔ under</button>
     </div>
     <div class="grp"><span>Camera</span>
       <div style="display:flex;flex-wrap:wrap;gap:6px">
@@ -155,59 +148,38 @@
 
   <div class="pair">
     <div class="col">
-      <div class="cap"><h2>Today</h2><small>layer order · no masks</small></div>
+      <div class="cap"><h2>Today</h2><small>layer order · Depth 26</small></div>
       <div class="stage">
         <span class="hint">Drag to orbit</span>
         <canvas id="c-today"></canvas>
         <div id="loading">starting the studio…</div>
       </div>
-      <div id="s-today" class="sum off"></div>
-      <div id="l-today" class="ledger" aria-label="Each lace, crossing by crossing, from its start"></div>
+      <dl id="m-today" class="meas"></dl>
     </div>
     <div class="col">
-      <div class="cap"><h2>Proposed</h2><small id="prop-name">Plain weave</small></div>
+      <div class="cap"><h2>Proposed</h2><small id="prop-name">Under lace stays flat</small></div>
       <div class="stage">
-        <span class="hint">Same masks as the app would write</span>
+        <span class="hint">Same two strands</span>
         <canvas id="c-prop"></canvas>
       </div>
-      <div id="s-prop" class="sum ok"></div>
-      <div id="l-prop" class="ledger" aria-label="Each lace, crossing by crossing, from its start"></div>
+      <dl id="m-prop" class="meas"></dl>
     </div>
   </div>
-  <p class="legend">Each row is one lace read from its start. A filled chip is a crossing it
-  rides <em style="font-style:normal;color:var(--over)">over</em>, an outlined one is a crossing
-  it ducks under. These come from the engine's own crossing list, so they describe the canvas,
-  not a drawing of it.</p>
-
-  <div class="note">
-    <section data-rule-note="plain">
-      <h3>Reading plain weave</h3>
-      <p>Every lace alternates over, under, over, under along its length, and every neighbour
-      lands on the opposite phase. A lace cannot slide out sideways because the laces either
-      side of it hold it down at alternate points.</p>
-    </section>
-    <section data-rule-note="twill" hidden>
-      <h3>Reading twill 2/1</h3>
-      <p>Each vertical goes over two and under one, and the pattern steps over by one lace per
-      row, which gives the diagonal rib. It drapes better than plain weave and shows more of
-      one colour, so it makes a poor default but a good pick.</p>
-    </section>
-    <section data-rule-note="basket" hidden>
-      <h3>Reading basket 2×2</h3>
-      <p>Pairs of laces move together, over two, under two. It looks chunkier and has fewer
-      tie-down points than plain weave, so the weave is looser. It suits wide laces.</p>
-    </section>
-  </div>
+  <p class="legend" id="prop-blurb"></p>
+  <p class="legend">Both views hold the same two strands: <b>h</b> (orange, drawn first, bottom
+  layer) and <b>v</b> (yellow, drawn second, top layer), 54 px wide, crossing at 90° in the
+  middle, with no level break so they share one storey. Every number is read back off the
+  built ribbons, in source pixels. Over and under lace show how far each one moves off its own
+  resting height at the crossing.</p>
 
   <div class="rule">
     <span class="tag">What the studio does today</span>
-    <h3>One rule, decided once per pair of strands</h3>
-    <p>At each pair of strands that cross in plan, a mask picks the one that rides over.
-    With no mask the higher layer in the panel wins. That answer is the same at every place
-    the two cross, and it never looks at what else the strand crosses
-    (<code>StrandScene.weaveCenterlines</code>, <code>over = masked ?? j</code>).
-    The over strand is raised to the storey plane plus half a separation and the under strand
-    is lowered by the same, easing back over a short span either side.</p>
+    <h3>The top layer rides over, and each lace swings 26 px</h3>
+    <p>With no mask the higher layer in the panel wins
+    (<code>StrandScene.weaveCenterlines</code>, <code>over = masked ?? j</code>). The over lace is
+    lifted <b>Depth</b> above the plane the two share and the under lace is lowered by the same,
+    easing back over <b>1.3</b> crossing widths either side. Laces rest at their layer rank times the
+    layer lift when nothing crosses them.</p>
     <dl class="nums">
       <div><dt>Over</dt><dd>+<span id="p-depth">26</span><small>px</small></dd></div>
       <div><dt>Under</dt><dd>−<span id="p-depth2">26</span><small>px</small></dd></div>
@@ -215,63 +187,64 @@
       <div><dt>Layer lift</dt><dd id="p-lift">10</dd></div>
       <div><dt>Crossing span</dt><dd><span id="p-span">1.3</span><small>× widths</small></dd></div>
     </dl>
-    <p>Away from a crossing a lace rests at its layer rank times the layer lift, so a plane of
-    six laces fans out over 50 px even where nothing crosses. Laces on different storeys are
-    not woven at all unless a mask says so. Because the default is per pair, in a 3×3 mat each of the six laces is
-    either over at all three of its crossings or under at all three. Every shipped weave sample works around this by hand: the woven mat, the curved
-    weave, the twist stitch and the box stitch all write a checkerboard of masks.</p>
+    <p>Those defaults mean the two ribbons end up 52 px apart, centre to centre. A ribbon is
+    26 px thick, so there is a full thickness of daylight between them and the top lace arches
+    over nothing. Nothing in the app says this is the right height. It is the Depth slider's
+    starting value, and Depth only ever floors at the least that keeps them from passing through
+    each other (about 15 px, from the ribbon thickness times 1.15).</p>
   </div>
 
-  <h2 style="margin:6px 0 -6px;font-family:var(--serif);font-weight:400;font-size:24px">What would make more sense</h2>
+  <h2 class="sub">Other defaults, and which makes sense</h2>
   <div class="opts">
     <article>
-      <h4>1 · Plain weave <span style="color:var(--ok)">(recommended)</span></h4>
-      <p><b>Alternate along each strand.</b> Number a strand's crossings in order along it. At a
-      crossing, the higher layer rides over when the two numbers add to an even number, under
-      when odd. Two strands that cross once behave exactly as they do now, so the
-      two-crossing demo does not change. Masks still win, and a masked crossing still counts, so
-      the weave stays in step around it.</p>
+      <h4>Under lace stays flat <span style="color:var(--ok)">(recommended)</span></h4>
+      <p><b>Real laces behave this way.</b> The bottom lace lies on the table and the top one
+      goes over it. The pair is exactly one thickness apart, resting on each other, and only one
+      lace bends. The crossing height is the same for every pair, and the picture stays
+      readable from the side.</p>
     </article>
     <article>
-      <h4>2 · Basket 2×2</h4>
-      <p><b>Alternate in pairs.</b> Same counting, but halve each number first. Looser and
-      chunkier. Worth offering as a switch in the Weave panel, not as the default.</p>
+      <h4>Resting on it</h4>
+      <p><b>The smallest change.</b> Keep the symmetric swing of today but drop Depth to its
+      floor, so the two just clear each other. Both laces bend, by about 15 px each, and the
+      weave sits much lower. This is the one-line change: a different Depth default.</p>
     </article>
     <article>
-      <h4>3 · Twill 2/1</h4>
-      <p><b>Over two, under one.</b> Add the numbers and take them modulo three. A texture
-      choice, like basket. It leaves a plane lopsided, with one face mostly one colour.</p>
+      <h4>First drawn on top</h4>
+      <p><b>Flip who wins.</b> Heights stay as today, but the lace drawn first is over. It
+      changes the look of every new scene, so it only makes sense if drawing a lace "under"
+      the existing ones is what people do most.</p>
     </article>
     <article>
-      <h4>4 · Keep layer order</h4>
-      <p><b>Today's rule, kept as an option.</b> Right for a plane that is meant to be a
-      stack, and for any scene saved before this change.</p>
+      <h4>Keep today's</h4>
+      <p><b>If the gap is on purpose.</b> A thickness of daylight is easy to read from the top
+      and leaves room for a third lace to pass between. If that is the intent, leave it and
+      document it.</p>
     </article>
   </div>
 
   <div class="note">
     <section>
-      <h3>Why plain weave</h3>
+      <h3>Why flat under</h3>
       <ul>
-        <li>It is what you meant. Everything the app ships on one plane is plain weave that somebody masked in by hand.</li>
-        <li>It is the only option where every lace is held. Under layer order, the verticals can be lifted off as one sheet.</li>
-        <li>It costs nothing visually for two strands, and the engine already anchors heights per crossing, so the geometry needs no change.</li>
+        <li>The two laces touch, so the crossing is physically possible, which today's 26 px of air is not.</li>
+        <li>Only the top lace has to move, so the under lace keeps its own height and a stack of layers stays a stack.</li>
+        <li>It is already a thing the app can do. The Planes view places a crossing this way by hand.</li>
       </ul>
     </section>
     <section>
       <h3>What it would touch</h3>
       <ul>
-        <li><code>weaveCenterlines</code>: the over/under choice moves from per pair to per crossing, and needs each strand's crossings counted first.</li>
-        <li>Only same-storey strands count, so level breaks keep meaning what they mean now.</li>
-        <li><code>CrossingFact</code> is per pair. A pair that flips along its length needs a "mixed" answer, or the fold lab's list would disagree with the picture.</li>
+        <li><code>weaveCenterlines</code>: the anchor for the under lace becomes the plane itself, and the over lace's anchor becomes plane plus one thickness.</li>
+        <li><code>weaveAmplitude</code> and the Depth slider would then set the lift of the over lace only.</li>
+        <li>Same-storey pairs only, so level breaks mean what they mean now.</li>
       </ul>
     </section>
     <section>
       <h3>The catch</h3>
       <ul>
-        <li>An existing save with no masks would change shape on load. Store the choice on the scene, and read old saves as layer order.</li>
-        <li>A pair that crosses twice, such as a curve looping over a strand, would go over once and under once. That links the two, which is physical, but it is a change from today.</li>
-        <li>A new Weave panel switch would be the place to pick plain, basket, twill or layer order.</li>
+        <li>Scenes people have already built would sit lower. Gate it on a scene setting and read old saves as today's.</li>
+        <li>A lace that is under at one crossing and over at the next would step between two heights along its length, which the symmetric swing avoids.</li>
       </ul>
     </section>
   </div>
