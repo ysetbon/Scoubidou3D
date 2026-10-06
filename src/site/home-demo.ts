@@ -114,14 +114,16 @@ export function mountDemo(root: HTMLElement) {
       help.textContent =
         "Create: drag on an empty area of the canvas to draw a new strand.";
     } else {
-      view.setMode(name as "orbit" | "move" | "attach");
+      view.setMode(name as "orbit" | "move" | "attach" | "weave");
       if (name !== "orbit") view.topView();
       help.textContent =
         name === "move"
           ? "Move: drag an endpoint or control handle to reshape a strand."
           : name === "attach"
             ? "Attach: drag from a free endpoint to grow a connected strand."
-            : "Orbit: drag to rotate, scroll to zoom. Play builds the example again; Reset restores it.";
+            : name === "weave"
+              ? "Weave: click the strand that goes over, then the strand that goes under. Click the first strand again to cancel."
+              : "Orbit: drag to rotate, scroll to zoom. Play builds the example again; Reset restores it.";
     }
   }
   function show(next: number) {
