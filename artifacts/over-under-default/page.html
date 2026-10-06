@@ -81,6 +81,20 @@
   .meas div { border: 1px solid var(--line); background: var(--panel); border-radius: 3px; padding: 7px 10px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
   .meas dt { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
   .meas dd { margin: 0; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .under { display: grid; grid-template-columns: minmax(0, 15.5rem) minmax(0, 1fr); gap: 10px; align-items: start; }
+  .ladder { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 3px; background: var(--panel); font-family: var(--mono); font-size: 10.5px; min-width: 0; }
+  .rung { display: flex; align-items: center; gap: 6px; padding: 0 8px; height: 24px; border-bottom: 1px dashed var(--line); color: var(--muted); white-space: nowrap; }
+  .rung:last-child { border-bottom: 0; }
+  .rung.major { border-bottom-style: solid; }
+  .rung b { width: 1.7em; color: var(--ink); font-weight: 600; }
+  .rung span { overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+  .lace { font-style: normal; font-weight: 700; width: 1.7em; height: 1.7em; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 2px solid var(--ink); }
+  .lace.h { background: #e27a26; color: #241f18; }
+  .lace.v { background: #f5c837; color: #241f18; }
+  .json { margin: 0; font-family: var(--mono); font-size: 11px; line-height: 1.5; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 3px; padding: 7px 10px; overflow-x: auto; white-space: pre; }
+  .pick { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; }
+  .pick select { appearance: auto; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 3px; padding: 8px 8px; font-family: var(--mono); font-size: 12px; max-width: 100%; }
+  .pick label.chk { display: flex; gap: 6px; align-items: center; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 9px; }
   .sub { margin: 6px 0 -6px; font-family: var(--serif); font-weight: 400; font-size: 24px; }
   .legend { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
 
@@ -113,6 +127,7 @@
 
   @media (max-width: 760px) {
     .pair { grid-template-columns: 1fr; }
+    .under { grid-template-columns: 1fr; }
     .stage { height: min(48vh, 400px); }
   }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
@@ -121,22 +136,24 @@
 <div class="wrap">
   <header>
     <span class="eyebrow">Scoubidou3D · weave · one plane</span>
-    <h1>Who rides over, when nobody says?</h1>
+    <h1>Who rides over, and on which planes?</h1>
     <p class="lede">Two strands cross at 90° on the same level. Nobody has masked them or
     placed them, so the studio answers on its own: <b>the higher layer rides over</b>, and each
     lace swings away from the plane by the Depth setting. Left is exactly what the app builds
-    today. Right is the same two strands under another default. Orbit either one; the other follows.</p>
+    today. Right is the same two strands placed on the studio's own planes, shown on the ladder under the view. Orbit either one; the other follows.</p>
   </header>
 
   <div class="strip">
-    <div class="grp"><span>Proposed default</span>
+    <div class="grp"><span>Proposed planes</span>
       <div class="seg">
         <button type="button" data-opt="meet" aria-pressed="true">Meet in the middle</button>
+        <button type="button" data-opt="low" aria-pressed="false">Both low</button>
+        <button type="button" data-opt="high" aria-pressed="false">Both high</button>
+        <button type="button" data-opt="spread" aria-pressed="false">Floor and ceiling</button>
+        <button type="button" data-opt="clear" aria-pressed="false">Half a thickness clear</button>
         <button type="button" data-opt="meetFlip" aria-pressed="false">Meet, orange on top</button>
-        <button type="button" data-opt="flat" aria-pressed="false">Under lace stays flat</button>
-        <button type="button" data-opt="topflat" aria-pressed="false">Top lace stays flat</button>
-        <button type="button" data-opt="touch" aria-pressed="false">Resting on it</button>
         <button type="button" data-opt="first" aria-pressed="false">First drawn on top</button>
+        <button type="button" data-opt="custom" aria-pressed="false">Your own</button>
       </div>
     </div>
     <div class="grp"><span>Camera</span>
@@ -148,6 +165,13 @@
       </div>
     </div>
   </div>
+  <div class="pick" aria-label="Place the laces yourself">
+    <div class="grp"><span>Orange on rung</span><select id="sel-h"></select></div>
+    <div class="grp"><span>Yellow on rung</span><select id="sel-v"></select></div>
+    <div class="grp"><span>Rides over</span>
+      <select id="sel-over"><option value="v">Yellow (top layer)</option><option value="h">Orange (bottom layer)</option></select></div>
+    <label class="chk"><input type="checkbox" id="sel-cross"> also place the crossing on those rungs</label>
+  </div>
 
   <div class="pair">
     <div class="col">
@@ -157,7 +181,11 @@
         <canvas id="c-today"></canvas>
         <div id="loading">starting the studio…</div>
       </div>
-      <dl id="m-today" class="meas"></dl>
+      <div class="under">
+        <div class="ladder" id="lad-today" aria-label="The plane ladder, with the laces on the rungs they use"></div>
+        <dl id="m-today" class="meas"></dl>
+      </div>
+      <pre class="json" id="json-today"></pre>
     </div>
     <div class="col">
       <div class="cap"><h2>Proposed</h2><small id="prop-name">Meet in the middle</small></div>
@@ -165,25 +193,31 @@
         <span class="hint">Same two strands</span>
         <canvas id="c-prop"></canvas>
       </div>
-      <dl id="m-prop" class="meas"></dl>
+      <div class="under">
+        <div class="ladder" id="lad-prop" aria-label="The plane ladder, with the laces on the rungs they use"></div>
+        <dl id="m-prop" class="meas"></dl>
+      </div>
+      <pre class="json" id="json-prop"></pre>
     </div>
   </div>
   <p class="legend" id="prop-blurb"></p>
   <p class="legend">Both views hold the same two strands: <b>h</b> (orange, drawn first, bottom
   layer) and <b>v</b> (yellow, drawn second, top layer), 54 px wide, crossing at 90° in the
-  middle, with no level break so they share one storey. Every number is read back off the
-  built ribbons, in source pixels. Over and under lace give each one's height against the point
-  halfway between the two laces, then how far it moves from its own resting height. Yellow
-  rests 10 px above orange because of the layer lift, so the two numbers differ.</p>
+  middle, with no level break so they share one storey. The ladder is the studio's own plane
+  ladder: a rung is half a strand thickness (13 px here), 0 is the middle of the storey and ±2
+  its floor and ceiling. The two boxes under each view show what is saved in the scene
+  (<code>planes</code> for where a whole lace rests, <code>crossPlanes</code> for where it sits at one
+  crossing). All heights are read back off the built ribbons, in source pixels, against the
+  middle of the storey; "moves" is how far the lace is from its own resting height.</p>
 
   <div class="rule">
     <span class="tag">What the studio does today</span>
-    <h3>The top layer rides over, and each lace swings 26 px</h3>
-    <p>With no mask the higher layer in the panel wins
+    <h3>No plane placed. The top layer rides over and each lace swings 26 px</h3>
+    <p>With nothing placed, the higher layer in the panel wins
     (<code>StrandScene.weaveCenterlines</code>, <code>over = masked ?? j</code>). The over lace is
-    lifted <b>Depth</b> above the plane the two share and the under lace is lowered by the same,
-    easing back over <b>1.3</b> crossing widths either side. Laces rest at their layer rank times the
-    layer lift when nothing crosses them.</p>
+    lifted <b>Depth</b> above the plane the two share, and the under lace is lowered by the same,
+    easing back over <b>1.3</b> crossing widths either side. When nothing crosses them, laces rest
+    at their layer rank times the layer lift.</p>
     <dl class="nums">
       <div><dt>Over</dt><dd>+<span id="p-depth">26</span><small>px</small></dd></div>
       <div><dt>Under</dt><dd>−<span id="p-depth2">26</span><small>px</small></dd></div>
@@ -191,52 +225,59 @@
       <div><dt>Layer lift</dt><dd id="p-lift">10</dd></div>
       <div><dt>Crossing span</dt><dd><span id="p-span">1.3</span><small>× widths</small></dd></div>
     </dl>
-    <p>Those defaults mean the two ribbons end up 52 px apart, centre to centre. A ribbon is
-    26 px thick, so there is a full thickness of daylight between them and the top lace arches
-    over nothing. Nothing in the app says this is the right height. It is the Depth slider's
-    starting value, and Depth only ever floors at the least that keeps them from passing through
-    each other (about 15 px, from the ribbon thickness times 1.15).</p>
+    <p>The two ribbons end up 52 px apart, centre to centre. A ribbon is 26 px thick, so there is a
+    full thickness of daylight between them. The weave is also not centred on the storey: yellow
+    rests 10 px above orange from the layer lift, so the pair swings about a point 5 px above the
+    middle, and the crossing reads +31 and −21 rather than ±26. In planes, today's gap is the
+    storey's own floor and ceiling (rungs −2 and +2) and a small offset. Depth only floors at about
+    15 px, the thickness times 1.15, to keep ribbons from passing through each other.</p>
+    <p><b>Two things the planes showed.</b> A run plane alone cannot make the laces touch. Orange on
+    −1 and yellow on +1 are exactly one thickness apart, which is less than the 1.15 clearance the
+    engine asks for, so the weave swing still gets added and the crossing comes out 52 px apart,
+    the same as today. Only a pair three rungs apart (1.5 thickness) counts as already clear and
+    skips the swing. So an exact touch needs the crossing placed on the same rungs as well, which
+    is the checkbox above.</p>
   </div>
 
-  <h2 class="sub">Other defaults, and which makes sense</h2>
+  <h2 class="sub">Proposals, with the planes each one uses</h2>
   <div class="opts">
     <article>
       <h4>Meet in the middle <span style="color:var(--ok)">(recommended)</span></h4>
-      <p><b>Orange a bit down, yellow a bit up, touching exactly.</b> Each lace moves half a
-      thickness from the plane, so the surfaces meet with no air and no overlap. It is the same
-      symmetric swing the app already uses, just sized to the one value where the two ribbons
-      rest on each other. Levels already force this: a crossing in a stacked scene is capped at
-      half a thickness either side of its storey, so this default is what a stack gets anyway.</p>
+      <p><b>Orange on −1, yellow on +1, crossing placed on both.</b> Orange sits half a thickness
+      below the middle, yellow half a thickness above it, touching exactly: 26 px apart, 0 px of
+      air. It is the symmetric swing the app already uses, sized to the one value where the two
+      rest on each other. Levels already force this much: in a stacked scene a crossing is capped
+      at half a thickness either side of its storey.</p>
+    </article>
+    <article>
+      <h4>Both low</h4>
+      <p><b>Orange on −2 (floor), yellow on 0 (middle), crossing placed.</b> Touching exactly, with
+      the whole crossing in the lower half of the storey. The upper half stays free for a lace
+      resting on it. Orange sits at −26 and yellow at 0.</p>
+    </article>
+    <article>
+      <h4>Both high</h4>
+      <p><b>Orange on 0, yellow on +2 (ceiling), crossing placed.</b> The mirror: touching, with the
+      lower half free underneath. Orange at 0 and yellow at +26, so the weave sits at the top of the
+      storey and meets the floor of the one above.</p>
+    </article>
+    <article>
+      <h4>Floor and ceiling</h4>
+      <p><b>Orange on −2, yellow on +2, no crossing placed.</b> Today's 52 px and 26 px of air, but
+      declared, so it holds whatever Depth is set to. It is the way to keep today's look on purpose.
+      The two are far enough apart that the engine adds no swing.</p>
+    </article>
+    <article>
+      <h4>Half a thickness clear</h4>
+      <p><b>Orange on −2, yellow on +1, no crossing placed.</b> Three rungs apart, so 39 px
+      centre to centre and 13 px of daylight with no swing added. The least a run plane can do on
+      its own.</p>
     </article>
     <article>
       <h4>Meet, orange on top</h4>
-      <p><b>The same contact, other way round.</b> Useful if the lace drawn first should
-      be the one that rides over. It changes who wins at every crossing, so it only makes sense
-      as a per-scene choice.</p>
-    </article>
-    <article>
-      <h4>Under lace stays flat</h4>
-      <p><b>One lace bends, the other lies on the table.</b> The bottom lace keeps its own height
-      and the top lace arches over it by one thickness. Good when the bottom layer is meant to be
-      a base. The whole weave sits higher, so a storey above it has less room.</p>
-    </article>
-    <article>
-      <h4>Top lace stays flat</h4>
-      <p><b>The mirror.</b> The top lace stays on the plane and the lower one ducks a full thickness under it. It keeps
-      the top surface level, so it reads best from above. It digs below the plane, so it needs
-      room under the storey.</p>
-    </article>
-    <article>
-      <h4>Resting on it</h4>
-      <p><b>The smallest change.</b> Keep today's symmetric swing and drop Depth to its floor.
-      That leaves a 15% margin, about 4 px of air, so the laces never quite touch. Meet in the
-      middle is the same idea made exact.</p>
-    </article>
-    <article>
-      <h4>Keep today's, or first drawn on top</h4>
-      <p><b>Only if the gap is on purpose.</b> A thickness of daylight is easy to read from the
-      top and leaves room for a third lace between them. Flipping who is over changes every new
-      scene.</p>
+      <p><b>Orange on +1, yellow on −1, crossing placed, orange rides over.</b> The same contact
+      with the roles swapped. It changes who wins at every crossing, so it only makes sense as a
+      per-scene choice. "First drawn on top" changes only that, with no planes.</p>
     </article>
   </div>
 
@@ -245,15 +286,15 @@
       <h3>Why meet in the middle</h3>
       <ul>
         <li>The two laces touch, so the crossing is physically possible, which today's 26 px of air is not.</li>
-        <li>Both laces bend the same amount, so neither one is special and the plane stays the centre of the weave.</li>
-        <li>It matches the half-thickness rule the level system already applies, so a scene with levels and one without behave the same.</li>
+        <li>Both laces move by the same amount, and the pair is centred on the storey middle instead of 5 px above it.</li>
+        <li>It scales to a whole weave. Run planes only have seven rungs, but "over lace on +1, under lace on −1 at this crossing" works for any number of laces.</li>
       </ul>
     </section>
     <section>
       <h3>What it would touch</h3>
       <ul>
-        <li><code>weaveAmplitude</code>: the default swing becomes half a thickness instead of the Depth value, with no 15% margin.</li>
-        <li>The Depth slider would then add swing on top of contact rather than set it.</li>
+        <li><code>weaveAmplitude</code>: the default swing becomes half a thickness instead of Depth, with no 1.15 margin, and the weave plane is the storey middle instead of the midpoint of the two rests.</li>
+        <li>Placing laces on rungs by hand stays as it is, through the Planes view. This only changes what an unplaced crossing does.</li>
         <li>Same-storey pairs only, so level breaks mean what they mean now.</li>
       </ul>
     </section>
@@ -261,7 +302,8 @@
       <h3>The catch</h3>
       <ul>
         <li>Scenes people have already built would sit lower. Gate it on a scene setting and read old saves as today's.</li>
-        <li>With no margin, curved or thick laces can show a hairline of z-fighting where surfaces meet. A 1 to 2 px margin would hide that.</li>
+        <li>With no margin, curved or thick laces can flicker where the surfaces meet. A 1 to 2 px margin would hide that.</li>
+        <li>A placed run plane still gets today's swing on top unless it is three rungs from its partner. That is existing behaviour and worth knowing when placing by hand.</li>
       </ul>
     </section>
   </div>

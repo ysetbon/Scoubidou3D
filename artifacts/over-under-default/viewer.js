@@ -48,28 +48,47 @@ function twoStrands(maskVOver) {
   };
 }
 
-// Heights are placed in thicknesses off the storey floor — the unit the studio's
-// own "place a crossing" uses. Key: <lower id>|<higher id>|<n>|<strand>.
-const placed = (h, v) => new Map([['h|v|0|h', h], ['h|v|0|v', v]]);
+// THE PLANES. The studio's panel places a lace on a ladder of seven rungs; a rung is
+// half a strand thickness, so rung 0 is the middle of the storey, ±2 its floor and
+// ceiling, and ±1 the halves between. A run plane (`setSublevels`) says where a whole
+// lace rests. A crossing plane (`setCrossingPlanes`) says where it sits at one
+// passage, and it outranks the run plane there. Both take the panel's value, which is
+// the rung over two, in thicknesses off the storey middle.
+const RUNGS = [
+  { rung: 3, name: 'above this storey', note: 'clears its ceiling' },
+  { rung: 2, name: 'top of this storey', note: 'floor of the next' },
+  { rung: 1, name: 'upper half', note: 'rests on −1' },
+  { rung: 0, name: 'middle', note: '' },
+  { rung: -1, name: 'lower half', note: 'carries +1' },
+  { rung: -2, name: 'floor of this storey', note: 'top of the one below' },
+  { rung: -3, name: 'below this storey', note: 'hangs under the floor' },
+];
+const rungName = (r) => RUNGS.find((x) => x.rung === r).name;
+const half = (r) => r / 2; // thicknesses off the storey middle
 
-// What each choice sets. `depth` is the Depth slider (source px; 0 = the floor the
-// engine enforces so ribbons never pass through each other). `over` is who rides
-// over: v is the higher layer, so true is today's answer.
+// What each choice sets. `h` and `v` are the rungs each lace is placed on, null for
+// not placed. `cross` also places the crossing itself on those rungs, which is what
+// makes the contact exact: a run plane alone still gets the weave swing on top.
+// `over` is who rides over: v is the higher layer, so v is today's answer.
 const OPTIONS = {
-  today: { label: 'Today', over: 'v', depth: 26, planes: null,
-    blurb: 'Higher layer over. Each lace swings 26 px off the plane, so there is a clear thickness of air between them.' },
-  meet: { label: 'Meet in the middle', over: 'v', depth: 26, planes: placed(-0.5, 0.5),
-    blurb: 'Orange sinks half a thickness and yellow rises half a thickness, so the two surfaces meet exactly at the plane. Both bend by the same amount and there is no air and no overlap.' },
-  meetFlip: { label: 'Meet, orange on top', over: 'h', depth: 26, planes: placed(0.5, -0.5),
-    blurb: 'The same exact contact with the roles swapped: yellow sinks half a thickness and orange rises half a thickness.' },
-  flat: { label: 'Under lace stays flat', over: 'v', depth: 26, planes: placed(0, 1),
-    blurb: 'The lower lace lies flat on the plane and only the top lace arches over it, by exactly one thickness.' },
-  topflat: { label: 'Top lace stays flat', over: 'v', depth: 26, planes: placed(-1, 0),
-    blurb: 'The top lace stays on the plane and the lower lace ducks under it by one thickness. The mirror of the flat-under option.' },
-  touch: { label: 'Resting on it', over: 'v', depth: 0, planes: null,
-    blurb: 'Same lace over, with the swing dropped to the least the engine allows. It adds a 15% margin, so about 4 px of air remains.' },
-  first: { label: 'First drawn on top', over: 'h', depth: 26, planes: null,
-    blurb: 'Reverse who is over: the lace drawn first rides over the one drawn later. Same heights as today.' },
+  today: { label: 'Today', over: 'v', h: null, v: null, cross: false, depth: 26,
+    blurb: 'No plane placed on either lace. Higher layer over, and each lace swings 26 px off the storey plane, so there is a clear thickness of air between them.' },
+  meet: { label: 'Meet in the middle', over: 'v', h: -1, v: 1, cross: true, depth: 26,
+    blurb: 'Orange on the lower half, yellow on the upper half. Each sits half a thickness from the middle, so the surfaces meet exactly.' },
+  low: { label: 'Both low', over: 'v', h: -2, v: 0, cross: true, depth: 26,
+    blurb: 'Orange on the floor, yellow on the middle. They touch exactly, and the whole crossing sits in the lower half of the storey, leaving the upper half free for the next lace.' },
+  high: { label: 'Both high', over: 'v', h: 0, v: 2, cross: true, depth: 26,
+    blurb: 'Orange on the middle, yellow on the ceiling. They touch exactly, with the crossing in the upper half and the lower half free underneath.' },
+  spread: { label: 'Floor and ceiling', over: 'v', h: -2, v: 2, cross: false, depth: 26,
+    blurb: 'Orange on the floor, yellow on the ceiling. A full thickness of air, which is what today\'s swing gives, but declared, so it holds for any Depth.' },
+  clear: { label: 'Half a thickness clear', over: 'v', h: -2, v: 1, cross: false, depth: 26,
+    blurb: 'Orange on the floor, yellow on the upper half. Three rungs apart, so 13 px of daylight and no weave swing needed.' },
+  meetFlip: { label: 'Meet, orange on top', over: 'h', h: 1, v: -1, cross: true, depth: 26,
+    blurb: 'The same exact contact with the roles swapped: orange on the upper half, yellow on the lower half.' },
+  first: { label: 'First drawn on top', over: 'h', h: null, v: null, cross: false, depth: 26,
+    blurb: 'No planes placed. Only who is over changes: the lace drawn first rides over, with today\'s heights.' },
+  custom: { label: 'Your own', over: 'v', h: -1, v: 1, cross: true, depth: 26,
+    blurb: 'Pick a rung for each lace and who is over.' },
 };
 
 function paintTheme(views) {
@@ -85,11 +104,21 @@ views.forEach((v) => { v.renderer.shadowMap.enabled = false; });
 
 const state = { opt: 'meet', link: true };
 
-function apply(view, opt) {
-  const o = OPTIONS[opt];
+function apply(view, o) {
   view.setParams({ weaveDepth: o.depth });
   view.setScene(twoStrands(o.over === 'v' ? null : false), false);
-  view.setCrossingPlanes(o.planes);
+  const rungs = { h: o.h, v: o.v };
+  const placed = Object.entries(rungs).filter(([, r]) => r !== null);
+  // Nothing placed is null, not an empty map: a declared map turns the fold easing
+  // off, so "no planes" has to reach the scene as no map at all.
+  view.setSublevels(
+    placed.length ? new Map(placed.map(([id, r]) => [id, { in: half(r), out: half(r) }])) : null,
+  );
+  view.setCrossingPlanes(
+    o.cross && placed.length
+      ? new Map(placed.map(([id, r]) => [`h|v|0|${id}`, half(r)]))
+      : null,
+  );
 }
 
 // ---- read the answer back off the engine ------------------------------------------
@@ -116,14 +145,14 @@ function measure(view, host) {
   // Each lace's own resting height is its height at its free end, away from any crossing.
   const rest = {};
   for (const id of ['h', 'v']) rest[id] = view.getStrandCentrelineWorld(id)[0].z;
-  const mid = (zs.h + zs.v) / 2; // halfway between the two laces at the crossing
+  const plane = view.getStoreyPlane(0); // the middle of the storey both laces are on
   const sep = zs[overId] - zs[underId];
   const air = sep - thick;
   const rows = [
-    ['Over lace', `${overId} ${fmt(px(zs[overId] - mid))} px · moves ${fmt(px(zs[overId] - rest[overId]))}`],
-    ['Under lace', `${underId} ${fmt(px(zs[underId] - mid))} px · moves ${fmt(px(zs[underId] - rest[underId]))}`],
-    ['Centre to centre', `${px(sep)} px`],
-    ['Air between', air >= 0 ? `${px(air)} px` : `overlap ${px(-air)} px`],
+    ['Over lace', `${overId} ${fmt(px(zs[overId] - plane))} px · moves ${fmt(px(zs[overId] - rest[overId]))}`],
+    ['Under lace', `${underId} ${fmt(px(zs[underId] - plane))} px · moves ${fmt(px(zs[underId] - rest[underId]))}`],
+    ['Centre to centre', `${Math.abs(px(sep))} px`],
+    ['Air between', sep < 0 ? 'placed upside down' : air >= 0 ? `${px(air)} px` : `overlap ${px(-air)} px`],
     ['Level', `${cross.levelA} and ${cross.levelB}${cross.woven ? ' · woven' : ''}`],
   ];
   host.textContent = '';
@@ -138,10 +167,52 @@ function measure(view, host) {
   }
 }
 
+// ---- the ladder: which planes this build uses ------------------------------------
+function ladder(host, o, jsonHost) {
+  host.textContent = '';
+  for (const r of RUNGS) {
+    const row = document.createElement('div');
+    row.className = 'rung' + (r.rung % 2 === 0 ? ' major' : '');
+    const n = document.createElement('b');
+    n.textContent = (r.rung > 0 ? '+' : r.rung < 0 ? '−' : '') + Math.abs(r.rung);
+    const label = document.createElement('span');
+    label.textContent = r.name;
+    row.append(n, label);
+    for (const id of ['h', 'v']) {
+      if (o[id] === r.rung) {
+        const chip = document.createElement('i');
+        chip.className = 'lace ' + id;
+        chip.textContent = id;
+        row.appendChild(chip);
+      }
+    }
+    host.appendChild(row);
+  }
+  const planes = {};
+  const cross = {};
+  for (const id of ['h', 'v']) {
+    if (o[id] === null) continue;
+    planes[id] = o[id];
+    if (o.cross) cross[`h|v|0|${id}`] = o[id];
+  }
+  const none = Object.keys(planes).length === 0;
+  jsonHost.textContent = none
+    ? 'planes: none placed\ncrossPlanes: none placed'
+    : `planes: ${JSON.stringify(planes)}\ncrossPlanes: ${Object.keys(cross).length ? JSON.stringify(cross) : 'none placed'}`;
+}
+
+function syncPicker(o) {
+  document.getElementById('sel-h').value = o.h === null ? 'none' : String(o.h);
+  document.getElementById('sel-v').value = o.v === null ? 'none' : String(o.v);
+  document.getElementById('sel-over').value = o.over;
+  document.getElementById('sel-cross').checked = !!o.cross;
+}
+
 let first = true;
 function render() {
-  apply(today, 'today');
-  apply(prop, state.opt);
+  const o = OPTIONS[state.opt];
+  apply(today, OPTIONS.today);
+  apply(prop, o);
   if (first) {
     low(today);
     syncFrom(today);
@@ -149,8 +220,11 @@ function render() {
   }
   measure(today, document.getElementById('m-today'));
   measure(prop, document.getElementById('m-prop'));
-  document.getElementById('prop-name').textContent = OPTIONS[state.opt].label;
-  document.getElementById('prop-blurb').textContent = OPTIONS[state.opt].blurb;
+  ladder(document.getElementById('lad-today'), OPTIONS.today, document.getElementById('json-today'));
+  ladder(document.getElementById('lad-prop'), o, document.getElementById('json-prop'));
+  document.getElementById('prop-name').textContent = o.label;
+  document.getElementById('prop-blurb').textContent = o.blurb;
+  syncPicker(o);
   document.querySelectorAll('[data-opt]').forEach((b) =>
     b.setAttribute('aria-pressed', String(b.dataset.opt === state.opt)));
 }
@@ -197,6 +271,26 @@ document.getElementById('link').addEventListener('click', (e) => {
 });
 document.querySelectorAll('[data-opt]').forEach((b) =>
   b.addEventListener('click', () => { state.opt = b.dataset.opt; render(); }));
+
+// The picker: any rung for either lace, and who is over. Touching it makes the build "Your own".
+const selH = document.getElementById('sel-h');
+const selV = document.getElementById('sel-v');
+for (const sel of [selH, selV]) {
+  sel.add(new Option('not placed', 'none'));
+  for (const r of RUNGS) sel.add(new Option(`${r.rung > 0 ? '+' : r.rung < 0 ? '−' : ''}${Math.abs(r.rung)} · ${r.name}`, String(r.rung)));
+}
+function fromPicker() {
+  const v = (el) => (el.value === 'none' ? null : Number(el.value));
+  OPTIONS.custom.h = v(selH);
+  OPTIONS.custom.v = v(selV);
+  OPTIONS.custom.over = document.getElementById('sel-over').value;
+  OPTIONS.custom.cross = document.getElementById('sel-cross').checked;
+  state.opt = 'custom';
+  render();
+}
+for (const id of ['sel-h', 'sel-v', 'sel-over', 'sel-cross']) {
+  document.getElementById(id).addEventListener('change', fromPicker);
+}
 
 const p = today.getParams();
 document.getElementById('p-thick').textContent = p.thickness;
