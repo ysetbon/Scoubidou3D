@@ -48,6 +48,7 @@
     <link rel="stylesheet" href="./site/home.css" />
     <script type="module" src="./site/theme.js"></script>
     <script type="module" src="./site/home.js"></script>
+    <script type="module" src="./site/demo-loader.js"></script>
   </head>
 
   <body>
@@ -96,11 +97,12 @@
         <div class="hero-copy">
           <p class="eyebrow"><span></span> A little thread. A new dimension.</p>
           <h1 id="hero-title">
-            Your next idea,<br />beautifully<br /><em>interwoven.</em>
+            Create scoubidou.<br /><em>Model it in 3D.</em>
           </h1>
           <p class="lead">
-            Create and explore woven patterns in 3D. Shape every strand, choose
-            each crossing, and see your design from every angle.
+            Scoubidou, craft lace, lanyard, or boondoggle — whatever you call
+            it, create your own 3D models. Shape the strands, attach new ones,
+            and build your design level by level.
           </p>
           <div class="hero-actions">
             <a class="button primary" href="./app/"
@@ -172,6 +174,109 @@
             <p>Explore your weave from any angle.</p>
           </div>
         </div>
+      </section>
+      <section
+        class="mini-editor-section wrap"
+        id="try-editor"
+        aria-labelledby="demo-title"
+      >
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">A real canvas. A little room to experiment.</p>
+            <h2 id="demo-title">Watch a twist<br />take shape.</h2>
+          </div>
+          <p>
+            Follow a 1×1 twist, one level at a time.<br />Pause and try the
+            tools yourself.
+          </p>
+        </div>
+        <div class="mini-editor" data-demo>
+          <div class="demo-titlebar">
+            <span><i></i> 1×1 twist · Mini studio</span
+            ><a href="./app/?sample=twist-1x1-10">Open full studio ↗</a>
+          </div>
+          <div class="demo-toolbar" role="group" aria-label="Canvas tools">
+            <button
+              type="button"
+              data-demo-mode="orbit"
+              aria-pressed="true"
+              disabled
+            >
+              ↻ Orbit</button
+            ><button
+              type="button"
+              data-demo-mode="move"
+              aria-pressed="false"
+              disabled
+            >
+              ↔ Move</button
+            ><button
+              type="button"
+              data-demo-mode="create"
+              aria-pressed="false"
+              disabled
+            >
+              ＋ Create</button
+            ><button
+              type="button"
+              data-demo-mode="attach"
+              aria-pressed="false"
+              disabled
+            >
+              ⤴ Attach</button
+            ><span class="toolbar-spacer"></span
+            ><button type="button" data-demo-top disabled>Top view</button
+            ><button type="button" data-demo-reset disabled>Reset</button>
+          </div>
+          <div class="demo-workspace">
+            <aside class="demo-layers" aria-label="Strand layers">
+              <div class="layers-heading">
+                <b>Layers</b><span data-demo-count>1×1</span>
+              </div>
+              <p class="layers-hint">Select a strand to inspect it.</p>
+              <div data-demo-layers></div>
+            </aside>
+            <div class="demo-stage">
+              <canvas
+                data-demo-canvas
+                aria-label="Interactive 3D scoubidou canvas"
+                tabindex="0"
+              ></canvas>
+              <div class="demo-loading" data-demo-loading>
+                Loading the mini studio…
+              </div>
+              <span class="canvas-badge">1×1 TWIST · 45° PER LEVEL</span>
+            </div>
+          </div>
+          <div class="demo-playback">
+            <button
+              class="button secondary"
+              type="button"
+              data-demo-play
+              disabled
+            >
+              Play build</button
+            ><label for="demo-level">Level <b data-demo-level>0</b> / 6</label
+            ><input
+              id="demo-level"
+              type="range"
+              min="0"
+              max="6"
+              value="0"
+              step="1"
+              disabled
+              aria-label="Twist level"
+            /><span data-demo-status role="status">Starting stitch</span>
+          </div>
+          <p class="demo-help" data-demo-help>
+            Orbit to explore. Play builds the twist level by level; editing
+            pauses playback. Reset restores the example.
+          </p>
+        </div>
+        <p class="demo-note">
+          A live example using the studio’s own 3D engine. Your experiments here
+          are temporary.
+        </p>
       </section>
       <section class="gallery wrap" id="samples">
         <div class="section-heading">
