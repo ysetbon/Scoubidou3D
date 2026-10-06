@@ -272,7 +272,7 @@
   }
 
   /* ---- panels and tables ------------------------------------------------- */
-  .quad { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+  .quad { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
   .duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; max-width: 760px; }
   .side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   .side h2 { margin: 0; font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; gap: 6px 10px; flex-wrap: wrap; }
@@ -291,7 +291,7 @@
   td.ok { color: var(--ok); }
   td.mid { color: var(--ink); }
   td.off { color: var(--off); }
-  @media (max-width: 1000px) { .quad { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 900px) { .quad { grid-template-columns: minmax(0, 1fr); } }
   @media (max-width: 600px) { .quad, .duo { grid-template-columns: minmax(0, 1fr); } }
 </style>
 
@@ -299,12 +299,13 @@
   <div class="head">
     <div>
       <span class="eyebrow">Scoubidou3D · box stitch · 1×1 right hand · level 2</span>
-      <h1>Three ways to place the second level.</h1>
+      <h1>The second level, woven.</h1>
     </div>
     <p>Level 1 is settled: it is the box from <em>box + strand</em>, placed the way
-    you placed it, and every panel below keeps it exactly. Level 2 has no hand-placed
-    box to copy, so here are three plans for it beside today's unplaced build. Orbit
-    any panel and the rest follow. Each one is also a sample in the studio.</p>
+    you placed it, and every panel below keeps it exactly. Level 2 is placed as a plain
+    weave: every arm rests on the middle of its storey and waves evenly about it, up
+    over one arm and down under the next. Two amplitudes, beside today's unplaced
+    build. Orbit any panel and the rest follow. Each one is also a sample in the studio.</p>
   </div>
 
   <div class="bar">
@@ -321,7 +322,7 @@
   <h3>Level 2, crossing by crossing</h3>
   <div class="tablewrap">
     <table>
-      <thead><tr><th>Crossing</th><th>Before</th><th>Same as level 1</th><th>Top arm resting on it</th><th>Meet in the middle</th></tr></thead>
+      <thead><tr data-cols><th>Crossing</th></tr></thead>
       <tbody id="l2-rows"></tbody>
     </table>
   </div>
@@ -329,7 +330,7 @@
   <h3>Level 2 on top of level 1</h3>
   <div class="tablewrap">
     <table>
-      <thead><tr><th></th><th>Before</th><th>Same as level 1</th><th>Top arm resting on it</th><th>Meet in the middle</th></tr></thead>
+      <thead><tr data-cols><th></th></tr></thead>
       <tbody id="stack-rows"></tbody>
     </table>
   </div>
@@ -337,7 +338,7 @@
   <h3>Level 1, still your box?</h3>
   <div class="tablewrap">
     <table>
-      <thead><tr><th></th><th>Level 1 alone</th><th>Before</th><th>Same as level 1</th><th>Top arm resting on it</th><th>Meet in the middle</th></tr></thead>
+      <thead><tr data-cols><th></th><th>Level 1 alone</th></tr></thead>
       <tbody id="l1-rows"></tbody>
     </table>
   </div>
@@ -365,9 +366,11 @@
     <section>
       <h2>What level 2 has</h2>
       <p>No slants, only the four arms carried on as <code>_4</code> and
-      <code>_5</code>, crossing each other four times. So every candidate keeps the
-      −1 run plane for the vertical arms and differs only at those four crossings.
-      The over/under there is the box's: it flips from level 1.</p>
+      <code>_5</code>, crossing each other four times. Each arm goes over one and
+      under the other, and the over/under flips from level 1, as a box's has to.
+      The first three tries kept level 1's −1 for the vertical arms and placed only
+      the crossings, so an arm rose for its over and then lay flat through its under.
+      Now every level-2 arm rests on 0 and dips as far as it rises.</p>
     </section>
     <section>
       <h2>Reading the tables</h2>
@@ -379,8 +382,7 @@
     <section>
       <h2>Open one in the studio</h2>
       <p>Each candidate is a sample, under <em>Box — placed like box + strand</em>:
-      <code>box-placed-1x1-l2-repeat</code>, <code>-rest</code> and
-      <code>-meet</code>. Change its planes in the Planes view and send me the
+      <code>box-placed-1x1-l2-woven</code> and <code>-loose</code>. Change its planes in the Planes view and send me the
       scene, or tell me which one is closest and what to move.</p>
     </section>
   </div>

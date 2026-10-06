@@ -10,7 +10,7 @@
 // `SAMPLES['box-and-strand']`, and every figure is read back off the built ribbons.
 import { StrandScene } from '../../src/scene/StrandScene';
 import { SAMPLES } from '../../src/model/samples';
-import { boxStitchMN, UPPER_PLANS } from '../../src/model/boxmn';
+import { boxStitchMN, UPPER_CANDIDATES, UPPER_PLANS } from '../../src/model/boxmn';
 
 const RUNG = 0.5; // a rung is half a thickness (PLANE_RUNGS in the panel)
 
@@ -35,13 +35,16 @@ const asHand = (id) => HAND[id] ?? id;
 
 const PANELS = [
   { id: 'before', name: 'Before', note: 'Today: nothing placed.', placed: false },
-  ...Object.entries(UPPER_PLANS).map(([plan, p]) => ({
-    id: plan,
-    name: p.label,
-    placed: true,
-    plan,
-    note: `Level 2: arm underneath at ${rung(p.under)}, arm on top ${p.over === null ? 'left free' : `at ${rung(p.over)}`}.`,
-  })),
+  ...UPPER_CANDIDATES.map((plan) => {
+    const p = UPPER_PLANS[plan];
+    return {
+      id: plan,
+      name: p.label,
+      placed: true,
+      plan,
+      note: `Level 2: every arm rests on ${rung(p.rest)}; at a crossing the arm on top goes to ${rung(p.over)} and the one underneath to ${rung(p.under)}.`,
+    };
+  }),
 ];
 function rung(r) {
   return r > 0 ? `+${r}` : r < 0 ? `−${-r}` : '0';
@@ -61,6 +64,14 @@ for (const p of PANELS) {
   p.scene = boxStitchMN(1, 1, `Box 1×1 RH, 2 levels — ${p.name}`, 'rh', 1, p.placed, p.plan);
 }
 const views = PANELS.map((p) => p.view);
+// Column heads follow the panels, so a plan added to UPPER_CANDIDATES shows up everywhere.
+document.querySelectorAll('thead tr[data-cols]').forEach((tr) => {
+  for (const p of PANELS) {
+    const th = document.createElement('th');
+    th.textContent = p.name;
+    tr.appendChild(th);
+  }
+});
 const reference = { view: new StrandScene(document.getElementById('c-ref')), scene: referenceBox() };
 reference.view.renderer.shadowMap.enabled = false;
 const level1 = { view: new StrandScene(document.getElementById('c-l1')), scene: boxStitchMN(1, 1, 'Box 1×1 RH, level 1, placed', 'rh', 0, true) };
