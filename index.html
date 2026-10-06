@@ -4,9 +4,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Scoubidou3D — see every strand</title>
-  <meta name="description"
-    content="Scoubidou3D is a 3D reimagining of OpenStrand Studio: strands become ribbons with real width and thickness, layer order becomes height, and masks become a true over/under weave you can orbit. Fifteen built-in samples, from two crossing laces to a fifteen-round box stitch, and box and twist stitches on any m×n face. Runs in the browser." />
+  <title>Scoubidou3D — create in three dimensions</title>
+  <meta name="description" content="Create and explore woven patterns in 3D. Shape strands, control crossings, and start with a ready-made sample. Runs in your browser." />
   <!-- The icon is a render of the box stitch itself, cut out of its paper (see
        scripts/icon-shot.mjs). .ico first for whatever still goes looking for that
        name; the PNGs are what a browser picks up. -->
@@ -18,7 +17,7 @@
   <link rel="canonical" href="https://ysetbon.github.io/Scoubidou3D/" />
 
   <meta property="og:type" content="website" />
-  <meta property="og:title" content="Scoubidou3D — see every strand" />
+  <meta property="og:title" content="Scoubidou3D — create in three dimensions" />
   <meta property="og:description"
     content="Strands with real width and thickness, stacked layer over layer along Z. Open a sample in your browser and tilt it." />
   <meta property="og:url" content="https://ysetbon.github.io/Scoubidou3D/" />
@@ -35,905 +34,98 @@
     document.documentElement.dataset.theme =
       t || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   </script>
-  <link rel="stylesheet" href="./site/site.css" />
+  <link rel="stylesheet" href="./site/home.css" />
   <script type="module" src="./site/theme.js"></script>
-  <script type="module" src="./site/count.js"></script>
+  <script type="module" src="./site/home.js"></script>
 </head>
 
 <body>
-  <a class="skip" href="#samples">Skip to the samples</a>
-
-  <div class="notice">
-    <span>Free, open source, and made for curious hands.</span>
-    <a href="#how">See how the weave works
-      <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true">
-        <path d="M4 10h11M11 5l5 5-5 5" />
-      </svg>
-    </a>
-  </div>
-
-  <header>
-    <a class="brand" href="./">
-      <img class="mark small" src="./icon-192.png" srcset="./icon-192.png 192w, ./icon-512.png 512w" sizes="(max-width: 720px) 52px, 86px" width="192" height="192" alt="" aria-hidden="true" />
-      <span>Scoubidou<strong>3D</strong></span>
-    </a>
-    <nav aria-label="Primary">
-      <a href="#samples">Samples</a>
-      <a href="./twist/">The twist stitch</a>
-      <a href="./levels/">Levels</a>
-      <a href="./mxn/">MXN lab</a>
-      <a href="#how">How it works</a>
-      <a href="#translate">From OpenStrand</a>
-      <a href="#learn">Notes</a>
-      <a href="https://github.com/ysetbon/Scoubidou3D">GitHub</a>
-    </nav>
-    <span class="headEnd">
-      <button class="themeBtn" type="button" data-theme-toggle aria-label="Switch theme"></button>
-      <a class="btn dark" href="./app/">Open the studio
-        <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true">
-          <path d="M4 10h11M11 5l5 5-5 5" />
-        </svg>
-      </a>
-    </span>
-  </header>
-
-  <main>
-    <section class="hero">
-      <div class="heroCopy">
-        <p class="kicker">A 3D reimagining of OpenStrand Studio</p>
-        <h1>See every strand.<br /><em>Shape every crossing.</em></h1>
-        <p class="lead">
-          OpenStrand draws laces from the top down and fakes over-and-under with masking. Scoubidou3D
-          gives every strand a real thickness, turns its layer index into a height, and turns each mask
-          into a crossing where one lace physically lifts and the other dips — so you can tilt the camera
-          and watch the weave interlock.
-        </p>
-        <div class="actions">
-          <a class="btn coral" href="./app/">Start weaving
-            <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true">
-              <path d="M4 10h11M11 5l5 5-5 5" />
-            </svg>
-          </a>
-          <a class="under" href="#samples">Browse the fifteen samples ↓</a>
-        </div>
-        <div class="trust">
-          <span>◎ No install</span>
-          <span>◎ Works in your browser</span>
-          <span>◎ Your files stay local</span>
-        </div>
-      </div>
-
-      <div class="heroStage" aria-hidden="true">
-        <span class="pill p1">orbit to explore</span>
-        <span class="pill p2">true over / under</span>
-        <div class="weave">
-          <i class="rh h1"></i><i class="rh h2"></i><i class="rh h3"></i>
-          <i class="rv v1"></i><i class="rv v2"></i><i class="rv v3"></i>
-          <b class="cross c1"></b><b class="cross c2"></b><b class="cross c3"></b><b class="cross c4"></b><b class="cross c5"></b>
-        </div>
-        <div class="swatches"><i></i><i></i><i></i><small>lace colours</small></div>
-      </div>
-    </section>
-
-    <section class="paths">
-      <a href="#samples"><b>01</b><span><small>I want to see it</small>Open a built-in sample</span>
-        <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true">
-          <path d="M4 10h11M11 5l5 5-5 5" />
-        </svg>
-      </a>
-      <a href="#how"><b>02</b><span><small>I want to understand it</small>Read how the weave works</span>
-        <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true">
-          <path d="M4 10h11M11 5l5 5-5 5" />
-        </svg>
-      </a>
-      <a href="./app/"><b>03</b><span><small>I know what I'm making</small>Open the studio</span>
-        <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true">
-          <path d="M4 10h11M11 5l5 5-5 5" />
-        </svg>
-      </a>
-    </section>
-
-    <!-- The studio is not the only thing here. These three are separate apps on
-         the same site, and until now they existed only as nav links, which is
-         how the MXN lab went unnoticed by the person who commissioned it. Each
-         card carries real art: the MXN one is the lab's own L0-to-L1 diagram,
-         3.5 KB of SVG rather than the 1.4 MB social card. -->
-    <section class="section tools" id="tools">
-      <div class="heading">
-        <div>
-          <p class="kicker">Also on this site</p>
-          <h2>Three more apps,<br /><em>past the studio.</em></h2>
-        </div>
-        <p>Each one runs in the browser, with nothing to install and no account to make.</p>
-      </div>
-
-      <div class="toolGrid">
-        <a class="toolCard" href="./mxn/">
-          <span class="toolArt">
-            <img src="./mxn/extension-origin-l0.svg" width="720" height="720" loading="lazy"
-              decoding="async" alt="An L0 continuation ring with the purple crossing that extension is measured from" />
-          </span>
-          <span class="toolBody">
-            <b>MXN lab</b>
-            <span>Give it m, n and a rotation per level. It runs the real Python continuation
-              engine in your browser and draws every ring, with the audit beside it — then lets
-              you page through every valid solution and keep the tightest.</span>
-            <em>Open the lab →</em>
-          </span>
-        </a>
-
-        <a class="toolCard" href="./twist/">
-          <span class="toolArt">
-            <img class="shot light" src="./site/shots/twist-stitch-10-light.webp" width="780" height="722"
-              loading="lazy" decoding="async" alt="A twist stitch rendered in the studio" />
-            <img class="shot dark" src="./site/shots/twist-stitch-10-dark.webp" width="780" height="722"
-              loading="lazy" decoding="async" alt="" aria-hidden="true" />
-          </span>
-          <span class="toolBody">
-            <b>The twist stitch</b>
-            <span>What the twist costs and what it buys, measured per face across every size —
-              including the row where a gap closes to 1.1&nbsp;px.</span>
-            <em>Read the tables →</em>
-          </span>
-        </a>
-
-        <a class="toolCard" href="./levels/">
-          <span class="toolArt levelsArt" aria-hidden="true">
-            <i></i><i></i><i></i><i></i>
-          </span>
-          <span class="toolBody">
-            <b>Levels</b>
-            <span>How a stitch stacks: each face of the cube, level by level, with the layer
-              order that makes it hold together.</span>
-            <em>See the levels →</em>
-          </span>
-        </a>
-      </div>
-    </section>
-
-    <!-- Every card below is a real built-in. The picture is a SCREENSHOT of that
-         scene in the studio's own 3D canvas, shot by scripts/site-shots.mjs, the
-         counts are that scene's own strands / masks / levels, and the link opens
-         exactly that scene. Two files per card, one per theme, swapped by CSS on
-         [data-theme] — see .projectArt img in site/site.css. -->
-    <section class="section projects" id="samples">
-      <div class="heading">
-        <div>
-          <p class="kicker">Fifteen scenes, already built</p>
-          <h2>Start with a sample,<br />not an empty canvas.</h2>
-        </div>
-        <p>
-          Each one loads in a click and can be pulled apart from there — drag an endpoint, restack a
-          layer, flip a crossing. The pictures are not illustrations and not drawings: each one is a
-          screenshot of that scene in the studio's own 3D canvas, grid and all.
-        </p>
-      </div>
-
-      <div class="filters" role="group" aria-label="Filter samples">
-        <button type="button" class="active" data-filter="All">All</button>
-        <button type="button" data-filter="Basics">Basics</button>
-        <button type="button" data-filter="Stitches">Stitches</button>
-        <button type="button" data-filter="Braids">Braids</button>
-        <button type="button" data-filter="Weaves">Weaves</button>
-      </div>
-
-      <div class="projectGrid">
-        <article data-category="Basics">
-          <a class="projectArt coral" href="./app/?sample=two-crossing">
-            <img class="shot light" src="./site/shots/two-crossing-light.webp" width="780" height="722"
+<a class="skip" href="#main">Skip to content</a>
+<header class="header"><div class="header-inner"><a class="brand" href="./" aria-label="Scoubidou3D home"><img src="./icon-192.png" srcset="./icon-192.png 192w, ./icon-512.png 512w" sizes="64px" width="64" height="64" alt="" /><span>Scoubidou<strong>3D</strong></span></a>
+<nav aria-label="Primary"><a href="#samples">Samples</a><a href="#how">How to use</a><details class="tools"><summary>Explore tools <span aria-hidden="true">⌄</span></summary><div class="tool-menu"><a href="./mxn/">MXN lab <span>Explore stitch patterns</span></a><a href="./twist/">Twist stitch <span>Explore the twist family</span></a><a href="./levels/">Levels <span>See how stitches stack</span></a></div></details></nav>
+<div class="header-actions"><button class="themeBtn" type="button" data-theme-toggle aria-label="Switch theme"></button><a class="button primary small" href="./app/">Open Studio <span aria-hidden="true">↗</span></a></div></div></header>
+<main id="main">
+<section class="hero wrap" aria-labelledby="hero-title"><div class="hero-copy"><p class="eyebrow"><span></span> A little thread. A new dimension.</p><h1 id="hero-title">Your next idea,<br>beautifully<br><em>interwoven.</em></h1><p class="lead">Create and explore woven patterns in 3D. Shape every strand, choose each crossing, and see your design from every angle.</p><div class="hero-actions"><a class="button primary" href="./app/">Start creating <span aria-hidden="true">↗</span></a><a class="text-link" href="#samples">Explore samples <span aria-hidden="true">↓</span></a></div><p class="reassurance"><span>Free to use</span><span>No installation</span><span>Made for your browser</span></p></div>
+<div class="hero-visual"><div class="stage-top"><span><i></i> MADE IN SCOUBIDOU3D</span><span>01 / BOX STITCH</span></div><a class="hero-model" href="./app/?sample=box-stitch-10" aria-label="Open the 10-level box stitch in the studio"><img class="shot dark" src="./site/shots/box-stitch-10-dark.webp" width="780" height="722" fetchpriority="high" alt="Gold and orange ribbons interwoven into a ten-level box stitch" /><img class="shot light" src="./site/shots/box-stitch-10-light.webp" width="780" height="722" fetchpriority="high" alt="Gold and orange ribbons interwoven into a ten-level box stitch" /></a><div class="stage-bottom"><div><b>One stitch. So many possibilities.</b><span>Box stitch · 10 levels</span></div><a class="round-link" href="./app/?sample=box-stitch-10" aria-label="Try this box stitch">↗</a></div></div></section>
+<section class="capabilities wrap" aria-label="Studio features"><div><span class="feature-symbol" aria-hidden="true">↝</span><div><h2>Shape your strands</h2><p>Curves, colours, and thickness.</p></div></div><div><span class="feature-symbol" aria-hidden="true">⌘</span><div><h2>Choose every crossing</h2><p>Over, under, and layer by layer.</p></div></div><div><span class="feature-symbol" aria-hidden="true">↻</span><div><h2>See the whole picture</h2><p>Explore your weave from any angle.</p></div></div></section>
+<section class="gallery wrap" id="samples"><div class="section-heading"><div><p class="eyebrow">A starting point for your imagination</p><h2>Small strands.<br>Endless possibilities.</h2></div><p>Pick a pattern and make it your own.<br>Every sample opens right in the studio.</p></div>
+<div class="gallery-toolbar"><div class="filters" role="group" aria-label="Filter samples"><button type="button" data-filter="All" aria-pressed="true">All</button><button type="button" data-filter="Basics" aria-pressed="false">Basics</button><button type="button" data-filter="Stitches" aria-pressed="false">Stitches</button><button type="button" data-filter="Braids" aria-pressed="false">Braids</button><button type="button" data-filter="Weaves" aria-pressed="false">Weaves</button></div><span id="sample-count" aria-live="polite">15 samples</span></div>
+<div class="sample-grid"><article class="sample" data-category="Stitches"><a href="./app/?sample=box-stitch-10"><div class="sample-art"><img class="shot light" src="./site/shots/box-stitch-10-light.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="Two laces crossing in the studio: the gold ribbon lifts over the orange one and dips back down" />
-            <img class="shot dark" src="./site/shots/two-crossing-dark.webp" width="780" height="722"
+              alt="A box stitch worked for ten rounds in the studio, standing as a column that bands in pairs" /><img class="shot dark" src="./site/shots/box-stitch-10-dark.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="Two laces crossing in the studio: the gold ribbon lifts over the orange one and dips back down" />
-            <span>two-crossing</span><b aria-hidden="true">↗</b>
-          </a>
-          <div class="projectName">
-            <div><small>Basics</small>
-              <h3>Two crossing strands</h3>
-            </div>
-          </div>
-          <div class="meta"><span>2 strands</span><span>0 masks</span><span>1 level</span></div>
-        </article>
-
-        <article data-category="Stitches">
-          <a class="projectArt yellow" href="./app/?sample=box-stitch">
-            <img class="shot light" src="./site/shots/box-stitch-light.webp" width="780" height="722"
+              alt="A box stitch worked for ten rounds in the studio, standing as a column that bands in pairs" /><span class="open-sample">Open sample ↗</span></div><div class="sample-info"><div><span class="category">Stitches</span><h3>Box stitch — 10 levels</h3></div><span aria-hidden="true">↗</span></div></a></article>
+<article class="sample" data-category="Stitches"><a href="./app/?sample=twist-stitch-10"><div class="sample-art"><img class="shot light" src="./site/shots/twist-stitch-10-light.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="The box stitch's starting stitch in the studio: four folded arms locked over a square" />
-            <img class="shot dark" src="./site/shots/box-stitch-dark.webp" width="780" height="722"
+              alt="Three laces worked as a twist stitch in the studio, the column winding as it climbs" /><img class="shot dark" src="./site/shots/twist-stitch-10-dark.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="The box stitch's starting stitch in the studio: four folded arms locked over a square" />
-            <span>box-stitch</span><b aria-hidden="true">↗</b>
-          </a>
-          <div class="projectName">
-            <div><small>Stitches</small>
-              <h3>Box stitch — starting stitch</h3>
-            </div>
-          </div>
-          <div class="meta"><span>6 strands</span><span>1 mask</span><span>1 level</span></div>
-        </article>
-
-        <article data-category="Weaves">
-          <a class="projectArt teal" href="./app/?sample=woven-mat">
-            <img class="shot light" src="./site/shots/woven-mat-light.webp" width="780" height="722"
+              alt="Three laces worked as a twist stitch in the studio, the column winding as it climbs" /><span class="open-sample">Open sample ↗</span></div><div class="sample-info"><div><span class="category">Stitches</span><h3>Twist stitch — 10 twists</h3></div><span aria-hidden="true">↗</span></div></a></article>
+<article class="sample" data-category="Weaves"><a href="./app/?sample=woven-mat"><div class="sample-art"><img class="shot light" src="./site/shots/woven-mat-light.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A woven mat in the studio, four laces each way, every crossing alternating over and under" />
-            <img class="shot dark" src="./site/shots/woven-mat-dark.webp" width="780" height="722"
+              alt="A woven mat in the studio, four laces each way, every crossing alternating over and under" /><img class="shot dark" src="./site/shots/woven-mat-dark.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A woven mat in the studio, four laces each way, every crossing alternating over and under" />
-            <span>woven-mat</span><b aria-hidden="true">↗</b>
-          </a>
-          <div class="projectName">
-            <div><small>Weaves</small>
-              <h3>Woven mat</h3>
-            </div>
-          </div>
-          <div class="meta"><span>8 strands</span><span>16 masks</span><span>1 level</span></div>
-        </article>
-
-        <article data-category="Braids">
-          <a class="projectArt coral" href="./app/?sample=braid-3">
-            <img class="shot light" src="./site/shots/braid-3-light.webp" width="780" height="722"
+              alt="A woven mat in the studio, four laces each way, every crossing alternating over and under" /><span class="open-sample">Open sample ↗</span></div><div class="sample-info"><div><span class="category">Weaves</span><h3>Woven mat</h3></div><span aria-hidden="true">↗</span></div></a></article>
+<article class="sample" data-category="Braids"><a href="./app/?sample=braid-3"><div class="sample-art"><img class="shot light" src="./site/shots/braid-3-light.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A three-strand braid in the studio, the plait running across the canvas" />
-            <img class="shot dark" src="./site/shots/braid-3-dark.webp" width="780" height="722"
+              alt="A three-strand braid in the studio, the plait running across the canvas" /><img class="shot dark" src="./site/shots/braid-3-dark.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A three-strand braid in the studio, the plait running across the canvas" />
-            <span>braid-3</span><b aria-hidden="true">↗</b>
-          </a>
-          <div class="projectName">
-            <div><small>Braids</small>
-              <h3>Three-strand braid</h3>
-            </div>
-          </div>
-          <div class="meta"><span>21 strands</span><span>7 masks</span><span>1 level</span></div>
-        </article>
-
-        <article data-category="Stitches">
-          <a class="projectArt yellow" href="./app/?sample=box-stitch-10">
-            <img class="shot light" src="./site/shots/box-stitch-10-light.webp" width="780" height="722"
+              alt="A three-strand braid in the studio, the plait running across the canvas" /><span class="open-sample">Open sample ↗</span></div><div class="sample-info"><div><span class="category">Braids</span><h3>Three-strand braid</h3></div><span aria-hidden="true">↗</span></div></a></article>
+<article class="sample" data-category="Basics"><a href="./app/?sample=two-crossing"><div class="sample-art"><img class="shot light" src="./site/shots/two-crossing-light.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A box stitch worked for ten rounds in the studio, standing as a column that bands in pairs" />
-            <img class="shot dark" src="./site/shots/box-stitch-10-dark.webp" width="780" height="722"
+              alt="Two laces crossing in the studio: the gold ribbon lifts over the orange one and dips back down" /><img class="shot dark" src="./site/shots/two-crossing-dark.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A box stitch worked for ten rounds in the studio, standing as a column that bands in pairs" />
-            <span>box-stitch-10</span><b aria-hidden="true">↗</b>
-          </a>
-          <div class="projectName">
-            <div><small>Stitches</small>
-              <h3>Box stitch — 10 levels</h3>
-            </div>
-          </div>
-          <div class="meta"><span>42 strands</span><span>10 masks</span><span>10 levels</span></div>
-        </article>
-
-        <article data-category="Weaves">
-          <a class="projectArt teal" href="./app/?sample=diagonal">
-            <img class="shot light" src="./site/shots/diagonal-light.webp" width="780" height="722"
+              alt="Two laces crossing in the studio: the gold ribbon lifts over the orange one and dips back down" /><span class="open-sample">Open sample ↗</span></div><div class="sample-info"><div><span class="category">Basics</span><h3>Two crossing strands</h3></div><span aria-hidden="true">↗</span></div></a></article>
+<article class="sample" data-category="Stitches"><a href="./app/?sample=box-stitch"><div class="sample-art"><img class="shot light" src="./site/shots/box-stitch-light.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A diagonal basket in the studio: the mat turned forty-five degrees, twenty-five crossings deep" />
-            <img class="shot dark" src="./site/shots/diagonal-dark.webp" width="780" height="722"
+              alt="The box stitch's starting stitch in the studio: four folded arms locked over a square" /><img class="shot dark" src="./site/shots/box-stitch-dark.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A diagonal basket in the studio: the mat turned forty-five degrees, twenty-five crossings deep" />
-            <span>diagonal</span><b aria-hidden="true">↗</b>
-          </a>
-          <div class="projectName">
-            <div><small>Weaves</small>
-              <h3>Diagonal basket</h3>
-            </div>
-          </div>
-          <div class="meta"><span>10 strands</span><span>25 masks</span><span>1 level</span></div>
-        </article>
-
-        <article data-category="Weaves">
-          <a class="projectArt coral" href="./app/?sample=curved-stack">
-            <img class="shot light" src="./site/shots/curved-stack-light.webp" width="780" height="722"
+              alt="The box stitch's starting stitch in the studio: four folded arms locked over a square" /><span class="open-sample">Open sample ↗</span></div><div class="sample-info"><div><span class="category">Stitches</span><h3>Box stitch — starting stitch</h3></div><span aria-hidden="true">↗</span></div></a></article>
+<article class="sample" data-category="Weaves"><a href="./app/?sample=diagonal"><div class="sample-art"><img class="shot light" src="./site/shots/diagonal-light.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A weave of bowed ribbons in the studio, each lace curved by its control points" />
-            <img class="shot dark" src="./site/shots/curved-stack-dark.webp" width="780" height="722"
+              alt="A diagonal basket in the studio: the mat turned forty-five degrees, twenty-five crossings deep" /><img class="shot dark" src="./site/shots/diagonal-dark.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A weave of bowed ribbons in the studio, each lace curved by its control points" />
-            <span>curved-stack</span><b aria-hidden="true">↗</b>
-          </a>
-          <div class="projectName">
-            <div><small>Weaves</small>
-              <h3>Curved ribbon weave</h3>
-            </div>
-          </div>
-          <div class="meta"><span>6 strands</span><span>9 masks</span><span>1 level</span></div>
-        </article>
-
-        <article data-category="Stitches">
-          <a class="projectArt yellow" href="./app/?sample=round-stitch-10">
-            <img class="shot light" src="./site/shots/round-stitch-10-light.webp" width="780" height="722"
+              alt="A diagonal basket in the studio: the mat turned forty-five degrees, twenty-five crossings deep" /><span class="open-sample">Open sample ↗</span></div><div class="sample-info"><div><span class="category">Weaves</span><h3>Diagonal basket</h3></div><span aria-hidden="true">↗</span></div></a></article>
+<article class="sample" data-category="Weaves"><a href="./app/?sample=curved-stack"><div class="sample-art"><img class="shot light" src="./site/shots/curved-stack-light.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A round stitch worked for ten rounds in the studio, the column corkscrewing straight upward" />
-            <img class="shot dark" src="./site/shots/round-stitch-10-dark.webp" width="780" height="722"
+              alt="A weave of bowed ribbons in the studio, each lace curved by its control points" /><img class="shot dark" src="./site/shots/curved-stack-dark.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A round stitch worked for ten rounds in the studio, the column corkscrewing straight upward" />
-            <span>round-stitch-10</span><b aria-hidden="true">↗</b>
-          </a>
-          <div class="projectName">
-            <div><small>Stitches</small>
-              <h3>Round stitch — 10 levels</h3>
-            </div>
-          </div>
-          <div class="meta"><span>42 strands</span><span>10 masks</span><span>10 levels</span></div>
-        </article>
-
-        <article data-category="Braids">
-          <a class="projectArt teal" href="./app/?sample=braid-4">
-            <img class="shot light" src="./site/shots/braid-4-light.webp" width="780" height="722"
+              alt="A weave of bowed ribbons in the studio, each lace curved by its control points" /><span class="open-sample">Open sample ↗</span></div><div class="sample-info"><div><span class="category">Weaves</span><h3>Curved ribbon weave</h3></div><span aria-hidden="true">↗</span></div></a></article>
+<article class="sample" data-category="Stitches"><a href="./app/?sample=round-stitch-10"><div class="sample-art"><img class="shot light" src="./site/shots/round-stitch-10-light.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A four-strand flat braid in the studio, wider and flatter than the three-strand plait" />
-            <img class="shot dark" src="./site/shots/braid-4-dark.webp" width="780" height="722"
+              alt="A round stitch worked for ten rounds in the studio, the column corkscrewing straight upward" /><img class="shot dark" src="./site/shots/round-stitch-10-dark.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A four-strand flat braid in the studio, wider and flatter than the three-strand plait" />
-            <span>braid-4</span><b aria-hidden="true">↗</b>
-          </a>
-          <div class="projectName">
-            <div><small>Braids</small>
-              <h3>Four-strand flat braid</h3>
-            </div>
-          </div>
-          <div class="meta"><span>28 strands</span><span>11 masks</span><span>1 level</span></div>
-        </article>
-
-        <article data-category="Stitches">
-          <a class="projectArt coral" href="./app/?sample=box-stitch-15">
-            <img class="shot light" src="./site/shots/box-stitch-15-light.webp" width="780" height="722"
+              alt="A round stitch worked for ten rounds in the studio, the column corkscrewing straight upward" /><span class="open-sample">Open sample ↗</span></div><div class="sample-info"><div><span class="category">Stitches</span><h3>Round stitch — 10 levels</h3></div><span aria-hidden="true">↗</span></div></a></article>
+<article class="sample" data-category="Braids"><a href="./app/?sample=braid-4"><div class="sample-art"><img class="shot light" src="./site/shots/braid-4-light.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A box stitch worked for fifteen rounds in the studio, a taller column of the same stitch" />
-            <img class="shot dark" src="./site/shots/box-stitch-15-dark.webp" width="780" height="722"
+              alt="A four-strand flat braid in the studio, wider and flatter than the three-strand plait" /><img class="shot dark" src="./site/shots/braid-4-dark.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A box stitch worked for fifteen rounds in the studio, a taller column of the same stitch" />
-            <span>box-stitch-15</span><b aria-hidden="true">↗</b>
-          </a>
-          <div class="projectName">
-            <div><small>Stitches</small>
-              <h3>Box stitch — 15 levels</h3>
-            </div>
-          </div>
-          <div class="meta"><span>62 strands</span><span>15 masks</span><span>15 levels</span></div>
-        </article>
-
-        <article data-category="Stitches">
-          <a class="projectArt teal" href="./app/?sample=twist-stitch-10">
-            <img class="shot light" src="./site/shots/twist-stitch-10-light.webp" width="780" height="722"
+              alt="A four-strand flat braid in the studio, wider and flatter than the three-strand plait" /><span class="open-sample">Open sample ↗</span></div><div class="sample-info"><div><span class="category">Braids</span><h3>Four-strand flat braid</h3></div><span aria-hidden="true">↗</span></div></a></article>
+<article class="sample" data-category="Stitches"><a href="./app/?sample=box-stitch-15"><div class="sample-art"><img class="shot light" src="./site/shots/box-stitch-15-light.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="Three laces worked as a twist stitch in the studio, the column winding as it climbs" />
-            <img class="shot dark" src="./site/shots/twist-stitch-10-dark.webp" width="780" height="722"
+              alt="A box stitch worked for fifteen rounds in the studio, a taller column of the same stitch" /><img class="shot dark" src="./site/shots/box-stitch-15-dark.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="Three laces worked as a twist stitch in the studio, the column winding as it climbs" />
-            <span>twist-stitch-10</span><b aria-hidden="true">↗</b>
-          </a>
-          <div class="projectName">
-            <div><small>Stitches</small>
-              <h3>Twist stitch — 10 twists</h3>
-            </div>
-          </div>
-          <div class="meta"><span>69 strands</span><span>44 masks</span><span>11 levels</span></div>
-        </article>
-
-        <article data-category="Stitches">
-          <a class="projectArt yellow" href="./app/?sample=twofan-col-lh-1x3-10">
-            <img class="shot light" src="./site/shots/twofan-col-lh-1x3-10-light.webp" width="780" height="722"
+              alt="A box stitch worked for fifteen rounds in the studio, a taller column of the same stitch" /><span class="open-sample">Open sample ↗</span></div><div class="sample-info"><div><span class="category">Stitches</span><h3>Box stitch — 15 levels</h3></div><span aria-hidden="true">↗</span></div></a></article>
+<article class="sample" data-category="Stitches"><a href="./app/?sample=twofan-col-lh-1x3-10"><div class="sample-art"><img class="shot light" src="./site/shots/twofan-col-lh-1x3-10-light.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A two-fan column on a 1×3 face in the studio: four laces, ten levels, the face turning 33° a round" />
-            <img class="shot dark" src="./site/shots/twofan-col-lh-1x3-10-dark.webp" width="780" height="722"
+              alt="A two-fan column on a 1×3 face in the studio: four laces, ten levels, the face turning 33° a round" /><img class="shot dark" src="./site/shots/twofan-col-lh-1x3-10-dark.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A two-fan column on a 1×3 face in the studio: four laces, ten levels, the face turning 33° a round" />
-            <span>twofan-col-lh-1x3-10</span><b aria-hidden="true">↗</b>
-          </a>
-          <div class="projectName">
-            <div><small>Stitches</small>
-              <h3>Two-fan column — 1×3, 10 levels</h3>
-            </div>
-          </div>
-          <div class="meta"><span>92 strands</span><span>66 masks</span><span>11 levels</span></div>
-        </article>
-
-        <article data-category="Stitches">
-          <a class="projectArt coral" href="./app/?sample=twofan-col-lh-2x2-10">
-            <img class="shot light" src="./site/shots/twofan-col-lh-2x2-10-light.webp" width="780" height="722"
+              alt="A two-fan column on a 1×3 face in the studio: four laces, ten levels, the face turning 33° a round" /><span class="open-sample">Open sample ↗</span></div><div class="sample-info"><div><span class="category">Stitches</span><h3>Two-fan column — 1×3, 10 levels</h3></div><span aria-hidden="true">↗</span></div></a></article>
+<article class="sample" data-category="Stitches"><a href="./app/?sample=twofan-col-lh-2x2-10"><div class="sample-art"><img class="shot light" src="./site/shots/twofan-col-lh-2x2-10-light.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A two-fan column on a 2×2 face in the studio: the square face, eighty-eight crossings, ten levels" />
-            <img class="shot dark" src="./site/shots/twofan-col-lh-2x2-10-dark.webp" width="780" height="722"
+              alt="A two-fan column on a 2×2 face in the studio: the square face, eighty-eight crossings, ten levels" /><img class="shot dark" src="./site/shots/twofan-col-lh-2x2-10-dark.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A two-fan column on a 2×2 face in the studio: the square face, eighty-eight crossings, ten levels" />
-            <span>twofan-col-lh-2x2-10</span><b aria-hidden="true">↗</b>
-          </a>
-          <div class="projectName">
-            <div><small>Stitches</small>
-              <h3>Two-fan column — 2×2, 10 levels</h3>
-            </div>
-          </div>
-          <div class="meta"><span>92 strands</span><span>88 masks</span><span>11 levels</span></div>
-        </article>
-
-        <article data-category="Stitches">
-          <a class="projectArt indigo" href="./app/?sample=box-lh-3x2">
-            <img class="shot light" src="./site/shots/box-lh-3x2-light.webp" width="780" height="722"
+              alt="A two-fan column on a 2×2 face in the studio: the square face, eighty-eight crossings, ten levels" /><span class="open-sample">Open sample ↗</span></div><div class="sample-info"><div><span class="category">Stitches</span><h3>Two-fan column — 2×2, 10 levels</h3></div><span aria-hidden="true">↗</span></div></a></article>
+<article class="sample" data-category="Stitches"><a href="./app/?sample=box-lh-3x2"><div class="sample-art"><img class="shot light" src="./site/shots/box-lh-3x2-light.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A box stitch on a three-by-two face in the studio: three indigo ribbons crossing two coloured ones, every arm carried back over the weave" />
-            <img class="shot dark" src="./site/shots/box-lh-3x2-dark.webp" width="780" height="722"
+              alt="A box stitch on a three-by-two face in the studio: three indigo ribbons crossing two coloured ones, every arm carried back over the weave" /><img class="shot dark" src="./site/shots/box-lh-3x2-dark.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A box stitch on a three-by-two face in the studio: three indigo ribbons crossing two coloured ones, every arm carried back over the weave" />
-            <span>box-lh-3x2</span><b aria-hidden="true">↗</b>
-          </a>
-          <div class="projectName">
-            <div><small>Stitches</small>
-              <h3>Box stitch — 3×2 face</h3>
-            </div>
-          </div>
-          <div class="meta"><span>25 strands</span><span>24 masks</span><span>3×2 face</span></div>
-        </article>
-
-        <article data-category="Stitches">
-          <a class="projectArt indigo" href="./app/?sample=box-lh-5x5">
-            <img class="shot light" src="./site/shots/box-lh-5x5-light.webp" width="780" height="722"
+              alt="A box stitch on a three-by-two face in the studio: three indigo ribbons crossing two coloured ones, every arm carried back over the weave" /><span class="open-sample">Open sample ↗</span></div><div class="sample-info"><div><span class="category">Stitches</span><h3>Box stitch — 3×2 face</h3></div><span aria-hidden="true">↗</span></div></a></article>
+<article class="sample" data-category="Stitches"><a href="./app/?sample=box-lh-5x5"><div class="sample-art"><img class="shot light" src="./site/shots/box-lh-5x5-light.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A box stitch on a five-by-five face in the studio: a square mat of ten ribbons woven over and under, its arms poking out on all four sides" />
-            <img class="shot dark" src="./site/shots/box-lh-5x5-dark.webp" width="780" height="722"
+              alt="A box stitch on a five-by-five face in the studio: a square mat of ten ribbons woven over and under, its arms poking out on all four sides" /><img class="shot dark" src="./site/shots/box-lh-5x5-dark.webp" width="780" height="722"
               loading="lazy" decoding="async"
-              alt="A box stitch on a five-by-five face in the studio: a square mat of ten ribbons woven over and under, its arms poking out on all four sides" />
-            <span>box-lh-5x5</span><b aria-hidden="true">↗</b>
-          </a>
-          <div class="projectName">
-            <div><small>Stitches</small>
-              <h3>Box stitch — 5×5 face</h3>
-            </div>
-          </div>
-          <div class="meta"><span>50 strands</span><span>100 masks</span><span>5×5 face</span></div>
-        </article>
-      </div>
-
-      <p class="gridNote">
-        Two of them are worth putting side by side. <strong>Box stitch — 10 levels</strong> and
-        <strong>round stitch — 10 levels</strong> are the same four folds, the same square, the same
-        one mask a round and the same 42 strands — the only difference is that the box stitch reverses
-        its rotation each round and the round stitch does not. One bit, and the column changes rhythm:
-        the box stitch repeats every two rounds and bands in pairs, the round stitch repeats every
-        round and runs straight. It is in the two thumbnails above.
-      </p>
-
-      <!-- One sample got a study of its own. Two of the three doors are pages on this
-           site; the third is the write-up, which is where the numbers are argued. -->
-      <aside class="sampleDoor">
-        <div>
-          <p class="kicker">Bigger than a thumbnail</p>
-          <h3>The twist stitch,<br />all 64 faces.</h3>
-          <p>
-            Three of the pictures above are twist stitches, and two of those are a 1×3 and a 2×2
-            out of this study. There are sixty-four faces in it, and the grid of them is not the
-            interesting part — the levels are. Each face was built to an external 1×n reference and
-            every one of its eleven levels rendered from the top and in orbit: <strong>1,408
-            views</strong>, with what they cost measured beside them.
-          </p>
-        </div>
-        <div class="sampleDoorLinks">
-          <a class="btn coral" href="./twist/">Open the study
-            <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true">
-              <path d="M4 10h11M11 5l5 5-5 5" />
-            </svg>
-          </a>
-          <a class="btn light" href="./levels/">All 1,408 level views</a>
-          <a class="btn outline"
-            href="https://claude.ai/code/artifact/dd01aab8-db95-4b72-bcc3-4f2faf6da48b">
-            The write-up ↗
-          </a>
-        </div>
-      </aside>
-
-      <!-- The other family that outgrew a thumbnail. Two of its faces are above;
-           all 64 are in the studio, and the two pages are where they are argued. -->
-      <aside class="sampleDoor">
-        <div>
-          <p class="kicker">Two of sixty-four</p>
-          <h3>The box stitch,<br />on any face.</h3>
-          <p>
-            The box stitch is not only the square one. Lay <strong>m</strong> ribbons across
-            <strong>n</strong> and the same move works any face from a 1×1 to an 8×8 — the twist
-            family's own starting stitch with the twist taken out, so nothing rotates, nothing is
-            stretched and there is exactly <strong>one box per size per hand</strong>. All 64 are in
-            the studio in both hands; work one round after another and it rises as a column.
-          </p>
-        </div>
-        <div class="sampleDoorLinks">
-          <a class="btn coral" href="./app/?sample=box-lh-5x5">Open a 5×5
-            <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true">
-              <path d="M4 10h11M11 5l5 5-5 5" />
-            </svg>
-          </a>
-          <a class="btn outline"
-            href="https://claude.ai/code/artifact/0fb7a3f9-fd93-4700-b286-a373580f39d3">
-            Orbit them, to ten rounds ↗
-          </a>
-          <a class="btn outline"
-            href="https://claude.ai/code/artifact/a733e1f3-9ed4-490d-845d-c6090e89abb4">
-            All 64 drawn flat ↗
-          </a>
-        </div>
-      </aside>
-    </section>
-
-    <section class="section how" id="how">
-      <div class="howIntro">
-        <p class="kicker">From flat idea to woven object</p>
-        <h2>Your pattern finally<br /><em>makes sense in space.</em></h2>
-        <p>
-          Wherever two centerlines cross, the app knows who is over: a mask if one covers the pair,
-          otherwise the higher layer. Each strand turns its crossings into a smooth height field, and the
-          ribbon is swept along that undulating centerline.
-        </p>
-        <a class="btn light" href="./app/">Try the studio
-          <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M4 10h11M11 5l5 5-5 5" />
-          </svg>
-        </a>
-      </div>
-      <div class="steps">
-        <article>
-          <b>1</b>
-          <div class="step draw" aria-hidden="true"><i></i><i></i></div>
-          <h3>Draw your strands</h3>
-          <p>Pull a free endpoint to grow a new lace off the one you have, and move the control points to
-            shape its curve — OpenStrand's own marks and staging, in 3D.</p>
-        </article>
-        <article>
-          <b>2</b>
-          <div class="step crossStep" aria-hidden="true"><i></i><i></i></div>
-          <h3>Choose the crossing</h3>
-          <p>Click two strands and say which one travels over. That is a mask, and it lifts one lace and
-            dips the other right there — nowhere else.</p>
-        </article>
-        <article>
-          <b>3</b>
-          <div class="step orbit" aria-hidden="true"><i></i>360°</div>
-          <h3>Stack, orbit, save</h3>
-          <p>Drop a level break and everything above it rests a full storey higher. Then tilt the camera,
-            tune the thickness, and keep the scene.</p>
-        </article>
-      </div>
-    </section>
-
-    <section class="section translate" id="translate">
-      <div class="heading">
-        <div>
-          <p class="kicker">The translation, in one move</p>
-          <h2>Give a strand a thickness.<br /><em>Everything else follows.</em></h2>
-        </div>
-        <p>
-          Each strand becomes a ribbon, like the plastic-lacing lanyards this is named after: its
-          OpenStrand width runs across the ribbon, a new thickness runs through it, and its layer index
-          becomes its height.
-        </p>
-      </div>
-
-      <div class="mapGrid">
-        <div>
-          <p class="tag">The ribbon</p>
-          <p class="from">strand <code>width</code></p>
-          <p class="to">ribbon width, across — plus a <em>thickness</em> through it, which 2D never had</p>
-        </div>
-        <div>
-          <p class="tag">The stack</p>
-          <p class="from">layer order in the panel</p>
-          <p class="to">the strand's <em>default height</em> in Z: the top layer rides over</p>
-        </div>
-        <div>
-          <p class="tag">The crossing</p>
-          <p class="from"><code>MaskedStrand</code> — first over second</p>
-          <p class="to">a real <em>over/under weave</em>: the over lace lifts, the under lace dips</p>
-        </div>
-        <div>
-          <p class="tag">The join</p>
-          <p class="from">attached strand, glued endpoint</p>
-          <p class="to">a lofted <em>connector</em> bridging the layer gap</p>
-        </div>
-        <div>
-          <p class="tag">The storey</p>
-          <p class="from">— nothing —</p>
-          <p class="to">a <em>level break</em>: everything above it rests a storey higher</p>
-        </div>
-        <div>
-          <p class="tag">The view</p>
-          <p class="from">top-down canvas</p>
-          <p class="to">an <em>orbit camera</em>, with one click back to top view</p>
-        </div>
-      </div>
-
-      <div class="notes">
-        <article>
-          <h3>A crossing sets an absolute height, not a nudge</h3>
-          <p>
-            The over lace goes to <code>+h</code> and the under lace to <code>−h</code> about the weave
-            plane. A mask therefore means one purely local thing — this strand crosses over that one,
-            here — and costs the same whether the two are neighbours in the layer panel or ten layers
-            apart. Masking the bottom strand over the top one leaves every other layer untouched.
-          </p>
-        </article>
-        <article>
-          <h3>Overlapping crossings blend, they don't add</h3>
-          <p>
-            Where two crossings fall close together the heights are pulse-weighted-averaged, so
-            neighbours pulling opposite ways resolve instead of cancelling or doubling. The three-way
-            case falls out for free: the top lace lands at <code>+h</code>, the bottom at <code>−h</code>,
-            and one caught between them settles in the middle.
-          </p>
-        </article>
-      </div>
-
-      <p class="callout">
-        Because each crossing is resolved on its own, <strong>cyclic weaves work</strong> — <code>x</code>
-        over <code>y</code>, <code>y</code> over <code>z</code> and <code>z</code> over <code>x</code> is
-        impossible for a rigid stack, but it is exactly what a real woven knot does.
-      </p>
-    </section>
-
-    <section class="section lab" id="lab">
-      <div class="labPanel">
-        <div class="labCopy">
-          <p class="kicker">The interactive proof</p>
-          <h2>Flat patterns hide the most important part.</h2>
-          <p>
-            This is the <strong>Woven mat</strong> sample in miniature: nine crossings, five where the
-            horizontal lace rides over and four where the vertical one does. Flatten it to top view and
-            it is just a grid. Tip it back and the checkerboard is obvious.
-          </p>
-          <label for="view-perspective">View</label>
-          <div class="segments" role="group" aria-label="View">
-            <button type="button" id="view-perspective" class="active" data-view="perspective">Perspective</button>
-            <button type="button" data-view="top">Top</button>
-          </div>
-          <label>Lace colours</label>
-          <div class="paletteBtns" role="group" aria-label="Lace colours">
-            <button type="button" class="active" data-a="#f5c837" data-b="#e27a26" data-bg="#f7f0df"
-              style="--a:#f5c837;--b:#e27a26"><i></i>Gold &amp; orange</button>
-            <button type="button" data-a="#3caaaf" data-b="#f0f0f0" data-bg="#fff6df"
-              style="--a:#3caaaf;--b:#f0f0f0"><i></i>Teal &amp; white</button>
-            <button type="button" data-a="#e27a26" data-b="#f0f0f0" data-bg="#f8e9d8"
-              style="--a:#e27a26;--b:#f0f0f0"><i></i>Orange &amp; white</button>
-            <button type="button" data-a="#171713" data-b="#f5c837" data-bg="#f0e8cf"
-              style="--a:#171713;--b:#f5c837"><i></i>Ink &amp; gold</button>
-          </div>
-        </div>
-        <div class="miniStage" id="miniStage" style="--wa:#f5c837;--wb:#e27a26;--wbg:#f7f0df" aria-hidden="true">
-          <div class="weave mini">
-            <i class="rh h1"></i><i class="rh h2"></i><i class="rh h3"></i>
-            <i class="rv v1"></i><i class="rv v2"></i><i class="rv v3"></i>
-            <b class="cross c1"></b><b class="cross c2"></b><b class="cross c3"></b><b class="cross c4"></b><b class="cross c5"></b>
-          </div>
-          <span class="axis">X&nbsp;&nbsp;&nbsp; Y&nbsp;&nbsp;&nbsp; Z</span>
-        </div>
-      </div>
-    </section>
-
-    <section class="section learn" id="learn">
-      <div class="heading">
-        <div>
-          <p class="kicker">If you want the detail</p>
-          <h2>Four notes,<br />written from the code.</h2>
-        </div>
-        <p>
-          Each one is a short document in the repository, illustrated with the same samples above. They
-          exist because these four ideas are where the 3D version stops being a rendering trick and
-          starts being a model of a real stitch.
-        </p>
-      </div>
-      <div class="lessons">
-        <article>
-          <span>01 · Layer levels</span>
-          <div>
-            <img class="shot light" src="./site/shots/box-stitch-10-light.webp" width="780" height="722"
-              loading="lazy" decoding="async" alt="" />
-            <img class="shot dark" src="./site/shots/box-stitch-10-dark.webp" width="780" height="722"
-              loading="lazy" decoding="async" alt="" />
-          </div>
-          <h3>Storeys in the stack</h3>
-          <p>A level break makes everything above it rest a full storey higher — two strand thicknesses,
-            the height of a woven round — so a lace sits on the round below instead of through it.</p>
-          <a href="https://github.com/ysetbon/Scoubidou3D/blob/main/docs/layer-levels.md">Read the note
-            <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true">
-              <path d="M4 10h11M11 5l5 5-5 5" />
-            </svg>
-          </a>
-        </article>
-        <article>
-          <span>02 · Control points</span>
-          <div>
-            <img class="shot light" src="./site/shots/curved-stack-light.webp" width="780" height="722"
-              loading="lazy" decoding="async" alt="" />
-            <img class="shot dark" src="./site/shots/curved-stack-dark.webp" width="780" height="722"
-              loading="lazy" decoding="async" alt="" />
-          </div>
-          <h3>The curve, faithfully</h3>
-          <p>The centerline is a port of OpenStrand's own eased two-segment curve, with the same marks
-            and the same staging — which is why an imported file keeps its shape.</p>
-          <a href="https://github.com/ysetbon/Scoubidou3D/blob/main/docs/control-points.md">Read the note
-            <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true">
-              <path d="M4 10h11M11 5l5 5-5 5" />
-            </svg>
-          </a>
-        </article>
-        <article>
-          <span>03 · The box stitch</span>
-          <div>
-            <img class="shot light" src="./site/shots/box-stitch-light.webp" width="780" height="722"
-              loading="lazy" decoding="async" alt="" />
-            <img class="shot dark" src="./site/shots/box-stitch-dark.webp" width="780" height="722"
-              loading="lazy" decoding="async" alt="" />
-          </div>
-          <h3>Nine crossings, one mask</h3>
-          <p>The arms are folded in layer order, so the stacking already tells the truth at eight of the
-            nine crossings. The ninth is the move that locks the stitch.</p>
-          <a href="https://github.com/ysetbon/Scoubidou3D/blob/main/docs/box-stitch-levels/README.md">Read the note
-            <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true">
-              <path d="M4 10h11M11 5l5 5-5 5" />
-            </svg>
-          </a>
-        </article>
-        <article>
-          <span>04 · The twist stitch</span>
-          <div>
-            <img class="shot light" src="./site/shots/twist-stitch-10-light.webp" width="780" height="722"
-              loading="lazy" decoding="async" alt="" />
-            <img class="shot dark" src="./site/shots/twist-stitch-10-dark.webp" width="780" height="722"
-              loading="lazy" decoding="async" alt="" />
-          </div>
-          <h3>A face that turns</h3>
-          <p>Three laces on a 2×1 face, 26° further round every stitch. Grown from a stitch built by
-            hand rather than derived — an idealised one reaches every fold the same and comes out a cylinder.</p>
-          <a href="https://github.com/ysetbon/Scoubidou3D/blob/main/docs/twist-stitch/README.md">Read the note
-            <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true">
-              <path d="M4 10h11M11 5l5 5-5 5" />
-            </svg>
-          </a>
-        </article>
-      </div>
-    </section>
-
-    <section class="values">
-      <div>
-        <img class="mark" src="./icon-512.png" width="512" height="512" alt="" aria-hidden="true" />
-        <h2>Made for play.<br />Built with precision.</h2>
-      </div>
-      <article>
-        <b>✦</b>
-        <h3>Real thickness</h3>
-        <p>Every strand is extruded into a solid ribbon with configurable thickness, rounded edges,
-          rounded ends and a stroke-coloured outline.</p>
-      </article>
-      <article>
-        <b>⌁</b>
-        <h3>Faithful curves</h3>
-        <p>Import an OpenStrand Studio or OpenStrandJS <code>.json</code> save and see familiar shapes
-          in 3D. The curve math is a port of the original.</p>
-      </article>
-      <article>
-        <b>◉</b>
-        <h3>Private by default</h3>
-        <p>The editor runs locally in your browser. Saved samples go to local storage; nothing is
-          uploaded anywhere.</p>
-      </article>
-    </section>
-
-    <section class="section run" id="run">
-      <div class="heading">
-        <div>
-          <p class="kicker">Run it yourself</p>
-          <h2>A link, not<br />a download.</h2>
-        </div>
-        <p>
-          The quickest path is the hosted build — <a class="under" href="./app/">open the app</a> and start
-          orbiting. To hack on it you need <a class="under" href="https://nodejs.org/">Node.js</a> 18 or newer.
-        </p>
-      </div>
-      <div class="runGrid">
-        <div>
-          <h3>Develop</h3>
-          <pre class="code"><code>git clone https://github.com/ysetbon/Scoubidou3D.git
-cd Scoubidou3D
-npm install
-npm run dev      <span class="cmt"># http://localhost:5173</span></code></pre>
-        </div>
-        <div>
-          <h3>Build &amp; reshoot</h3>
-          <pre class="code"><code>npm run build    <span class="cmt"># site at /, app at /app/</span>
-npm run shots    <span class="cmt"># reshoot site/shots/*.webp</span></code></pre>
-          <p class="runNote">
-            <code>npm run shots</code> drives the running app and screenshots every picture on this
-            page — both themes — from the real 3D canvas, so a sample cannot drift away from its own
-            photograph. Needs <code>npm run dev</code> up in another shell.
-          </p>
-        </div>
-      </div>
-      <ul class="chips">
-        <li>TypeScript</li>
-        <li>Three.js</li>
-        <li>Vite</li>
-        <li>No backend</li>
-        <li>GPL-3.0</li>
-      </ul>
-    </section>
-
-    <section class="closing">
-      <p class="kicker">Ready when you are</p>
-      <h2>What will you weave?</h2>
-      <p>Start with a sample, import an OpenStrand file, or make something nobody has seen before.</p>
-      <div>
-        <a class="btn dark" href="./app/">Open Scoubidou3D
-          <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M4 10h11M11 5l5 5-5 5" />
-          </svg>
-        </a>
-        <a class="btn outline" href="https://github.com/ysetbon/Scoubidou3D">View on GitHub</a>
-      </div>
-    </section>
-  </main>
-
-  <footer>
-    <a class="brand" href="./">
-      <img class="mark small" src="./icon-192.png" width="192" height="192" alt="" aria-hidden="true" />
-      <span>Scoubidou<strong>3D</strong></span>
-    </a>
-    <p>A tactile home for digital weaving.</p>
-    <nav>
-      <a href="#samples">Samples</a>
-      <a href="./app/">App</a>
-      <a href="https://github.com/ysetbon/Scoubidou3D">Source</a>
-      <a href="https://github.com/ysetbon/Scoubidou3D/issues">Issues</a>
-    </nav>
-    <!-- The counting note is nested inside the licence line rather than added
-         beside it: the footer is a four-column grid, and a fifth child would
-         drop to a row of its own. site/count.js unhides it, so it appears only
-         while visits are actually being counted. -->
-    <small>GPL-3.0, matching OpenStrand Studio<span data-count-note hidden><br />Visits counted
-        without cookies</span></small>
-  </footer>
-
-  <!-- Three small behaviours, in plain script so the page needs no build step of
-       its own: filter the sample grid, flatten the mini weave to top view, and
-       recolour it. Everything still reads fine with this script disabled — the
-       grid simply shows all ten. -->
-  <script>
-    (function () {
-      var grid = document.querySelector('.projectGrid');
-      document.querySelectorAll('.filters button').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          document.querySelectorAll('.filters button').forEach(function (b) {
-            b.classList.toggle('active', b === btn);
-          });
-          var want = btn.dataset.filter;
-          grid.querySelectorAll('article').forEach(function (card) {
-            card.hidden = want !== 'All' && card.dataset.category !== want;
-          });
-        });
-      });
-
-      var stage = document.getElementById('miniStage');
-      document.querySelectorAll('.segments button').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          document.querySelectorAll('.segments button').forEach(function (b) {
-            b.classList.toggle('active', b === btn);
-          });
-          stage.classList.toggle('top', btn.dataset.view === 'top');
-        });
-      });
-
-      document.querySelectorAll('.paletteBtns button').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          document.querySelectorAll('.paletteBtns button').forEach(function (b) {
-            b.classList.toggle('active', b === btn);
-          });
-          stage.style.setProperty('--wa', btn.dataset.a);
-          stage.style.setProperty('--wb', btn.dataset.b);
-          stage.style.setProperty('--wbg', btn.dataset.bg);
-        });
-      });
-    })();
-  </script>
-</body>
-
-</html>
+              alt="A box stitch on a five-by-five face in the studio: a square mat of ten ribbons woven over and under, its arms poking out on all four sides" /><span class="open-sample">Open sample ↗</span></div><div class="sample-info"><div><span class="category">Stitches</span><h3>Box stitch — 5×5 face</h3></div><span aria-hidden="true">↗</span></div></a></article></div><div class="more-row"><button class="button secondary" id="show-all" type="button" hidden>View all samples <span aria-hidden="true">↓</span></button></div></section>
+<section class="how wrap" id="how"><div class="section-heading"><div><p class="eyebrow">From curious to creating</p><h2>Make something<br>of your own.</h2></div><a class="text-link" href="./app/">Let's get started <span aria-hidden="true">↗</span></a></div><div class="steps"><article><span class="step-number">01</span><h3>Find your starting point</h3><p>Open a sample, start a new scene, or import an OpenStrand Studio JSON file.</p></article><article><span class="step-number">02</span><h3>Give it your own twist</h3><p>Move control points, change strand colours, and choose which strands cross over.</p></article><article><span class="step-number">03</span><h3>Take a look around</h3><p>Orbit the camera to explore your work in 3D, then save your scene to keep creating.</p></article></div></section>
+<section class="closing wrap"><div><p class="eyebrow">Your imagination. A few strands.</p><h2>What will you weave?</h2></div><a class="button primary" href="./app/">Open Scoubidou3D <span aria-hidden="true">↗</span></a></section>
+</main><footer class="wrap"><div class="footer-main"><a class="brand" href="./" aria-label="Scoubidou3D home"><img src="./icon-192.png" srcset="./icon-192.png 192w, ./icon-512.png 512w" sizes="64px" width="64" height="64" alt="" /><span>Scoubidou<strong>3D</strong></span></a><nav aria-label="Footer"><a href="https://github.com/ysetbon/Scoubidou3D">GitHub</a><a href="https://github.com/ysetbon/Scoubidou3D#readme">Documentation</a><a href="https://github.com/ysetbon/Scoubidou3D/issues">Report an issue</a></nav></div><div class="footer-note"><span>A space for creating in three dimensions.</span><span>GPL-3.0 · Built on OpenStrand Studio</span></div></footer>
+</body></html>
