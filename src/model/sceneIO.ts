@@ -19,7 +19,8 @@ export const SCENE_FORMAT = 'scoubidou3d-scene';
 // v2 added `levelBreaks`; v3 added `planes` and `crossPlanes` — where each layer
 // and each crossing was PLACED. Every step is additive: an older file loads as a
 // scene with nothing placed, and an older reader ignores the fields. `contact`
-// (the contact weave) rides in v3 the same way: absent means off.
+// (the contact weave) rides in v3 the same way: absent means off, and so does
+// `planeEnds` — where a run's two ends sit when they are not on its own plane.
 export const SCENE_VERSION = 3;
 
 export interface SceneFile {
@@ -31,6 +32,7 @@ export interface SceneFile {
   levelBreaks: number[];
   planes?: Record<string, number>;
   crossPlanes?: Record<string, number>;
+  planeEnds?: Record<string, { in?: number; out?: number }>;
   /** Contact weave — see Scene3D.contact. Omitted when off. */
   contact?: boolean;
 }
@@ -50,8 +52,15 @@ export function sceneToFile(scene: Scene3D): SceneFile {
     ...(scene.crossPlanes && Object.keys(scene.crossPlanes).length
       ? { crossPlanes: { ...scene.crossPlanes } }
       : {}),
+    ...(scene.planeEnds && Object.keys(scene.planeEnds).length
+      ? { planeEnds: cloneEnds(scene.planeEnds) }
+      : {}),
     ...(scene.contact ? { contact: true } : {}),
   };
+}
+
+function cloneEnds(e: Record<string, { in?: number; out?: number }>): Record<string, { in?: number; out?: number }> {
+  return Object.fromEntries(Object.entries(e).map(([id, v]) => [id, { ...v }]));
 }
 
 export function sceneToJson(scene: Scene3D): string {
@@ -75,6 +84,7 @@ export function sceneFromSnapshot(file: SceneFile): Scene3D {
     levelBreaks: [...file.levelBreaks],
     ...(file.planes ? { planes: { ...file.planes } } : {}),
     ...(file.crossPlanes ? { crossPlanes: { ...file.crossPlanes } } : {}),
+    ...(file.planeEnds ? { planeEnds: cloneEnds(file.planeEnds) } : {}),
     ...(file.contact ? { contact: true } : {}),
     name: file.name,
   };
@@ -228,6 +238,26 @@ function placedCross(
   return Object.keys(out).length ? { crossPlanes: out } : null;
 }
 
+/** Placed run ENDS, keeping only real strands and real rungs. */
+function placedEnds(
+  raw: unknown,
+  ids: Set<string>,
+): { planeEnds: Record<string, { in?: number; out?: number }> } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const out: Record<string, { in?: number; out?: number }> = {};
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!ids.has(id) || !value || typeof value !== 'object') continue;
+    const v = value as Record<string, unknown>;
+    const e: { in?: number; out?: number } = {};
+    const a = rung(v.in);
+    const b = rung(v.out);
+    if (a !== null) e.in = a;
+    if (b !== null) e.out = b;
+    if (Object.keys(e).length) out[id] = e;
+  }
+  return Object.keys(out).length ? { planeEnds: out } : null;
+}
+
 export function sceneFromFile(data: unknown, fallbackName = 'saved scene'): Scene3D {
   const obj = (data ?? {}) as Record<string, unknown>;
   if (!Array.isArray(obj.strands)) throw new Error('no "strands" array');
@@ -255,6 +285,7 @@ export function sceneFromFile(data: unknown, fallbackName = 'saved scene'): Scen
     levelBreaks: normalizeLevelBreaks(obj.levelBreaks, strands.length),
     ...(placed(obj.planes, (id) => ids.has(id)) ?? {}),
     ...(placedCross(obj.crossPlanes, ids) ?? {}),
+    ...(placedEnds(obj.planeEnds, ids) ?? {}),
     ...(obj.contact === true ? { contact: true } : {}),
     name: typeof obj.name === 'string' && obj.name ? obj.name : fallbackName,
   };

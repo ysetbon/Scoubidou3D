@@ -2708,6 +2708,7 @@ export class Panel {
       () => {
         this.planes.clear();
         this.crossPlanes.clear();
+        this.scene.planeEnds = undefined;
         this.pickedCross = null;
         this.pickedSide = null;
         this.syncPlanesToScene();
@@ -3185,6 +3186,9 @@ export class Panel {
    */
   private crossPlanes = new Map<string, number>();
 
+  /** The scene's `planeEnds` as last sent to the view, so a redraw can tell they moved. */
+  private pushedEnds = 'null';
+
   /** Which crossing the view is pointed at, by `${crossKey}|${strandId}`. */
   private pickedCross: string | null = null;
 
@@ -3207,7 +3211,9 @@ export class Panel {
    * different states in the view above.
    */
   private pushPlanes(): void {
-    if (!this.planes.size) {
+    const ends = this.scene.planeEnds ?? {};
+    this.pushedEnds = JSON.stringify(this.scene.planeEnds ?? null);
+    if (!this.planes.size && !Object.keys(ends).length) {
       this.view.setSublevels(null);
       return;
     }
@@ -3218,6 +3224,14 @@ export class Panel {
     for (const [id, rung] of this.planes) {
       const value = rungValue(rung);
       map.set(id, { in: value, out: value });
+    }
+    // A run whose ends were placed apart from its rest ramps between them: the end
+    // that was placed takes its rung, the other keeps the run's own. See
+    // Scene3D.planeEnds — it is written by scenes that fold between levels, not
+    // by anything in this panel.
+    for (const [id, e] of Object.entries(ends)) {
+      const rest = this.planes.get(id) ?? 0;
+      map.set(id, { in: rungValue(e.in ?? rest), out: rungValue(e.out ?? rest) });
     }
     this.view.setSublevels(map);
   }
@@ -3277,7 +3291,7 @@ export class Panel {
     const same = (a: Map<string, number>, b: Map<string, number>): boolean =>
       a.size === b.size && [...a].every(([k, v]) => b.get(k) === v);
     const runs = new Map(Object.entries(this.scene.planes ?? {}));
-    if (!same(runs, this.planes)) {
+    if (!same(runs, this.planes) || JSON.stringify(this.scene.planeEnds ?? null) !== this.pushedEnds) {
       this.planes = runs;
       this.pushPlanes();
     }

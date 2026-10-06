@@ -161,6 +161,17 @@ export interface Scene3D {
    * no one resting height can say both.
    */
   crossPlanes?: Record<string, number>;
+  /**
+   * WHERE A RUN'S TWO ENDS SIT, when they are not where the run rests: by strand
+   * id, `in` for the start and `out` for the end, each a rung as in `planes`.
+   * Absent for an end means that end keeps the run's own plane (`planes[id]`, or
+   * the middle when the run is not placed), so the arm ramps from one to the other.
+   *
+   * It is what a fold between two levels needs: the arm below ends on one plane
+   * and the arm that carries on from it starts on another, which a single rung per
+   * run cannot say. See the box family (boxmn.ts) for where it comes from.
+   */
+  planeEnds?: Record<string, { in?: number; out?: number }>;
   name: string;
 }
 

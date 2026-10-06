@@ -39,9 +39,34 @@ function base(stop = 0) {
   if (!bases.has(stop)) {
     const sc = boxStitchMN(1, 1, `Box 1×1 RH — level ${LEVEL} edited`, 'rh', ROUND, true, 'hand', stop);
     const keepL1 = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => !k.split('|').some(isEdited)));
-    bases.set(stop, { ...sc, planes: keepL1(sc.planes ?? {}), crossPlanes: keepL1(sc.crossPlanes ?? {}) });
+    bases.set(stop, {
+      ...sc,
+      planes: keepL1(sc.planes ?? {}),
+      crossPlanes: keepL1(sc.crossPlanes ?? {}),
+      planeEnds: lowerEnds(sc.planeEnds ?? {}),
+    });
   }
   return bases.get(stop);
+}
+/** The fold ends that belong to the levels below: everything but the folds into this one. */
+function lowerEnds(ends) {
+  const out = {};
+  for (const [id, e] of Object.entries(ends)) {
+    if (isEdited(id)) continue;
+    const kept = levelOf(id) === LEVEL - 1 ? { in: e.in } : { ...e };
+    if (kept.in === undefined) delete kept.in;
+    if (Object.keys(kept).length) out[id] = kept;
+  }
+  return out;
+}
+/** …and the ones that do: the starts of this level's arms, the ends of the level below's. */
+function foldEnds(ends) {
+  const out = {};
+  for (const [id, e] of Object.entries(ends)) {
+    if (isEdited(id) && e.in !== undefined) out[id] = { in: e.in };
+    else if (levelOf(id) === LEVEL - 1 && e.out !== undefined) out[id] = { out: e.out };
+  }
+  return out;
 }
 const BASE = base();
 
@@ -60,6 +85,7 @@ function presetPlan(name) {
   const full = boxStitchMN(1, 1, 'preset', 'rh', ROUND, true, name);
   for (const [id, r] of Object.entries(full.planes ?? {})) if (isEdited(id)) p.rest[id] = r;
   for (const [k, r] of Object.entries(full.crossPlanes ?? {})) if (k.split('|').slice(0, 2).every(isEdited)) p.cross[k] = r;
+  p.ends = foldEnds(full.planeEnds ?? {});
   return p;
 }
 
@@ -87,8 +113,14 @@ function sceneFor(p) {
     crossPlanes: { ...B.crossPlanes, ...p.cross },
     // Not a field a saved scene has yet: one rung per arm cannot say an arm that
     // rests on one plane and ends on another. Read by `show`, and handed back in Copy.
-    planeEnds: JSON.parse(JSON.stringify(p.ends ?? {})),
+    planeEnds: mergeEnds(B.planeEnds ?? {}, p.ends ?? {}),
   };
+}
+
+function mergeEnds(a, b) {
+  const out = JSON.parse(JSON.stringify(a));
+  for (const [id, e] of Object.entries(b)) out[id] = { ...(out[id] ?? {}), ...e };
+  return out;
 }
 
 // ---- view ------------------------------------------------------------------------
@@ -174,7 +206,8 @@ function foldContact(sc, low) {
 // the fold stopping further out. Ending at -3 clears its own level but runs into
 // the level below, so -2 is the floor of what works.
 const FOLD_IDEAS = [
-  { id: 'built', label: 'As built', note: 'Nothing set on the folds: touching.', stop: 0 },
+  { id: 'learned', label: 'Yours: end 0, start +1', note: 'What you placed at the fold into level 3: the arm below ends on the middle, the arm above starts on the upper half.', end: 0, start: 1, stop: 0 },
+  { id: 'built', label: 'Nothing set', note: 'Nothing set on the folds: the arm climbs straight off its rest.', stop: 0 },
   { id: 'under2', label: 'Stay under, end on the floor (−2)', note: 'The arm below keeps going down after it passes under its neighbour and ends on the floor of its level, then turns up from below. Footprint unchanged.', end: -2, stop: 0 },
   { id: 'under1', label: 'Stay under, end low (−1)', note: 'The same, half as far down: right on the line, 26 px, exactly a thickness.', end: -1, stop: 0 },
   { id: 'under2low', label: 'Floor (−2) and start low (−2)', note: 'Ends on the floor of its level and the arm above starts on the floor of its own, so the turn is as short as it can be.', end: -2, start: -2, stop: 0 },
@@ -395,8 +428,8 @@ document.getElementById('copy').addEventListener('click', async () => {
   }
 });
 document.getElementById('preset').addEventListener('change', (e) => {
-  // A preset is this level's plan; the folds into it are kept.
-  plan = { ...presetPlan(e.target.value), ends: plan.ends, stop: plan.stop };
+  // A preset is this level's plan, folds into it included; the stop is kept.
+  plan = { ...presetPlan(e.target.value), stop: plan.stop };
   commit();
 });
 document.getElementById('clear').addEventListener('click', () => {
@@ -440,14 +473,15 @@ document.getElementById('v-fold')?.addEventListener('click', () => {
   const L = view.getStrandCentrelineWorld(f.low.id);
   const tip = L[L.length - 1];
   view.controls.target.set(tip.x, tip.y, tip.z);
-  view.camera.position.set(tip.x + 2.7, tip.y - 1.6, tip.z + 1.8);
+  view.camera.position.set(tip.x + 4.2, tip.y - 2.6, tip.z + 2.6);
   view.controls.update();
 });
 
 const sel = document.getElementById('preset');
 sel.add(new Option('Nothing placed', 'none'));
 for (const [k, p] of Object.entries(UPPER_PLANS)) {
-  sel.add(new Option(k === 'hand' && LEVEL > 2 ? 'Learned from your level 2' : p.label, k));
+  const hand = LEVEL <= 3 ? 'Yours, as you placed it' : 'Learned from your levels 2 and 3';
+  sel.add(new Option(k === 'hand' ? hand : p.label, k));
 }
 document.querySelectorAll('.lvl').forEach((e) => { e.textContent = String(LEVEL); });
 
