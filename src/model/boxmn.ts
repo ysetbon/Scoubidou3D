@@ -446,13 +446,16 @@ export const BOX_PLACEMENT = {
  * starts at the fold it comes out of.
  *
  * `hand` is what was placed by hand in the level editors (artifacts/box-level*-
- * editor) on the 1×1 right hand. Levels 3 and 4 were placed the same way and
- * settle it; level 2, placed first, rested on +1 and is brought in line with them:
+ * editor) on the 1×1 right hand, levels 2, 3 and 4, each the same way:
  *
  *   every level above the first   arms rest on -1
  *   at each crossing              the arm on top +1, the arm underneath -1
- *   at each fold into it          the arm above starts on +1; the arm below
- *                                 ends on its own rest
+ *   at each fold into it          the arm below ends on -1, the arm above
+ *                                 starts on +1
+ *
+ * Above level 1 an arm's own rest is already -1, so "ends on -1" only says
+ * anything at the fold out of level 1: the horizontal arms there have no plane
+ * of their own, and are brought down to -1 at their ends.
  *
  * The fold is what keeps a level from cutting through the one under it: an arm's
  * last crossing before it turns is UNDER its neighbour, and starting the arm
@@ -471,13 +474,14 @@ export interface UpperPlanSpec {
   over: number;
   /**
    * At a fold between levels: where the arm above `start`s and, when set, where
-   * the arm below `end`s (absent: it ends on its own rest). Level 1's arms are
-   * never moved: they are the box from `box + strand`.
+   * the arm below `end`s (absent: it ends on its own rest). Only the END of a
+   * level-1 arm can be moved here; the rest of level 1 is the box from
+   * `box + strand`.
    */
   fold?: { start: number; end?: number };
 }
 export const UPPER_PLANS: Record<UpperPlan, UpperPlanSpec> = {
-  hand: { label: 'Placed by hand', rest: -1, under: -1, over: 1, fold: { start: 1 } },
+  hand: { label: 'Placed by hand', rest: -1, under: -1, over: 1, fold: { end: -1, start: 1 } },
   woven: { label: 'Woven, touching', rest: 0, under: -1, over: 1 },
   loose: { label: 'Woven, with air', rest: 0, under: -2, over: 2 },
 };
@@ -560,16 +564,16 @@ export function boxPlacements(
     }
   }
   // The folds: the arm carrying on from an arm of the level below starts on
-  // `fold.start`, and, when the plan says so, the arm below ends on `fold.end` —
-  // never an arm of level 1. Each end is said only where it differs from that
-  // arm's own rest, so nothing redundant is stored.
+  // `fold.start`, and, when the plan says so, the arm below ends on `fold.end`.
+  // Each end is said only where it differs from that arm's own rest, so nothing
+  // redundant is stored.
   const planeEnds: Record<string, { in?: number; out?: number }> = {};
   if (plan.fold) {
     for (const s of strands) {
       if (round(s.id) < 1 || !s.parentId || parse(s.parentId).layer < 2) continue;
       const low = s.parentId;
       const { start, end } = plan.fold;
-      if (end !== undefined && round(low) > 0 && planes[low] !== end) {
+      if (end !== undefined && planes[low] !== end) {
         planeEnds[low] = { ...planeEnds[low], out: end };
       }
       if (planes[s.id] !== start) planeEnds[s.id] = { ...planeEnds[s.id], in: start };
@@ -584,12 +588,12 @@ export function boxPlacements(
 // 2×1 to see whether the idea carries — at the depths the stitch samples use.
 // Right hand is the hand the sample was drawn in; `box-placed-lh-…` is its mirror.
 const PLACED_FACES: Array<[number, number]> = [[1, 1], [2, 1]];
-const PLACED_LEVELS = [1, 2, 3, 10, 15];
+const PLACED_LEVELS = [1, 2, 3, 4, 10, 15];
 export const placedKey = (hand: Hand, m: number, n: number, levels: number): string =>
   `box-placed-${hand === 'lh' ? 'lh-' : ''}${m}x${n}-l${levels}`;
 const placedName = (hand: Hand, m: number, n: number, levels: number): string =>
   `Box ${m}×${n} ${hand.toUpperCase()} placed — ` +
-  (levels <= 3 ? `level ${levels}` : `${levels} levels`);
+  (levels <= 4 ? `level ${levels}` : `${levels} levels`);
 
 export const BOX_PLACED_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
   HANDS.flatMap(({ hand }) =>
