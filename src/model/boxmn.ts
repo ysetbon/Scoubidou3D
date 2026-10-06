@@ -588,7 +588,9 @@ export function boxPlacements(
 // 2×1 to see whether the idea carries — at the depths the stitch samples use.
 // Right hand is the hand the sample was drawn in; `box-placed-lh-…` is its mirror.
 const PLACED_FACES: Array<[number, number]> = [[1, 1], [2, 1]];
-const PLACED_LEVELS = [1, 2, 3, 4, 10, 15];
+const PLACED_LEVELS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15];
+/** The ones listed by name; the rest open by `?sample=` and in the artifact. */
+const LISTED_LEVELS = [1, 2, 3, 4, 10, 15];
 export const placedKey = (hand: Hand, m: number, n: number, levels: number): string =>
   `box-placed-${hand === 'lh' ? 'lh-' : ''}${m}x${n}-l${levels}`;
 const placedName = (hand: Hand, m: number, n: number, levels: number): string =>
@@ -608,7 +610,7 @@ export const BOX_PLACED_SAMPLES: Record<string, () => Scene3D> = Object.fromEntr
 export const BOX_PLACED_LABELS: Array<{ key: string; label: string; group: string }> = HANDS.flatMap(
   ({ hand, label }) =>
     PLACED_FACES.flatMap(([m, n]) =>
-      PLACED_LEVELS.map((levels) => ({
+      LISTED_LEVELS.map((levels) => ({
         key: placedKey(hand, m, n, levels),
         label: `${label} · box ${m}×${n} placed — ${levels} level${levels === 1 ? '' : 's'}`,
         group: 'Box — placed like box + strand',

@@ -11,7 +11,7 @@ const W = 46; // ribbon width, px
 const T = 26; // ribbon thickness, px
 const SCALE = 0.02; // world units per source px
 
-const state = { levels: 4, hand: 'rh', placed: true, only: false };
+const state = { levels: 4, hand: 'rh', placed: true, only: false, m: 1, n: 1 };
 const view = new StrandScene(document.getElementById('c'));
 view.renderer.shadowMap.enabled = false;
 
@@ -20,8 +20,8 @@ const levelOf = (id) => (layer(id) < 4 ? 1 : Math.floor((layer(id) - 2) / 2) + 1
 const lace = (id) => id.split('_')[0];
 
 function sceneNow() {
-  const { levels, hand, placed, only } = state;
-  const sc = boxStitchMN(1, 1, `Box 1×1 ${hand.toUpperCase()}, level ${levels}`, hand, levels - 1, placed, 'hand');
+  const { levels, hand, placed, only, m, n } = state;
+  const sc = boxStitchMN(m, n, `Box ${m}×${n} ${hand.toUpperCase()}, level ${levels}`, hand, levels - 1, placed, 'hand');
   return { ...sc, strands: sc.strands.map((s) => ({ ...s, visible: !only || levelOf(s.id) === levels })) };
 }
 
@@ -97,7 +97,7 @@ function table(rows) {
     const td = (t, cls) => { const e = document.createElement('td'); e.textContent = t; if (cls) e.className = cls; tr.appendChild(e); };
     td(`Level ${r.L}`);
     td(r.n ? `${r.right} of ${r.n} with the top lace on top` : '—', r.right === r.n ? 'ok' : 'off');
-    td(r.n ? (r.worst >= 0.9 ? 'resting on each other' : r.worst > -0.05 ? `${r.worst.toFixed(2)} th apart` : 'one passes through') : '—');
+    td(r.n ? (r.worst >= 0.9 ? 'resting on each other' : r.worst > -0.05 ? `tightest ${r.worst.toFixed(2)} th` : 'one passes through') : '—');
     td(r.folds ? `${r.folds} folds · end ${Math.max(0, r.edge).toFixed(0)} px from the neighbour's edge, ${r.height.toFixed(0)} px in height` : r.L === state.levels ? 'top level: loose ends' : '—');
     host.appendChild(tr);
   }
@@ -107,19 +107,20 @@ let framed = '';
 function render() {
   const sc = sceneNow();
   show(sc);
-  const shape = `${state.hand}-${state.levels}`;
+  const shape = `${state.hand}-${state.m}x${state.n}-${state.levels}`;
   if (shape !== framed) { view.fitView(); framed = shape; }
   table(readLevels(sc));
-  document.getElementById('sample').textContent = `?sample=box-placed-${state.hand === 'lh' ? 'lh-' : ''}1x1-l${state.levels}`;
-  for (const [attr, value] of [['levels', String(state.levels)], ['hand', state.hand], ['placed', String(state.placed)], ['only', String(state.only)]]) {
+  document.getElementById('sample').textContent = `?sample=box-placed-${state.hand === 'lh' ? 'lh-' : ''}${state.m}x${state.n}-l${state.levels}`;
+  for (const [attr, value] of [['levels', String(state.levels)], ['hand', state.hand], ['placed', String(state.placed)], ['only', String(state.only)], ['face', `${state.m}x${state.n}`]]) {
     document.querySelectorAll(`[data-${attr}]`).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset[attr] === value)));
   }
 }
 
-for (const attr of ['levels', 'hand', 'placed', 'only']) {
+for (const attr of ['levels', 'hand', 'placed', 'only', 'face']) {
   document.querySelectorAll(`[data-${attr}]`).forEach((b) => b.addEventListener('click', () => {
     const v = b.dataset[attr];
-    state[attr] = attr === 'levels' ? +v : attr === 'hand' ? v : v === 'true';
+    if (attr === 'face') [state.m, state.n] = v.split('x').map(Number);
+    else state[attr] = attr === 'levels' ? +v : attr === 'hand' ? v : v === 'true';
     render();
   }));
 }
