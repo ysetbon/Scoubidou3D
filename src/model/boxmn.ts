@@ -442,44 +442,42 @@ export const BOX_PLACEMENT = {
 /**
  * How a round above the first is placed. A round above the first has no slants,
  * only arms crossing arms, so a plan says where the round's arms rest, the rung of
- * the arm underneath and of the arm on top at each crossing, and — from the third
- * level up — where an arm of the level below ends and the arm carrying on from it
- * starts, at the fold between them.
+ * the arm underneath and of the arm on top at each crossing, and where an arm
+ * starts at the fold it comes out of.
  *
- * `hand` is what was placed by hand, level by level, in the level editors
- * (artifacts/box-level*-editor) on the 1×1 right hand:
+ * `hand` is what was placed by hand in the level editors (artifacts/box-level*-
+ * editor) on the 1×1 right hand. Levels 3 and 4 were placed the same way and
+ * settle it; level 2, placed first, rested on +1 and is brought in line with them:
  *
- *   level 2   arms rest on +1; at a crossing, top arm +1, arm underneath -1
- *   level 3   arms rest on -1; the same ±1 at the crossings; and at the fold
- *             from level 2, the level-2 arm ends on 0 and the level-3 arm
- *             starts on +1
+ *   every level above the first   arms rest on -1
+ *   at each crossing              the arm on top +1, the arm underneath -1
+ *   at each fold into it          the arm above starts on +1; the arm below
+ *                                 ends on its own rest
  *
- * Carried up: the rest alternates, +1 on even levels and -1 on odd ones, as the
- * box's own over/under does; the crossings are always ±1; and every fold into a
- * level from the third up ends on 0 below and starts on +1 above. Level 4 is that
- * rule's first guess beyond what was placed (box-level4-editor).
+ * The fold is what keeps a level from cutting through the one under it: an arm's
+ * last crossing before it turns is UNDER its neighbour, and starting the arm
+ * above on +1 lets the turn rise clear instead of climbing through that
+ * neighbour.
  *
- * The fold matters because an arm's last crossing before it turns is UNDER its
- * neighbour; ending on the middle, rather than climbing straight off its rest,
- * is what keeps it from turning up through that neighbour.
- *
- * `woven` and `loose` are the editors' other starting points and rest the same on
- * every level, with nothing at the folds.
+ * `woven` and `loose` are the editors' other starting points: the same rest on
+ * every level, nothing at the folds.
  */
 export type UpperPlan = 'hand' | 'woven' | 'loose';
 export interface UpperPlanSpec {
   label: string;
-  /** Rest on even levels (2, 4, …). */
+  /** Where every arm of a level above the first rests. */
   rest: number;
-  /** Rest on odd levels (3, 5, …); the same as `rest` when absent. */
-  restOdd?: number;
   under: number;
   over: number;
-  /** At a fold into level 3 and up: where the arm below ends, where the arm above starts. */
-  fold?: { end: number; start: number };
+  /**
+   * At a fold between levels: where the arm above `start`s and, when set, where
+   * the arm below `end`s (absent: it ends on its own rest). Level 1's arms are
+   * never moved: they are the box from `box + strand`.
+   */
+  fold?: { start: number; end?: number };
 }
 export const UPPER_PLANS: Record<UpperPlan, UpperPlanSpec> = {
-  hand: { label: 'Placed by hand', rest: 1, restOdd: -1, under: -1, over: 1, fold: { end: 0, start: 1 } },
+  hand: { label: 'Placed by hand', rest: -1, under: -1, over: 1, fold: { start: 1 } },
   woven: { label: 'Woven, touching', rest: 0, under: -1, over: 1 },
   loose: { label: 'Woven, with air', rest: 0, under: -2, over: 2 },
 };
@@ -537,7 +535,7 @@ export function boxPlacements(
   for (const s of strands) {
     const { layer } = parse(s.id);
     const level = round(s.id) + 1;
-    if (layer > 1 && level > 1) planes[s.id] = level % 2 === 1 ? plan.restOdd ?? plan.rest : plan.rest;
+    if (layer > 1 && level > 1) planes[s.id] = plan.rest;
     else if (layer > 1 && isWarp(s.id)) planes[s.id] = BOX_PLACEMENT.warpArmRest;
   }
   // The hand-placed box is one storey with nothing above it; any scene that has
@@ -561,16 +559,20 @@ export function boxPlacements(
       else place(v, h, { [under.id]: middle });
     }
   }
-  // The folds, from the third level up: the arm below ends on `fold.end`, the arm
-  // carrying on from it starts on `fold.start`. Each end is said only where it
-  // differs from that arm's own rest, so nothing redundant is stored.
+  // The folds: the arm carrying on from an arm of the level below starts on
+  // `fold.start`, and, when the plan says so, the arm below ends on `fold.end` —
+  // never an arm of level 1. Each end is said only where it differs from that
+  // arm's own rest, so nothing redundant is stored.
   const planeEnds: Record<string, { in?: number; out?: number }> = {};
   if (plan.fold) {
     for (const s of strands) {
-      if (round(s.id) < 2 || !s.parentId || parse(s.parentId).layer < 2) continue;
+      if (round(s.id) < 1 || !s.parentId || parse(s.parentId).layer < 2) continue;
       const low = s.parentId;
-      if (planes[low] !== plan.fold.end) planeEnds[low] = { ...planeEnds[low], out: plan.fold.end };
-      if (planes[s.id] !== plan.fold.start) planeEnds[s.id] = { ...planeEnds[s.id], in: plan.fold.start };
+      const { start, end } = plan.fold;
+      if (end !== undefined && round(low) > 0 && planes[low] !== end) {
+        planeEnds[low] = { ...planeEnds[low], out: end };
+      }
+      if (planes[s.id] !== start) planeEnds[s.id] = { ...planeEnds[s.id], in: start };
     }
   }
   return { planes, crossPlanes, ...(Object.keys(planeEnds).length ? { planeEnds } : {}) };

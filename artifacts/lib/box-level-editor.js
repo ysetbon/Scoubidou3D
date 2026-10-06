@@ -206,7 +206,7 @@ function foldContact(sc, low) {
 // the fold stopping further out. Ending at -3 clears its own level but runs into
 // the level below, so -2 is the floor of what works.
 const FOLD_IDEAS = [
-  { id: 'learned', label: 'Yours: end 0, start +1', note: 'What you placed at the fold into level 3: the arm below ends on the middle, the arm above starts on the upper half.', end: 0, start: 1, stop: 0 },
+  { id: 'learned', label: 'Yours: start on +1', note: 'What you placed at the folds into levels 3 and 4: the arm above starts on the upper half, the arm below ends on its own rest.', start: 1, stop: 0 },
   { id: 'built', label: 'Nothing set', note: 'Nothing set on the folds: the arm climbs straight off its rest.', stop: 0 },
   { id: 'under2', label: 'Stay under, end on the floor (−2)', note: 'The arm below keeps going down after it passes under its neighbour and ends on the floor of its level, then turns up from below. Footprint unchanged.', end: -2, stop: 0 },
   { id: 'under1', label: 'Stay under, end low (−1)', note: 'The same, half as far down: right on the line, 26 px, exactly a thickness.', end: -1, stop: 0 },
@@ -480,7 +480,7 @@ document.getElementById('v-fold')?.addEventListener('click', () => {
 const sel = document.getElementById('preset');
 sel.add(new Option('Nothing placed', 'none'));
 for (const [k, p] of Object.entries(UPPER_PLANS)) {
-  const hand = LEVEL <= 3 ? 'Yours, as you placed it' : 'Learned from your levels 2 and 3';
+  const hand = LEVEL === 2 ? 'Learned from your levels 3 and 4' : LEVEL <= 4 ? 'Yours, as you placed it' : 'Learned from your levels 3 and 4';
   sel.add(new Option(k === 'hand' ? hand : p.label, k));
 }
 document.querySelectorAll('.lvl').forEach((e) => { e.textContent = String(LEVEL); });
