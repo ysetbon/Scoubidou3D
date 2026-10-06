@@ -1,14 +1,16 @@
-// The 1×1 box at its first level, three ways, on three copies of the studio's own
-// view: the box from `box + strand` (the reference, 3_1 taken out), the box the
-// family builds today, and the family's box placed the way the reference was.
+// The 1×1 box at its SECOND level: today's unplaced build beside three candidate
+// plans for placing it, each on a copy of the studio's own view.
 //
-// Nothing is baked. All three are `StrandScene`, fed by `SAMPLES['box-and-strand']`
-// and by `boxStitchMN` — the app's own scenes — and the table is read back off the
-// built ribbons: where each lace actually is at each crossing, in rungs (half a
-// thickness) off the middle of the storey.
+// The first level is settled — it is the box from `box + strand`, placed the way
+// that sample was placed — and every candidate keeps it exactly; the page checks
+// that against the sample on every load. The second level has no hand-placed
+// reference, so the candidates are the question this page puts.
+//
+// Nothing is baked. Every panel is `StrandScene` fed by `boxStitchMN` or by
+// `SAMPLES['box-and-strand']`, and every figure is read back off the built ribbons.
 import { StrandScene } from '../../src/scene/StrandScene';
 import { SAMPLES } from '../../src/model/samples';
-import { boxStitchMN } from '../../src/model/boxmn';
+import { boxStitchMN, UPPER_PLANS } from '../../src/model/boxmn';
 
 const RUNG = 0.5; // a rung is half a thickness (PLANE_RUNGS in the panel)
 
@@ -20,7 +22,6 @@ function referenceBox() {
     Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => !k.split('|').some(drop)));
   return {
     ...sc,
-    name: 'box + strand, without 3_1',
     strands: sc.strands.filter((s) => !drop(s.id)),
     planes: keep(sc.planes),
     crossPlanes: keep(sc.crossPlanes),
@@ -32,18 +33,43 @@ function referenceBox() {
 const HAND = { '1_2': '1_3', '1_3': '1_2' };
 const asHand = (id) => HAND[id] ?? id;
 
-const panels = [
-  { id: 'ref', view: new StrandScene(document.getElementById('c-ref')), scene: referenceBox(), hand: (i) => i },
-  { id: 'before', view: new StrandScene(document.getElementById('c-before')),
-    scene: boxStitchMN(1, 1, 'Box 1×1 RH, first level', 'rh', 0, false), hand: asHand },
-  { id: 'after', view: new StrandScene(document.getElementById('c-after')),
-    scene: boxStitchMN(1, 1, 'Box 1×1 RH, first level, placed', 'rh', 0, true), hand: asHand },
+const PANELS = [
+  { id: 'before', name: 'Before', note: 'Today: nothing placed.', placed: false },
+  ...Object.entries(UPPER_PLANS).map(([plan, p]) => ({
+    id: plan,
+    name: p.label,
+    placed: true,
+    plan,
+    note: `Level 2: arm underneath at ${rung(p.under)}, arm on top ${p.over === null ? 'left free' : `at ${rung(p.over)}`}.`,
+  })),
 ];
-const views = panels.map((p) => p.view);
-const state = { link: true };
+function rung(r) {
+  return r > 0 ? `+${r}` : r < 0 ? `−${-r}` : '0';
+}
+
+// ---- panels -----------------------------------------------------------------------
+const grid = document.getElementById('panels');
+for (const p of PANELS) {
+  const el = document.createElement('div');
+  el.className = 'side';
+  el.innerHTML =
+    `<h2><b>${p.name}</b><span>${p.placed ? `?sample=box-placed-1x1-l2-${p.plan}` : 'boxStitchMN(1, 1, …, 1)'}</span></h2>` +
+    `<div class="stage"><canvas id="c-${p.id}"></canvas></div><p>${p.note}</p>`;
+  grid.appendChild(el);
+  p.view = new StrandScene(el.querySelector('canvas'));
+  p.view.renderer.shadowMap.enabled = false;
+  p.scene = boxStitchMN(1, 1, `Box 1×1 RH, 2 levels — ${p.name}`, 'rh', 1, p.placed, p.plan);
+}
+const views = PANELS.map((p) => p.view);
+const reference = { view: new StrandScene(document.getElementById('c-ref')), scene: referenceBox() };
+reference.view.renderer.shadowMap.enabled = false;
+const level1 = { view: new StrandScene(document.getElementById('c-l1')), scene: boxStitchMN(1, 1, 'Box 1×1 RH, level 1, placed', 'rh', 0, true) };
+level1.view.renderer.shadowMap.enabled = false;
+const allViews = [...views, reference.view, level1.view];
 
 /** What the panel does with a scene's placements: rungs to thicknesses, then to the view. */
-function place(view, sc) {
+function show(view, sc) {
+  view.setScene(sc, false);
   const runs = Object.entries(sc.planes ?? {});
   view.setSublevels(
     runs.length ? new Map(runs.map(([id, r]) => [id, { in: r * RUNG, out: r * RUNG }])) : null);
@@ -61,82 +87,145 @@ function nearest(line, x, y) {
   return best;
 }
 
-/** Every crossing of two different laces: sorted hand ids to each lace's height in rungs. */
-function read(p) {
-  const { view, hand } = p;
+const layer = (id) => Number(id.split('_')[1]);
+const storey = (id) => (layer(id) >= 4 ? 1 : 0);
+
+/**
+ * Every crossing of two different laces, keyed by sorted id: each lace's height in
+ * rungs off the middle of the storey the crossing is on, and who the weave puts on top.
+ */
+function read(view, hand = (i) => i) {
   const th = view.getThicknessWorld();
-  const plane = view.getStoreyPlane(0);
   const out = new Map();
   for (const c of view.getCrossPoints()) {
+    if (c.aId.split('_')[0] === c.bId.split('_')[0]) continue; // a lace's own glued joint
     const a = hand(c.aId);
     const b = hand(c.bId);
-    if (a.split('_')[0] === b.split('_')[0]) continue; // a lace's own glued joint
-    const z = (id, hid) => (nearest(view.getStrandCentrelineWorld(id), c.x, c.y).z - plane) / th / RUNG;
-    const over = hand(c.overIndex === c.aIndex ? c.aId : c.bId);
-    out.set([a, b].sort().join('|'), { [a]: z(c.aId, a), [b]: z(c.bId, b), over });
+    const z = (id) => nearest(view.getStrandCentrelineWorld(id), c.x, c.y).z;
+    const lo = Math.min(storey(c.aId), storey(c.bId));
+    const plane = view.getStoreyPlane(lo);
+    out.set([a, b].sort().join('|'), {
+      [a]: (z(c.aId) - plane) / th / RUNG,
+      [b]: (z(c.bId) - plane) / th / RUNG,
+      over: hand(c.overIndex === c.aIndex ? c.aId : c.bId),
+      woven: c.woven,
+      between: storey(c.aId) !== storey(c.bId),
+    });
   }
   return out;
 }
 
-const KINDS = {
-  '1_1|2_1': 'slant · slant',
-  '1_1|2_2': 'arm over slant', '1_1|2_3': 'arm over slant',
-  '1_2|2_1': 'arm over slant', '1_3|2_1': 'arm over slant',
-  '1_2|2_2': 'arm · arm', '1_2|2_3': 'arm · arm', '1_3|2_2': 'arm · arm', '1_3|2_3': 'arm · arm',
-};
 const fmt = (n) => (n > 0.005 ? '+' : n < -0.005 ? '−' : '') + Math.abs(n).toFixed(2);
 
-function table(rows) {
-  const host = document.getElementById('rows');
+// ---- the first level: still the reference? -----------------------------------------
+function level1Check(rowsByPanel) {
+  show(reference.view, reference.scene);
+  show(level1.view, level1.scene);
+  const ref = read(reference.view);
+  const host = document.getElementById('l1-rows');
   host.textContent = '';
-  const worst = { before: 0, after: 0 };
-  for (const [key, kind] of Object.entries(KINDS)) {
+  const tr = document.createElement('tr');
+  const td = (t, cls) => { const e = document.createElement('td'); e.textContent = t; if (cls) e.className = cls; tr.appendChild(e); };
+  td('Largest difference from the reference');
+  const sources = [['level 1 alone', read(level1.view, asHand)], ...PANELS.map((p) => [p.name, rowsByPanel[p.id].hand])];
+  for (const [, rows] of sources) {
+    let worst = 0;
+    let flipped = 0;
+    for (const [key, r] of ref) {
+      const g = rows.get(key);
+      if (!g) { worst = Infinity; continue; }
+      for (const id of key.split('|')) worst = Math.max(worst, Math.abs(g[id] - r[id]));
+      if (g.over !== r.over) flipped++;
+    }
+    td(`${worst.toFixed(2)} rungs${flipped ? ` · ${flipped} flipped` : ''}`, worst <= 0.5 && !flipped ? 'ok' : 'off');
+  }
+  host.appendChild(tr);
+}
+
+// ---- the second level ---------------------------------------------------------------
+function level2Table(rowsByPanel) {
+  const keys = [...rowsByPanel.before.raw.entries()]
+    .filter(([key, r]) => r.woven && key.split('|').every((id) => storey(id) === 1))
+    .map(([key]) => key)
+    .sort();
+  const host = document.getElementById('l2-rows');
+  host.textContent = '';
+  for (const key of keys) {
     const tr = document.createElement('tr');
-    const ref = rows.ref.get(key);
-    const cell = (text, cls) => {
-      const td = document.createElement('td');
-      td.textContent = text;
-      if (cls) td.className = cls;
-      tr.appendChild(td);
-    };
-    cell(key.replace('|', ' × '));
-    cell(kind);
-    const ids = key.split('|');
-    cell(ids.map((id) => `${id} ${fmt(ref[id])}`).join(' · ') + `  (${ref.over} over)`);
-    for (const side of ['before', 'after']) {
-      const r = rows[side].get(key);
-      const diff = Math.max(...ids.map((id) => Math.abs(r[id] - ref[id])));
-      worst[side] = Math.max(worst[side], diff);
-      const sameOver = r.over === ref.over;
-      cell(ids.map((id) => `${id} ${fmt(r[id])}`).join(' · ') + `  (${r.over} over)`,
-        diff <= 0.5 && sameOver ? 'ok' : 'off');
+    const td = (t, cls) => { const e = document.createElement('td'); e.textContent = t; if (cls) e.className = cls; tr.appendChild(e); };
+    td(key.replace('|', ' × '));
+    for (const p of PANELS) {
+      const r = rowsByPanel[p.id].raw.get(key);
+      const under = key.split('|').find((id) => id !== r.over);
+      const air = (r[r.over] - r[under]) / 2 - 1; // rungs to thicknesses, less one thickness
+      td(`${r.over} ${fmt(r[r.over])} over ${under} ${fmt(r[under])} · ${air >= -0.05 ? `air ${Math.max(0, air).toFixed(2)}` : `overlap ${(-air).toFixed(2)}`}`,
+        air < -0.55 ? 'off' : air < -0.05 ? 'mid' : 'ok');
     }
     host.appendChild(tr);
   }
-  document.getElementById('worst-before').textContent = `${worst.before.toFixed(2)} rungs`;
-  document.getElementById('worst-after').textContent = `${worst.after.toFixed(2)} rungs`;
+}
+
+/** Where a level-2 lace passes over a level-1 lace: how much air is left between them, in thicknesses. */
+function stackRow(rowsByPanel) {
+  const host = document.getElementById('stack-rows');
+  host.textContent = '';
+  const rows = [
+    ['Closest level 2 comes to level 1', (p) => {
+      const th = p.view.getThicknessWorld();
+      let worst = Infinity;
+      for (const c of p.view.getCrossPoints()) {
+        if (storey(c.aId) === storey(c.bId)) continue;
+        if (c.aId.split('_')[0] === c.bId.split('_')[0]) continue;
+        const up = storey(c.aId) === 1 ? c.aId : c.bId;
+        const down = up === c.aId ? c.bId : c.aId;
+        const gap = (nearest(p.view.getStrandCentrelineWorld(up), c.x, c.y).z -
+          nearest(p.view.getStrandCentrelineWorld(down), c.x, c.y).z) / th - 1;
+        worst = Math.min(worst, gap);
+      }
+      return { text: worst >= -0.05 ? `air ${Math.max(0, worst).toFixed(2)} th` : `overlap ${(-worst).toFixed(2)} th`,
+        cls: worst < -0.55 ? 'off' : worst < -0.05 ? 'mid' : 'ok' };
+    }],
+    ['Column height', (p) => {
+      const th = p.view.getThicknessWorld();
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (const st of p.scene.strands) {
+        for (const q of p.view.getStrandCentrelineWorld(st.id)) { lo = Math.min(lo, q.z); hi = Math.max(hi, q.z); }
+      }
+      return { text: `${((hi - lo) / th).toFixed(2)} th` };
+    }],
+    ['Placed', (p) => ({
+      text: String(Object.keys(p.scene.planes ?? {}).length + Object.keys(p.scene.crossPlanes ?? {}).length || 'none'),
+    })],
+  ];
+  for (const [label, f] of rows) {
+    const tr = document.createElement('tr');
+    const td = (t, cls) => { const e = document.createElement('td'); e.textContent = t; if (cls) e.className = cls; tr.appendChild(e); };
+    td(label);
+    for (const p of PANELS) { const r = f(p); td(r.text, r.cls); }
+    host.appendChild(tr);
+  }
 }
 
 function render() {
-  const rows = {};
-  for (const p of panels) {
-    p.view.setScene(p.scene, false);
-    place(p.view, p.scene);
-    rows[p.id] = read(p);
-    document.getElementById(`${p.id}-strands`).textContent = String(p.scene.strands.length);
-    document.getElementById(`${p.id}-placed`).textContent =
-      Object.keys(p.scene.planes ?? {}).length + Object.keys(p.scene.crossPlanes ?? {}).length || 'none';
+  const rowsByPanel = {};
+  for (const p of PANELS) {
+    show(p.view, p.scene);
+    rowsByPanel[p.id] = { raw: read(p.view), hand: read(p.view, asHand) };
   }
-  table(rows);
+  level1Check(rowsByPanel);
+  level2Table(rowsByPanel);
+  stackRow(rowsByPanel);
 }
 
 function paintTheme() {
   const forced = document.documentElement.dataset.theme;
   const dark = forced ? forced === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-  views.forEach((v) => v.setTheme(dark ? 'dark' : 'light'));
+  allViews.forEach((v) => v.setTheme(dark ? 'dark' : 'light'));
 }
 
 // ---- cameras: orbit one, the others follow ---------------------------------------
+const state = { link: true };
 let syncing = false;
 function copyCam(from, to) {
   to.camera.position.copy(from.camera.position);
@@ -161,8 +250,8 @@ function setCam(fn) {
 }
 const side = (v) => {
   v.fitView();
-  const d = v.camera.position.length() * 0.8;
-  v.camera.position.set(0.15, -1.0, 0.22).normalize().multiplyScalar(d);
+  const d = v.camera.position.length() * 1.15;
+  v.camera.position.set(0.12, -1.0, 0.16).normalize().multiplyScalar(d);
   v.controls.update();
 };
 document.getElementById('v-fit').addEventListener('click', () => setCam((v) => v.fitView()));
@@ -181,7 +270,9 @@ new MutationObserver(paintTheme).observe(document.documentElement, {
   attributeFilter: ['data-theme'],
 });
 
-window.__ba = { panels, render, read }; // test hook
+window.__ba = { PANELS, render, read }; // test hook
 render();
 setCam((v) => v.fitView());
+reference.view.fitView();
+level1.view.fitView();
 document.getElementById('loading').remove();

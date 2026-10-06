@@ -271,39 +271,40 @@
     * { animation: none !important; transition: none !important; }
   }
 
-  /* ---- three panels, one table ------------------------------------------ */
-  .trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  /* ---- panels and tables ------------------------------------------------- */
+  .quad { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+  .duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; max-width: 760px; }
   .side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-  .side h2 { margin: 0; font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .side h2 { margin: 0; font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; gap: 6px 10px; flex-wrap: wrap; }
   .side h2 b { color: var(--ink); }
+  .side h2 span { text-transform: none; letter-spacing: 0; font-weight: 400; overflow-wrap: anywhere; }
   .side p { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
-  .trio .stage { height: min(44vh, 400px); min-height: 280px; }
+  .quad .stage { height: min(52vh, 460px); min-height: 300px; }
+  .duo .stage { height: 220px; min-height: 0; }
   .bar { display: flex; flex-wrap: wrap; gap: 12px 22px; align-items: center; }
+  h3 { margin: 6px 0 0; font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
   .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 3px; }
   table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: 7px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-  th { font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; background: var(--panel); }
+  th { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; background: var(--panel); }
   tbody tr:last-child td { border-bottom: 0; }
   td.ok { color: var(--ok); }
+  td.mid { color: var(--ink); }
   td.off { color: var(--off); }
-  tfoot td { color: var(--muted); background: var(--panel); border-bottom: 0; }
-  tfoot td b { color: var(--ink); font-weight: 600; }
-  .rule { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; counter-reset: r; }
-  .rule li { font-size: 14px; line-height: 1.6; padding-left: 2.2ch; position: relative; }
-  .rule li::before { counter-increment: r; content: counter(r) "."; position: absolute; left: 0; font-family: var(--mono); color: var(--muted); font-size: 12px; top: 1px; }
-  @media (max-width: 900px) { .trio { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 1000px) { .quad { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 600px) { .quad, .duo { grid-template-columns: minmax(0, 1fr); } }
 </style>
 
 <div class="wrap">
   <div class="head">
     <div>
-      <span class="eyebrow">Scoubidou3D · box stitch · 1×1 · first level</span>
-      <h1>Is the 1×1 box the box you placed?</h1>
+      <span class="eyebrow">Scoubidou3D · box stitch · 1×1 right hand · level 2</span>
+      <h1>Three ways to place the second level.</h1>
     </div>
-    <p>Left is the box from <em>box + strand</em> with its extra strand taken out.
-    Middle is the 1×1 the family builds today. Right is that 1×1 placed the way the
-    left one was. Orbit any of them and the others follow. The table reads the
-    height of each lace at each crossing back off the built ribbons.</p>
+    <p>Level 1 is settled: it is the box from <em>box + strand</em>, placed the way
+    you placed it, and every panel below keeps it exactly. Level 2 has no hand-placed
+    box to copy, so here are three plans for it beside today's unplaced build. Orbit
+    any panel and the rest follow. Each one is also a sample in the studio.</p>
   </div>
 
   <div class="bar">
@@ -315,53 +316,72 @@
     </div>
   </div>
 
-  <div class="trio">
-    <div class="side">
-      <h2><b>Reference</b><span><span id="ref-strands">0</span> strands · <span id="ref-placed">0</span> placed</span></h2>
-      <div class="stage"><canvas id="c-ref"></canvas><div id="loading">building the boxes…</div></div>
-      <p>The box in <code>box + strand</code>, drawn by hand. Skewed arms, 54 px laces.</p>
-    </div>
-    <div class="side">
-      <h2><b>Before</b><span><span id="before-strands">0</span> strands · <span id="before-placed">0</span> placed</span></h2>
-      <div class="stage"><canvas id="c-before"></canvas></div>
-      <p>The family's 1×1 right hand, one level. Square arms, 46 px laces, nothing placed.</p>
-    </div>
-    <div class="side">
-      <h2><b>After</b><span><span id="after-strands">0</span> strands · <span id="after-placed">0</span> placed</span></h2>
-      <div class="stage"><canvas id="c-after"></canvas></div>
-      <p>The same 1×1 with the reference's planes and crossings placed on it.</p>
-    </div>
-  </div>
+  <div class="quad" id="panels"><div id="loading">building the boxes…</div></div>
 
+  <h3>Level 2, crossing by crossing</h3>
   <div class="tablewrap">
     <table>
-      <thead><tr><th>Crossing</th><th>Kind</th><th>Reference</th><th>Before</th><th>After</th></tr></thead>
-      <tbody id="rows"></tbody>
-      <tfoot><tr><td colspan="3">Largest height difference from the reference</td>
-        <td><b id="worst-before">0</b></td><td><b id="worst-after">0</b></td></tr></tfoot>
+      <thead><tr><th>Crossing</th><th>Before</th><th>Same as level 1</th><th>Top arm resting on it</th><th>Meet in the middle</th></tr></thead>
+      <tbody id="l2-rows"></tbody>
     </table>
+  </div>
+
+  <h3>Level 2 on top of level 1</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th></th><th>Before</th><th>Same as level 1</th><th>Top arm resting on it</th><th>Meet in the middle</th></tr></thead>
+      <tbody id="stack-rows"></tbody>
+    </table>
+  </div>
+
+  <h3>Level 1, still your box?</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th></th><th>Level 1 alone</th><th>Before</th><th>Same as level 1</th><th>Top arm resting on it</th><th>Meet in the middle</th></tr></thead>
+      <tbody id="l1-rows"></tbody>
+    </table>
+  </div>
+
+  <div class="duo">
+    <div class="side">
+      <h2><b>Reference</b><span>box + strand, without 3_1</span></h2>
+      <div class="stage"><canvas id="c-ref"></canvas></div>
+    </div>
+    <div class="side">
+      <h2><b>Level 1, placed</b><span>?sample=box-placed-1x1-l1</span></h2>
+      <div class="stage"><canvas id="c-l1"></canvas></div>
+    </div>
   </div>
 
   <div class="note">
     <section>
-      <h2>How to read the table</h2>
+      <h2>What level 1 taught</h2>
+      <p>Your box places four things. The vertical arms rest on rung −1. The slant
+      underneath drops to −3 and the one on top sits on the middle. An arm over a
+      slant sits on the middle. Where two arms cross, the arm underneath sits on the
+      middle and the arm on top is left free, and it rises about one and a half
+      rungs by itself.</p>
+    </section>
+    <section>
+      <h2>What level 2 has</h2>
+      <p>No slants, only the four arms carried on as <code>_4</code> and
+      <code>_5</code>, crossing each other four times. So every candidate keeps the
+      −1 run plane for the vertical arms and differs only at those four crossings.
+      The over/under there is the box's: it flips from level 1.</p>
+    </section>
+    <section>
+      <h2>Reading the tables</h2>
       <p>Heights are in rungs, half a thickness each, off the middle of the storey.
-      Ids are the reference's: the family numbers the weft's two arms the other way
-      round, so its <code>1_2</code> is shown as <code>1_3</code> and back. Green is
-      within half a rung of the reference with the same lace on top. Amber is not.</p>
+      Air is what is left between two ribbons, in thicknesses. Green is clear. Plain
+      is touching or slightly overlapping. Amber overlaps by more than half a
+      thickness. Ids are the family's; level 1's check uses the sample's ids.</p>
     </section>
     <section>
-      <h2>What is the same</h2>
-      <p>Every placement, one for one: the two arm planes at −1 and the nine
-      crossing placements, once the arm ids are matched. The weave is the same
-      at all four arm crossings, and the vertical slant is on top.</p>
-    </section>
-    <section>
-      <h2>What is not</h2>
-      <p>The geometry and the colours. The reference was drawn with skewed arms and 54 px laces and a yellow vertical set; the
-      family is square with 46 px laces, so a crossing lands in a slightly different
-      spot and the heights cannot match to the last digit. Whether to take the
-      reference's width and angles for the 1×1 is the open question.</p>
+      <h2>Open one in the studio</h2>
+      <p>Each candidate is a sample, under <em>Box — placed like box + strand</em>:
+      <code>box-placed-1x1-l2-repeat</code>, <code>-rest</code> and
+      <code>-meet</code>. Change its planes in the Planes view and send me the
+      scene, or tell me which one is closest and what to move.</p>
     </section>
   </div>
 </div>

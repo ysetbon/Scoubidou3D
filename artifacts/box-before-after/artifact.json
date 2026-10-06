@@ -1,6 +1,6 @@
 {
   "title": "Box stitch — before and after placing",
-  "description": "The 1×1 box at its first level: the box from box + strand, the family box as built today, and the family box placed the way the reference was, with each crossing height read back off the ribbons.",
+  "description": "The 1×1 box at its second level: today's unplaced build beside three candidate placements, each keeping level 1 exactly as box + strand placed it, with every crossing height read back off the ribbons.",
   "favicon": "🧶",
   "live": true
 }

@@ -4,7 +4,7 @@
 // lanyards that inspired the 3D treatment.
 
 import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
-import { BOX_COLUMN_SAMPLES, BOX_LABELS, BOX_SAMPLES } from './boxmn';
+import { BOX_COLUMN_SAMPLES, BOX_LABELS, BOX_PLACED_LABELS, BOX_PLACED_SAMPLES, BOX_SAMPLES } from './boxmn';
 import { PLACED_LABELS, PLACED_SAMPLES } from './placedScenes';
 import { SWIRL_LABELS, SWIRL_SAMPLES } from './swirl';
 import { TWOFAN_COLUMN_SAMPLES, TWOFAN_LABELS, TWOFAN_SAMPLES } from './twofan';
@@ -972,6 +972,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
   ...SWIRL_SAMPLES,
   ...BOX_SAMPLES,
   ...BOX_COLUMN_SAMPLES,
+  ...BOX_PLACED_SAMPLES,
   ...PLACED_SAMPLES,
   'two-crossing': twoCrossing,
   'two-crossing-attached': twoCrossingAttached,
@@ -1031,6 +1032,9 @@ export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }>
   // square faces are named; the browser grid has all 64. See docs/box-stitch-mxn/.
   ...SWIRL_LABELS,
   ...BOX_LABELS,
+  // The box family placed the way `box + strand`'s box was, level by level. The
+  // level-2 ones are candidates, side by side in artifacts/box-before-after.
+  ...BOX_PLACED_LABELS,
   // Not generators but records: a ring somebody placed round by round and a
   // column somebody worked storey by storey, storeys and all. See
   // placedScenes.ts.
