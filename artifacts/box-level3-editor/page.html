@@ -1,4 +1,4 @@
-<title>Box Level 2 Editor</title>
+<title>Box Level 3 Editor</title>
 
 <style>
   /* Layout: the model on the left, kept in view while the ladders scroll on the right;
@@ -103,12 +103,13 @@
 
 <div class="wrap">
   <div>
-    <span class="eyebrow">Scoubidou3D · box stitch · 1×1 right hand · level 2</span>
-    <h1>Place level 2 yourself.</h1>
-    <p class="lede">Level 1 is fixed: it is the box from box + strand, placed the way you placed it.
-    Set where each level-2 arm rests, where each arm sits at each crossing, and who is on top.
-    The model rebuilds as you click. When it looks right, press <b>Copy</b> and paste it to me.
-    Your edits stay in this browser if you leave the page.</p>
+    <span class="eyebrow">Scoubidou3D · box stitch · 1×1 right hand · level 3</span>
+    <h1>Place level 3 yourself.</h1>
+    <p class="lede">Levels 1 and 2 are fixed: level 1 is the box from box + strand, level 2 is
+    the plan you placed in the level 2 editor. Level 3 opens on what I learned from your level 2:
+    every arm rests on +1, and at each crossing the arm on top goes to +1 and the one underneath
+    to −1. Change anything. The model rebuilds as you click. When it looks right, press <b>Copy</b>
+    and paste it to me. Your edits stay in this browser if you leave the page.</p>
   </div>
 
   <div class="grid">
@@ -129,7 +130,7 @@
       <div class="bar">
         <label for="preset">Start from</label>
         <select id="preset"></select>
-        <button type="button" class="btn" id="clear">Clear level 2</button>
+        <button type="button" class="btn" id="clear">Clear level 3</button>
       </div>
 
       <div class="section">
@@ -152,7 +153,7 @@
           <dt>+1</dt><dd>upper half</dd>
           <dt>0</dt><dd>middle</dd>
           <dt>−1</dt><dd>lower half</dd>
-          <dt>−2</dt><dd>floor of this storey · top of level 1</dd>
+          <dt>−2</dt><dd>floor of this storey · top of level 2</dd>
           <dt>−3</dt><dd>rung below this storey</dd>
         </dl>
       </div>
@@ -162,7 +163,7 @@
           <button type="button" class="btn primary" id="copy">Copy</button>
           <span id="copied"></span>
         </div>
-        <textarea id="out" spellcheck="false" aria-label="Your level 2 plan as JSON"></textarea>
+        <textarea id="out" spellcheck="false" aria-label="Your level 3 plan as JSON"></textarea>
       </div>
     </div>
   </div>

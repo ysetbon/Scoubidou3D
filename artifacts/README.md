@@ -23,6 +23,7 @@ own light or dark theme, so both are designed rather than one inverted.
 | [`over-under-default`](over-under-default/) | What the studio does at one crossing of two strands at 90° on one level when nothing is masked or placed, placed on the studio's own planes in several ways. **Live**: two linked `StrandScene` views, with the over/under heights read back off the built ribbons. |
 | [`box-before-after`](box-before-after/) | The 1×1 box at its second level: today's unplaced build beside the level placed by hand in `box-level2-editor` (`boxStitchMN(..., placed)`), each checked to keep level 1 exactly the box in `box + strand`, with every crossing height read back off the ribbons. **Live**: two linked `StrandScene` views, with the over/under heights read back off the built ribbons. |
 | [`box-level2-editor`](box-level2-editor/) | An editor for the 1×1 box's second level: rung pickers for each level-2 arm and each crossing, a flip for who is on top, the heights read back off the built ribbons, and a Copy button that hands the plan back as JSON in a saved scene's own keys. **Live**: one `StrandScene`; level 1 is the box in `box + strand`. |
+| [`box-level3-editor`](box-level3-editor/) | The same editor one level up: levels 1 and 2 fixed as they were settled, level 3 opening on the plan learned from level 2. Both editors are `artifacts/lib/box-level-editor.js`, called with the level. |
 
 ---
 
