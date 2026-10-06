@@ -23,7 +23,7 @@ const sign = (r) => (r > 0 ? `+${r}` : r < 0 ? `−${-r}` : '0');
 
 // ---- the base: level 1 placed, level 2 bare ---------------------------------------
 function base() {
-  const sc = boxStitchMN(1, 1, 'Box 1×1 RH — level 2 edited', 'rh', 1, true, 'woven');
+  const sc = boxStitchMN(1, 1, 'Box 1×1 RH — level 2 edited', 'rh', 1, true, 'hand');
   const keepL1 = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => !k.split('|').some(isL2)));
   return { ...sc, planes: keepL1(sc.planes ?? {}), crossPlanes: keepL1(sc.crossPlanes ?? {}) };
 }
@@ -290,8 +290,8 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', paintTheme
 new MutationObserver(paintTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 const saved = load();
-plan = saved ?? presetPlan('woven');
-sel.value = saved ? 'none' : 'woven';
+plan = saved ?? presetPlan('hand');
+sel.value = saved ? 'none' : 'hand';
 window.__ed = { get plan() { return plan; }, commit, output }; // test hook
 commit();
 document.getElementById('loading').remove();

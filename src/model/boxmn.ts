@@ -126,7 +126,7 @@ export function boxStitchMN(
   rounds = 1,
   placed = false,
   /** How the rounds above the first are placed; see `UPPER_PLANS`. */
-  upper: UpperPlan = 'woven',
+  upper: UpperPlan = 'hand',
 ): Scene3D {
   const cx = 400;
   const cy = 300;
@@ -397,9 +397,7 @@ export function boxStitchMN(
 //      with a storey above, the top arm IS placed, at +2 — see `ceiling`.)
 //
 // That is the first level, and only the first level: the sample has nothing above
-// it. The rounds worked over it have no hand-placed reference yet, so how they
-// are placed is a choice, `UpperPlan`, and the candidates are side by side in
-// artifacts/box-before-after.
+// it. The second level was placed by hand separately — see `UpperPlan`.
 //
 // Which arm is "underneath" is whatever the scene's own weave says — a mask if
 // there is one, the layer stack if not — so the rule follows the alternation a
@@ -435,35 +433,26 @@ export const BOX_PLACEMENT = {
 
 /**
  * How a round above the first is placed. A round above the first has no slants,
- * only arms crossing arms, so a plan says three things: where every arm of the
- * round rests (`rest`, null to keep the first level's -1 for the warp arms and
- * nothing for the weft), and the rung of the arm underneath and the arm on top at
- * each crossing (`over` null leaves the top arm free).
+ * only arms crossing arms, so a plan says three things: the rung every arm of the
+ * round rests on, and the rung of the arm underneath and of the arm on top at
+ * each crossing.
  *
- * The first three were rejected on sight: each arm rose for the crossing it goes
- * over and then lay flat through the one it goes under, so nothing read as a
- * weave. `woven` and `loose` are the studio's contact weave instead — every arm
- * rests on the middle and waves evenly about it, up over one arm and down under
- * the next.
+ * `hand` is the one that was placed by hand, in artifacts/box-level2-editor, on
+ * the 1×1 right hand's second level: every arm on the upper half of its storey,
+ * and at each crossing the arm on top half a thickness up and the arm underneath
+ * half a thickness down, so the two just touch and each arm waves up over one arm
+ * and down under the next. Nothing flipped: the over/unders are the box's own.
+ *
+ * The other two are the editor's other starting points. Earlier tries that placed
+ * only the crossings and kept level 1's -1 for the vertical arms were rejected on
+ * sight — an arm rose for its over and lay flat through its under.
  */
-export type UpperPlan = 'woven' | 'loose' | 'repeat' | 'rest' | 'meet';
-export const UPPER_PLANS: Record<
-  UpperPlan,
-  { label: string; rest: number | null; under: number; over: number | null }
-> = {
-  /** Every arm on the middle; at a crossing half a thickness up and down, so they touch. */
+export type UpperPlan = 'hand' | 'woven' | 'loose';
+export const UPPER_PLANS: Record<UpperPlan, { label: string; rest: number; under: number; over: number }> = {
+  hand: { label: 'Placed by hand', rest: 1, under: -1, over: 1 },
   woven: { label: 'Woven, touching', rest: 0, under: -1, over: 1 },
-  /** The same wave, a full thickness up and down: a thickness of air at each crossing. */
   loose: { label: 'Woven, with air', rest: 0, under: -2, over: 2 },
-  /** Rejected: the first level's rule word for word. */
-  repeat: { label: 'Same as level 1', rest: null, under: 0, over: null },
-  /** Rejected: the top arm pinned a thickness up. */
-  rest: { label: 'Top arm resting on it', rest: null, under: 0, over: 2 },
-  /** Rejected: ±1 at the crossings, but the warp arms still resting at -1. */
-  meet: { label: 'Meet in the middle', rest: null, under: -1, over: 1 },
 };
-/** The plans still on the table, in the order the artifact shows them. */
-export const UPPER_CANDIDATES: UpperPlan[] = ['woven', 'loose'];
 
 /**
  * The `planes` and `crossPlanes` that place a box scene the way `box + strand`
@@ -475,7 +464,7 @@ export function boxPlacements(
   n: number,
   /** Whether a slant can be crossed by more arms than the hand-placed box has. */
   wide = false,
-  upper: UpperPlan = 'woven',
+  upper: UpperPlan = 'hand',
 ): { planes: Record<string, number>; crossPlanes: Record<string, number> } {
   const { strands, masks } = scene;
   const order = new Map(strands.map((s, i) => [s.id, i]));
@@ -513,7 +502,7 @@ export function boxPlacements(
   const plan = UPPER_PLANS[upper];
   for (const s of strands) {
     const { layer } = parse(s.id);
-    if (layer > 1 && round(s.id) > 0 && plan.rest !== null) planes[s.id] = plan.rest;
+    if (layer > 1 && round(s.id) > 0) planes[s.id] = plan.rest;
     else if (layer > 1 && isWarp(s.id)) planes[s.id] = BOX_PLACEMENT.warpArmRest;
   }
   // The hand-placed box is one storey with nothing above it; any scene that has
@@ -532,9 +521,7 @@ export function boxPlacements(
         const slant = slants[0];
         place(v, h, wide ? { [arm.id]: middle, [slant.id]: floor } : { [arm.id]: middle });
       } else if (round(v.id) > 0) {
-        place(v, h, plan.over === null
-          ? { [under.id]: plan.under }
-          : { [under.id]: plan.under, [over.id]: plan.over });
+        place(v, h, { [under.id]: plan.under, [over.id]: plan.over });
       } else if (wide && stacked) place(v, h, { [under.id]: middle, [over.id]: ceiling });
       else place(v, h, { [under.id]: middle });
     }
@@ -543,25 +530,16 @@ export function boxPlacements(
 }
 
 // The 1×1, right hand, placed: its first level on its own — the box from
-// `box + strand` rebuilt by the family — and then two levels under each candidate
-// plan for the second. Right hand because that is the hand the sample was drawn in.
+// `box + strand` rebuilt by the family — and then two levels, the second placed
+// the way it was placed by hand. Right hand because that is the hand the sample
+// was drawn in.
 export const BOX_PLACED_SAMPLES: Record<string, () => Scene3D> = {
   'box-placed-1x1-l1': () => boxStitchMN(1, 1, 'Box 1×1 placed — level 1', 'rh', 0, true),
-  ...Object.fromEntries(
-    UPPER_CANDIDATES.map((plan) => [
-      `box-placed-1x1-l2-${plan}`,
-      () => boxStitchMN(1, 1, `Box 1×1 placed — level 2, ${UPPER_PLANS[plan].label.toLowerCase()}`,
-        'rh', 1, true, plan),
-    ]),
-  ),
+  'box-placed-1x1-l2': () => boxStitchMN(1, 1, 'Box 1×1 placed — level 2', 'rh', 1, true, 'hand'),
 };
 export const BOX_PLACED_LABELS: Array<{ key: string; label: string; group: string }> = [
   { key: 'box-placed-1x1-l1', label: 'Box 1×1 placed — level 1 (box + strand\'s box)', group: 'Box — placed like box + strand' },
-  ...UPPER_CANDIDATES.map((plan) => ({
-    key: `box-placed-1x1-l2-${plan}`,
-    label: `Box 1×1 placed — level 2 · ${UPPER_PLANS[plan].label}`,
-    group: 'Box — placed like box + strand',
-  })),
+  { key: 'box-placed-1x1-l2', label: 'Box 1×1 placed — level 2 (placed by hand)', group: 'Box — placed like box + strand' },
 ];
 
 export const BOX_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(

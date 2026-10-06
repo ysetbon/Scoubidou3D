@@ -1,16 +1,16 @@
-// The 1×1 box at its SECOND level: today's unplaced build beside three candidate
-// plans for placing it, each on a copy of the studio's own view.
+// The 1×1 box at its SECOND level: today's unplaced build beside the level placed
+// by hand in box-level2-editor, each on a copy of the studio's own view.
 //
 // The first level is settled — it is the box from `box + strand`, placed the way
 // that sample was placed — and every candidate keeps it exactly; the page checks
 // that against the sample on every load. The second level has no hand-placed
-// reference, so the candidates are the question this page puts.
+// reference in a sample, so it was placed by hand in box-level2-editor and built in.
 //
 // Nothing is baked. Every panel is `StrandScene` fed by `boxStitchMN` or by
 // `SAMPLES['box-and-strand']`, and every figure is read back off the built ribbons.
 import { StrandScene } from '../../src/scene/StrandScene';
 import { SAMPLES } from '../../src/model/samples';
-import { boxStitchMN, UPPER_CANDIDATES, UPPER_PLANS } from '../../src/model/boxmn';
+import { boxStitchMN, UPPER_PLANS } from '../../src/model/boxmn';
 
 const RUNG = 0.5; // a rung is half a thickness (PLANE_RUNGS in the panel)
 
@@ -35,7 +35,7 @@ const asHand = (id) => HAND[id] ?? id;
 
 const PANELS = [
   { id: 'before', name: 'Before', note: 'Today: nothing placed.', placed: false },
-  ...UPPER_CANDIDATES.map((plan) => {
+  ...['hand'].map((plan) => {
     const p = UPPER_PLANS[plan];
     return {
       id: plan,
@@ -56,7 +56,7 @@ for (const p of PANELS) {
   const el = document.createElement('div');
   el.className = 'side';
   el.innerHTML =
-    `<h2><b>${p.name}</b><span>${p.placed ? `?sample=box-placed-1x1-l2-${p.plan}` : 'boxStitchMN(1, 1, …, 1)'}</span></h2>` +
+    `<h2><b>${p.name}</b><span>${p.placed ? '?sample=box-placed-1x1-l2' : 'boxStitchMN(1, 1, …, 1)'}</span></h2>` +
     `<div class="stage"><canvas id="c-${p.id}"></canvas></div><p>${p.note}</p>`;
   grid.appendChild(el);
   p.view = new StrandScene(el.querySelector('canvas'));
@@ -64,7 +64,7 @@ for (const p of PANELS) {
   p.scene = boxStitchMN(1, 1, `Box 1×1 RH, 2 levels — ${p.name}`, 'rh', 1, p.placed, p.plan);
 }
 const views = PANELS.map((p) => p.view);
-// Column heads follow the panels, so a plan added to UPPER_CANDIDATES shows up everywhere.
+// Column heads follow the panels.
 document.querySelectorAll('thead tr[data-cols]').forEach((tr) => {
   for (const p of PANELS) {
     const th = document.createElement('th');
