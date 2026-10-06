@@ -337,7 +337,7 @@ for (const { hand } of HANDS as Array<{ hand: Hand }>) {
     }
   }
 }
-console.log(`\n${reachable} browser samples built, both hands, one round and ${BOX_ROUNDS}.`);
+console.log(`\n${reachable} browser samples built, both hands, one round and ${BOX_ROUNDS + 1} levels.`);
 
 console.log(bad ? `  ${bad} FAILED` : '  all clear');
 if (bad) process.exit(1);

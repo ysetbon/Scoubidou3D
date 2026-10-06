@@ -4,7 +4,7 @@
 // the studio's own view, fed by `boxStitchMN` — the builder behind the
 // `box-placed-…` samples — so this page and the samples cannot disagree.
 import { StrandScene } from '../../src/scene/StrandScene';
-import { boxStitchMN } from '../../src/model/boxmn';
+import { boxStitchMN, BOX_MAX } from '../../src/model/boxmn';
 
 const RUNG = 0.5; // a rung is half a thickness
 const W = 46; // ribbon width, px
@@ -110,11 +110,32 @@ function render() {
   const shape = `${state.hand}-${state.m}x${state.n}-${state.levels}`;
   if (shape !== framed) { view.fitView(); framed = shape; }
   table(readLevels(sc));
-  document.getElementById('sample').textContent = `?sample=box-placed-${state.hand === 'lh' ? 'lh-' : ''}${state.m}x${state.n}-l${state.levels}`;
+  // Which studio sample is this exact build: the Browse grid's column at ten levels,
+  // the single round at two, and the placed 1×1 / 2×1 samples at every depth.
+  const { m, n, hand, levels, placed } = state;
+  const face = `${m}x${n}`;
+  const key = !placed ? null
+    : levels === 10 ? `box-col-${hand}-${face}-10`
+      : levels === 2 ? `box-${hand}-${face}`
+        : (face === '1x1' || face === '2x1') ? `box-placed-${hand === 'lh' ? 'lh-' : ''}${face}-l${levels}` : null;
+  document.getElementById('sample').textContent = key ? `?sample=${key}` : '';
   for (const [attr, value] of [['levels', String(state.levels)], ['hand', state.hand], ['placed', String(state.placed)], ['only', String(state.only)], ['face', `${state.m}x${state.n}`]]) {
     document.querySelectorAll(`[data-${attr}]`).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset[attr] === value)));
   }
 }
+
+// The 8×8 face picker: m across, n down, the same grid the studio's Browse panel lays
+// the family out on.
+const grid = document.getElementById('grid');
+let cells = '<span class="ax corner">m→<br>n↓</span>';
+for (let m = 1; m <= BOX_MAX; m++) cells += `<span class="ax">${m}</span>`;
+for (let n = 1; n <= BOX_MAX; n++) {
+  cells += `<span class="ax">${n}</span>`;
+  for (let m = 1; m <= BOX_MAX; m++) {
+    cells += `<button type="button" class="cell" data-face="${m}x${n}" aria-pressed="false" aria-label="${m} by ${n}">${m}×${n}</button>`;
+  }
+}
+grid.innerHTML = cells;
 
 for (const attr of ['levels', 'hand', 'placed', 'only', 'face']) {
   document.querySelectorAll(`[data-${attr}]`).forEach((b) => b.addEventListener('click', () => {

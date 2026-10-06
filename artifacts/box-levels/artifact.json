@@ -1,6 +1,6 @@
 {
-  "title": "Box Levels 1–10",
-  "description": "The box up to ten levels: the 1×1 placed from what you placed by hand, and a 2×1 on the same rules, with every crossing and fold read back off the ribbons.",
+  "title": "Box Family Levels",
+  "description": "Every m×n box face, placed by the rules settled on the 1×1 and the 2×1, at any level from 1 to 10, with every crossing and fold read back off the ribbons.",
   "favicon": "🧶",
   "live": true
 }

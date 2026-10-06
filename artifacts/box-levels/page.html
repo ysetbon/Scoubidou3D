@@ -1,4 +1,4 @@
-<title>Box Levels 1–10</title>
+<title>Box Family Levels</title>
 
 <style>
   /* Layout: the model on the left, kept in view; the controls, the rule and the read-back
@@ -113,15 +113,22 @@
   .grp > span { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
   .seg button[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
   code { font-family: var(--mono); font-size: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 2px; padding: 1px 5px; overflow-wrap: anywhere; }
+  .picker { display: grid; grid-template-columns: 22px repeat(8, minmax(30px, 1fr)); gap: 3px; align-items: center; }
+  .ax { font-family: var(--mono); font-size: 10px; color: var(--muted); text-align: center; line-height: 1.15; }
+  .ax.corner { font-size: 9px; }
+  .cell { appearance: none; background: var(--panel); color: var(--muted); border: 1px solid var(--line); border-radius: 2px; padding: 5px 0; font-family: var(--mono); font-size: 10.5px; cursor: pointer; }
+  .cell:hover { color: var(--ink); border-color: var(--ink); }
+  .cell[aria-pressed="true"] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+  .cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>
 
 <div class="wrap">
   <div>
-    <span class="eyebrow">Scoubidou3D · box stitch · 1×1 and 2×1 · levels 1–10</span>
-    <h1>The box, up to ten levels, from what you placed.</h1>
-    <p class="lede">Level 1 is the box from box + strand. Levels 2, 3 and 4 are exactly what you placed in the level
-    editors, and they turned out to be one rule, which is what carries the box up to level 10. The 2×1 uses the same
-    rules to see whether the idea holds across a face. Pick a face and a level; the table reads every crossing and
+    <span class="eyebrow">Scoubidou3D · box stitch · every m×n face · levels 1–10</span>
+    <h1>Every box face, placed, up to ten levels.</h1>
+    <p class="lede">Level 1 is the box from box + strand, carried to every face. Every level above is the rule you placed
+    by hand on the 1×1: arms resting on −1, crossings ±1, each fold ending on −1 below and starting on +1 above. This is
+    now how the studio opens every box sample. Pick a face on the grid and a level; the table reads every crossing and
     fold back off the built ribbons.</p>
   </div>
 
@@ -141,9 +148,6 @@
 
     <div class="controls">
       <div class="bar">
-        <div class="grp"><span>Face</span><div class="seg">
-          <button type="button" data-face="1x1">1 × 1</button>
-          <button type="button" data-face="2x1">2 × 1</button></div></div>
         <div class="grp"><span>Levels</span><div class="seg">
           <button type="button" data-levels="1">1</button>
           <button type="button" data-levels="2">2</button>
@@ -166,6 +170,11 @@
         <div class="grp"><span>Show</span><div class="seg">
           <button type="button" data-only="false">Every level</button>
           <button type="button" data-only="true">Top level only</button></div></div>
+      </div>
+
+      <div class="section">
+        <h2>Face</h2>
+        <div class="picker" id="grid" role="grid" aria-label="Box faces, m by n"></div>
       </div>
 
       <div class="section">
@@ -192,8 +201,8 @@
 
       <div class="section">
         <h2>In the studio</h2>
-        <p class="help">Every combination is a sample: <code>box-placed-1x1-l1</code> … <code>-l10</code>,
-        <code>box-placed-2x1-l10</code>, and <code>box-placed-lh-…</code> for left hand.</p>
+        <p class="help">Every face at ten levels is the Browse grid's column, <code>?sample=box-col-rh-3x2-10</code>
+        (and <code>box-col-lh-…</code>); one level over the starting stitch is <code>box-rh-3x2</code>. Both are placed now.</p>
       </div>
     </div>
   </div>

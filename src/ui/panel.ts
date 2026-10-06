@@ -39,7 +39,7 @@ import { CrossFact, FoldFact, LaceFact, MemberFact, PROFILE } from '../scene/sec
 import { MaskLink, Point, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, TWIST_FAMILY, TWIST_MAX, makeSample } from '../model/samples';
 import { GAP, HANDS, TWOFAN_COLUMN_FAMILY, TWOFAN_MAX, columnKey } from '../model/twofan';
-import { BOX_FAMILY, BOX_MAX, BOX_ROUNDS, boxColumnKey, column } from '../model/boxmn';
+import { BOX_FAMILY, BOX_LEVELS, BOX_MAX, boxColumnKey, column } from '../model/boxmn';
 import { SWIRL_FAMILY, SWIRL_MAX, swirlKey } from '../model/swirl';
 import { parseSceneText, sceneFromFile, sceneToJson } from '../model/sceneIO';
 import { History } from '../model/history';
@@ -1842,14 +1842,14 @@ export class Panel {
       el(
         'h4',
         'browser-group',
-        `Box family — every m×n face worked ${BOX_ROUNDS} rounds, both hands`,
+        `Box family — every m×n face worked ${BOX_LEVELS} levels, both hands`,
       ),
     );
     body.appendChild(
       el(
         'p',
         'browser-note',
-        `Each cell opens that face as a column of ${BOX_ROUNDS} rounds. The starting ` +
+        `Each cell opens that face as a column of ${BOX_LEVELS} levels, placed level by level. The starting ` +
           'stitch is the twist family’s, closed instead of twisted: at k = 0 the pointer ' +
           'does not move, so every end pairs with the end straight opposite and each arm ' +
           'carries on along its own line. Every round after is that same move again — ' +
@@ -1859,8 +1859,8 @@ export class Panel {
           'the last round runs on — those are the ends you would tie off. What makes it ' +
           'the BOX stitch rather than the round one is that the over/unders flip every ' +
           'round: a ribbon over here now is under here next, so the pattern repeats with ' +
-          `period two rather than every round. Cells quote the strand count at ${BOX_ROUNDS} ` +
-          'rounds; the shading is how much more of the weave one ribbon does than another, ' +
+          `period two rather than every round. Cells quote the strand count at ${BOX_LEVELS} ` +
+          'levels; the shading is how much more of the weave one ribbon does than another, ' +
           'all 64 crossings for a 1×8’s single warp against 8 for each of its wefts. To see ' +
           'a face drawn flat as one round instead — the starting stitch beside the box it ' +
           'closes into, every arm named, in both hands:',
@@ -1900,7 +1900,7 @@ export class Panel {
           );
           const most = 8 * Math.max(m, n);
           b.title =
-            `${m}×${n} ${hand.toUpperCase()} — ${BOX_ROUNDS} rounds, ${c.strands} strands, ` +
+            `${m}×${n} ${hand.toUpperCase()} — ${BOX_LEVELS} levels, ${c.strands} strands, ` +
             `${c.masks} masks, on a ${s.width}×${s.height} px footprint\n` +
             `bars ${2 * GAP * m + 60} px across and ${2 * GAP * n + 60} px down; ` +
             `angles are 0° / 180° / ±90°, always\n` +

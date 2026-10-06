@@ -46,16 +46,21 @@ export const SPLAY = 2;
 export const boxKey = (hand: Hand, m: number, n: number): string => `box-${hand}-${m}x${n}`;
 
 /**
- * How many rounds the family's COLUMNS are worked to.
+ * How many LEVELS the family's columns are worked to — storeys, as the studio's
+ * Level panel counts them: the starting stitch is level 1 and every round worked
+ * over it is one more. `BOX_ROUNDS` is the same depth counted in rounds over the
+ * starting stitch, which is what `boxStitchMN` takes.
  *
  * The same split the twist family makes: `boxKey` is one stitch — the block and
  * the arms carried back over it, the thing the drawn sheet measures — and
  * `boxColumnKey` is that stitch worked again and again, which is the object you
- * would actually end up holding.
+ * would actually end up holding. The key keeps its `-10`: it now means ten levels,
+ * which is the depth the placement was settled at (artifacts/box-1x1-levels).
  */
-export const BOX_ROUNDS = 10;
+export const BOX_LEVELS = 10;
+export const BOX_ROUNDS = BOX_LEVELS - 1;
 export const boxColumnKey = (hand: Hand, m: number, n: number): string =>
-  `box-col-${hand}-${m}x${n}-${BOX_ROUNDS}`;
+  `box-col-${hand}-${m}x${n}-${BOX_LEVELS}`;
 
 export interface BoxShape {
   key: string;
@@ -618,6 +623,10 @@ export const BOX_PLACED_LABELS: Array<{ key: string; label: string; group: strin
     ),
 );
 
+// The family, as the browser and the dropdown open it: PLACED, every face, both
+// hands — level 1 as `box + strand` places its box, every level above by the rule
+// placed by hand (see `UpperPlan`). `boxStitchMN` itself still defaults to
+// unplaced, which is what the drawn sheet and check:box measure.
 export const BOX_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
   HANDS.flatMap(({ hand, sense }) =>
     BOX_FAMILY.map((s) => [
@@ -629,6 +638,8 @@ export const BOX_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
           `Box stitch — ${s.m}×${s.n} ${hand.toUpperCase()} (${sense}), ` +
             `${s.strands} strands, ${s.masks} masks, ${s.width}×${s.height}`,
           hand,
+          1,
+          true,
         ),
     ]),
   ),
@@ -643,9 +654,10 @@ export const BOX_COLUMN_SAMPLES: Record<string, () => Scene3D> = Object.fromEntr
           s.m,
           s.n,
           `Box column — ${s.m}×${s.n} ${hand.toUpperCase()} (${sense}), ` +
-            `${BOX_ROUNDS} rounds, ${column(s).strands} strands`,
+            `${BOX_LEVELS} levels, ${column(s).strands} strands`,
           hand,
           BOX_ROUNDS,
+          true,
         ),
     ]),
   ),
@@ -676,7 +688,7 @@ export const BOX_LABELS: Array<{ key: string; label: string; group: string }> = 
       const s = BOX_FAMILY.find((f) => f.m === m && f.n === n)!;
       return {
         key: boxColumnKey(hand, m, n),
-        label: `${label} · box column ${m}×${n} — ${BOX_ROUNDS} rounds, ${column(s).strands} strands`,
+        label: `${label} · box column ${m}×${n} — ${BOX_LEVELS} levels, ${column(s).strands} strands`,
         group: GROUP,
       };
     }),
