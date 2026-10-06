@@ -58,10 +58,16 @@ const placed = (h, v) => new Map([['h|v|0|h', h], ['h|v|0|v', v]]);
 const OPTIONS = {
   today: { label: 'Today', over: 'v', depth: 26, planes: null,
     blurb: 'Higher layer over. Each lace swings 26 px off the plane, so there is a clear thickness of air between them.' },
-  touch: { label: 'Resting on it', over: 'v', depth: 0, planes: null,
-    blurb: 'Same lace over, but the swing drops to the least that keeps them apart. The top lace rests on the bottom one instead of hovering over it.' },
+  meet: { label: 'Meet in the middle', over: 'v', depth: 26, planes: placed(-0.5, 0.5),
+    blurb: 'Orange sinks half a thickness and yellow rises half a thickness, so the two surfaces meet exactly at the plane. Both bend by the same amount and there is no air and no overlap.' },
+  meetFlip: { label: 'Meet, orange on top', over: 'h', depth: 26, planes: placed(0.5, -0.5),
+    blurb: 'The same exact contact with the roles swapped: yellow sinks half a thickness and orange rises half a thickness.' },
   flat: { label: 'Under lace stays flat', over: 'v', depth: 26, planes: placed(0, 1),
     blurb: 'The lower lace lies flat on the plane and only the top lace arches over it, by exactly one thickness.' },
+  topflat: { label: 'Top lace stays flat', over: 'v', depth: 26, planes: placed(-1, 0),
+    blurb: 'The top lace stays on the plane and the lower lace ducks under it by one thickness. The mirror of the flat-under option.' },
+  touch: { label: 'Resting on it', over: 'v', depth: 0, planes: null,
+    blurb: 'Same lace over, with the swing dropped to the least the engine allows. It adds a 15% margin, so about 4 px of air remains.' },
   first: { label: 'First drawn on top', over: 'h', depth: 26, planes: null,
     blurb: 'Reverse who is over: the lace drawn first rides over the one drawn later. Same heights as today.' },
 };
@@ -77,7 +83,7 @@ const prop = new StrandScene(document.getElementById('c-prop'));
 const views = [today, prop];
 views.forEach((v) => { v.renderer.shadowMap.enabled = false; });
 
-const state = { opt: 'flat', link: true };
+const state = { opt: 'meet', link: true };
 
 function apply(view, opt) {
   const o = OPTIONS[opt];
@@ -110,11 +116,12 @@ function measure(view, host) {
   // Each lace's own resting height is its height at its free end, away from any crossing.
   const rest = {};
   for (const id of ['h', 'v']) rest[id] = view.getStrandCentrelineWorld(id)[0].z;
+  const mid = (zs.h + zs.v) / 2; // halfway between the two laces at the crossing
   const sep = zs[overId] - zs[underId];
   const air = sep - thick;
   const rows = [
-    ['Over lace', `${overId} · ${fmt(px(zs[overId] - rest[overId]))} px`],
-    ['Under lace', `${underId} · ${fmt(px(zs[underId] - rest[underId]))} px`],
+    ['Over lace', `${overId} ${fmt(px(zs[overId] - mid))} px · moves ${fmt(px(zs[overId] - rest[overId]))}`],
+    ['Under lace', `${underId} ${fmt(px(zs[underId] - mid))} px · moves ${fmt(px(zs[underId] - rest[underId]))}`],
     ['Centre to centre', `${px(sep)} px`],
     ['Air between', air >= 0 ? `${px(air)} px` : `overlap ${px(-air)} px`],
     ['Level', `${cross.levelA} and ${cross.levelB}${cross.woven ? ' · woven' : ''}`],
@@ -205,5 +212,6 @@ new MutationObserver(() => paintTheme(views)).observe(document.documentElement, 
   attributeFilter: ['data-theme'],
 });
 
+window.__ou = { state, render, OPTIONS }; // test hook
 render();
 document.getElementById('loading').remove();

@@ -19,7 +19,7 @@ own light or dark theme, so both are designed rather than one inverted.
 | [`twist-level-9`](twist-level-9/) | The 1×1 twist column at level 9, before and after the fix in `collectJunctions` — whether each lace is one continuous ribbon or four pieces with bridges lofted across the seams. |
 | [`box-family`](box-family/) | Every m×n box face, both hands, worked to ten rounds — whether a round really lands on the one below rather than through it, and whether the over/under flips the way a box's has to. **Live**: it carries `StrandScene` and builds what you pick. |
 | [`four-twists-2x1`](four-twists-2x1/) | One hand-fitted 2×1 ring, `k = −1` four times over, imported from the MXN lab — whether its four *rounds* stand as four *storeys* once the level breaks are put in, and what the same ring looks like with none. **Live**: it carries `StrandScene`, so its joints can be slid and its points dragged with the app's own move tool. |
-| [`over-under-default`](over-under-default/) | What the studio does at one crossing of two strands at 90° on one level when nothing is masked or placed, beside three other defaults. **Live**: two linked `StrandScene` views, with the over/under heights read back off the built ribbons. |
+| [`over-under-default`](over-under-default/) | What the studio does at one crossing of two strands at 90° on one level when nothing is masked or placed, beside six other defaults. **Live**: two linked `StrandScene` views, with the over/under heights read back off the built ribbons. |
 
 ---
 

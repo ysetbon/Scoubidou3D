@@ -77,7 +77,7 @@
   .lrow i { font-style: normal; padding: 1px 6px; border-radius: 2px; min-width: 4em; text-align: center; letter-spacing: 0.02em; }
   .lrow i.o { background: var(--over); color: var(--over-ink); }
   .lrow i.u { border: 1px solid var(--line); color: var(--muted); padding: 0 5px; }
-  .meas { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; margin: 0; }
+  .meas { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; margin: 0; }
   .meas div { border: 1px solid var(--line); background: var(--panel); border-radius: 3px; padding: 7px 10px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
   .meas dt { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
   .meas dd { margin: 0; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; }
@@ -131,7 +131,10 @@
   <div class="strip">
     <div class="grp"><span>Proposed default</span>
       <div class="seg">
-        <button type="button" data-opt="flat" aria-pressed="true">Under lace stays flat</button>
+        <button type="button" data-opt="meet" aria-pressed="true">Meet in the middle</button>
+        <button type="button" data-opt="meetFlip" aria-pressed="false">Meet, orange on top</button>
+        <button type="button" data-opt="flat" aria-pressed="false">Under lace stays flat</button>
+        <button type="button" data-opt="topflat" aria-pressed="false">Top lace stays flat</button>
         <button type="button" data-opt="touch" aria-pressed="false">Resting on it</button>
         <button type="button" data-opt="first" aria-pressed="false">First drawn on top</button>
       </div>
@@ -157,7 +160,7 @@
       <dl id="m-today" class="meas"></dl>
     </div>
     <div class="col">
-      <div class="cap"><h2>Proposed</h2><small id="prop-name">Under lace stays flat</small></div>
+      <div class="cap"><h2>Proposed</h2><small id="prop-name">Meet in the middle</small></div>
       <div class="stage">
         <span class="hint">Same two strands</span>
         <canvas id="c-prop"></canvas>
@@ -169,8 +172,9 @@
   <p class="legend">Both views hold the same two strands: <b>h</b> (orange, drawn first, bottom
   layer) and <b>v</b> (yellow, drawn second, top layer), 54 px wide, crossing at 90° in the
   middle, with no level break so they share one storey. Every number is read back off the
-  built ribbons, in source pixels. Over and under lace show how far each one moves off its own
-  resting height at the crossing.</p>
+  built ribbons, in source pixels. Over and under lace give each one's height against the point
+  halfway between the two laces, then how far it moves from its own resting height. Yellow
+  rests 10 px above orange because of the layer lift, so the two numbers differ.</p>
 
   <div class="rule">
     <span class="tag">What the studio does today</span>
@@ -197,46 +201,59 @@
   <h2 class="sub">Other defaults, and which makes sense</h2>
   <div class="opts">
     <article>
-      <h4>Under lace stays flat <span style="color:var(--ok)">(recommended)</span></h4>
-      <p><b>Real laces behave this way.</b> The bottom lace lies on the table and the top one
-      goes over it. The pair is exactly one thickness apart, resting on each other, and only one
-      lace bends. The crossing height is the same for every pair, and the picture stays
-      readable from the side.</p>
+      <h4>Meet in the middle <span style="color:var(--ok)">(recommended)</span></h4>
+      <p><b>Orange a bit down, yellow a bit up, touching exactly.</b> Each lace moves half a
+      thickness from the plane, so the surfaces meet with no air and no overlap. It is the same
+      symmetric swing the app already uses, just sized to the one value where the two ribbons
+      rest on each other. Levels already force this: a crossing in a stacked scene is capped at
+      half a thickness either side of its storey, so this default is what a stack gets anyway.</p>
+    </article>
+    <article>
+      <h4>Meet, orange on top</h4>
+      <p><b>The same contact, other way round.</b> Useful if the lace drawn first should
+      be the one that rides over. It changes who wins at every crossing, so it only makes sense
+      as a per-scene choice.</p>
+    </article>
+    <article>
+      <h4>Under lace stays flat</h4>
+      <p><b>One lace bends, the other lies on the table.</b> The bottom lace keeps its own height
+      and the top lace arches over it by one thickness. Good when the bottom layer is meant to be
+      a base. The whole weave sits higher, so a storey above it has less room.</p>
+    </article>
+    <article>
+      <h4>Top lace stays flat</h4>
+      <p><b>The mirror.</b> The top lace stays on the plane and the lower one ducks a full thickness under it. It keeps
+      the top surface level, so it reads best from above. It digs below the plane, so it needs
+      room under the storey.</p>
     </article>
     <article>
       <h4>Resting on it</h4>
-      <p><b>The smallest change.</b> Keep the symmetric swing of today but drop Depth to its
-      floor, so the two just clear each other. Both laces bend, by about 15 px each, and the
-      weave sits much lower. This is the one-line change: a different Depth default.</p>
+      <p><b>The smallest change.</b> Keep today's symmetric swing and drop Depth to its floor.
+      That leaves a 15% margin, about 4 px of air, so the laces never quite touch. Meet in the
+      middle is the same idea made exact.</p>
     </article>
     <article>
-      <h4>First drawn on top</h4>
-      <p><b>Flip who wins.</b> Heights stay as today, but the lace drawn first is over. It
-      changes the look of every new scene, so it only makes sense if drawing a lace "under"
-      the existing ones is what people do most.</p>
-    </article>
-    <article>
-      <h4>Keep today's</h4>
-      <p><b>If the gap is on purpose.</b> A thickness of daylight is easy to read from the top
-      and leaves room for a third lace to pass between. If that is the intent, leave it and
-      document it.</p>
+      <h4>Keep today's, or first drawn on top</h4>
+      <p><b>Only if the gap is on purpose.</b> A thickness of daylight is easy to read from the
+      top and leaves room for a third lace between them. Flipping who is over changes every new
+      scene.</p>
     </article>
   </div>
 
   <div class="note">
     <section>
-      <h3>Why flat under</h3>
+      <h3>Why meet in the middle</h3>
       <ul>
         <li>The two laces touch, so the crossing is physically possible, which today's 26 px of air is not.</li>
-        <li>Only the top lace has to move, so the under lace keeps its own height and a stack of layers stays a stack.</li>
-        <li>It is already a thing the app can do. The Planes view places a crossing this way by hand.</li>
+        <li>Both laces bend the same amount, so neither one is special and the plane stays the centre of the weave.</li>
+        <li>It matches the half-thickness rule the level system already applies, so a scene with levels and one without behave the same.</li>
       </ul>
     </section>
     <section>
       <h3>What it would touch</h3>
       <ul>
-        <li><code>weaveCenterlines</code>: the anchor for the under lace becomes the plane itself, and the over lace's anchor becomes plane plus one thickness.</li>
-        <li><code>weaveAmplitude</code> and the Depth slider would then set the lift of the over lace only.</li>
+        <li><code>weaveAmplitude</code>: the default swing becomes half a thickness instead of the Depth value, with no 15% margin.</li>
+        <li>The Depth slider would then add swing on top of contact rather than set it.</li>
         <li>Same-storey pairs only, so level breaks mean what they mean now.</li>
       </ul>
     </section>
@@ -244,7 +261,7 @@
       <h3>The catch</h3>
       <ul>
         <li>Scenes people have already built would sit lower. Gate it on a scene setting and read old saves as today's.</li>
-        <li>A lace that is under at one crossing and over at the next would step between two heights along its length, which the symmetric swing avoids.</li>
+        <li>With no margin, curved or thick laces can show a hairline of z-fighting where surfaces meet. A 1 to 2 px margin would hide that.</li>
       </ul>
     </section>
   </div>
