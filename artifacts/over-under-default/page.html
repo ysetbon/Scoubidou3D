@@ -1,0 +1,280 @@
+<title>Over/Under Default</title>
+
+<style>
+  /* Layout: a masthead, one control strip, two linked canvases side by side with
+     a ledger under each, then the written case in a grid of short sections. */
+  :root {
+    --ground: #f5efdf;
+    --panel: #fbf7ec;
+    --ink: #241f18;
+    --muted: #7d735f;
+    --line: #ded3ba;
+    --accent: #3d3a8c;
+    --ok: #2c6b52;
+    --ok-wash: #d9e8df;
+    --off: #8a6320;
+    --off-wash: #f2e6cd;
+    --over: #3d3a8c;
+    --over-ink: #fbf7ec;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --serif: Georgia, "Times New Roman", serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #14110e; --panel: #1d1913; --ink: #efe7d6; --muted: #9b907d; --line: #352e23;
+      --accent: #9a97e8; --ok: #77c39c; --ok-wash: #1e2f27; --off: #d6ab63; --off-wash: #302615;
+      --over: #9a97e8; --over-ink: #14110e; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #14110e; --panel: #1d1913; --ink: #efe7d6; --muted: #9b907d; --line: #352e23;
+    --accent: #9a97e8; --ok: #77c39c; --ok-wash: #1e2f27; --off: #d6ab63; --off-wash: #302615;
+    --over: #9a97e8; --over-ink: #14110e; color-scheme: dark;
+  }
+
+  body { background: var(--ground); color: var(--ink); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 26px 16px 64px; display: flex; flex-direction: column; gap: 20px; }
+
+  .eyebrow { display: block; font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  h1 { font-family: var(--serif); font-size: clamp(26px, 4vw, 38px); line-height: 1.08; letter-spacing: -0.02em; margin: 0; text-wrap: balance; font-weight: 400; }
+  .lede { margin: 12px 0 0; max-width: 64ch; color: var(--muted); font-size: 15px; line-height: 1.6; }
+  .lede b { color: var(--ink); font-weight: 600; }
+
+  /* ---- controls ---- */
+  .strip { display: flex; flex-wrap: wrap; gap: 12px 22px; align-items: center; }
+  .grp { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .grp > span { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .seg { display: flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+  .seg button, .btn {
+    appearance: none; background: var(--panel); color: var(--muted); border: 0; border-right: 1px solid var(--line);
+    padding: 9px 13px; font-family: var(--mono); font-size: 12px; letter-spacing: 0.03em; cursor: pointer;
+  }
+  .seg button:last-child { border-right: 0; }
+  .seg button:hover, .btn:hover { color: var(--ink); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
+  .btn { border: 1px solid var(--line); border-radius: 3px; }
+  .btn[aria-pressed="true"] { color: var(--ink); border-color: var(--ink); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---- the two stages ---- */
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .cap { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+  .cap h2 { margin: 0; font-family: var(--serif); font-weight: 400; font-size: 21px; letter-spacing: -0.01em; }
+  .cap small { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .stage { position: relative; height: min(52vh, 460px); min-height: 300px; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; background: var(--ground); }
+  .stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  .hint { position: absolute; left: 12px; top: 12px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); pointer-events: none; }
+  #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 12px; color: var(--muted); background: var(--ground); z-index: 2; }
+
+  .sum { font-family: var(--mono); font-size: 11.5px; padding: 3px 10px; border-radius: 11px; align-self: flex-start; }
+  .sum.ok { color: var(--ok); background: var(--ok-wash); }
+  .sum.off { color: var(--off); background: var(--off-wash); }
+  .ledger { display: flex; flex-direction: column; gap: 3px; font-family: var(--mono); font-size: 10.5px; }
+  .lrow { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+  .lname { width: 2.6em; color: var(--muted); }
+  .lrow i { font-style: normal; padding: 1px 6px; border-radius: 2px; min-width: 4em; text-align: center; letter-spacing: 0.02em; }
+  .lrow i.o { background: var(--over); color: var(--over-ink); }
+  .lrow i.u { border: 1px solid var(--line); color: var(--muted); padding: 0 5px; }
+  .legend { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+  /* ---- the written case ---- */
+  .note { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px 34px; }
+  .note section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .note section[hidden] { display: none; }
+  .note h3 { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin: 0; font-weight: 600; }
+  .note p, .note li { margin: 0; font-size: 14px; line-height: 1.65; }
+  .note ul { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column; gap: 6px; }
+  .note code, .rule code { font-family: var(--mono); font-size: 12.5px; background: var(--panel); border: 1px solid var(--line); border-radius: 2px; padding: 1px 5px; overflow-wrap: anywhere; }
+  .note em { font-style: normal; color: var(--accent); }
+
+  .nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 0; }
+  .nums div { border: 1px solid var(--line); background: var(--panel); border-radius: 3px; padding: 9px 12px; display: flex; flex-direction: column; gap: 2px; }
+  .nums dt { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .nums dd { margin: 0; font-family: var(--serif); font-size: 24px; font-variant-numeric: tabular-nums; }
+  .nums dd small { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-left: 4px; }
+
+  .rule { border: 1px solid var(--line); background: var(--panel); border-radius: 3px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; }
+  .rule h3 { margin: 0; font-family: var(--serif); font-weight: 400; font-size: 20px; }
+  .rule p { margin: 0; font-size: 14px; line-height: 1.65; max-width: 80ch; }
+  .tag { align-self: flex-start; font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ok); background: var(--ok-wash); padding: 3px 9px; border-radius: 11px; }
+
+  .opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .opts article { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .opts h4 { margin: 0; font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em; }
+  .opts p { margin: 0; font-size: 13.5px; line-height: 1.6; color: var(--muted); }
+  .opts p b { color: var(--ink); font-weight: 600; }
+
+  @media (max-width: 760px) {
+    .pair { grid-template-columns: 1fr; }
+    .stage { height: min(48vh, 400px); }
+  }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Scoubidou3D · weave · one plane</span>
+    <h1>Who rides over, when nobody says?</h1>
+    <p class="lede">On a single plane, with no masks, the studio does one thing at every
+    crossing: <b>the higher layer rides over.</b> Draw a row, then a column, and the whole
+    column sits on top of the whole row. That is a stack, not a weave. Left is exactly what
+    the app builds today. Right is the same strands under a different default. Orbit either
+    one; the other follows.</p>
+  </header>
+
+  <div class="strip">
+    <div class="grp"><span>Sample</span>
+      <div class="seg">
+        <button type="button" data-sample="g3" aria-pressed="true">3 × 3</button>
+        <button type="button" data-sample="g5" aria-pressed="false">5 × 5</button>
+        <button type="button" data-sample="diamond" aria-pressed="false">Diamond 4 × 4</button>
+        <button type="button" data-sample="curved" aria-pressed="false">Curved 3 × 3</button>
+      </div>
+    </div>
+    <div class="grp"><span>Proposed default</span>
+      <div class="seg">
+        <button type="button" data-rule="plain" aria-pressed="true">Plain weave</button>
+        <button type="button" data-rule="twill" aria-pressed="false">Twill 2/1</button>
+        <button type="button" data-rule="basket" aria-pressed="false">Basket 2×2</button>
+      </div>
+    </div>
+    <div class="grp"><span>Phase</span>
+      <button type="button" class="btn" id="flip" aria-pressed="false">Flip over ↔ under</button>
+    </div>
+    <div class="grp"><span>Camera</span>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <button type="button" class="btn" id="v-low">Low</button>
+        <button type="button" class="btn" id="v-tilt">Tilt</button>
+        <button type="button" class="btn" id="v-plan">Plan</button>
+        <button type="button" class="btn" id="link" aria-pressed="true">Linked</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="pair">
+    <div class="col">
+      <div class="cap"><h2>Today</h2><small>layer order · no masks</small></div>
+      <div class="stage">
+        <span class="hint">Drag to orbit</span>
+        <canvas id="c-today"></canvas>
+        <div id="loading">starting the studio…</div>
+      </div>
+      <div id="s-today" class="sum off"></div>
+      <div id="l-today" class="ledger" aria-label="Each lace, crossing by crossing, from its start"></div>
+    </div>
+    <div class="col">
+      <div class="cap"><h2>Proposed</h2><small id="prop-name">Plain weave</small></div>
+      <div class="stage">
+        <span class="hint">Same masks as the app would write</span>
+        <canvas id="c-prop"></canvas>
+      </div>
+      <div id="s-prop" class="sum ok"></div>
+      <div id="l-prop" class="ledger" aria-label="Each lace, crossing by crossing, from its start"></div>
+    </div>
+  </div>
+  <p class="legend">Each row is one lace read from its start. A filled chip is a crossing it
+  rides <em style="font-style:normal;color:var(--over)">over</em>, an outlined one is a crossing
+  it ducks under. These come from the engine's own crossing list, so they describe the canvas,
+  not a drawing of it.</p>
+
+  <div class="note">
+    <section data-rule-note="plain">
+      <h3>Reading plain weave</h3>
+      <p>Every lace alternates over, under, over, under along its length, and every neighbour
+      lands on the opposite phase. A lace cannot slide out sideways because the laces either
+      side of it hold it down at alternate points.</p>
+    </section>
+    <section data-rule-note="twill" hidden>
+      <h3>Reading twill 2/1</h3>
+      <p>Each vertical goes over two and under one, and the pattern steps over by one lace per
+      row, which gives the diagonal rib. It drapes better than plain weave and shows more of
+      one colour, so it makes a poor default but a good pick.</p>
+    </section>
+    <section data-rule-note="basket" hidden>
+      <h3>Reading basket 2×2</h3>
+      <p>Pairs of laces move together, over two, under two. It looks chunkier and has fewer
+      tie-down points than plain weave, so the weave is looser. It suits wide laces.</p>
+    </section>
+  </div>
+
+  <div class="rule">
+    <span class="tag">What the studio does today</span>
+    <h3>One rule, decided once per pair of strands</h3>
+    <p>At each pair of strands that cross in plan, a mask picks the one that rides over.
+    With no mask the higher layer in the panel wins. That answer is the same at every place
+    the two cross, and it never looks at what else the strand crosses
+    (<code>StrandScene.weaveCenterlines</code>, <code>over = masked ?? j</code>).
+    The over strand is raised to the storey plane plus half a separation and the under strand
+    is lowered by the same, easing back over a short span either side.</p>
+    <dl class="nums">
+      <div><dt>Over</dt><dd>+<span id="p-depth">26</span><small>px</small></dd></div>
+      <div><dt>Under</dt><dd>−<span id="p-depth2">26</span><small>px</small></dd></div>
+      <div><dt>Thickness</dt><dd id="p-thick">26</dd></div>
+      <div><dt>Layer lift</dt><dd id="p-lift">10</dd></div>
+      <div><dt>Crossing span</dt><dd><span id="p-span">1.3</span><small>× widths</small></dd></div>
+    </dl>
+    <p>Away from a crossing a lace rests at its layer rank times the layer lift, so a plane of
+    six laces fans out over 50 px even where nothing crosses. Laces on different storeys are
+    not woven at all unless a mask says so. Because the default is per pair, in a 3×3 mat each of the six laces is
+    either over at all three of its crossings or under at all three. Every shipped weave sample works around this by hand: the woven mat, the curved
+    weave, the twist stitch and the box stitch all write a checkerboard of masks.</p>
+  </div>
+
+  <h2 style="margin:6px 0 -6px;font-family:var(--serif);font-weight:400;font-size:24px">What would make more sense</h2>
+  <div class="opts">
+    <article>
+      <h4>1 · Plain weave <span style="color:var(--ok)">(recommended)</span></h4>
+      <p><b>Alternate along each strand.</b> Number a strand's crossings in order along it. At a
+      crossing, the higher layer rides over when the two numbers add to an even number, under
+      when odd. Two strands that cross once behave exactly as they do now, so the
+      two-crossing demo does not change. Masks still win, and a masked crossing still counts, so
+      the weave stays in step around it.</p>
+    </article>
+    <article>
+      <h4>2 · Basket 2×2</h4>
+      <p><b>Alternate in pairs.</b> Same counting, but halve each number first. Looser and
+      chunkier. Worth offering as a switch in the Weave panel, not as the default.</p>
+    </article>
+    <article>
+      <h4>3 · Twill 2/1</h4>
+      <p><b>Over two, under one.</b> Add the numbers and take them modulo three. A texture
+      choice, like basket. It leaves a plane lopsided, with one face mostly one colour.</p>
+    </article>
+    <article>
+      <h4>4 · Keep layer order</h4>
+      <p><b>Today's rule, kept as an option.</b> Right for a plane that is meant to be a
+      stack, and for any scene saved before this change.</p>
+    </article>
+  </div>
+
+  <div class="note">
+    <section>
+      <h3>Why plain weave</h3>
+      <ul>
+        <li>It is what you meant. Everything the app ships on one plane is plain weave that somebody masked in by hand.</li>
+        <li>It is the only option where every lace is held. Under layer order, the verticals can be lifted off as one sheet.</li>
+        <li>It costs nothing visually for two strands, and the engine already anchors heights per crossing, so the geometry needs no change.</li>
+      </ul>
+    </section>
+    <section>
+      <h3>What it would touch</h3>
+      <ul>
+        <li><code>weaveCenterlines</code>: the over/under choice moves from per pair to per crossing, and needs each strand's crossings counted first.</li>
+        <li>Only same-storey strands count, so level breaks keep meaning what they mean now.</li>
+        <li><code>CrossingFact</code> is per pair. A pair that flips along its length needs a "mixed" answer, or the fold lab's list would disagree with the picture.</li>
+      </ul>
+    </section>
+    <section>
+      <h3>The catch</h3>
+      <ul>
+        <li>An existing save with no masks would change shape on load. Store the choice on the scene, and read old saves as layer order.</li>
+        <li>A pair that crosses twice, such as a curve looping over a strand, would go over once and under once. That links the two, which is physical, but it is a change from today.</li>
+        <li>A new Weave panel switch would be the place to pick plain, basket, twill or layer order.</li>
+      </ul>
+    </section>
+  </div>
+</div>
+
+<script>__VIEWER__</script>
