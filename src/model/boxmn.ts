@@ -529,18 +529,39 @@ export function boxPlacements(
   return { planes, crossPlanes };
 }
 
-// The 1×1, right hand, placed: its first level on its own — the box from
-// `box + strand` rebuilt by the family — and then two levels, the second placed
-// the way it was placed by hand. Right hand because that is the hand the sample
-// was drawn in.
-export const BOX_PLACED_SAMPLES: Record<string, () => Scene3D> = {
-  'box-placed-1x1-l1': () => boxStitchMN(1, 1, 'Box 1×1 placed — level 1', 'rh', 0, true),
-  'box-placed-1x1-l2': () => boxStitchMN(1, 1, 'Box 1×1 placed — level 2', 'rh', 1, true, 'hand'),
-};
-export const BOX_PLACED_LABELS: Array<{ key: string; label: string; group: string }> = [
-  { key: 'box-placed-1x1-l1', label: 'Box 1×1 placed — level 1 (box + strand\'s box)', group: 'Box — placed like box + strand' },
-  { key: 'box-placed-1x1-l2', label: 'Box 1×1 placed — level 2 (placed by hand)', group: 'Box — placed like box + strand' },
-];
+// The family placed the way `box + strand`'s box was, level by level: the first
+// level as the sample places it, every level above as it was placed by hand (see
+// `UpperPlan`). Only the faces that have been checked by eye are here — 1×1, and
+// 2×1 to see whether the idea carries — at the depths the stitch samples use.
+// Right hand is the hand the sample was drawn in; `box-placed-lh-…` is its mirror.
+const PLACED_FACES: Array<[number, number]> = [[1, 1], [2, 1]];
+const PLACED_LEVELS = [1, 2, 3, 10, 15];
+export const placedKey = (hand: Hand, m: number, n: number, levels: number): string =>
+  `box-placed-${hand === 'lh' ? 'lh-' : ''}${m}x${n}-l${levels}`;
+const placedName = (hand: Hand, m: number, n: number, levels: number): string =>
+  `Box ${m}×${n} ${hand.toUpperCase()} placed — ` +
+  (levels <= 3 ? `level ${levels}` : `${levels} levels`);
+
+export const BOX_PLACED_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
+  HANDS.flatMap(({ hand }) =>
+    PLACED_FACES.flatMap(([m, n]) =>
+      PLACED_LEVELS.map((levels) => [
+        placedKey(hand, m, n, levels),
+        () => boxStitchMN(m, n, placedName(hand, m, n, levels), hand, levels - 1, true, 'hand'),
+      ]),
+    ),
+  ),
+);
+export const BOX_PLACED_LABELS: Array<{ key: string; label: string; group: string }> = HANDS.flatMap(
+  ({ hand, label }) =>
+    PLACED_FACES.flatMap(([m, n]) =>
+      PLACED_LEVELS.map((levels) => ({
+        key: placedKey(hand, m, n, levels),
+        label: `${label} · box ${m}×${n} placed — ${levels} level${levels === 1 ? '' : 's'}`,
+        group: 'Box — placed like box + strand',
+      })),
+    ),
+);
 
 export const BOX_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
   HANDS.flatMap(({ hand, sense }) =>
