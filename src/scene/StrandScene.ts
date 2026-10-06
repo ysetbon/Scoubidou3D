@@ -463,7 +463,11 @@ export class StrandScene {
   private controlLines = new THREE.Group();
   private grid: THREE.GridHelper | null = null;
   private theme: 'light' | 'dark' = 'light';
-  private current: Scene3D = { strands: [], masks: [], levelBreaks: [], name: 'empty' };
+  // The scene the app opens on, and so the one every drawn and attached strand lands
+  // in until something else is loaded. It carries the contact weave: what you draw
+  // from scratch rests on the middle of its storey and meets at its crossings.
+  // Loaded files and samples bring their own setting. See docs/over-under-default.md.
+  private current: Scene3D = { strands: [], masks: [], levelBreaks: [], name: 'empty', contact: true };
   private params: RenderParams = { ...DEFAULT_PARAMS };
   private center: Vec2 = { x: 0, y: 0 };
   private contentRadius = 10;
