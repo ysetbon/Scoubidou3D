@@ -61,6 +61,8 @@
   .section { display: flex; flex-direction: column; gap: 8px; }
   .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .row > b { font-family: var(--mono); font-size: 13px; min-width: 3.4ch; }
+  .row > b.wide { min-width: 10ch; }
+  .ideas { display: flex; flex-wrap: wrap; gap: 8px; }
   .weft { color: var(--weft); }
   .warp { color: var(--accent); }
   i.weft, i.warp { font-style: normal; font-weight: 600; }
@@ -119,6 +121,7 @@
           <button type="button" id="v-fit">Whole</button>
           <button type="button" id="v-side">Side</button>
           <button type="button" id="v-plan">Plan</button>
+          <button type="button" id="v-fold">Fold end</button>
         </div>
         <label class="chk"><input type="checkbox" id="show-l1" checked> Show the levels below</label>
         <span id="count"></span>
@@ -142,6 +145,20 @@
         <h2>At each crossing</h2>
         <p class="help">Where each of the two arms sits at that one crossing. The line under each card is what the studio actually built.</p>
         <div id="cross" class="cards"></div>
+      </div>
+
+      <div class="section">
+        <h2>Where level 1 turns into level 2</h2>
+        <p class="help">At the end of each level-1 arm the ribbon turns back and carries on as a level-2 arm.
+        Set where the arm below <b>ends</b> and where the arm above <b>starts</b>; rest keeps the arm's own plane.
+        The line under each card says how close the turning end is to the arm beside it. Fold end points the camera at one.</p>
+        <div class="bar"><span>Try</span><div class="ideas" id="fold-ideas"></div></div>
+        <div class="bar"><span>Fold stops out</span><div class="seg">
+          <button type="button" data-stop="0">0 px</button>
+          <button type="button" data-stop="8">8 px</button>
+          <button type="button" data-stop="16">16 px</button>
+          <button type="button" data-stop="28">28 px</button></div></div>
+        <div id="folds" class="cards"></div>
       </div>
 
       <div class="section">
