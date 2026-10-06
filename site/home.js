@@ -45,3 +45,11 @@ document.addEventListener("keydown", (event) => {
     tools.querySelector("summary").focus();
   }
 });
+
+const tutorial = document.getElementById("box-tutorial");
+document
+  .querySelector("[data-replay-tutorial]")
+  .addEventListener("click", () => {
+    tutorial.currentTime = 0;
+    tutorial.play().catch(() => tutorial.focus());
+  });

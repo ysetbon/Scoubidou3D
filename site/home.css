@@ -1181,3 +1181,61 @@ footer {
     font-size: 10px;
   }
 }
+
+.tutorial-player {
+  max-width: 900px;
+  margin: auto;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  overflow: hidden;
+  background: #191410;
+}
+.tutorial-player video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16/9;
+}
+.tutorial-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+.tutorial-actions p {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+}
+.tutorial-actions .button {
+  min-height: 40px;
+  font-size: 12px;
+}
+.tutorial-transcript {
+  max-width: 900px;
+  margin: 20px auto 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.8;
+}
+.tutorial-transcript summary {
+  cursor: pointer;
+}
+.tutorial-transcript li {
+  margin-bottom: 8px;
+}
+@media (max-width: 560px) {
+  .tutorial-actions {
+    gap: 12px;
+  }
+  .tutorial-actions p {
+    width: 100%;
+    font-size: 11px;
+    text-align: center;
+  }
+  .tutorial-transcript {
+    font-size: 11px;
+  }
+}
