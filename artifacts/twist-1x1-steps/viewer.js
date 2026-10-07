@@ -9,7 +9,7 @@
 // of every locked level back — the coordinates are what Jev is given to propose
 // the next level from.
 import { StrandScene } from '../../src/scene/StrandScene';
-import { twistColumnTurnsPlaced } from '../../src/model/twistplaced';
+import { twistColumnDecided } from '../../src/model/twistplaced';
 import SUGGEST from './suggest.json';
 
 const RUNG = 0.5;
@@ -60,17 +60,9 @@ const at = (i) => (i === state.step ? state.cur : state.locks[i - 1] ?? fresh(i)
 
 function build() {
   const levels = state.step + 1;
-  const turns = [];
-  for (let i = 1; i < levels; i++) turns.push((tipToTurn(at(i).tip) * Math.PI) / 180);
-  const sc = twistColumnTurnsPlaced(1, 1, levels, turns, `Twist 1×1, level ${state.step} of 9`, state.hand, false);
-  const ends = { ...(sc.planeEnds ?? {}) };
-  for (const s of sc.strands) {
-    const L = levelOf(s.id);
-    if (layer(s.id) < 2) continue;
-    if (L <= state.step && armsOf(L).includes(layer(s.id))) ends[s.id] = { ...ends[s.id], out: at(L).out };
-    if (L >= 2 && armsOf(L).includes(layer(s.id))) ends[s.id] = { ...ends[s.id], in: at(L - 1).in };
-  }
-  return { ...sc, planeEnds: ends };
+  const decisions = [];
+  for (let i = 1; i < levels; i++) decisions.push({ tip: at(i).tip, out: at(i).out, in: at(i).in });
+  return twistColumnDecided(levels, decisions, `Twist 1×1, level ${state.step} of 9`, state.hand);
 }
 
 function show(sc) {

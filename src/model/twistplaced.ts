@@ -221,3 +221,101 @@ export function twistColumnTurnsPlaced(
   }
   return { ...scene, ...placement };
 }
+
+// ---- the 1×1 column decided level by level ------------------------------------
+//
+// Each level of a 1×1 twist is the landing law at the 56 px gap (every arm sits
+// 28 px off the centre): how far out a level's folds sit — its TIP — is the turn
+// into the level above, `θ = 2·atan(28 / tip)`. What a level also needs is the
+// height its fold ends rest on and the height the next level's arms start on, in
+// rungs (half a ribbon thickness). `artifacts/twist-1x1-steps` is where these
+// were decided with the reader, level by level, on the built ribbons.
+
+/** Half the 56 px gap between a lace's two arms: where every 1×1 arm sits off the centre. */
+const ARM_OFFSET = 28;
+
+export interface LevelDecision {
+  /** How far from the centre this level's fold ends sit, in px. */
+  tip: number;
+  /** Where this level's fold ends rest, in rungs. */
+  out: number;
+  /** Where the next level's arms start, in rungs. */
+  in: number;
+}
+
+/** The turn into the next level, in degrees, for a fold tip `tip` px out. */
+export const tipToTurnDeg = (tip: number): number => (2 * Math.atan(ARM_OFFSET / tip) * 180) / Math.PI;
+
+/** The arms of level L: the strands whose ends are its folds. */
+const armLayers = (level: number): number[] => (level === 1 ? [2, 3] : [2 * level, 2 * level + 1]);
+const layerOf = (id: string): number => Number(id.split('_')[1]);
+const levelOfId = (id: string): number => (layerOf(id) < 4 ? 1 : Math.floor((layerOf(id) - 2) / 2) + 1);
+
+/**
+ * A 1×1 twist column of `levels` levels with every level set by its own decision:
+ * `decisions[i]` is level i + 1's, so a column of N levels uses the first N − 1.
+ */
+export function twistColumnDecided(
+  levels: number,
+  decisions: LevelDecision[],
+  name: string,
+  hand: Hand = 'rh',
+): Scene3D {
+  if (decisions.length < levels - 1) throw new Error(`a ${levels}-level column needs ${levels - 1} decisions`);
+  const turns = decisions.slice(0, levels - 1).map((d) => (tipToTurnDeg(d.tip) * Math.PI) / 180);
+  const scene = twistColumnTurnsPlaced(1, 1, levels, turns, name, hand, false);
+  const planeEnds = { ...(scene.planeEnds ?? {}) };
+  for (const s of scene.strands) {
+    const layer = layerOf(s.id);
+    if (layer < 2) continue;
+    const level = levelOfId(s.id);
+    if (!armLayers(level).includes(layer)) continue;
+    if (level <= levels - 1) planeEnds[s.id] = { ...planeEnds[s.id], out: decisions[level - 1].out };
+    if (level >= 2) planeEnds[s.id] = { ...planeEnds[s.id], in: decisions[level - 2].in };
+  }
+  const { short: _short, ...rest } = scene;
+  return { ...rest, planeEnds };
+}
+
+/**
+ * The 1×1 column as it was decided, nine levels' worth. Levels 1–8 were locked on
+ * the page; level 9 was the one on screen when the reader sent them (tip 62), and
+ * is taken as their choice. Level 1's fold ends keep the box rule's −1.
+ */
+export const TWIST_1X1_DECIDED: LevelDecision[] = [
+  { tip: 61.5, out: -1, in: 1 },
+  { tip: 60.5, out: 1, in: 1 },
+  { tip: 60, out: 1, in: 1 },
+  { tip: 60.5, out: 1, in: 1 },
+  { tip: 60.5, out: 1, in: 1 },
+  { tip: 60.5, out: 1, in: 1 },
+  { tip: 60.5, out: 1, in: 1 },
+  { tip: 65, out: 1, in: 1 },
+  { tip: 62, out: 1, in: 1 },
+];
+
+const DECIDED_LEVELS = [2, 3, 4, 5, 10];
+export const decidedKey = (hand: Hand, levels: number): string => `twist-decided-${hand}-1x1-l${levels}`;
+
+export const TWIST_DECIDED_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
+  (['rh', 'lh'] as Hand[]).flatMap((hand) =>
+    DECIDED_LEVELS.map((levels) => [
+      decidedKey(hand, levels),
+      () =>
+        twistColumnDecided(
+          levels,
+          TWIST_1X1_DECIDED,
+          `Twist 1×1 ${hand.toUpperCase()}, decided level by level — ${levels} levels`,
+          hand,
+        ),
+    ]),
+  ),
+);
+
+export const TWIST_DECIDED_LABELS: Array<{ key: string; label: string; group: string }> = (['rh', 'lh'] as Hand[]).flatMap((hand) =>
+  DECIDED_LEVELS.map((levels) => ({
+    key: decidedKey(hand, levels),
+    label: `${hand === 'rh' ? 'Right hand' : 'Left hand'} · twist 1×1 decided level by level — ${levels} levels`,
+    group: 'Twist 1×1 — decided level by level',
+  })),
+);
