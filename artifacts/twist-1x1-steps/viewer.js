@@ -32,6 +32,17 @@ try {
   const saved = JSON.parse(localStorage.getItem(STORE) ?? 'null');
   if (saved && Array.isArray(saved.locks) && saved.locks.length === STEPS) Object.assign(state, saved, { fold: -1 });
 } catch { /* nothing saved: defaults */ }
+// Levels the reader decided in the conversation, carried into the page so it
+// opens where they left off. A lock already in this browser wins.
+for (const k of SUGGEST?.locks ?? []) {
+  if (!state.locks[k.level - 1]) state.locks[k.level - 1] = { tip: k.tipPx, out: k.foldEndsOn, in: k.nextArmsStartOn, note: k.note ?? '' };
+}
+if (state.locks[state.step - 1] && state.step < STEPS) {
+  let s = 1;
+  while (s < STEPS && state.locks[s - 1]) s++;
+  state.step = s;
+  state.cur = fresh(s);
+}
 // A suggestion I was handed for the step the reader is on wins over the default,
 // but never over something the reader already set and left.
 function applySuggestion() {

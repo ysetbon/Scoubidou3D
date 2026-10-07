@@ -7,6 +7,23 @@
     "in": 0
    },
    "from": "Jev (tip: 50 (28%), 42 (19%), 56 (19%); heights: 0|0 (20%), -2|0 (18%), -1|0 (16%))"
+  },
+  "2": {
+   "params": {
+    "tip": 52,
+    "out": 1,
+    "in": 1
+   },
+   "from": "Jev (tip: 52 (67%), 56 (18%), 50 (7%); heights: 1|1 (27%), -2|1 (17%), -1|1 (15%))"
   }
- }
+ },
+ "locks": [
+  {
+   "level": 1,
+   "tipPx": 61.5,
+   "foldEndsOn": -1,
+   "nextArmsStartOn": 1,
+   "note": "set by the reader: tip 61.5, level 2 arms start on +1"
+  }
+ ]
 }
