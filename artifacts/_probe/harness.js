@@ -1,0 +1,75 @@
+import { StrandScene } from '../../src/scene/StrandScene';
+import { twistColumnPlaced } from '../../src/model/twistplaced';
+import { boxStitchMN } from '../../src/model/boxmn';
+import RING from '../twist-1x1-ways/engine-ring.json';
+import { ringColumn } from '../../src/model/ringcolumn';
+import { boxPlacements } from '../../src/model/boxmn';
+import { INDIGO, WEFT, twoFanColumn } from '../../src/model/twofan';
+import { ribbonHits, laceWords, meshHits } from '../lib/ribbon-check.js';
+const RUNG = 0.5;
+const view = new StrandScene(document.getElementById('c'));
+function show(sc) {
+  view.setScene(sc, false);
+  const map = new Map(Object.entries(sc.planes ?? {}).map(([id, r]) => [id, { in: r * RUNG, out: r * RUNG }]));
+  for (const [id, e] of Object.entries(sc.planeEnds ?? {})) {
+    const rest = sc.planes?.[id] ?? 0;
+    map.set(id, { in: (e.in ?? rest) * RUNG, out: (e.out ?? rest) * RUNG });
+  }
+  view.setSublevels(map.size ? map : null);
+  const cross = Object.entries(sc.crossPlanes ?? {});
+  view.setCrossingPlanes(cross.length ? new Map(cross.map(([k, r]) => [k, r * RUNG])) : null);
+}
+window.H = {
+  view, show,
+  twist(levels, hand = 'rh', fix = true) {
+    const sc = twistColumnPlaced(1, 1, levels, 't', hand, true, 'hand', fix);
+    show(sc); return sc;
+  },
+  box(levels, hand = 'rh') { const sc = boxStitchMN(1, 1, 'b', hand, levels - 1, true, 'hand'); show(sc); return sc; },
+  engine(levels, hand = 'rh', fix = true) {
+    const sc = ringColumn(RING, levels - 1, 'e', { first: WEFT[0], second: INDIGO }, hand);
+    const pl = boxPlacements(sc, 1, false, 'hand');
+    if (fix && levels > 2) {
+      const ends = { ...(pl.planeEnds ?? {}) };
+      for (const st of sc.strands) { const l = Number(st.id.split('_')[1]); if (l === 4 || l === 5) ends[st.id] = { ...ends[st.id], out: 0 }; }
+      pl.planeEnds = ends;
+    }
+    const full = { ...sc, ...pl }; show(full); return full;
+  },
+  words(sc) { return laceWords(view, sc.strands.map((s) => s.id), (id) => { const l = Number(id.split('_')[1]); return l < 4 ? 1 : Math.floor((l - 2) / 2) + 1; }); },
+  mesh(sc, opts) { return meshHits(view, sc.strands.map((s) => s.id), opts); },
+  hits(sc, opts) { return ribbonHits(view, sc.strands.map((s) => s.id), opts); },
+  levelOf: (id) => { const l = Number(id.split('_')[1]); return l < 4 ? 1 : Math.floor((l - 2) / 2) + 1; },
+};
+
+const W = 46, SCALE = 0.02;
+const layer = (id) => Number(id.split('_')[1]);
+const levelOf = (id) => (layer(id) < 4 ? 1 : Math.floor((layer(id) - 2) / 2) + 1);
+const lace = (id) => id.split('_')[0];
+H.readLevels = function (sc, levels) {
+  const view = H.view; const th = view.getThicknessWorld();
+  const lines = {}; for (const st of sc.strands) lines[st.id] = view.getStrandCentrelineWorld(st.id);
+  const nearest = (line, x, y) => { let best = line[0], d = Infinity; for (const q of line) { const e = (q.x - x) ** 2 + (q.y - y) ** 2; if (e < d) { d = e; best = q; } } return best; };
+  const rows = [];
+  for (let L = 1; L <= levels; L++) {
+    let n = 0, right = 0, worst = Infinity;
+    for (const c of view.getCrossPoints()) {
+      if (lace(c.aId) === lace(c.bId) || levelOf(c.aId) !== L || levelOf(c.bId) !== L || !c.woven) continue;
+      const over = c.overIndex === c.aIndex ? c.aId : c.bId; const under = over === c.aId ? c.bId : c.aId;
+      const gap = (nearest(lines[over], c.x, c.y).z - nearest(lines[under], c.x, c.y).z) / th;
+      n++; if (gap > -0.05) right++; worst = Math.min(worst, gap);
+    }
+    let folds = 0, edge = Infinity, height = Infinity;
+    if (L < levels) for (const s of sc.strands) {
+      if (levelOf(s.id) !== L || layer(s.id) < 2) continue;
+      if (!sc.strands.some((t) => t.parentId === s.id)) continue;
+      folds++;
+      const E = lines[s.id][lines[s.id].length - 1]; let best = { g: Infinity, dz: 0 };
+      for (const t of sc.strands) { if (levelOf(t.id) !== L || lace(t.id) === lace(s.id)) continue;
+        for (const q of lines[t.id]) { const g = Math.hypot(E.x - q.x, E.y - q.y) / SCALE - W / 2; if (g < best.g) best = { g, dz: Math.abs(E.z - q.z) / SCALE }; } }
+      if (best.g < edge) { edge = best.g; height = best.dz; }
+    }
+    rows.push({ L, n, right, worst: +worst.toFixed(2), folds, edge: +edge.toFixed(1), height: +height.toFixed(1) });
+  }
+  return rows;
+};
