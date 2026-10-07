@@ -25,8 +25,16 @@ const evalCand = (c) => p.evaluate(([locked, step, c]) => {
   return { readings: o.onScreen.readings, coordinates: o.coordinates };
 }, [prior.locked, step, c]);
 // stage 1: the tip, heights at their defaults
-const def = { out: step === 2 ? 0 : -1, in: 1 };
-const tips = []; for (let t = 42; t <= 66; t += 2) tips.push(t);
+const lastLock = prior.locked[prior.locked.length - 1];
+const def = lastLock ? { out: lastLock.foldEndsOn, in: lastLock.nextArmsStartOn } : { out: step === 2 ? 0 : -1, in: 1 };
+// Candidates: around where the reader has been setting it, finely, plus the coarse range
+// beyond, so a trend can be continued exactly and a break from it is still on the table.
+const mine = prior.locked.filter(k => !k.predicted).map(k => k.tipPx);
+const centre = mine.length ? mine[mine.length - 1] : 52;
+const tips = [...new Set([
+  ...Array.from({ length: 13 }, (_, i) => +(centre - 3 + i * 0.5).toFixed(1)),
+  ...[44, 48, 52, 56, 64, 68],
+])].sort((a, b) => a - b);
 const below = (await evalCand({ tip: 52, ...def })).coordinates.filter(c => c.locked);
 const cands = {};
 for (const tip of tips) {
@@ -38,13 +46,13 @@ const notes = prior.locked.filter(k => k.note).map(k => ({ level: k.level, note:
 // What the reader actually chose at each level, against what was suggested to them. Their
 // choice is the ground truth: a suggestion they overrode is a suggestion that was wrong.
 const sugg = JSON.parse(fs.readFileSync(new URL('../suggest.json', import.meta.url), 'utf8'));
-const history = prior.locked.map(k => ({ level: k.level, reader_chose: { tip_px: k.tipPx, fold_ends_on: k.foldEndsOn, next_arms_start_on: k.nextArmsStartOn },
+const history = prior.locked.map(k => ({ level: k.level, predicted_not_yet_confirmed: !!k.predicted, reader_chose: { tip_px: k.tipPx, fold_ends_on: k.foldEndsOn, next_arms_start_on: k.nextArmsStartOn },
   was_suggested: sugg.levels?.[String(k.level)]?.params ?? null }));
 const base = { stitch: '1x1 twist, two laces (sets 1 and 2), each level is 4 arms in a # at a 56 px gap, ribbon 46 px wide and 26 px thick; levels stack one storey (52 px) apart',
   deciding_level: step, levels_below_coordinates: below, reader_notes: notes, reader_choices_so_far: history,
   rule: 'The reader is the judge. Where the reader overrode a suggestion, continue THEIR choices, not the suggestion.' };
 const r1 = ask({ state: { ...base, candidates: cands }, question: `Which fold-tip reach for level ${step}? (it sets the turn into level ${step + 1})`,
-  goal: 'Pick the candidate whose new strands continue the column below as a real twist: the arms of the new level should sit on the level below the way the earlier levels sit on theirs, no ribbon passing through another, every crossing woven with the right lace on top. Use the coordinates, not only the readings, and respect the reader notes.',
+  goal: 'Predict the tip THE READER will choose at this level. They judge by eye and their choices so far are in reader_choices_so_far: continue their trend (the same or the next step of it) unless this level\'s readings show it failing (a fold end inside the crossing arm, ribbons passing through, a crossing with the wrong lace on top). Use the coordinates to see that the new level sits on the one below the way the earlier ones do.',
   choices: Object.fromEntries(Object.entries(cands).map(([k, v]) => [k, `tip ${k} px, turn ${v.turn_into_next_deg} deg; readings: ${JSON.stringify(v.readings)}`])) });
 const tip = +r1.choice;
 // stage 2: the heights at that tip
@@ -54,7 +62,7 @@ for (const out of [-2, -1, 0, 1]) for (const inn of [0, 1, 2, 3]) {
   hc[`${out}|${inn}`] = { readings: r.readings, z_new: r.coordinates.filter(c => !c.locked).map(c => ({ id: c.id, z: c.z })) };
 }
 const r2 = ask({ state: { ...base, tip_px: tip, candidates: hc }, question: `At tip ${tip}, where should level ${step}'s fold ends rest and level ${step + 1}'s arms start (rungs of half a thickness)?`,
-  goal: 'The fold must rise from this level to the next without the ribbon passing through the arm it crosses or the level below, and without leaving a gap a real lace would not have.',
+  goal: 'Predict the heights THE READER will choose: continue what they set at the levels below (reader_choices_so_far) unless the readings show it failing here.',
   choices: Object.fromEntries(Object.entries(hc).map(([k, v]) => { const [o, i] = k.split('|'); return [k, `ends on ${o}, next starts on ${i}; readings: ${JSON.stringify(v.readings)}`]; })) });
 const [out, inn] = r2.choice.split('|').map(Number);
 const top = (r) => Object.entries(r.probabilities).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k} (${(v * 100).toFixed(0)}%)`).join(', ');
