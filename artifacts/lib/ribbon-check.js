@@ -255,7 +255,7 @@ export function laceWords(view, ids, levelOf) {
 // another, however tightly, do not cross.
 
 /** Möller's triangle–triangle test (interval overlap on the planes' line). */
-function triTri(a0, a1, a2, b0, b1, b2) {
+function triTri(a0, a1, a2, b0, b1, b2, wantDepth = false) {
   const sub = (p, q) => [p[0] - q[0], p[1] - q[1], p[2] - q[2]];
   const crs = (p, q) => [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
   const dt = (p, q) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
@@ -298,7 +298,15 @@ function triTri(a0, a1, a2, b0, b1, b2) {
   };
   const ia = interval(a0, a1, a2, da0, da1, da2);
   const ib = interval(b0, b1, b2, db0, db1, db2);
-  return !(ia[1] < ib[0] || ib[1] < ia[0]);
+  const hit = !(ia[1] < ib[0] || ib[1] < ia[0]);
+  if (!wantDepth) return hit;
+  if (!hit) return 0;
+  // how far the smaller side of each triangle pokes through the other's plane, in world units
+  const poke = (d0, d1, d2, len) => {
+    const pos = Math.max(d0, d1, d2, 0), neg = Math.max(-d0, -d1, -d2, 0);
+    return Math.min(pos, neg) / len;
+  };
+  return Math.max(poke(da0, da1, da2, nl), poke(db0, db1, db2, nal));
 }
 
 /**
@@ -354,14 +362,34 @@ export function meshHits(view, ids, opts = {}) {
         const key = list[i] < list[j] ? `${list[i]}|${list[j]}` : `${list[j]}|${list[i]}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        if (!triTri(A.a, A.b, A.c, B.a, B.b, B.c)) continue;
+        const dep = triTri(A.a, A.b, A.c, B.a, B.b, B.c, true);
+        if (!dep) continue;
         const cx = (A.a[0] + A.b[0] + A.c[0]) / 3, cy = (A.a[1] + A.b[1] + A.c[1]) / 3, cz = (A.a[2] + A.b[2] + A.c[2]) / 3;
         const ck = `${A.mi}|${B.mi}|${Math.round(cx / 0.6)},${Math.round(cy / 0.6)},${Math.round(cz / 0.6)}`;
-        const c = clusters.get(ck) ?? { n: 0, x: cx / SCALE, y: cy / SCALE, z: cz / SCALE, laces: [bodies[A.mi].userData.strandId, bodies[B.mi].userData.strandId] };
+        const c = clusters.get(ck) ?? { n: 0, x: cx / SCALE, y: cy / SCALE, z: cz / SCALE, laces: [bodies[A.mi].userData.strandId, bodies[B.mi].userData.strandId], mi: [A.mi, B.mi], at: [cx, cy, cz], depth: 0 };
         c.n++;
+        c.depth = Math.max(c.depth, dep / SCALE);
         clusters.set(ck, c);
       }
     }
   }
-  return { triangles: tris.length, pairs: seen.size, clusters: [...clusters.values()].sort((p, q) => q.n - p.n) };
+  // who is where: the strand each mesh's cluster sits on, by nearest point of that mesh's own lace
+  const laceOfMesh = bodies.map((m) => {
+    const head = ids.indexOf(m.userData.strandId);
+    return view.laceCenterlines.find((l) => l.chain.includes(head));
+  });
+  const list = [...clusters.values()];
+  for (const c of list) {
+    c.on = c.mi.map((mi) => {
+      const lace = laceOfMesh[mi];
+      if (!lace) return null;
+      let best = null, d = Infinity;
+      for (const q of lace.line) {
+        const e = (q.x - c.at[0]) ** 2 + (q.y - c.at[1]) ** 2 + (q.z - c.at[2]) ** 2;
+        if (e < d) { d = e; best = q; }
+      }
+      return best ? ids[best.owner] : null;
+    });
+  }
+  return { triangles: tris.length, pairs: seen.size, clusters: list.sort((p, q) => q.n - p.n) };
 }

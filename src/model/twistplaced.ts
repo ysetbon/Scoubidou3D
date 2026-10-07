@@ -278,62 +278,80 @@ export function twistColumnDecided(
 }
 
 /** The tips the reader settled on, level by level (levels 1–9), in px. */
-const DECIDED_TIPS = [61.5, 60.5, 60, 60.5, 60.5, 60.5, 60.5, 65, 62];
+const READER_TIPS = [61.5, 60.5, 60, 60.5, 60.5, 60.5, 60.5, 65, 62];
 
 /**
- * BEFORE: the column as first decided, with every fold end from level 2 up resting
- * on +1. That height was opened on Jev's suggestion and kept; it is not what the
- * box does. Kept so the before/after page (`artifacts/twist-1x1-planes`) can show
- * the two side by side.
+ * The tip that turns every level exactly 45°: `28 / tan(22.5°)`. It is also the 45.00°
+ * measured on the 1×1 in docs/twist-stitch/deriving-the-turn.md.
  */
-export const TWIST_1X1_DECIDED_BEFORE: LevelDecision[] = DECIDED_TIPS.map((tip, i) => ({
+export const TIP_45 = ARM_OFFSET / Math.tan(Math.PI / 8);
+
+/**
+ * BEFORE: the column as first decided — the reader's tips, every fold end from
+ * level 2 up resting on +1. That height was opened on Jev's suggestion and kept; it
+ * is not what the box does. Kept for `artifacts/twist-1x1-planes`.
+ */
+export const TWIST_1X1_BEFORE: LevelDecision[] = READER_TIPS.map((tip, i) => ({
   tip,
   out: i === 0 ? -1 : 1,
   in: 1,
 }));
 
 /**
- * The 1×1 column on the BOX's planes, with the reader's tips.
- *
- * What the 1×1 box does at every level above the first, read off its built ribbons:
- * each arm starts on +1, rests on −1, and ENDS on −1; at a crossing the arm on top
- * is on +1 and the one underneath on −1; and the next level's arms start on +1 (see
- * `boxPlacements`). A storey is two thicknesses, so a level's arms sit on its −1 and
- * +1 and the level above rests exactly on them.
- *
- * So every fold end ends on −1 and every next arm starts on +1 — except the ends of
- * level 2, which the twist (not the box) needs on 0: turned, they land right over
- * the corner where a level-1 arm of the other lace leaves its slant (see the head of
- * this file). Level 1 is the box from `box + strand`, unchanged.
+ * The box's planes, the reader's tips. What the 1×1 box does at every level above
+ * the first, read off its built ribbons: each arm starts on +1, rests on −1 and ENDS
+ * on −1; at a crossing the arm on top is on +1 and the one underneath on −1; the next
+ * level's arms start on +1 (`boxPlacements`). So every fold end ends on −1 and every
+ * next arm starts on +1 — except level 2's ends, which the twist (not the box) needs
+ * on 0: turned, they land over the corner where a level-1 arm of the other lace
+ * leaves its slant (see the head of this file). Level 1 is `box + strand`, unchanged.
  */
-export const TWIST_1X1_DECIDED: LevelDecision[] = DECIDED_TIPS.map((tip, i) => ({
+export const TWIST_1X1_BOX_PLANES: LevelDecision[] = READER_TIPS.map((tip, i) => ({
   tip,
   out: i === 1 ? TWIST_LEVEL2_END : -1,
   in: 1,
 }));
 
-const DECIDED_LEVELS = [2, 3, 4, 5, 10];
-export const decidedKey = (hand: Hand, levels: number): string => `twist-decided-${hand}-1x1-l${levels}`;
+/**
+ * THE 1×1 TWIST: the box's planes, and every level turned 45°.
+ *
+ * Measured on the built meshes (triangles of two ribbons cutting through each other,
+ * and how far the shallower side pokes through), the reader's tips of 60–65 px leave
+ * the fold-end crossings of every level 8–10 px inside each other, which the box does
+ * not: with those tips 56 clusters are deeper than 8 px against 5 in the box. The
+ * depth falls steadily as the tips grow and is gone from 66 px, where there are none
+ * deeper than 8 px (the deepest, 7.7 px at 67.6, is shallower than the box's 9.9). A
+ * level isolated from above then reads as straight and uncreased as the box's. 67.6
+ * is the tip that turns each level exactly 45°, the turn measured on the 1×1.
+ */
+export const TWIST_1X1_FIXED: LevelDecision[] = Array.from({ length: 9 }, (_, i) => ({
+  tip: TIP_45,
+  out: i === 1 ? TWIST_LEVEL2_END : -1,
+  in: 1,
+}));
 
-export const TWIST_DECIDED_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
+const TWIST_LEVELS = [2, 3, 4, 5, 10];
+export const twist1x1Key = (hand: Hand, levels: number): string => `twist-1x1-${hand}-l${levels}`;
+
+export const TWIST_1X1_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
   (['rh', 'lh'] as Hand[]).flatMap((hand) =>
-    DECIDED_LEVELS.map((levels) => [
-      decidedKey(hand, levels),
+    TWIST_LEVELS.map((levels) => [
+      twist1x1Key(hand, levels),
       () =>
         twistColumnDecided(
           levels,
-          TWIST_1X1_DECIDED,
-          `Twist 1×1 ${hand.toUpperCase()}, decided level by level — ${levels} levels`,
+          TWIST_1X1_FIXED,
+          `Twist 1×1 ${hand.toUpperCase()} on the box's planes, 45° a level — ${levels} levels`,
           hand,
         ),
     ]),
   ),
 );
 
-export const TWIST_DECIDED_LABELS: Array<{ key: string; label: string; group: string }> = (['rh', 'lh'] as Hand[]).flatMap((hand) =>
-  DECIDED_LEVELS.map((levels) => ({
-    key: decidedKey(hand, levels),
-    label: `${hand === 'rh' ? 'Right hand' : 'Left hand'} · twist 1×1 decided level by level — ${levels} levels`,
-    group: 'Twist 1×1 — decided level by level',
+export const TWIST_1X1_LABELS: Array<{ key: string; label: string; group: string }> = (['rh', 'lh'] as Hand[]).flatMap((hand) =>
+  TWIST_LEVELS.map((levels) => ({
+    key: twist1x1Key(hand, levels),
+    label: `${hand === 'rh' ? 'Right hand' : 'Left hand'} · twist 1×1 on the box's planes — ${levels} levels`,
+    group: 'Twist 1×1 — on the box\'s planes, 45° a level',
   })),
 );

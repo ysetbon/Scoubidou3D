@@ -1,5 +1,5 @@
 import { StrandScene } from '../../src/scene/StrandScene';
-import { twistColumnDecided, TWIST_1X1_DECIDED } from '../../src/model/twistplaced';
+import { twistColumnDecided, TWIST_1X1_FIXED } from '../../src/model/twistplaced';
 import { twistColumnTurnsPlaced, twistColumnPlaced } from '../../src/model/twistplaced';
 import { boxStitchMN } from '../../src/model/boxmn';
 import RING from '../twist-1x1-ways/engine-ring.json';
@@ -92,7 +92,7 @@ H.own = function (sc, levels) {
   return per;
 };
 
-H.decided = function (levels, hand = 'rh') { const sc = twistColumnDecided(levels, TWIST_1X1_DECIDED, 'd', hand); H.show(sc); return sc; };
+H.decided = function (levels, hand = 'rh') { const sc = twistColumnDecided(levels, TWIST_1X1_FIXED, 'd', hand); H.show(sc); return sc; };
 H.heights = function (sc) {
   const out = [];
   sc.strands.forEach((s, i) => {

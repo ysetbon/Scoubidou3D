@@ -141,7 +141,8 @@
   .big { font-family: var(--mono); font-size: 13px; margin: 0; line-height: 1.7; }
   .note { min-height: 70px; }
   .jump { display: flex; flex-wrap: wrap; gap: 6px; }
-  .tri { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .tri { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  @media (min-width: 1500px) { .tri { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
   .tri .side h3 { margin: 0 0 6px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
   .tri .side h3 b { color: var(--ink); }
   .tri .stage { height: min(52vh, 520px); min-height: 260px; }
@@ -153,12 +154,12 @@
 <div class="wrap">
   <div>
     <span class="eyebrow">Scoubidou3D · twist stitch · 1×1 · before and after</span>
-    <h1>The twist on the box's planes.</h1>
-    <p class="lede">Left, the 1×1 <b>box</b> as the studio places it: from level 2 up every arm starts on +1, rests on −1 and <b>ends on −1</b>,
-    the arm on top at a crossing is on +1 and the one underneath on −1, and the next level's arms start on +1. Middle, the twist <b>before</b>:
-    your tips, but every fold end resting on +1, a height that came from Jev's suggestion and is not the box's. Right, the twist <b>after</b>:
-    the same tips on the box's planes, with one change the twist needs and the box does not (level 2's ends on 0). The three cameras are linked.
-    The table reads every plane off the built ribbons, in rungs of half a thickness.</p>
+    <h1>The twist on the box's planes, in three steps.</h1>
+    <p class="lede">The 1×1 <b>box</b> is the reference: from level 2 up every arm starts on +1, rests on −1 and <b>ends on −1</b>, the arm on top at a crossing is on +1 and the
+    one underneath on −1, and the next level's arms start on +1. <b>Before</b>: your tips with every fold end on +1, a height that came from Jev's suggestion and is not
+    the box's. <b>Box planes</b>: the same tips with the box's heights (level 2's ends on 0, which only the twist needs). <b>Fixed</b>: the box's heights and every level turned
+    45° (tip 67.6 px): the tips that leave no ribbon passing through another where yours still did. The four cameras are linked. The first table reads every plane off the ribbons in rungs
+    of half a thickness; the second counts where the built ribbons' surfaces actually cut through each other.</p>
   </div>
 
   <div class="tri" id="panels"></div>
@@ -182,8 +183,8 @@
   <div class="section">
     <h2>The planes, level by level, read off the ribbons</h2>
     <div class="tablewrap"><table>
-      <thead><tr><th rowspan="2">Level</th><th colspan="3">Arms: start → end (rungs)</th><th colspan="3">Crossing: top / underneath (rungs)</th><th colspan="3">Fold end vs the arm it crosses: height · plan</th></tr>
-      <tr><th>Box</th><th>Before</th><th>After</th><th>Box</th><th>Before</th><th>After</th><th>Box</th><th>Before</th><th>After</th></tr></thead>
+      <thead><tr><th rowspan="2">Level</th><th colspan="4">Arms: start → end (rungs)</th><th colspan="4">Crossing: top / underneath (rungs)</th><th colspan="4">Fold end vs the arm it crosses: height · plan</th></tr>
+      <tr><th>Box</th><th>Before</th><th>Box planes</th><th>Fixed</th><th>Box</th><th>Before</th><th>Box planes</th><th>Fixed</th><th>Box</th><th>Before</th><th>Box planes</th><th>Fixed</th></tr></thead>
       <tbody id="rows"></tbody>
     </table></div>
     <p class="help">A rung is half a ribbon thickness, 13 px; level L's plane is the middle of its storey, 52 px above the one below. Red: differs from the
@@ -193,12 +194,24 @@
   </div>
 
   <div class="section">
+    <h2>Ribbons cutting through each other, on the built meshes</h2>
+    <div class="bar"><button type="button" class="btn primary" id="measure">Measure the ten-level columns</button><span id="measuring"></span></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Column</th><th>Places deeper than 6 px</th><th>Deeper than 8 px</th><th>Deepest</th></tr></thead>
+      <tbody id="deep"></tbody>
+    </table></div>
+    <p class="help">Every triangle of every ribbon is tested against the others'. Where two cut through each other, the depth is how far the shallower side pokes through the other's
+    plane, in px (a ribbon is 26 px thick). Triangles of one lace near each other along it are not compared, and neither are two laces' two arms resting on each other without crossing
+    through. The box has some of these where ribbons rest on each other at a crossing, so it is the reference, not zero. It takes about half a minute.</p>
+  </div>
+
+  <div class="section">
     <h2>What was changed</h2>
     <div class="tablewrap"><table class="rule"><tbody>
-      <tr><td>Before</td><td>Fold ends of levels 2–9 rest on <b>+1</b>. The box ends them on −1.</td></tr>
-      <tr><td>After</td><td>Fold ends rest on <b>−1</b>, as in the box; the next level's arms start on +1, as in the box; crossings ±1 as in the box.</td></tr>
-      <tr><td>The one twist change</td><td>Level 2's ends rest on <b>0</b>. Turned, they land over the corner where a level-1 arm of the other lace leaves its slant; on −1 they graze it (6 px on the centreline test), on 0 they clear it.</td></tr>
-      <tr><td>Unchanged</td><td>Every tip and turn (61.5, 60.5, 60, 60.5, 60.5, 60.5, 60.5, 65, 62 px) and level 1 (the box from box + strand). Level 1's four fold ends still come within 5–6 px of a level-2 arm; that is the box's own level 1.</td></tr>
+      <tr><td>Before</td><td>Your tips (61.5, 60.5, 60, 60.5, 60.5, 60.5, 60.5, 65, 62 px). Fold ends of levels 2–9 rest on <b>+1</b>; the box ends them on −1.</td></tr>
+      <tr><td>Box planes</td><td>Same tips. Fold ends rest on <b>−1</b>, as in the box; the next level's arms start on +1; crossings ±1. Level 2's ends rest on <b>0</b>: turned, they land over the corner where a level-1 arm of the other lace leaves its slant; on −1 they graze it (6 px on the centreline test), on 0 they clear it.</td></tr>
+      <tr><td>Fixed</td><td>Box planes, and every tip <b>67.6 px</b>: every level turned exactly 45°, the turn measured on the 1×1. Swept from 44 to 78 px with the box's planes, the places deeper than 8 px fall from 164 at 44 px, to 56 at 60 and to 1 at 66–69, and stay there; at 67.6 there are none and the deepest is shallower than the box's. A level isolated from above is then as straight and uncreased as the box's.</td></tr>
+      <tr><td>Unchanged</td><td>Level 1 (the box from box + strand). Its four fold ends still come within 5–6 px of a level-2 arm on the centreline test; that is the box's own level 1.</td></tr>
     </tbody></table></div>
   </div>
 </div>

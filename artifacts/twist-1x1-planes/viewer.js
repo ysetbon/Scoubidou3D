@@ -8,7 +8,8 @@
 // thickness, so the three columns can be laid next to each other level by level.
 import { StrandScene } from '../../src/scene/StrandScene';
 import { boxStitchMN } from '../../src/model/boxmn';
-import { TWIST_1X1_DECIDED, TWIST_1X1_DECIDED_BEFORE, twistColumnDecided } from '../../src/model/twistplaced';
+import { TWIST_1X1_BEFORE, TWIST_1X1_BOX_PLANES, TWIST_1X1_FIXED, twistColumnDecided } from '../../src/model/twistplaced';
+import { meshHits } from '../lib/ribbon-check.js';
 
 const RUNG = 0.5;
 const SCALE = 0.02;
@@ -23,14 +24,15 @@ const levelOf = (id) => (layer(id) < 4 ? 1 : Math.floor((layer(id) - 2) / 2) + 1
 const lace = (id) => id.split('_')[0];
 const armsOf = (L) => (L === 1 ? [2, 3] : [2 * L, 2 * L + 1]);
 
+const twist = (dec, tag) => () => twistColumnDecided(state.levels, dec, `Twist ${tag} ${state.hand.toUpperCase()}`, state.hand);
 const PANELS = [
   { key: 'box', name: 'Box 1×1', tag: 'the reference', note: 'boxStitchMN, placed: ends on −1.',
     build: () => boxStitchMN(1, 1, `Box 1×1 ${state.hand.toUpperCase()}`, state.hand, state.levels - 1, true, 'hand') },
-  { key: 'before', name: 'Twist, before', tag: 'ends on +1', note: 'Your tips; fold ends of levels 2–9 on +1.',
-    build: () => twistColumnDecided(state.levels, TWIST_1X1_DECIDED_BEFORE, `Twist before ${state.hand.toUpperCase()}`, state.hand) },
-  { key: 'after', name: 'Twist, after', tag: 'box planes', note: 'Your tips; ends on −1 as the box, level 2 on 0.',
-    build: () => twistColumnDecided(state.levels, TWIST_1X1_DECIDED, `Twist after ${state.hand.toUpperCase()}`, state.hand) },
+  { key: 'before', name: 'Twist, before', tag: 'ends on +1', note: 'Your tips; fold ends of levels 2–9 on +1.', build: twist(TWIST_1X1_BEFORE, 'before') },
+  { key: 'planes', name: 'Twist, box planes', tag: 'your tips', note: 'Your tips; ends on −1 as the box, level 2 on 0.', build: twist(TWIST_1X1_BOX_PLANES, 'box planes') },
+  { key: 'fixed', name: 'Twist, fixed', tag: '45° a level', note: 'Box planes; every tip 67.6 px, every level turned 45°.', build: twist(TWIST_1X1_FIXED, 'fixed') },
 ];
+const KEYS = PANELS.map((p) => p.key);
 
 const host = $('panels');
 for (const p of PANELS) {
@@ -116,7 +118,7 @@ function render() {
   const m = Object.fromEntries(PANELS.map((p) => [p.key, measure(p)]));
   const body = $('rows');
   body.textContent = '';
-  let differs = { before: 0, after: 0 };
+  const differs = Object.fromEntries(KEYS.map((k) => [k, 0]));
   for (let i = 0; i < state.levels; i++) {
     const tr = document.createElement('tr');
     const ref = m.box[i];
@@ -127,15 +129,15 @@ function render() {
     const fold = (x) => (Number.isFinite(x.dz) ? `${x.dz.toFixed(0)} px · ${x.edge >= 0 ? '+' : '−'}${Math.abs(x.edge).toFixed(0)} px` : '—');
     const bad = (x) => Math.abs(x.start - ref.start) > 0.5 || Math.abs(x.end - ref.end) > 0.5 || (ref.top !== null && x.top !== null && (Math.abs(x.top - ref.top) > 0.5 || Math.abs(x.under - ref.under) > 0.5));
     const badFold = (x) => Number.isFinite(x.dz) && Number.isFinite(ref.dz) && x.dz < ref.dz - 9;
-    const row = { box: m.box[i], before: m.before[i], after: m.after[i] };
-    for (const k of ['box', 'before', 'after']) cell(arms(row[k]) + (k === 'after' && i === 1 ? ' (ends on 0)' : ''), k !== 'box' && i > 0 && !(k === 'after' && i === 1) && bad(row[k]));
-    for (const k of ['box', 'before', 'after']) cell(cross(row[k]), false);
-    for (const k of ['box', 'before', 'after']) cell(fold(row[k]), k !== 'box' && badFold(row[k]));
-    for (const k of ['before', 'after']) if (i > 0 && !(k === 'after' && i === 1 && !badFold(row[k]) ) && (bad(row[k]) || badFold(row[k]))) differs[k]++;
+    const lvl2 = (k) => k !== 'before' && k !== 'box' && i === 1; // level 2's ends sit on 0 on purpose
+    for (const k of KEYS) cell(arms(m[k][i]) + (lvl2(k) ? ' (ends on 0)' : ''), k !== 'box' && i > 0 && !lvl2(k) && bad(m[k][i]));
+    for (const k of KEYS) cell(cross(m[k][i]), false);
+    for (const k of KEYS) cell(fold(m[k][i]) + (lvl2(k) ? ' (ends on 0)' : ''), k !== 'box' && !lvl2(k) && badFold(m[k][i]));
+    for (const k of KEYS) if (k !== 'box' && i > 0 && !lvl2(k) && (bad(m[k][i]) || badFold(m[k][i]))) differs[k]++;
     body.appendChild(tr);
   }
-  $('verdict').textContent = `Against the box, levels 2–${state.levels}: the twist before differs on ${differs.before}, the twist after on ${differs.after}${differs.after === 0 ? ' (level 2 sits on 0 on purpose)' : ''}.`;
-  $('verdict').className = differs.after === 0 ? 'ok' : 'off';
+  $('verdict').textContent = `Plane differences from the box, levels 2–${state.levels}: before ${differs.before}, box planes ${differs.planes}, fixed ${differs.fixed} (level 2 sits on 0 on purpose).`;
+  $('verdict').className = differs.fixed === 0 ? 'ok' : 'off';
   buttons();
 }
 
@@ -234,5 +236,32 @@ paintTheme();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', paintTheme);
 new MutationObserver(paintTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
-window.__pl = { state, render }; // test hook
+async function measureDeep() {
+  const host = $('deep');
+  host.textContent = '';
+  $('measure').disabled = true;
+  const prevLevels = state.levels;
+  if (state.levels !== MAXL) { state.levels = MAXL; render(); }
+  for (const p of PANELS) {
+    $('measuring').textContent = ` measuring ${p.name}…`;
+    await new Promise((r) => setTimeout(r, 30));
+    const ids = p.scene.strands.map((s) => s.id);
+    const hits = meshHits(p.view, ids, { skip: 1500 });
+    const real = hits.clusters.filter((c) => c.laces[0] !== c.laces[1]);
+    const n6 = real.filter((c) => c.depth > 6).length;
+    const n8 = real.filter((c) => c.depth > 8).length;
+    const max = Math.max(0, ...real.map((c) => c.depth));
+    const tr = document.createElement('tr');
+    for (const [t, cls] of [[p.name, ''], [String(n6), ''], [String(n8), p.key === 'box' ? '' : n8 > 5 ? 'off' : 'ok'], [`${max.toFixed(1)} px`, '']]) {
+      const e = document.createElement('td'); e.textContent = t; if (cls) e.className = cls; tr.appendChild(e);
+    }
+    host.appendChild(tr);
+  }
+  $('measuring').textContent = ' done';
+  $('measure').disabled = false;
+  if (prevLevels !== MAXL) { state.levels = prevLevels; render(); }
+}
+$('measure').addEventListener('click', measureDeep);
+
+window.__pl = { state, render, measureDeep }; // test hook
 render();
