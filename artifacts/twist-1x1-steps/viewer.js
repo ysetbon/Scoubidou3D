@@ -157,7 +157,8 @@ function coordinates(sc) {
   const out = [];
   for (const s of sc.strands) {
     if (levelOf(s.id) > state.step + 1) continue;
-    const line = view.getStrandCentrelineWorld(s.id);
+    // the woven line, built for hidden strands too — a level hidden on screen still has its heights
+    const line = view.wovenLines?.[sc.strands.indexOf(s)] ?? view.getStrandCentrelineWorld(s.id);
     const z = (q) => +(q.z / SCALE).toFixed(1);
     out.push({
       id: s.id,

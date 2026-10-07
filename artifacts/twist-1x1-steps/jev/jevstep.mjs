@@ -35,8 +35,14 @@ for (const tip of tips) {
     new_strands: r.coordinates.filter(c => !c.locked).map(({ id, level, start, end, z }) => ({ id, level, start, end, z })) };
 }
 const notes = prior.locked.filter(k => k.note).map(k => ({ level: k.level, note: k.note }));
+// What the reader actually chose at each level, against what was suggested to them. Their
+// choice is the ground truth: a suggestion they overrode is a suggestion that was wrong.
+const sugg = JSON.parse(fs.readFileSync(new URL('../suggest.json', import.meta.url), 'utf8'));
+const history = prior.locked.map(k => ({ level: k.level, reader_chose: { tip_px: k.tipPx, fold_ends_on: k.foldEndsOn, next_arms_start_on: k.nextArmsStartOn },
+  was_suggested: sugg.levels?.[String(k.level)]?.params ?? null }));
 const base = { stitch: '1x1 twist, two laces (sets 1 and 2), each level is 4 arms in a # at a 56 px gap, ribbon 46 px wide and 26 px thick; levels stack one storey (52 px) apart',
-  deciding_level: step, levels_below_coordinates: below, reader_notes: notes };
+  deciding_level: step, levels_below_coordinates: below, reader_notes: notes, reader_choices_so_far: history,
+  rule: 'The reader is the judge. Where the reader overrode a suggestion, continue THEIR choices, not the suggestion.' };
 const r1 = ask({ state: { ...base, candidates: cands }, question: `Which fold-tip reach for level ${step}? (it sets the turn into level ${step + 1})`,
   goal: 'Pick the candidate whose new strands continue the column below as a real twist: the arms of the new level should sit on the level below the way the earlier levels sit on theirs, no ribbon passing through another, every crossing woven with the right lace on top. Use the coordinates, not only the readings, and respect the reader notes.',
   choices: Object.fromEntries(Object.entries(cands).map(([k, v]) => [k, `tip ${k} px, turn ${v.turn_into_next_deg} deg; readings: ${JSON.stringify(v.readings)}`])) });
