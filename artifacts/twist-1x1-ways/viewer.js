@@ -29,6 +29,7 @@ const ENGINE_TURNS = [72.9, ...Array(MAXL - 2).fill(60.6)];
 const PRESETS = {
   current: { label: 'Current build', turns: Array(MAXL - 1).fill(DEFAULT) },
   engine: { label: 'Engine turns', turns: ENGINE_TURNS },
+  jev: { label: 'Jev, level by level', turns: [56.6, 56.6, 56.6, 56.6, 56.6, 56.6, 54.82, 54.82, 54.82] },
   clear: { label: 'Tips just clear', turns: Array(MAXL - 1).fill(+turnFor(EDGE + 1).toFixed(2)) },
 };
 

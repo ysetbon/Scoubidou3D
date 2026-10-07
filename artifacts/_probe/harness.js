@@ -1,5 +1,5 @@
 import { StrandScene } from '../../src/scene/StrandScene';
-import { twistColumnPlaced } from '../../src/model/twistplaced';
+import { twistColumnTurnsPlaced, twistColumnPlaced } from '../../src/model/twistplaced';
 import { boxStitchMN } from '../../src/model/boxmn';
 import RING from '../twist-1x1-ways/engine-ring.json';
 import { ringColumn } from '../../src/model/ringcolumn';
@@ -72,4 +72,21 @@ H.readLevels = function (sc, levels) {
     rows.push({ L, n, right, worst: +worst.toFixed(2), folds, edge: +edge.toFixed(1), height: +height.toFixed(1) });
   }
   return rows;
+};
+
+H.turnsScene = function (levels, deg, hand = 'rh') {
+  const sc = twistColumnTurnsPlaced(1, 1, levels, deg.map((d) => (d * Math.PI) / 180), 't', hand, true);
+  H.show(sc); return sc;
+};
+H.own = function (sc, levels) {
+  const L = {}; for (const s of sc.strands) L[s.id] = H.view.getStrandCentrelineWorld(s.id);
+  const ids = sc.strands.map((s) => s.id); const parent = Object.fromEntries(sc.strands.map((s) => [s.id, s.parentId]));
+  const per = {}; for (let l = 1; l <= levels; l++) per[l] = 0;
+  for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+    const a = ids[i], b = ids[j]; if (parent[a] === b || parent[b] === a) continue;
+    const la = levelOf(a), lb = levelOf(b); if (la === 1 && lb === 1) continue;
+    let w = 0; for (const P of L[a]) for (const Q of L[b]) { const dxy = Math.hypot(P.x - Q.x, P.y - Q.y) / SCALE, dz = Math.abs(P.z - Q.z) / SCALE; if (dxy < 23 && dz < 20) w = Math.max(w, Math.min(23 - dxy, 20 - dz)); }
+    if (w > 3) per[Math.max(la, lb)] = Math.max(per[Math.max(la, lb)], Math.round(w));
+  }
+  return per;
 };
