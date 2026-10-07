@@ -32,6 +32,7 @@ own light or dark theme, so both are designed rather than one inverted.
 | [`box-2x1-level1-editor`](box-2x1-level1-editor/), [`…level2…`](box-2x1-level2-editor/), [`…level3…`](box-2x1-level3-editor/) | The same level editor on the 2×1: every strand's rest, every crossing's rungs, who is on top, and (levels 2 and up) the folds. Level 1 is editable too, slants included. The shared editor takes a face: `startEditor(level, { m, n })`. |
 | [`box-placed-check`](box-placed-check/) | The 1×1 box at 1, 2, 3, 10 and 15 levels and a 2×1, both hands, as the family builds them beside the same boxes placed by the rules learned from `box + strand` and the hand-placed levels 2 and 3 (`boxStitchMN(..., placed, 'hand')`). **Live**; ledgers read back off the built ribbons. |
 | [`box-fold-fix`](box-fold-fix/) | Where a box level turns back into the one above it and touches its neighbouring arm, and three candidate fixes (fold stops pushed out two amounts, tips lifted) — with a camera that goes straight to a fold end. **Live**; `boxStitchMN`'s `stop` argument. |
+| [`twist-1x1-ways`](twist-1x1-ways/) | The 1×1 twist built three ways — the current column (50.03°, tips 60 px out), the MXN engine's turns (72.9° then 60.6°, tips 38/48 px) and the steepest turn whose fold ends clear the arm they cross — plus the engine's rings drawn as they are, with each level's fold clearance read off the ribbons and a Copy button for the turns and tips. **Live**. |
 
 ---
 
