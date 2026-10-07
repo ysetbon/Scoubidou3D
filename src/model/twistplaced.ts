@@ -277,22 +277,40 @@ export function twistColumnDecided(
   return { ...rest, planeEnds };
 }
 
+/** The tips the reader settled on, level by level (levels 1–9), in px. */
+const DECIDED_TIPS = [61.5, 60.5, 60, 60.5, 60.5, 60.5, 60.5, 65, 62];
+
 /**
- * The 1×1 column as it was decided, nine levels' worth. Levels 1–8 were locked on
- * the page; level 9 was the one on screen when the reader sent them (tip 62), and
- * is taken as their choice. Level 1's fold ends keep the box rule's −1.
+ * BEFORE: the column as first decided, with every fold end from level 2 up resting
+ * on +1. That height was opened on Jev's suggestion and kept; it is not what the
+ * box does. Kept so the before/after page (`artifacts/twist-1x1-planes`) can show
+ * the two side by side.
  */
-export const TWIST_1X1_DECIDED: LevelDecision[] = [
-  { tip: 61.5, out: -1, in: 1 },
-  { tip: 60.5, out: 1, in: 1 },
-  { tip: 60, out: 1, in: 1 },
-  { tip: 60.5, out: 1, in: 1 },
-  { tip: 60.5, out: 1, in: 1 },
-  { tip: 60.5, out: 1, in: 1 },
-  { tip: 60.5, out: 1, in: 1 },
-  { tip: 65, out: 1, in: 1 },
-  { tip: 62, out: 1, in: 1 },
-];
+export const TWIST_1X1_DECIDED_BEFORE: LevelDecision[] = DECIDED_TIPS.map((tip, i) => ({
+  tip,
+  out: i === 0 ? -1 : 1,
+  in: 1,
+}));
+
+/**
+ * The 1×1 column on the BOX's planes, with the reader's tips.
+ *
+ * What the 1×1 box does at every level above the first, read off its built ribbons:
+ * each arm starts on +1, rests on −1, and ENDS on −1; at a crossing the arm on top
+ * is on +1 and the one underneath on −1; and the next level's arms start on +1 (see
+ * `boxPlacements`). A storey is two thicknesses, so a level's arms sit on its −1 and
+ * +1 and the level above rests exactly on them.
+ *
+ * So every fold end ends on −1 and every next arm starts on +1 — except the ends of
+ * level 2, which the twist (not the box) needs on 0: turned, they land right over
+ * the corner where a level-1 arm of the other lace leaves its slant (see the head of
+ * this file). Level 1 is the box from `box + strand`, unchanged.
+ */
+export const TWIST_1X1_DECIDED: LevelDecision[] = DECIDED_TIPS.map((tip, i) => ({
+  tip,
+  out: i === 1 ? TWIST_LEVEL2_END : -1,
+  in: 1,
+}));
 
 const DECIDED_LEVELS = [2, 3, 4, 5, 10];
 export const decidedKey = (hand: Hand, levels: number): string => `twist-decided-${hand}-1x1-l${levels}`;

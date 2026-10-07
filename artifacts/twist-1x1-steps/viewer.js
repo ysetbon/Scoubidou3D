@@ -26,7 +26,7 @@ const lace = (id) => id.split('_')[0];
 /** The arms of level L — the strands whose ends are its folds. */
 const armsOf = (L) => (L === 1 ? [2, 3] : [2 * L, 2 * L + 1]);
 
-const fresh = (step) => ({ tip: 52, out: step === 2 ? 0 : -1, in: 1, note: '' });
+const fresh = (step) => ({ tip: 52, out: step === 2 ? 0 : -1, in: 1, note: '' }); // the box's planes: ends on -1, the next arms on +1, level 2's ends on 0
 const state = { hand: 'rh', step: 1, only: true, locks: Array(STEPS).fill(null), cur: fresh(1), fold: -1 };
 try {
   const saved = JSON.parse(localStorage.getItem(STORE) ?? 'null');

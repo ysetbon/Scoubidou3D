@@ -1,4 +1,4 @@
-<title>Twist 1×1 Column</title>
+<title>Twist 1×1 Planes</title>
 
 <style>
   /* Layout: the model on the left, kept in view; the controls, the rule and the read-back
@@ -141,82 +141,65 @@
   .big { font-family: var(--mono); font-size: 13px; margin: 0; line-height: 1.7; }
   .note { min-height: 70px; }
   .jump { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tri { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .tri .side h3 { margin: 0 0 6px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
+  .tri .side h3 b { color: var(--ink); }
+  .tri .stage { height: min(52vh, 520px); min-height: 260px; }
+  .tri .side p { margin: 6px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+  .wide { max-width: 1240px; }
+  td.cell { white-space: nowrap; }
+  @media (max-width: 960px) { .tri { grid-template-columns: minmax(0, 1fr); } }
 </style>
 <div class="wrap">
   <div>
-    <span class="eyebrow">Scoubidou3D · twist stitch · 1×1 · levels 1–10</span>
-    <h1>The 1×1 twist column, as decided.</h1>
-    <p class="lede">Ten levels, every one set level by level with you: how far out its folds sit (which turns the next level 46.6° to 50.0°),
-    on the box's planes: fold ends on −1, the next level's arms on +1, crossings ±1, and level 2's ends on 0 (the one thing the twist needs that the box does not). Step with the arrow keys or press <b>Build up</b>, pick a level in the
-    table to look at its folds, show one lace on its own to follow it up the column, and press <b>Copy</b> for every number and coordinate.</p>
+    <span class="eyebrow">Scoubidou3D · twist stitch · 1×1 · before and after</span>
+    <h1>The twist on the box's planes.</h1>
+    <p class="lede">Left, the 1×1 <b>box</b> as the studio places it: from level 2 up every arm starts on +1, rests on −1 and <b>ends on −1</b>,
+    the arm on top at a crossing is on +1 and the one underneath on −1, and the next level's arms start on +1. Middle, the twist <b>before</b>:
+    your tips, but every fold end resting on +1, a height that came from Jev's suggestion and is not the box's. Right, the twist <b>after</b>:
+    the same tips on the box's planes, with one change the twist needs and the box does not (level 2's ends on 0). The three cameras are linked.
+    The table reads every plane off the built ribbons, in rungs of half a thickness.</p>
   </div>
 
-  <div class="grid">
-    <div class="stagecol">
-      <div class="stage"><canvas id="c"></canvas><div id="loading">building the twist…</div></div>
-      <div class="bar">
-        <div class="seg">
-          <button type="button" id="v-fit">Whole</button>
-          <button type="button" id="v-side">Side</button>
-          <button type="button" id="v-plan">Plan</button>
-        </div>
-        <div class="seg" id="folds"></div>
-      </div>
-      <p id="verdict"></p>
+  <div class="tri" id="panels"></div>
+
+  <div class="bar">
+    <div class="seg">
+      <button type="button" id="v-fit">Whole</button>
+      <button type="button" id="v-side">Side</button>
+      <button type="button" id="v-plan">Plan</button>
     </div>
+    <div class="seg" id="foldcam"></div>
+    <div class="grp"><span>Focus level (for the fold cameras)</span><div class="seg" id="focus"></div></div>
+    <div class="grp"><span>Levels</span><div class="seg" id="levels"></div></div>
+    <div class="grp"><span>Hand</span><div class="seg">
+      <button type="button" data-hand="rh">RH · ccw</button>
+      <button type="button" data-hand="lh">LH · cw</button></div></div>
+    <button type="button" class="btn" id="link" aria-pressed="true">Cameras linked</button>
+  </div>
+  <p id="verdict"></p>
 
-    <div class="controls">
-      <div class="bar">
-        <div class="grp"><span>Step</span><div class="seg">
-          <button type="button" id="prev" aria-label="One level down">←</button>
-          <button type="button" id="next" aria-label="One level up">→</button>
-          <button type="button" id="play" aria-pressed="false">Build up</button></div></div>
-        <div class="grp"><span>Levels</span><div class="seg" id="levels"></div></div>
-      </div>
-      <div class="bar">
-        <div class="grp"><span>Hand</span><div class="seg">
-          <button type="button" data-hand="rh">RH · ccw</button>
-          <button type="button" data-hand="lh">LH · cw</button></div></div>
-        <div class="grp"><span>Lace</span><div class="seg">
-          <button type="button" data-lace="both">Both</button>
-          <button type="button" data-lace="1">Orange</button>
-          <button type="button" data-lace="2">Blue</button></div></div>
-        <div class="grp"><span>Show</span><div class="seg">
-          <button type="button" data-only="false">Every level</button>
-          <button type="button" data-only="true">Focused level only</button></div></div>
-      </div>
+  <div class="section">
+    <h2>The planes, level by level, read off the ribbons</h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th rowspan="2">Level</th><th colspan="3">Arms: start → end (rungs)</th><th colspan="3">Crossing: top / underneath (rungs)</th><th colspan="3">Fold end vs the arm it crosses: height · plan</th></tr>
+      <tr><th>Box</th><th>Before</th><th>After</th><th>Box</th><th>Before</th><th>After</th><th>Box</th><th>Before</th><th>After</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+    <p class="help">A rung is half a ribbon thickness, 13 px; level L's plane is the middle of its storey, 52 px above the one below. Red: differs from the
+    box by more than half a rung. The fold end's height gap is measured from the end of a level's arm to the nearest other-lace arm of the same level: 26 px is one full
+    thickness, the ribbons resting on each other; less means the fold end sits inside that arm's thickness. Plan is how far the fold end is from that arm's edge
+    (negative: inside it). Level 10 is the top: its ends are loose.</p>
+  </div>
 
-      <div class="section">
-        <h2>Every level, as decided</h2>
-        <div class="tablewrap"><table>
-          <thead><tr><th>Level</th><th>Fold tip</th><th>Turn into next</th><th>Ends / next starts</th><th>Crossings</th><th>Fold end clear of the arm it crosses</th></tr></thead>
-          <tbody id="rows"></tbody>
-        </table></div>
-        <p class="help">Tip: how far from the centre a level's folds sit, px. The turn into the next level follows from it (the landing law at the 56 px gap:
-        turn = 2·atan(28 / tip)). Heights are rungs of half a ribbon thickness (13 px): −1 is half a thickness below the level's plane, +1 above.
-        Level 10 is the top: its ends are loose.</p>
-      </div>
-
-      <div class="section">
-        <h2 id="this-title">Level 10</h2>
-        <div class="tablewrap"><table class="rule"><tbody id="this-level"></tbody></table></div>
-      </div>
-
-      <div class="section">
-        <h2>The rest of the placement</h2>
-        <div class="tablewrap"><table class="rule"><tbody>
-          <tr><td>Level 1</td><td>The box from box + strand: vertical arms rest on −1, the slant underneath drops to −3,
-            an arm over a slant sits on 0, the arm underneath at an arm crossing sits on 0.</td></tr>
-          <tr><td>Every level above</td><td>Arms rest on −1. At each crossing the arm on top goes to +1 and the arm underneath to −1.</td></tr>
-          <tr><td>Known</td><td>Level 1's four fold ends come within 5–6 px (centreline test) of the level-2 arm beside them. They rest on −1 as the box rule says.</td></tr>
-        </tbody></table></div>
-      </div>
-
-      <div class="copybox">
-        <div class="bar"><button type="button" class="btn primary" id="copy">Copy everything</button><span id="copied"></span></div>
-        <textarea id="out" spellcheck="false" aria-label="The decisions and every strand's coordinates, as JSON"></textarea>
-      </div>
-    </div>
+  <div class="section">
+    <h2>What was changed</h2>
+    <div class="tablewrap"><table class="rule"><tbody>
+      <tr><td>Before</td><td>Fold ends of levels 2–9 rest on <b>+1</b>. The box ends them on −1.</td></tr>
+      <tr><td>After</td><td>Fold ends rest on <b>−1</b>, as in the box; the next level's arms start on +1, as in the box; crossings ±1 as in the box.</td></tr>
+      <tr><td>The one twist change</td><td>Level 2's ends rest on <b>0</b>. Turned, they land over the corner where a level-1 arm of the other lace leaves its slant; on −1 they graze it (6 px on the centreline test), on 0 they clear it.</td></tr>
+      <tr><td>Unchanged</td><td>Every tip and turn (61.5, 60.5, 60, 60.5, 60.5, 60.5, 60.5, 65, 62 px) and level 1 (the box from box + strand). Level 1's four fold ends still come within 5–6 px of a level-2 arm; that is the box's own level 1.</td></tr>
+    </tbody></table></div>
   </div>
 </div>
 

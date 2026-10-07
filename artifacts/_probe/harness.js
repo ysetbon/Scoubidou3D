@@ -1,4 +1,5 @@
 import { StrandScene } from '../../src/scene/StrandScene';
+import { twistColumnDecided, TWIST_1X1_DECIDED } from '../../src/model/twistplaced';
 import { twistColumnTurnsPlaced, twistColumnPlaced } from '../../src/model/twistplaced';
 import { boxStitchMN } from '../../src/model/boxmn';
 import RING from '../twist-1x1-ways/engine-ring.json';
@@ -90,3 +91,18 @@ H.own = function (sc, levels) {
   }
   return per;
 };
+
+H.decided = function (levels, hand = 'rh') { const sc = twistColumnDecided(levels, TWIST_1X1_DECIDED, 'd', hand); H.show(sc); return sc; };
+H.heights = function (sc) {
+  const out = [];
+  sc.strands.forEach((s, i) => {
+    const line = H.view.wovenLines[i]; if (!line) return;
+    const z = (q) => +(q.z / SCALE).toFixed(1);
+    const zs = line.map((q) => q.z / SCALE);
+    out.push({ id: s.id, level: levelOf(s.id), plane: sc.planes?.[s.id], ends: sc.planeEnds?.[s.id], start: z(line[0]), mid: z(line[Math.floor(line.length / 2)]), end: z(line[line.length - 1]), min: +Math.min(...zs).toFixed(1), max: +Math.max(...zs).toFixed(1) });
+  });
+  return out;
+};
+H.crossTable = function (sc) { return sc.crossPlanes ?? {}; };
+
+H.decidedWith = function (levels, dec, hand = 'rh') { const sc = twistColumnDecided(levels, dec, 'd', hand); H.show(sc); return sc; };
