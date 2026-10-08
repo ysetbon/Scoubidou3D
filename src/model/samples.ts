@@ -8,6 +8,7 @@ import { BOX_COLUMN_SAMPLES, BOX_LABELS, BOX_PLACED_LABELS, BOX_PLACED_SAMPLES, 
 import { PLACED_LABELS, PLACED_SAMPLES } from './placedScenes';
 import { SWIRL_LABELS, SWIRL_SAMPLES } from './swirl';
 import { TWOFAN_COLUMN_SAMPLES, TWOFAN_LABELS, TWOFAN_SAMPLES } from './twofan';
+import { TWIST_1X1_LABELS, TWIST_1X1_SAMPLES } from './twistplaced';
 
 const YELLOW: RGBA = { r: 245, g: 200, b: 55, a: 255 };
 const ORANGE: RGBA = { r: 226, g: 122, b: 38, a: 255 };
@@ -973,6 +974,7 @@ export const SAMPLES: Record<string, () => Scene3D> = {
   ...BOX_SAMPLES,
   ...BOX_COLUMN_SAMPLES,
   ...BOX_PLACED_SAMPLES,
+  ...TWIST_1X1_SAMPLES,
   ...PLACED_SAMPLES,
   'two-crossing': twoCrossing,
   'two-crossing-attached': twoCrossingAttached,
@@ -1027,7 +1029,10 @@ export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }>
   { key: 'curved-stack', label: 'Curved ribbon weave', group: 'Weaves' },
   // The 1xn reference's stitch, alongside the single-turn one rather than replacing
   // it: two fans, two angles. See docs/twist-stitch/attempts/1xn-reference/.
-  ...TWOFAN_LABELS,
+  // The 1×1 column is the one set level by level on the box's planes (twistplaced.ts), listed in
+  // the two-fan group in place of the two-fan 1×1 column it replaces.
+  ...TWOFAN_LABELS.filter((l) => !/^twofan-col-(lh|rh)-1x1-10$/.test(l.key)),
+  ...TWIST_1X1_LABELS,
   // The same starting stitch at k = 0, closed rather than twisted. Only the eight
   // square faces are named; the browser grid has all 64. See docs/box-stitch-mxn/.
   ...SWIRL_LABELS,

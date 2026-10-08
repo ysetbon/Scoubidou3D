@@ -1,0 +1,393 @@
+// The twist family PLACED the way the box family is: the same rules, by role.
+//
+// A two-fan twist column (twofan.ts) is built like a box column. Level 1 is the
+// same starting stitch — the `_1` slants buried in the block and the `_2` / `_3`
+// arms leaving it — and every level above is the arms carried on, `_4` / `_5`,
+// `_6` / `_7` and so on, with weft sets numbered first. What makes it a twist is
+// that each level is turned by the column's angle, so a level's arms cross the
+// level below at that angle rather than square; within one level they still cross
+// each other, and which one is on top is the twist's own weave (its masks and its
+// layer stack).
+//
+// `boxPlacements` says everything by role — the slant underneath, an arm over a
+// slant, the arm on top and the arm underneath at a crossing, the arm below and
+// the arm above at a fold — and finds the crossings from the geometry. So the
+// rules settled by hand on the box (level 1 as `box + strand`, every level above
+// on -1 with crossings ±1, each fold ending on -1 and starting on +1) apply to a
+// twist as they stand.
+//
+// With ONE exception, which is the twist's own. Turned, a level-2 arm's fold end
+// lands right over the corner where a level-1 arm of the other lace leaves its
+// slant — the box never puts a fold end there, because its levels stand straight
+// over each other. That corner sits high (the arm comes off the slant at about
+// +2, as in the `box + strand` box), so a level-2 end on -1 is only half a
+// thickness above it and the two ribbons graze (5–6 px of a 26 px ribbon, at all
+// four corners of a 1×1). Ending the level-2 arms on the middle, 0, instead clears
+// it; nothing else changes, and no other level's fold ends over a slant.
+
+import { boxPlacements, UpperPlan } from './boxmn';
+import {
+  Hand, INDIGO, POKE, WEFT, columnGaps, columnKey, columnTurnRad, famOffsets, mk, twoFanColumn,
+} from './twofan';
+import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
+
+/**
+ * A two-fan twist column of `levels` LEVELS — storeys, as the studio's Level panel
+ * counts them, the starting stitch being level 1 — placed by the box rules.
+ */
+export function twistColumnPlaced(
+  m: number,
+  n: number,
+  levels: number,
+  name: string,
+  hand: Hand = 'lh',
+  placed = true,
+  upper: UpperPlan = 'hand',
+  /** End the level-2 arms on the middle, clear of the slant corners below (see above). */
+  clearCorners = true,
+): Scene3D {
+  // twoFanColumn counts the levels it lays OVER the starting stitch's own arms.
+  const scene = twoFanColumn(m, n, levels - 1, name, hand);
+  if (!placed) return scene;
+  const placement = boxPlacements(scene, n, m > 1 || n > 1, upper);
+  if (clearCorners && levels > 2) {
+    const ends = { ...(placement.planeEnds ?? {}) };
+    for (const s of scene.strands) {
+      const layer = Number(s.id.split('_')[1]);
+      if (layer === 4 || layer === 5) ends[s.id] = { ...ends[s.id], out: TWIST_LEVEL2_END };
+    }
+    placement.planeEnds = ends;
+  }
+  return { ...scene, ...placement };
+}
+
+/** Where a level-2 arm of a twist ends, at the fold into level 3: the middle. */
+export const TWIST_LEVEL2_END = 0;
+
+/**
+ * A twist column whose turn is set PER LEVEL: `turns[i]` is how far level i + 2
+ * is turned from level i + 1, in radians, so a column of N levels takes N − 1 of
+ * them. `twoFanColumn` turns every level by the same angle; this is the same
+ * construction with that one number opened up, for finding by eye the angles a
+ * column needs (artifacts/twist-turn-editor).
+ *
+ * Everything else is `twoFanColumn`'s, rule for rule: the slots and their offsets
+ * (opened for the face's own turn by `columnGaps`), the landing law that puts an
+ * arm's tip on its sibling's line one level up — now solved with THAT level's
+ * turn — the arms swapping slots every level, and the same masks. An arm the law
+ * leaves too short to cross the band it has to is not lengthened: it is reported
+ * in `short`, because lengthening it is exactly what breaks the fold.
+ */
+export function twistColumnTurns(
+  m: number,
+  n: number,
+  levels: number,
+  turns: number[],
+  name: string,
+  hand: Hand = 'lh',
+): Scene3D & { short: Array<{ level: number; id: string; reach: number; need: number }> } {
+  const cx = 400;
+  const cy = 300;
+  const inner = columnGaps(m, n, columnTurnRad(m, n));
+  const weftOff = famOffsets(n, inner.weft);
+  const warpOff = famOffsets(m, inner.warp);
+  interface Slot { warp: boolean; off: number }
+  const slots: Slot[] = [
+    ...weftOff.map((off) => ({ warp: false, off })),
+    ...warpOff.map((off) => ({ warp: true, off })),
+  ];
+  const NW = 2 * n;
+  const half = (off: number[]): number => Math.max(...off.map(Math.abs));
+  const band = (k: number): number => (slots[k].warp ? half(weftOff) : half(warpOff));
+  const sib = (k: number): number => (k % 2 === 0 ? k + 1 : k - 1);
+  const laceOf = (k: number): number => (k < NW ? 1 + Math.floor(k / 2) : 1 + n + Math.floor((k - NW) / 2));
+
+  // The turn into each level, at least a degree either way: at no turn at all the
+  // landing law has no answer (the sibling's line is parallel).
+  const MIN = Math.PI / 180;
+  const d = (i: number): number => {
+    const t = turns[i] ?? columnTurnRad(m, n);
+    return Math.abs(t) < MIN ? (t < 0 ? -MIN : MIN) : t;
+  };
+  const angle: number[] = [0];
+  for (let i = 1; i < levels; i++) angle[i] = angle[i - 1] + d(i - 1);
+
+  /** The landing law at one level: signed length along the slot that puts the tip on its sibling's line. */
+  const solved = (k: number, i: number): number => {
+    const t = d(i);
+    return (slots[sib(k)].off - slots[k].off * Math.cos(t)) / ((slots[k].warp ? 1 : -1) * Math.sin(t));
+  };
+  const on = (k: number, along: number): Point => {
+    const sl = slots[k];
+    return sl.warp ? { x: cx + sl.off, y: cy + along } : { x: cx + along, y: cy + sl.off };
+  };
+  const turned = (p: Point, i: number): Point => {
+    const c = Math.cos(angle[i]);
+    const s = Math.sin(angle[i]);
+    const x = p.x - cx;
+    const y = p.y - cy;
+    return { x: cx + x * c - y * s, y: cy + x * s + y * c };
+  };
+  const colour = (set: number): RGBA => (set > n ? INDIGO : WEFT[(set - 1) % WEFT.length]);
+
+  const reach: number[][] = [];
+  const dirs: number[][] = [];
+  const short: Array<{ level: number; id: string; reach: number; need: number }> = [];
+  for (let i = 0; i < levels; i++) {
+    reach[i] = [];
+    dirs[i] = [];
+    for (let k = 0; k < slots.length; k++) {
+      const r = i < levels - 1 ? solved(k, i) : solved(k, Math.max(0, i - 1));
+      dirs[i][k] = r >= 0 ? 1 : -1;
+      reach[i][k] = Math.abs(r);
+    }
+  }
+  const TAIL = 1.5 * Math.max(...reach.flat().filter(Number.isFinite));
+
+  const strands: Strand3D[] = [];
+  const masks: MaskLink[] = [];
+  const levelBreaks: number[] = [];
+  const nextId: Record<number, number> = {};
+  const entry = (k: number): Point => on(k, -dirs[0][k] * (band(k) + POKE));
+  for (let p = 0; p < n + m; p++) {
+    const k0 = p < n ? 2 * p : NW + 2 * (p - n);
+    const set = laceOf(k0);
+    nextId[set] = 1;
+    strands.push(mk(`${set}_1`, entry(k0 + 1), entry(k0), colour(set)));
+  }
+  interface Arm { at: Point; last: string; side: 0 | 1 }
+  const arm: Arm[] = [];
+  for (let k = 0; k < slots.length; k++) {
+    arm[k] = { at: entry(k), last: `${laceOf(k)}_1`, side: k % 2 === 0 ? 1 : 0 };
+  }
+  for (let i = 0; i < levels; i++) {
+    if (i > 0) levelBreaks.push(strands.length);
+    const laid: string[] = [];
+    for (let k = 0; k < slots.length; k++) {
+      const set = laceOf(k);
+      const a = arm[k];
+      const top = i === levels - 1;
+      const along = top ? band(k) + TAIL : reach[i][k];
+      const id = `${set}_${++nextId[set]}`;
+      if (!top && reach[i][k] < band(k) + POKE - 1e-6) {
+        short.push({ level: i + 1, id, reach: reach[i][k], need: band(k) + POKE });
+      }
+      const end = turned(on(k, dirs[i][k] * along), i);
+      strands.push(mk(id, { ...a.at }, end, colour(set), a.last, a.side));
+      laid[k] = id;
+      a.at = end;
+      a.last = id;
+      a.side = 1;
+    }
+    for (let a = 0; a < NW; a++) {
+      for (let b = NW; b < slots.length; b++) {
+        if (a % 2 !== (b - NW) % 2) masks.push({ overId: laid[a], underId: laid[b] });
+      }
+    }
+    for (let p = 0; p < n + m; p++) {
+      const k0 = p < n ? 2 * p : NW + 2 * (p - n);
+      const t = arm[k0];
+      arm[k0] = arm[k0 + 1];
+      arm[k0 + 1] = t;
+    }
+  }
+  const flip = (q: Point): Point => ({ x: 2 * cx - q.x, y: q.y });
+  const built: Scene3D = { name, strands, masks, levelBreaks };
+  const out = hand === 'rh'
+    ? { ...built, strands: strands.map((st) => ({ ...st, start: flip(st.start), end: flip(st.end), control_points: st.control_points.map(flip) as [Point, Point] })) }
+    : built;
+  return { ...out, short };
+}
+
+/** `twistColumnTurns`, placed the way `twistColumnPlaced` places a column. */
+export function twistColumnTurnsPlaced(
+  m: number,
+  n: number,
+  levels: number,
+  turns: number[],
+  name: string,
+  hand: Hand = 'lh',
+  clearCorners = true,
+): Scene3D & { short: Array<{ level: number; id: string; reach: number; need: number }> } {
+  const scene = twistColumnTurns(m, n, levels, turns, name, hand);
+  const placement = boxPlacements(scene, n, m > 1 || n > 1, 'hand');
+  if (clearCorners && levels > 2) {
+    const ends = { ...(placement.planeEnds ?? {}) };
+    for (const st of scene.strands) {
+      const layer = Number(st.id.split('_')[1]);
+      if (layer === 4 || layer === 5) ends[st.id] = { ...ends[st.id], out: TWIST_LEVEL2_END };
+    }
+    placement.planeEnds = ends;
+  }
+  return { ...scene, ...placement };
+}
+
+// ---- the 1×1 column decided level by level ------------------------------------
+//
+// Each level of a 1×1 twist is the landing law at the 56 px gap (every arm sits
+// 28 px off the centre): how far out a level's folds sit — its TIP — is the turn
+// into the level above, `θ = 2·atan(28 / tip)`. What a level also needs is the
+// height its fold ends rest on and the height the next level's arms start on, in
+// rungs (half a ribbon thickness). `artifacts/twist-1x1-steps` is where these
+// were decided with the reader, level by level, on the built ribbons.
+
+/** Half the 56 px gap between a lace's two arms: where every 1×1 arm sits off the centre. */
+const ARM_OFFSET = 28;
+
+export interface LevelDecision {
+  /** How far from the centre this level's fold ends sit, in px. */
+  tip: number;
+  /** Where this level's fold ends rest, in rungs. */
+  out: number;
+  /** Where the next level's arms start, in rungs. */
+  in: number;
+}
+
+/** The turn into the next level, in degrees, for a fold tip `tip` px out. */
+export const tipToTurnDeg = (tip: number): number => (2 * Math.atan(ARM_OFFSET / tip) * 180) / Math.PI;
+
+/** The arms of level L: the strands whose ends are its folds. */
+const armLayers = (level: number): number[] => (level === 1 ? [2, 3] : [2 * level, 2 * level + 1]);
+const layerOf = (id: string): number => Number(id.split('_')[1]);
+const levelOfId = (id: string): number => (layerOf(id) < 4 ? 1 : Math.floor((layerOf(id) - 2) / 2) + 1);
+
+/**
+ * A 1×1 twist column of `levels` levels with every level set by its own decision:
+ * `decisions[i]` is level i + 1's, so a column of N levels uses the first N − 1.
+ */
+export function twistColumnDecided(
+  levels: number,
+  decisions: LevelDecision[],
+  name: string,
+  hand: Hand = 'rh',
+): Scene3D {
+  if (decisions.length < levels - 1) throw new Error(`a ${levels}-level column needs ${levels - 1} decisions`);
+  const turns = decisions.slice(0, levels - 1).map((d) => (tipToTurnDeg(d.tip) * Math.PI) / 180);
+  const scene = twistColumnTurnsPlaced(1, 1, levels, turns, name, hand, false);
+  const planeEnds = { ...(scene.planeEnds ?? {}) };
+  for (const s of scene.strands) {
+    const layer = layerOf(s.id);
+    if (layer < 2) continue;
+    const level = levelOfId(s.id);
+    if (!armLayers(level).includes(layer)) continue;
+    if (level <= levels - 1) planeEnds[s.id] = { ...planeEnds[s.id], out: decisions[level - 1].out };
+    if (level >= 2) planeEnds[s.id] = { ...planeEnds[s.id], in: decisions[level - 2].in };
+  }
+  const { short: _short, ...rest } = scene;
+  return { ...rest, planeEnds };
+}
+
+/** The tips the reader settled on, level by level (levels 1–9), in px. */
+const READER_TIPS = [61.5, 60.5, 60, 60.5, 60.5, 60.5, 60.5, 65, 62];
+
+/**
+ * The tip that turns every level exactly 45°: `28 / tan(22.5°)`. It is also the 45.00°
+ * measured on the 1×1 in docs/twist-stitch/deriving-the-turn.md.
+ */
+export const TIP_45 = ARM_OFFSET / Math.tan(Math.PI / 8);
+
+/**
+ * BEFORE: the column as first decided — the reader's tips, every fold end from
+ * level 2 up resting on +1. That height was opened on Jev's suggestion and kept; it
+ * is not what the box does. Kept for `artifacts/twist-1x1-planes`.
+ */
+export const TWIST_1X1_BEFORE: LevelDecision[] = READER_TIPS.map((tip, i) => ({
+  tip,
+  out: i === 0 ? -1 : 1,
+  in: 1,
+}));
+
+/**
+ * The box's planes, the reader's tips. What the 1×1 box does at every level above
+ * the first, read off its built ribbons: each arm starts on +1, rests on −1 and ENDS
+ * on −1; at a crossing the arm on top is on +1 and the one underneath on −1; the next
+ * level's arms start on +1 (`boxPlacements`). So every fold end ends on −1 and every
+ * next arm starts on +1 — except level 2's ends, which the twist (not the box) needs
+ * on 0: turned, they land over the corner where a level-1 arm of the other lace
+ * leaves its slant (see the head of this file). Level 1 is `box + strand`, unchanged.
+ */
+export const TWIST_1X1_BOX_PLANES: LevelDecision[] = READER_TIPS.map((tip, i) => ({
+  tip,
+  out: i === 1 ? TWIST_LEVEL2_END : -1,
+  in: 1,
+}));
+
+/**
+ * THE 1×1 TWIST: the box's planes, and every level turned 45°.
+ *
+ * Measured on the built meshes (triangles of two ribbons cutting through each other,
+ * and how far the shallower side pokes through), the reader's tips of 60–65 px leave
+ * the fold-end crossings of every level 8–10 px inside each other, which the box does
+ * not: with those tips 56 clusters are deeper than 8 px against 5 in the box. The
+ * depth falls steadily as the tips grow and is gone from 66 px, where there are none
+ * deeper than 8 px (the deepest, 7.7 px at 67.6, is shallower than the box's 9.9). A
+ * level isolated from above then reads as straight and uncreased as the box's. 67.6
+ * is the tip that turns each level exactly 45°, the turn measured on the 1×1.
+ */
+export const TWIST_1X1_FIXED: LevelDecision[] = Array.from({ length: 9 }, (_, i) => ({
+  tip: TIP_45,
+  out: i === 1 ? TWIST_LEVEL2_END : -1,
+  in: 1,
+}));
+
+/**
+ * THE 1×1 TWIST, as set level by level on `artifacts/twist-1x1-ends` — the box's planes
+ * (every fold end on −1, every next arm on +1, crossings ±1, so level 2's ends sit on −1
+ * like all the others) and each level stretched until the column was tight: the tip,
+ * how far from the centre a level's folds sit, is 72.8 px at level 1 and about 75 px
+ * above it (turns of 42.1° and about 40.7°). Levels 1 to 9 are what was set; a taller
+ * column carries on at the level the setting settled on, 75.5 px, which is what five of
+ * the nine were and the one the rest sit within a pixel of.
+ */
+export const TWIST_1X1_TIPS = [72.8, 75.5, 75.5, 75.5, 75.5, 74.5, 75.5, 75, 75.5];
+const TWIST_1X1_REPEAT_TIP = 75.5;
+
+/** The decisions for a 1×1 column of `levels` levels: the set tips, then the settled one. */
+export function twist1x1Decisions(levels: number, tips: number[] = TWIST_1X1_TIPS): LevelDecision[] {
+  return Array.from({ length: Math.max(0, levels - 1) }, (_, i) => ({
+    tip: tips[i] ?? TWIST_1X1_REPEAT_TIP,
+    out: -1,
+    in: 1,
+  }));
+}
+
+/** The 1×1 twist column of `levels` levels — the studio's "twist 1×1" sample. */
+export const twist1x1 = (levels: number, hand: Hand, name?: string): Scene3D =>
+  twistColumnDecided(
+    levels,
+    twist1x1Decisions(levels),
+    name ?? `Twist 1×1 ${hand.toUpperCase()}, ${levels} levels`,
+    hand,
+  );
+
+/** The mean turn of the nine levels that were set, in degrees — what a grid cell quotes. */
+export const TWIST_1X1_TURN_DEG =
+  TWIST_1X1_TIPS.reduce((a, t) => a + tipToTurnDeg(t), 0) / TWIST_1X1_TIPS.length;
+
+/**
+ * Keys. Level 10 REPLACES the two-fan 1×1 column in the browser grid, under the same key
+ * (`twofan-col-<hand>-1x1-10`), so every link to it still opens a 1×1 twist; the others are
+ * new: 2 to 9 and 11 to 15 levels, and 15 is listed beside it.
+ */
+export const twist1x1Key = (hand: Hand, levels: number): string => columnKey(hand, 1, 1).replace(/-10$/, `-${levels}`);
+
+const ALL_LEVELS = Array.from({ length: 14 }, (_, i) => i + 2);
+const LISTED_LEVELS = [10, 15];
+const HANDS_LIST: Hand[] = ['lh', 'rh'];
+
+export const TWIST_1X1_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
+  HANDS_LIST.flatMap((hand) =>
+    ALL_LEVELS.map((levels) => [
+      twist1x1Key(hand, levels),
+      () => twist1x1(levels, hand, `Twist 1×1 ${hand.toUpperCase()}, ${levels} levels — set level by level on the box's planes`),
+    ]),
+  ),
+);
+
+export const TWIST_1X1_LABELS: Array<{ key: string; label: string; group: string }> = HANDS_LIST.flatMap((hand) =>
+  LISTED_LEVELS.map((levels) => ({
+    key: twist1x1Key(hand, levels),
+    label: `${hand === 'rh' ? 'Right hand' : 'Left hand'} · column 1×1 — ${levels} levels, ${TWIST_1X1_TURN_DEG.toFixed(1)}°`,
+    group: 'Twist — the reference stitch (block + one twist)',
+  })),
+);

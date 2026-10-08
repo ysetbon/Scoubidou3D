@@ -39,6 +39,7 @@ import { CrossFact, FoldFact, LaceFact, MemberFact, PROFILE } from '../scene/sec
 import { MaskLink, Point, Scene3D, Strand3D, RGBA } from '../model/types';
 import { SAMPLE_LABELS, TWIST_FAMILY, TWIST_MAX, makeSample } from '../model/samples';
 import { GAP, HANDS, TWOFAN_COLUMN_FAMILY, TWOFAN_MAX, columnKey } from '../model/twofan';
+import { TWIST_1X1_TURN_DEG } from '../model/twistplaced';
 import { BOX_FAMILY, BOX_LEVELS, BOX_MAX, boxColumnKey, column } from '../model/boxmn';
 import { SWIRL_FAMILY, SWIRL_MAX, swirlKey } from '../model/swirl';
 import { parseSceneText, sceneFromFile, sceneToJson } from '../model/sceneIO';
@@ -1786,7 +1787,8 @@ export class Panel {
           'sit a tenth of a width apart instead of touching, so the weave is no longer ' +
           'jammed against itself; and the turn comes out of that clearance rather than ' +
           'being assumed — 50.03° at a 1×1, where the original says 45°, and 45° turns ' +
-          'out to overlap the laces. Each cell quotes its turn, and its tooltip the two ' +
+          'out to overlap the laces (the 1×1 itself has since been set level by level on the ' +
+          'box’s planes, about 41° a level). Each cell quotes its turn, and its tooltip the two ' +
           'angles a lopsided face is caught between: the smaller fan’s, which its few ' +
           'laces can always reach across, and the larger fan’s, which lays the family ' +
           'you see tight. It takes a point between them and pays for it by opening the gap ' +
@@ -1811,11 +1813,18 @@ export class Panel {
           b.classList.add('browser-cell');
           b.style.setProperty('--slack', String(Math.min(1, s.slack / 6)));
           b.appendChild(el('b', undefined, `${m}×${n}`));
-          b.appendChild(el('small', undefined, `${s.turn.toFixed(1)}°`));
+          // The 1×1 is not the two-fan column any more: it was set level by level on the box's
+          // planes (model/twistplaced.ts), so it quotes its own turn.
+          const own11 = m === 1 && n === 1;
+          b.appendChild(el('small', undefined, `${(own11 ? TWIST_1X1_TURN_DEG : s.turn).toFixed(1)}°`));
           b.appendChild(
             el('small', 'browser-slack', s.slack < 1 ? 'tight' : `+${s.slack.toFixed(1)}w`),
           );
-          b.title =
+          b.title = own11
+            ? `1×1 ${hand.toUpperCase()} — 2 laces, 4 arms a level, turn about ${TWIST_1X1_TURN_DEG.toFixed(1)}° ${sense}\n` +
+              `set level by level on the box's planes: every fold end on −1, every next arm on +1, ` +
+              `each level stretched until the column was tight. Also at 15 levels.`
+            :
             `${m}×${n} ${hand.toUpperCase()} — ${m + n} laces, ${2 * (m + n)} arms a level, ` +
             `turn ${s.turn.toFixed(2)}° ${sense}\n` +
             `between laces 1.217 widths — the reference's floor, w + 10\n` +

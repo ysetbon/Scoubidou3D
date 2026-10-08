@@ -1,0 +1,6 @@
+{
+  "title": "Twist 1×1 Ends",
+  "description": "For each level of the 1×1 twist, set the plane its previous level's arms end on and the plane its own arms start on, arm by arm, with that fold's gap read off the ribbons and a count of ribbons cutting through each other.",
+  "favicon": "🧶",
+  "live": true
+}

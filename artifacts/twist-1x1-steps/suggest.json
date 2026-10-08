@@ -1,0 +1,68 @@
+{
+ "levels": {},
+ "locks": [
+  {
+   "level": 1,
+   "tipPx": 61.5,
+   "foldEndsOn": -1,
+   "nextArmsStartOn": 1,
+   "note": "tip decided by the reader; fold ends moved to the box planes"
+  },
+  {
+   "level": 2,
+   "tipPx": 60.5,
+   "foldEndsOn": 0,
+   "nextArmsStartOn": 1,
+   "note": "tip decided by the reader; fold ends moved to the box planes"
+  },
+  {
+   "level": 3,
+   "tipPx": 60,
+   "foldEndsOn": -1,
+   "nextArmsStartOn": 1,
+   "note": "tip decided by the reader; fold ends moved to the box planes"
+  },
+  {
+   "level": 4,
+   "tipPx": 60.5,
+   "foldEndsOn": -1,
+   "nextArmsStartOn": 1,
+   "note": "tip decided by the reader; fold ends moved to the box planes"
+  },
+  {
+   "level": 5,
+   "tipPx": 60.5,
+   "foldEndsOn": -1,
+   "nextArmsStartOn": 1,
+   "note": "tip decided by the reader; fold ends moved to the box planes"
+  },
+  {
+   "level": 6,
+   "tipPx": 60.5,
+   "foldEndsOn": -1,
+   "nextArmsStartOn": 1,
+   "note": "tip decided by the reader; fold ends moved to the box planes"
+  },
+  {
+   "level": 7,
+   "tipPx": 60.5,
+   "foldEndsOn": -1,
+   "nextArmsStartOn": 1,
+   "note": "tip decided by the reader; fold ends moved to the box planes"
+  },
+  {
+   "level": 8,
+   "tipPx": 65,
+   "foldEndsOn": -1,
+   "nextArmsStartOn": 1,
+   "note": "tip decided by the reader; fold ends moved to the box planes"
+  },
+  {
+   "level": 9,
+   "tipPx": 62,
+   "foldEndsOn": -1,
+   "nextArmsStartOn": 1,
+   "note": "tip decided by the reader; fold ends moved to the box planes"
+  }
+ ]
+}
