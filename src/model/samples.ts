@@ -4,9 +4,9 @@
 // lanyards that inspired the 3D treatment.
 
 import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
-import { BOX_COLUMN_SAMPLES, BOX_LABELS, BOX_PLACED_LABELS, BOX_PLACED_SAMPLES, BOX_SAMPLES } from './boxmn';
+import { BOX_COLUMN_SAMPLES, BOX_PLACED_SAMPLES, BOX_SAMPLES } from './boxmn';
 import { PLACED_LABELS, PLACED_SAMPLES } from './placedScenes';
-import { SWIRL_LABELS, SWIRL_SAMPLES } from './swirl';
+import { SWIRL_SAMPLES } from './swirl';
 import { TWOFAN_COLUMN_SAMPLES, TWOFAN_LABELS, TWOFAN_SAMPLES } from './twofan';
 import { TWIST_1X1_LABELS, TWIST_1X1_SAMPLES } from './twistplaced';
 
@@ -995,6 +995,9 @@ export const SAMPLES: Record<string, () => Scene3D> = {
 /**
  * What the dropdown and the project site list, in order, with the group each sits in.
  *
+ * The m×n box, swirl, box-placed and 1×n two-fan stitch faces are not listed by name
+ * either; they open from the Browse grids and by `?sample=`. See TWOFAN_LABELS.
+ *
  * FOUR STITCHES ARE DELIBERATELY ABSENT, on the same terms as
  * `SHOW_ORIGINAL_TWIST_FAMILY` in panel.ts: nothing is deleted, the generators
  * still run and `?sample=` still opens every one of them — they are only off the
@@ -1033,13 +1036,6 @@ export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }>
   // the two-fan group in place of the two-fan 1×1 column it replaces.
   ...TWOFAN_LABELS.filter((l) => !/^twofan-col-(lh|rh)-1x1-10$/.test(l.key)),
   ...TWIST_1X1_LABELS,
-  // The same starting stitch at k = 0, closed rather than twisted. Only the eight
-  // square faces are named; the browser grid has all 64. See docs/box-stitch-mxn/.
-  ...SWIRL_LABELS,
-  ...BOX_LABELS,
-  // The box family placed the way `box + strand`'s box was, level by level. The
-  // level-2 ones are candidates, side by side in artifacts/box-before-after.
-  ...BOX_PLACED_LABELS,
   // Not generators but records: a ring somebody placed round by round and a
   // column somebody worked storey by storey, storeys and all. See
   // placedScenes.ts.

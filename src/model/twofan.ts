@@ -725,23 +725,16 @@ export const TWOFAN_COLUMN_SAMPLES: Record<string, () => Scene3D> = Object.fromE
   ),
 );
 
-// The named list. These are the reference's own object -- a block with its ends
-// fanned out once -- not levels of a column; the columns live in the browser grid.
+// The named list: the columns only. The reference's own object -- a block with its
+// ends fanned out once -- is no longer listed by name; `twofan-lh-1x1` and the rest
+// of TWOFAN_SAMPLES still open by `?sample=`. The other faces are in the browser.
 const GROUP = 'Twist — the reference stitch (block + one twist)';
 
 export const TWOFAN_LABELS: Array<{ key: string; label: string; group: string }> = HANDS.flatMap(
-  ({ hand, label }) => [
-    // The reference's own object at every size it tabulates, plus three columns.
-    // The other 61 faces per hand are in the browser.
-    ...TWOFAN_FAMILY.map((s) => ({
-      key: stitchKey(hand, s.m, s.n),
-      label: `${label} · stitch ${s.m}×${s.n} — weft ${s.weft.toFixed(1)}°, warp ${s.warp.toFixed(1)}°`,
-      group: GROUP,
-    })),
-    ...([[1, 1], [2, 2], [1, 6]] as Array<[number, number]>).map(([m, n]) => ({
+  ({ hand, label }) =>
+    ([[1, 1], [2, 2], [1, 6]] as Array<[number, number]>).map(([m, n]) => ({
       key: columnKey(hand, m, n),
       label: `${label} · column ${m}×${n} — 10 levels, ${columnTurn(m, n).toFixed(1)}°`,
       group: GROUP,
     })),
-  ],
 );

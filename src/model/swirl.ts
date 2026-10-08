@@ -516,26 +516,3 @@ export const SWIRL_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
     ]),
   ),
 );
-
-// The named list. Only the sizes worth naming; the browser grid carries the rest.
-const GROUP = 'Swirl — the k = −1 stitch (block + one continuation)';
-
-export const SWIRL_LABELS: Array<{ key: string; label: string; group: string }> = HANDS.flatMap(
-  ({ hand, label }) =>
-    (
-      [
-        [2, 1],
-        [1, 2],
-        [2, 2],
-        [3, 3],
-        [1, 8],
-      ] as Array<[number, number]>
-    ).map(([m, n]) => {
-      const s = SWIRL_FAMILY.find((f) => f.m === m && f.n === n)!;
-      return {
-        key: swirlKey(hand, m, n),
-        label: `${label} · swirl ${m}×${n} — H ${s.h.toFixed(1)}°, V ${s.v.toFixed(1)}°`,
-        group: GROUP,
-      };
-    }),
-);
