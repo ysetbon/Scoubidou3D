@@ -26,11 +26,13 @@ const lace = (id) => id.split('_')[0];
 const armsOf = (L) => (L === 1 ? [2, 3] : [2 * L, 2 * L + 1]);
 const sign = (r) => (r > 0 ? `+${r}` : r < 0 ? `−${-r}` : '0');
 
-const state = { hand: 'rh', focus: 2, tip: +TIP_45.toFixed(1), only: true, span: 'upto', overrides: {}, notes: {}, fold: -1 };
+const HALF = 28; // every arm sits 28 px off the centre: the crossing arm's centreline is the weave
+const state = { hand: 'rh', focus: 2, tip: +TIP_45.toFixed(1), tips: null, only: true, span: 'upto', overrides: {}, notes: {}, fold: -1 };
 try {
   const saved = JSON.parse(localStorage.getItem(STORE) ?? 'null');
   if (saved && typeof saved.overrides === 'object') Object.assign(state, saved, { fold: -1 });
 } catch { /* nothing saved: defaults */ }
+if (!Array.isArray(state.tips) || state.tips.length !== 9) state.tips = Array(9).fill(state.tip);
 const save = () => { try { localStorage.setItem(STORE, JSON.stringify({ ...state, fold: -1 })); } catch { /* fine */ } };
 
 const view = new StrandScene($('c'));
@@ -42,7 +44,7 @@ let measured = null; // { for: key, text }
 
 function build() {
   const levels = state.span === 'whole' ? MAXL : state.focus;
-  const dec = Array.from({ length: 9 }, (_, i) => ({ ...TWIST_1X1_FIXED[i], tip: state.tip }));
+  const dec = Array.from({ length: 9 }, (_, i) => ({ ...TWIST_1X1_FIXED[i], tip: state.tips[i] }));
   base = twistColumnDecided(levels, dec, `Twist 1×1 ${state.hand.toUpperCase()}, ${levels} levels`, state.hand);
   const ids = new Set(base.strands.map((s) => s.id));
   const planeEnds = JSON.parse(JSON.stringify(base.planeEnds ?? {}));
@@ -220,13 +222,12 @@ function render() {
   for (const [attr, value] of [['hand', state.hand], ['only', String(state.only)], ['span', state.span]]) {
     document.querySelectorAll(`[data-${attr}]`).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset[attr] === value)));
   }
-  $('tip').value = String(state.tip);
-  $('tip-n').textContent = `${state.tip.toFixed(1)} px · ${tipToTurnDeg(state.tip).toFixed(1)}°`;
+  syncStretch();
   $('out').value = output();
   save();
 }
 
-const measureKey = () => JSON.stringify([state.hand, state.focus, state.span, state.tip, state.overrides]);
+const measureKey = () => JSON.stringify([state.hand, state.focus, state.span, state.tips, state.overrides]);
 
 function measure() {
   $('measure').disabled = true;
@@ -287,8 +288,7 @@ function output() {
   return JSON.stringify({
     what: 'twist 1×1 on the box planes, 45° a level: for each fold (previous level → this level) the rung the lower arm ENDS on and the rung the upper arm STARTS on, per arm; rungs are half a ribbon thickness',
     hand: state.hand,
-    tipPx: state.tip,
-    turnDeg: +tipToTurnDeg(state.tip).toFixed(2),
+    stretchByLevel: Object.fromEntries(state.tips.map((t, i) => [`level${i + 1}`, { stretchPx: +(t - HALF).toFixed(1), tipPx: +t.toFixed(1), turnIntoNextDeg: +tipToTurnDeg(t).toFixed(2) }])),
     folding: L,
     folds: byLevel,
     ribbonsCuttingThrough: measured && measured.key === measureKey() ? measured.text : undefined,
@@ -333,7 +333,69 @@ function aim(id, folds) {
 }
 
 // ---- wiring -------------------------------------------------------------------
-$('tip').addEventListener('input', (e) => { state.tip = +e.target.value; measured = null; touch(); });
+// Stretch: how far past the weave a level's folds sit, i.e. how far from the crossing arm's
+// centreline the start of the next level's strands lies. 0 puts the fold right on the weave
+// (the engine's extension 0); about 23 px is just clear of the crossing arm's far edge.
+const MIN_STRETCH = 10, MAX_STRETCH = 72;
+const stretchRows = [];
+(function buildStretch() {
+  const host = $('stretch');
+  for (let i = 0; i < 9; i++) {
+    const row = document.createElement('div');
+    row.className = 'turn';
+    const label = document.createElement('label');
+    label.textContent = `Level ${i + 1}`;
+    const range = document.createElement('input');
+    range.type = 'range'; range.min = String(MIN_STRETCH); range.max = String(MAX_STRETCH); range.step = '0.5';
+    range.id = `st${i}`; label.htmlFor = range.id;
+    const num = document.createElement('input');
+    num.type = 'number'; num.min = String(MIN_STRETCH); num.max = String(MAX_STRETCH); num.step = '0.5';
+    num.setAttribute('aria-label', `Level ${i + 1} stretch in px`);
+    const out = document.createElement('span');
+    out.className = 'state';
+    const set = (x) => {
+      const val = Math.min(MAX_STRETCH, Math.max(MIN_STRETCH, Number(x)));
+      if (!Number.isFinite(val)) return;
+      state.tips[i] = val + HALF;
+      measured = null;
+      syncStretch();
+      touch();
+    };
+    range.addEventListener('input', () => set(range.value));
+    num.addEventListener('change', () => { set(num.value); num.blur(); });
+    row.append(label, range, num, out);
+    host.appendChild(row);
+    stretchRows.push({ row, range, num, out });
+  }
+})();
+function syncStretch() {
+  stretchRows.forEach((r, i) => {
+    const s = state.tips[i] - HALF;
+    if (document.activeElement !== r.range) r.range.value = String(s);
+    if (document.activeElement !== r.num) r.num.value = String(+s.toFixed(1));
+    r.out.textContent = `turn ${tipToTurnDeg(state.tips[i]).toFixed(1)}°`;
+    r.row.style.outline = i === state.focus - 2 ? '2px solid var(--accent)' : '';
+    r.row.style.outlineOffset = '3px';
+    r.row.classList.toggle('off', i + 1 >= (state.span === 'whole' ? MAXL : state.focus));
+  });
+  $('all-n').textContent = '';
+}
+$('all').addEventListener('input', (e) => {
+  const val = Number(e.target.value);
+  state.tips = Array(9).fill(val + HALF);
+  state.tip = val + HALF;
+  measured = null;
+  syncStretch();
+  touch();
+});
+$('all-reset').addEventListener('click', () => {
+  state.tips = Array(9).fill(+TIP_45.toFixed(1));
+  state.tip = +TIP_45.toFixed(1);
+  $('all').value = String(+(TIP_45 - HALF).toFixed(1));
+  measured = null;
+  syncStretch();
+  touch();
+});
 for (const attr of ['hand', 'only', 'span']) {
   document.querySelectorAll(`[data-${attr}]`).forEach((b) => b.addEventListener('click', () => {
     state[attr] = attr === 'only' ? b.dataset[attr] === 'true' : b.dataset[attr];
@@ -382,5 +444,6 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', paintTheme
 new MutationObserver(paintTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 window.__en = { state, render, measure }; // test hook
+$('all').value = String(+(state.tips[0] - HALF).toFixed(1));
 render();
 $('loading').remove();
