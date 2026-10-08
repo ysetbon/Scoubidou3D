@@ -594,8 +594,6 @@ export function boxPlacements(
 // Right hand is the hand the sample was drawn in; `box-placed-lh-…` is its mirror.
 const PLACED_FACES: Array<[number, number]> = [[1, 1], [2, 1]];
 const PLACED_LEVELS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15];
-/** The ones listed by name; the rest open by `?sample=` and in the artifact. */
-const LISTED_LEVELS = [1, 2, 3, 4, 10, 15];
 export const placedKey = (hand: Hand, m: number, n: number, levels: number): string =>
   `box-placed-${hand === 'lh' ? 'lh-' : ''}${m}x${n}-l${levels}`;
 const placedName = (hand: Hand, m: number, n: number, levels: number): string =>
@@ -612,18 +610,7 @@ export const BOX_PLACED_SAMPLES: Record<string, () => Scene3D> = Object.fromEntr
     ),
   ),
 );
-export const BOX_PLACED_LABELS: Array<{ key: string; label: string; group: string }> = HANDS.flatMap(
-  ({ hand, label }) =>
-    PLACED_FACES.flatMap(([m, n]) =>
-      LISTED_LEVELS.map((levels) => ({
-        key: placedKey(hand, m, n, levels),
-        label: `${label} · box ${m}×${n} placed — ${levels} level${levels === 1 ? '' : 's'}`,
-        group: 'Box — placed like box + strand',
-      })),
-    ),
-);
-
-// The family, as the browser and the dropdown open it: PLACED, every face, both
+// The family, as the browser opens it: PLACED, every face, both
 // hands — level 1 as `box + strand` places its box, every level above by the rule
 // placed by hand (see `UpperPlan`). `boxStitchMN` itself still defaults to
 // unplaced, which is what the drawn sheet and check:box measure.
@@ -671,26 +658,3 @@ export function column(s: BoxShape): { strands: number; masks: number; crossings
     crossings: 4 * s.m * s.n * (BOX_ROUNDS + 1),
   };
 }
-
-// The named list. Sixty-four faces per hand would drown the dropdown, so it gets
-// the diagonal — the eight square boxes, where m = n — and three columns, and the
-// browser grids get the rest. Same split the twist family makes.
-const GROUP = 'Box — every m×n face (block + k = 0 continuation)';
-
-export const BOX_LABELS: Array<{ key: string; label: string; group: string }> = HANDS.flatMap(
-  ({ hand, label }) => [
-    ...BOX_FAMILY.filter((s) => s.m === s.n).map((s) => ({
-      key: boxKey(hand, s.m, s.n),
-      label: `${label} · box ${s.m}×${s.n} — ${s.strands} strands, ${s.crossings} crossings`,
-      group: GROUP,
-    })),
-    ...([[1, 1], [2, 2], [3, 2]] as Array<[number, number]>).map(([m, n]) => {
-      const s = BOX_FAMILY.find((f) => f.m === m && f.n === n)!;
-      return {
-        key: boxColumnKey(hand, m, n),
-        label: `${label} · box column ${m}×${n} — ${BOX_LEVELS} levels, ${column(s).strands} strands`,
-        group: GROUP,
-      };
-    }),
-  ],
-);
