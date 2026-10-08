@@ -4,11 +4,11 @@
 // on from it on level L. Two heights decide how it climbs: the plane the lower arm
 // ends on, and the plane the upper arm starts on, each in rungs of half a ribbon
 // thickness (`planeEnds` in the scene: `out` for the end, `in` for the start). Here
-// every arm of the fold into the chosen level has both, on the 45° column on the box's
-// planes (`TWIST_1X1_FIXED`); what the reader changes is layered on top, arm by arm,
+// every arm of the fold into the chosen level has both, on the column as set in the samples, on the box's
+// planes (`twist1x1Decisions`); what the reader changes is layered on top, arm by arm,
 // and everything is rebuilt on the studio's own view and read back off the ribbons.
 import { StrandScene } from '../../src/scene/StrandScene';
-import { TIP_45, TWIST_1X1_FIXED, tipToTurnDeg, twistColumnDecided } from '../../src/model/twistplaced';
+import { TWIST_1X1_TIPS, tipToTurnDeg, twist1x1Decisions, twistColumnDecided } from '../../src/model/twistplaced';
 import { meshHits } from '../lib/ribbon-check.js';
 
 const RUNG = 0.5;
@@ -27,12 +27,12 @@ const armsOf = (L) => (L === 1 ? [2, 3] : [2 * L, 2 * L + 1]);
 const sign = (r) => (r > 0 ? `+${r}` : r < 0 ? `−${-r}` : '0');
 
 const HALF = 28; // every arm sits 28 px off the centre: the crossing arm's centreline is the weave
-const state = { hand: 'rh', focus: 2, tip: +TIP_45.toFixed(1), tips: null, only: true, span: 'upto', overrides: {}, notes: {}, fold: -1 };
+const state = { hand: 'rh', focus: 2, tip: TWIST_1X1_TIPS[1], tips: null, only: true, span: 'upto', overrides: {}, notes: {}, fold: -1 };
 try {
   const saved = JSON.parse(localStorage.getItem(STORE) ?? 'null');
   if (saved && typeof saved.overrides === 'object') Object.assign(state, saved, { fold: -1 });
 } catch { /* nothing saved: defaults */ }
-if (!Array.isArray(state.tips) || state.tips.length !== 9) state.tips = Array(9).fill(state.tip);
+if (!Array.isArray(state.tips) || state.tips.length !== 9) state.tips = [...TWIST_1X1_TIPS];
 const save = () => { try { localStorage.setItem(STORE, JSON.stringify({ ...state, fold: -1 })); } catch { /* fine */ } };
 
 const view = new StrandScene($('c'));
@@ -44,7 +44,7 @@ let measured = null; // { for: key, text }
 
 function build() {
   const levels = state.span === 'whole' ? MAXL : state.focus;
-  const dec = Array.from({ length: 9 }, (_, i) => ({ ...TWIST_1X1_FIXED[i], tip: state.tips[i] }));
+  const dec = twist1x1Decisions(MAXL, state.tips);
   base = twistColumnDecided(levels, dec, `Twist 1×1 ${state.hand.toUpperCase()}, ${levels} levels`, state.hand);
   const ids = new Set(base.strands.map((s) => s.id));
   const planeEnds = JSON.parse(JSON.stringify(base.planeEnds ?? {}));
@@ -243,7 +243,7 @@ function measure() {
     const worst = mine.sort((a, b) => b.depth - a.depth).slice(0, 3).map((c) => `${c.on.join('/')} ${c.depth.toFixed(1)} px`).join(', ');
     measured = {
       key: measureKey(),
-      text: `Levels ${L - 1} and ${L}: ${n6} places deeper than 6 px, ${n8} deeper than 8 px, deepest ${max.toFixed(1)} px${worst ? ` (${worst})` : ''}. For scale, the box has places up to about 10 px where ribbons rest on each other at a crossing; on the 45° column with the box's planes there are none deeper than 8 px.`,
+      text: `Levels ${L - 1} and ${L}: ${n6} places deeper than 6 px, ${n8} deeper than 8 px, deepest ${max.toFixed(1)} px${worst ? ` (${worst})` : ''}. For scale, the box has places up to about 10 px where ribbons rest on each other at a crossing; over all ten levels the box has 5 places deeper than 8 px and the column as set in the samples has 4.`,
     };
     $('measure').disabled = false;
     $('measuring').textContent = '';
@@ -389,9 +389,9 @@ $('all').addEventListener('input', (e) => {
   touch();
 });
 $('all-reset').addEventListener('click', () => {
-  state.tips = Array(9).fill(+TIP_45.toFixed(1));
-  state.tip = +TIP_45.toFixed(1);
-  $('all').value = String(+(TIP_45 - HALF).toFixed(1));
+  state.tips = [...TWIST_1X1_TIPS];
+  state.tip = TWIST_1X1_TIPS[1];
+  $('all').value = String(+(TWIST_1X1_TIPS[1] - HALF).toFixed(1));
   measured = null;
   syncStretch();
   touch();
@@ -444,6 +444,6 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', paintTheme
 new MutationObserver(paintTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 window.__en = { state, render, measure }; // test hook
-$('all').value = String(+(state.tips[0] - HALF).toFixed(1));
+$('all').value = String(+(state.tips[1] - HALF).toFixed(1));
 render();
 $('loading').remove();

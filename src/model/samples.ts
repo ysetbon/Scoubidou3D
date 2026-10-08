@@ -1029,7 +1029,10 @@ export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }>
   { key: 'curved-stack', label: 'Curved ribbon weave', group: 'Weaves' },
   // The 1xn reference's stitch, alongside the single-turn one rather than replacing
   // it: two fans, two angles. See docs/twist-stitch/attempts/1xn-reference/.
-  ...TWOFAN_LABELS,
+  // The 1×1 column is the one set level by level on the box's planes (twistplaced.ts), listed in
+  // the two-fan group in place of the two-fan 1×1 column it replaces.
+  ...TWOFAN_LABELS.filter((l) => !/^twofan-col-(lh|rh)-1x1-10$/.test(l.key)),
+  ...TWIST_1X1_LABELS,
   // The same starting stitch at k = 0, closed rather than twisted. Only the eight
   // square faces are named; the browser grid has all 64. See docs/box-stitch-mxn/.
   ...SWIRL_LABELS,
@@ -1037,7 +1040,6 @@ export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }>
   // The box family placed the way `box + strand`'s box was, level by level. The
   // level-2 ones are candidates, side by side in artifacts/box-before-after.
   ...BOX_PLACED_LABELS,
-  ...TWIST_1X1_LABELS,
   // Not generators but records: a ring somebody placed round by round and a
   // column somebody worked storey by storey, storeys and all. See
   // placedScenes.ts.

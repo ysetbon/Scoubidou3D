@@ -1,19 +1,20 @@
-// The whole 1×1 twist column, levels 1 to 10, on the box's planes, every level turned 45°.
+// The whole 1×1 twist column, levels 1 to 10, set level by level on the box's planes.
 //
 // One copy of the studio's own view, fed by `twistColumnDecided` with
-// `TWIST_1X1_FIXED` — the same function and the same numbers the studio's
+// `DECISIONS` — the same function and the same numbers the studio's
 // "Twist 1×1 decided level by level" samples use, so this page and the sample
 // cannot disagree. Nothing here is a second implementation: the table is read
 // back off the built ribbons.
 import { StrandScene } from '../../src/scene/StrandScene';
-import { TWIST_1X1_FIXED, tipToTurnDeg, twistColumnDecided } from '../../src/model/twistplaced';
+import { tipToTurnDeg, twist1x1, twist1x1Decisions } from '../../src/model/twistplaced';
 
 const RUNG = 0.5;
 const W = 46;
 const SCALE = 0.02;
-const MAXL = 10;
+const MAXL = 15;
+const DECISIONS = twist1x1Decisions(MAXL);
 
-const state = { levels: MAXL, hand: 'rh', only: false, lace: 'both', focus: MAXL, fold: -1 };
+const state = { levels: 10, hand: 'rh', only: false, lace: 'both', focus: 10, fold: -1 };
 const view = new StrandScene(document.getElementById('c'));
 view.renderer.shadowMap.enabled = false;
 const $ = (id) => document.getElementById(id);
@@ -26,7 +27,7 @@ const sign = (r) => (r > 0 ? `+${r}` : r < 0 ? `−${-r}` : '0');
 
 let sceneNow = null;
 function build() {
-  sceneNow = twistColumnDecided(state.levels, TWIST_1X1_FIXED, `Twist 1×1 ${state.hand.toUpperCase()}, ${state.levels} levels`, state.hand);
+  sceneNow = twist1x1(state.levels, state.hand);
   return sceneNow;
 }
 
@@ -91,12 +92,12 @@ function table(rows) {
   const host = $('rows');
   host.textContent = '';
   for (const r of rows) {
-    const d = TWIST_1X1_FIXED[r.L - 1];
+    const d = DECISIONS[r.L - 1];
     const tr = document.createElement('tr');
     tr.tabIndex = 0;
     const td = (t, cls) => { const e = document.createElement('td'); e.textContent = t; if (cls) e.className = cls; tr.appendChild(e); };
     const top = r.L === state.levels;
-    td(`Level ${r.L}${r.L === MAXL ? ' (top)' : ''}`);
+    td(`Level ${r.L}${r.L === state.levels ? ' (top)' : ''}`);
     td(top ? 'loose ends' : `${d.tip} px`);
     td(top ? '—' : `${tipToTurnDeg(d.tip).toFixed(2)}°`);
     td(top ? '—' : `${sign(d.out)} / ${sign(d.in)}`);
@@ -112,8 +113,8 @@ function table(rows) {
 function describe(sc, L) {
   const host = $('this-level');
   host.textContent = '';
-  const d = TWIST_1X1_FIXED[L - 1];
-  const prev = TWIST_1X1_FIXED[L - 2];
+  const d = DECISIONS[L - 1];
+  const prev = DECISIONS[L - 2];
   const rows = [
     ['Its fold tip', L < state.levels ? `${d.tip} px out from the centre → level ${L + 1} turned ${tipToTurnDeg(d.tip).toFixed(2)}°` : 'the top level: its ends are loose'],
     ['Its fold ends rest on', L < state.levels ? sign(d.out) : '—'],
@@ -199,7 +200,7 @@ function render() {
     what: 'twist 1×1 column on the box\'s planes, 45° a level (tip px; heights in rungs of half a thickness)',
     hand: state.hand,
     levels: state.levels,
-    decisions: TWIST_1X1_FIXED.slice(0, state.levels - 1).map((d, i) => ({ level: i + 1, tipPx: d.tip, turnIntoNextDeg: +tipToTurnDeg(d.tip).toFixed(2), foldEndsOn: d.out, nextArmsStartOn: d.in })),
+    decisions: DECISIONS.slice(0, state.levels - 1).map((d, i) => ({ level: i + 1, tipPx: d.tip, turnIntoNextDeg: +tipToTurnDeg(d.tip).toFixed(2), foldEndsOn: d.out, nextArmsStartOn: d.in })),
     coordinates: coordinates(sc),
   }, null, 1);
   levelButtons();

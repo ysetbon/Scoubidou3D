@@ -59,6 +59,8 @@ Each opens that scene in the studio: `/app/?sample=<key>`.
 | Twist stitch — 10 twists | Stitches | [`?sample=twist-stitch-10`](https://ysetbon.github.io/Scoubidou3D/app/?sample=twist-stitch-10) |
 | Two-fan column — 1×3, 10 levels | Stitches | [`?sample=twofan-col-lh-1x3-10`](https://ysetbon.github.io/Scoubidou3D/app/?sample=twofan-col-lh-1x3-10) |
 | Two-fan column — 2×2, 10 levels | Stitches | [`?sample=twofan-col-lh-2x2-10`](https://ysetbon.github.io/Scoubidou3D/app/?sample=twofan-col-lh-2x2-10) |
+| Twist 1×1 column, 10 levels (set level by level on the box's planes) | Stitches | [`?sample=twofan-col-lh-1x1-10`](https://ysetbon.github.io/Scoubidou3D/app/?sample=twofan-col-lh-1x1-10) |
+| Twist 1×1 column, 15 levels | Stitches | [`?sample=twofan-col-lh-1x1-15`](https://ysetbon.github.io/Scoubidou3D/app/?sample=twofan-col-lh-1x1-15) |
 | Three-strand braid | Braids | [`?sample=braid-3`](https://ysetbon.github.io/Scoubidou3D/app/?sample=braid-3) |
 | Four-strand flat braid | Braids | [`?sample=braid-4`](https://ysetbon.github.io/Scoubidou3D/app/?sample=braid-4) |
 | Diagonal basket | Weaves | [`?sample=diagonal`](https://ysetbon.github.io/Scoubidou3D/app/?sample=diagonal) |

@@ -27,7 +27,7 @@
 
 import { boxPlacements, UpperPlan } from './boxmn';
 import {
-  Hand, INDIGO, POKE, WEFT, columnGaps, columnTurnRad, famOffsets, mk, twoFanColumn,
+  Hand, INDIGO, POKE, WEFT, columnGaps, columnKey, columnTurnRad, famOffsets, mk, twoFanColumn,
 } from './twofan';
 import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
 
@@ -330,28 +330,64 @@ export const TWIST_1X1_FIXED: LevelDecision[] = Array.from({ length: 9 }, (_, i)
   in: 1,
 }));
 
-const TWIST_LEVELS = [2, 3, 4, 5, 10];
-export const twist1x1Key = (hand: Hand, levels: number): string => `twist-1x1-${hand}-l${levels}`;
+/**
+ * THE 1×1 TWIST, as set level by level on `artifacts/twist-1x1-ends` — the box's planes
+ * (every fold end on −1, every next arm on +1, crossings ±1, so level 2's ends sit on −1
+ * like all the others) and each level stretched until the column was tight: the tip,
+ * how far from the centre a level's folds sit, is 72.8 px at level 1 and about 75 px
+ * above it (turns of 42.1° and about 40.7°). Levels 1 to 9 are what was set; a taller
+ * column carries on at the level the setting settled on, 75.5 px, which is what five of
+ * the nine were and the one the rest sit within a pixel of.
+ */
+export const TWIST_1X1_TIPS = [72.8, 75.5, 75.5, 75.5, 75.5, 74.5, 75.5, 75, 75.5];
+const TWIST_1X1_REPEAT_TIP = 75.5;
+
+/** The decisions for a 1×1 column of `levels` levels: the set tips, then the settled one. */
+export function twist1x1Decisions(levels: number, tips: number[] = TWIST_1X1_TIPS): LevelDecision[] {
+  return Array.from({ length: Math.max(0, levels - 1) }, (_, i) => ({
+    tip: tips[i] ?? TWIST_1X1_REPEAT_TIP,
+    out: -1,
+    in: 1,
+  }));
+}
+
+/** The 1×1 twist column of `levels` levels — the studio's "twist 1×1" sample. */
+export const twist1x1 = (levels: number, hand: Hand, name?: string): Scene3D =>
+  twistColumnDecided(
+    levels,
+    twist1x1Decisions(levels),
+    name ?? `Twist 1×1 ${hand.toUpperCase()}, ${levels} levels`,
+    hand,
+  );
+
+/** The mean turn of the nine levels that were set, in degrees — what a grid cell quotes. */
+export const TWIST_1X1_TURN_DEG =
+  TWIST_1X1_TIPS.reduce((a, t) => a + tipToTurnDeg(t), 0) / TWIST_1X1_TIPS.length;
+
+/**
+ * Keys. Level 10 REPLACES the two-fan 1×1 column in the browser grid, under the same key
+ * (`twofan-col-<hand>-1x1-10`), so every link to it still opens a 1×1 twist; the others are
+ * new: 2 to 9 and 11 to 15 levels, and 15 is listed beside it.
+ */
+export const twist1x1Key = (hand: Hand, levels: number): string => columnKey(hand, 1, 1).replace(/-10$/, `-${levels}`);
+
+const ALL_LEVELS = Array.from({ length: 14 }, (_, i) => i + 2);
+const LISTED_LEVELS = [10, 15];
+const HANDS_LIST: Hand[] = ['lh', 'rh'];
 
 export const TWIST_1X1_SAMPLES: Record<string, () => Scene3D> = Object.fromEntries(
-  (['rh', 'lh'] as Hand[]).flatMap((hand) =>
-    TWIST_LEVELS.map((levels) => [
+  HANDS_LIST.flatMap((hand) =>
+    ALL_LEVELS.map((levels) => [
       twist1x1Key(hand, levels),
-      () =>
-        twistColumnDecided(
-          levels,
-          TWIST_1X1_FIXED,
-          `Twist 1×1 ${hand.toUpperCase()} on the box's planes, 45° a level — ${levels} levels`,
-          hand,
-        ),
+      () => twist1x1(levels, hand, `Twist 1×1 ${hand.toUpperCase()}, ${levels} levels — set level by level on the box's planes`),
     ]),
   ),
 );
 
-export const TWIST_1X1_LABELS: Array<{ key: string; label: string; group: string }> = (['rh', 'lh'] as Hand[]).flatMap((hand) =>
-  TWIST_LEVELS.map((levels) => ({
+export const TWIST_1X1_LABELS: Array<{ key: string; label: string; group: string }> = HANDS_LIST.flatMap((hand) =>
+  LISTED_LEVELS.map((levels) => ({
     key: twist1x1Key(hand, levels),
-    label: `${hand === 'rh' ? 'Right hand' : 'Left hand'} · twist 1×1 on the box's planes — ${levels} levels`,
-    group: 'Twist 1×1 — on the box\'s planes, 45° a level',
+    label: `${hand === 'rh' ? 'Right hand' : 'Left hand'} · column 1×1 — ${levels} levels, ${TWIST_1X1_TURN_DEG.toFixed(1)}°`,
+    group: 'Twist — the reference stitch (block + one twist)',
   })),
 );
