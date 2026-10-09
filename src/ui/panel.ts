@@ -1694,15 +1694,49 @@ export class Panel {
       body.appendChild(list);
     }
 
+    // The families. Each is one button; pressing it shows that family's note, its links
+    // and its two hands' tables, and pressing another puts the first away. They start
+    // closed so the dialog opens short, with the named samples and these three buttons in
+    // one screen instead of six screens of tables.
+    body.appendChild(el('h4', 'browser-group', 'Families — every m×n face'));
+    const folds: Array<{ btn: HTMLButtonElement; panel: HTMLElement }> = [];
+    const fold = (name: string, summary: string): HTMLElement => {
+      const wrap = el('div', 'browser-fold');
+      const btn = el('button', 'browser-foldbtn');
+      btn.type = 'button';
+      btn.setAttribute('aria-expanded', 'false');
+      const label = el('span', 'browser-foldtitle');
+      label.appendChild(el('b', undefined, name));
+      label.appendChild(el('small', undefined, summary));
+      btn.appendChild(label);
+      const chev = el('span', 'browser-foldchev', '▶');
+      chev.setAttribute('aria-hidden', 'true');
+      btn.appendChild(chev);
+      const panel = el('div', 'browser-foldbody');
+      panel.hidden = true;
+      btn.addEventListener('click', () => {
+        const open = btn.getAttribute('aria-expanded') !== 'true';
+        for (const f of folds) {
+          const on = open && f.btn === btn;
+          f.btn.setAttribute('aria-expanded', String(on));
+          f.panel.hidden = !on;
+        }
+        if (open) btn.scrollIntoView({ block: 'start' });
+      });
+      folds.push({ btn, panel });
+      wrap.appendChild(btn);
+      wrap.appendChild(panel);
+      body.appendChild(wrap);
+      return panel;
+    };
+
     // The family. Rows are m, columns are n, and the two are interchangeable — an
     // m x n stitch is an n x m one looked at sideways — so the grid is symmetric.
     // Hidden while SHOW_ORIGINAL_TWIST_FAMILY is off; the scenes themselves stay
     // reachable by key, this is only the folder that lists them.
     if (SHOW_ORIGINAL_TWIST_FAMILY) {
-      body.appendChild(
-        el('h4', 'browser-group', 'Twist family — the original, every m×n face, 10 twists'),
-      );
-      body.appendChild(
+      const origBody = fold('Twist family — the original', 'the single-turn law · every m×n face · 10 twists');
+      origBody.appendChild(
         el(
           'p',
           'browser-note',
@@ -1745,18 +1779,16 @@ export class Panel {
           grid.appendChild(b);
         }
       }
-      body.appendChild(grid);
+      origBody.appendChild(grid);
     }
 
     // The 1xn reference's own 64 faces, in both hands. Hand is a real distinction
     // here and not a label -- the reference tabulates every size in both, and one
     // is the exact mirror of the other.
-    body.appendChild(
-      el('h4', 'browser-group', 'Twist family — the 1×n reference, every m×n face, 10 levels, both hands'),
-    );
+    const twistBody = fold('Twist family', 'the 1×n reference · every m×n face · 10 levels · both hands');
     // The grid below quotes the numbers. These three are what the numbers came from:
     // the write-up, the 1,408 renders behind it, and the study's own front door.
-    body.appendChild(
+    twistBody.appendChild(
       el(
         'p',
         'browser-note',
@@ -1775,8 +1807,8 @@ export class Panel {
       a.appendChild(el('small', undefined, d.note));
       doors.appendChild(a);
     }
-    body.appendChild(doors);
-    body.appendChild(
+    twistBody.appendChild(doors);
+    twistBody.appendChild(
       el(
         'p',
         'browser-note',
@@ -1799,7 +1831,7 @@ export class Panel {
       ),
     );
     for (const { hand, label, sense } of HANDS) {
-      body.appendChild(el('h5', 'browser-subgroup', `${label} — turns ${sense}`));
+      twistBody.appendChild(el('h5', 'browser-subgroup', `${label} — turns ${sense}`));
       const g2 = el('div', 'browser-grid');
       g2.style.gridTemplateColumns = `auto repeat(${TWOFAN_MAX}, 1fr)`;
       g2.appendChild(el('span', 'browser-axis', ''));
@@ -1838,7 +1870,7 @@ export class Panel {
           g2.appendChild(b);
         }
       }
-      body.appendChild(g2);
+      twistBody.appendChild(g2);
     }
 
     // Columns only. A box stitch is not one round — one round is only where it
@@ -1847,14 +1879,8 @@ export class Panel {
     // only invited someone to click a face and wonder why what opened was flat.
     // The single round is still reachable by key (box-<hand>-<m>x<n>) and is what
     // the drawn sheet behind the door below measures.
-    body.appendChild(
-      el(
-        'h4',
-        'browser-group',
-        `Box family — every m×n face worked ${BOX_LEVELS} levels, both hands`,
-      ),
-    );
-    body.appendChild(
+    const boxBody = fold('Box family', `every m×n face worked ${BOX_LEVELS} levels · both hands`);
+    boxBody.appendChild(
       el(
         'p',
         'browser-note',
@@ -1886,9 +1912,9 @@ export class Panel {
       a.appendChild(el('small', undefined, d.note));
       boxDoors.appendChild(a);
     }
-    body.appendChild(boxDoors);
+    boxBody.appendChild(boxDoors);
     for (const { hand, label, sense } of HANDS) {
-      body.appendChild(el('h5', 'browser-subgroup', `${label} — ${sense}`));
+      boxBody.appendChild(el('h5', 'browser-subgroup', `${label} — ${sense}`));
       const g4 = el('div', 'browser-grid');
       g4.style.gridTemplateColumns = `auto repeat(${BOX_MAX}, 1fr)`;
       g4.appendChild(el('span', 'browser-axis', ''));
@@ -1925,14 +1951,12 @@ export class Panel {
           g4.appendChild(b);
         }
       }
-      body.appendChild(g4);
+      boxBody.appendChild(g4);
     }
 
     // ---- the swirl family, k = -1 ------------------------------------------
-    body.appendChild(
-      el('h4', 'browser-group', 'Swirl family — the k = −1 stitch, every m×n face, both hands'),
-    );
-    body.appendChild(
+    const swirlBody = fold('Swirl family', 'the k = −1 stitch · every m×n face except 1×1 · both hands');
+    swirlBody.appendChild(
       el(
         'p',
         'browser-note',
@@ -1953,7 +1977,7 @@ export class Panel {
       ),
     );
     for (const { hand, label, sense } of HANDS) {
-      body.appendChild(el('h5', 'browser-subgroup', `${label} — ${sense}`));
+      swirlBody.appendChild(el('h5', 'browser-subgroup', `${label} — ${sense}`));
       const g5 = el('div', 'browser-grid');
       g5.style.gridTemplateColumns = `auto repeat(${SWIRL_MAX}, 1fr)`;
       g5.appendChild(el('span', 'browser-axis', ''));
@@ -1991,7 +2015,7 @@ export class Panel {
           g5.appendChild(b);
         }
       }
-      body.appendChild(g5);
+      swirlBody.appendChild(g5);
     }
 
     if (saved.length) {

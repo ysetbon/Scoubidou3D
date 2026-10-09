@@ -2432,6 +2432,90 @@ button {
   color: var(--muted);
 }
 
+/* One button per family. A family's note, links and tables sit under its button and
+   stay hidden until it is pressed; the open one takes the app's filled-control colours. */
+.browser-fold {
+  margin-bottom: 8px;
+}
+
+.browser-foldbtn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  background: var(--cream);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: 0.15s;
+}
+
+.browser-foldbtn:hover {
+  border-color: var(--coral);
+  box-shadow: 2px 2px 0 var(--shadow);
+}
+
+.browser-foldbtn:focus-visible {
+  outline: 2px solid var(--coral);
+  outline-offset: 2px;
+}
+
+.browser-foldtitle {
+  flex: 1;
+  min-width: 0;
+}
+
+.browser-foldtitle b {
+  display: block;
+  font-size: 13.5px;
+}
+
+.browser-foldtitle small {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.browser-foldchev {
+  font-size: 12px;
+  transition: transform 0.15s;
+}
+
+.browser-foldbtn[aria-expanded='true'] {
+  background: var(--fill);
+  border-color: var(--fill);
+  color: var(--fill-ink);
+}
+
+.browser-foldbtn[aria-expanded='true'] small {
+  color: inherit;
+  opacity: 0.75;
+}
+
+.browser-foldbtn[aria-expanded='true'] .browser-foldchev {
+  transform: rotate(90deg);
+}
+
+.browser-foldbody {
+  margin: 0 0 6px 6px;
+  padding: 12px 0 6px 12px;
+  border-left: 2px solid var(--line);
+}
+
+.browser-foldbody[hidden] {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .browser-foldchev {
+    transition: none;
+  }
+}
+
 /* A link out of the browser, inside a line of prose. */
 .browser-link {
   color: var(--coral);
