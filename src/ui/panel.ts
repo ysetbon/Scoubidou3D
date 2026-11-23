@@ -3138,12 +3138,27 @@ export class Panel {
     // Each crossing is a BUTTON, not a dot. This is the part the picture was
     // missing: you could see that 1_2 goes under 2_2 somewhere along there, and
     // there was no way to point at that passage and say anything about it.
+    //
+    // THE PICKED ONE HAS TO LOOK PICKED. It used to be the same hollow ring a
+    // pixel bigger, which nobody could tell from its neighbours. Now it wears a
+    // bold ink ring, a dashed line drops from it to the band so you can see
+    // where along the lace it is, and the other ticks in this picture fade until
+    // it is let go. Ink rather than coral, because coral already means "under"
+    // and is the focus ring. The four states each have a shape of their own:
+    // hover a tinted halo with a thin ring, focus a dashed coral ring, picked
+    // the solid one. Drawn last, so no neighbour sits on top of its ring.
+    const pickedHere = fact.crossings.some(
+      (c) => `${c.key}|${c.ownId}` === this.pickedCross && members.some((m) => m.id === c.ownId),
+    );
+    let pickedTick = '';
     for (const cross of fact.crossings) {
       // A tick belongs to the member that makes the passage, so a storey draws
       // its own and leaves the rest to the storey they happen on.
       if (!members.some((m) => m.id === cross.ownId)) continue;
-      const cx = n(X(cross.u));
-      const cy = n(Y(at(cross.u)));
+      const ux = X(cross.u);
+      const uy = Y(at(cross.u));
+      const cx = n(ux);
+      const cy = n(uy);
       const id = `${cross.key}|${cross.ownId}`;
       const placed = this.crossPlanes.get(id);
       const picked = this.pickedCross === id;
@@ -3158,11 +3173,21 @@ export class Panel {
         (placed !== undefined ? ' placed' : '') +
         (cross.woven ? '' : ' loose') +
         (dim ? ' dim' : '');
-      body +=
-        `<g class="pf-hit" data-cross="${escText(id)}" data-focus="tick|${escText(id)}" ` +
+      const marks = picked
+        ? `<line class="pf-drop" x1="${cx}" y1="${n(uy + 9)}" x2="${cx}" y2="${n(BAND_Y - 1)}" />` +
+          `<path class="pf-caret" d="M${n(ux - 4)},${n(BAND_Y - 4.5)} L${n(ux + 4)},${n(BAND_Y - 4.5)} ` +
+          `L${cx},${n(BAND_Y - 0.5)} Z" />`
+        : '';
+      const tick =
+        `<g class="pf-hit${picked ? ' is-picked' : pickedHere ? ' faded' : ''}" ` +
+        `data-cross="${escText(id)}" data-focus="tick|${escText(id)}" ` +
         `data-x="${cx}" role="button" tabindex="-1" aria-pressed="${picked}">` +
+        marks +
+        `<circle class="pf-hover" cx="${cx}" cy="${cy}" r="9" />` +
+        `<circle class="pf-ring" cx="${cx}" cy="${cy}" r="${picked ? 12 : 9}" />` +
         `<circle class="pf-halo" cx="${cx}" cy="${cy}" r="7" />` +
-        `<circle class="${cls}" cx="${cx}" cy="${cy}" r="${picked ? 4.6 : 3.4}" />` +
+        `<circle class="${cls}" cx="${cx}" cy="${cy}" r="${picked ? 4.2 : 3.4}" />` +
+        (picked ? `<circle class="pf-pick" cx="${cx}" cy="${cy}" r="8.5" />` : '') +
         `<title>${escText(cross.ownId)} ${cross.over ? 'over' : 'under'} ${escText(cross.withId)}` +
         ` — ${cross.gapT.toFixed(1)} thicknesses apart` +
         (placed !== undefined
@@ -3170,11 +3195,16 @@ export class Panel {
           : '') +
         (cross.woven ? '' : ' · not woven, they pass on different storeys') +
         `</title></g>`;
+      if (picked) pickedTick = tick;
+      else body += tick;
     }
+    body += pickedTick;
 
     const fig = el('figure', 'lace-fig');
     fig.innerHTML =
-      `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${escText(fact.key)} in elevation">${body}</svg>`;
+      // A group, not an image: an image's children are hidden from assistive
+      // tech, and every tick in here is a button.
+      `<svg viewBox="0 0 ${W} ${H}" role="group" aria-label="${escText(fact.key)} in elevation">${body}</svg>`;
     const hits = [...fig.querySelectorAll<SVGGElement>('.pf-hit')];
     for (const hit of hits) {
       const id = hit.dataset.cross;
