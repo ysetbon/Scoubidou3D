@@ -2345,9 +2345,31 @@ export class Panel {
    * moves or deletes it — level 0 is the ground and has no break, so its header
    * carries no controls.
    */
+  /**
+   * Redraw the stack, and keep keyboard focus where it was.
+   *
+   * Every press in this panel rebuilds the stack from scratch, and rebuilt
+   * nodes are new nodes: without this, pressing a plane mark with the keyboard
+   * dropped focus on <body> and the next Tab started again from the top of the
+   * page. A control that wants to survive its own redraw carries a `data-focus`
+   * key; the node that comes back under the same key takes the focus again.
+   * One that is gone (Clear all removes its own banner) simply lets it go.
+   */
   private renderStack(): void {
     const host = this.stackHost;
     if (!host) return;
+    const active = document.activeElement;
+    const keep =
+      active instanceof Element && host.contains(active) ? active.getAttribute('data-focus') : null;
+    this.buildStack(host);
+    if (!keep) return;
+    const back = [...host.querySelectorAll<HTMLElement | SVGElement>('[data-focus]')].find(
+      (n) => n.getAttribute('data-focus') === keep,
+    );
+    back?.focus({ preventScroll: true });
+  }
+
+  private buildStack(host: HTMLElement): void {
     host.innerHTML = '';
 
     // Masks are crossings rather than storeys: they have no ground and no order
@@ -2592,6 +2614,16 @@ export class Panel {
   private planesList(): HTMLElement {
     const list = el('section', 'planes');
     list.setAttribute('aria-label', 'Where each part of a lace rests');
+    // Escape closes the crossing you are pointing at, the way it closes any
+    // other open detail, and hands focus back to the tick that opened it. It is
+    // taken here, before the document's own Escape, so it does not also shut a
+    // dock popover or release Move's focus on the same press.
+    list.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || this.pickedCross === null) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.closeCross();
+    });
 
     const facts = this.view.getLaceFacts();
     if (!facts.length) {
@@ -2695,13 +2727,13 @@ export class Panel {
    */
   private guidesToggle(): HTMLElement {
     const box = el('div', 'guides-row');
-    box.appendChild(
-      check('Draw the planes in the scene', this.showPlaneGuides, (on) => {
-        this.showPlaneGuides = on;
-        this.pushPlaneGuides();
-        this.renderStack();
-      }),
-    );
+    const toggle = check('Draw the planes in the scene', this.showPlaneGuides, (on) => {
+      this.showPlaneGuides = on;
+      this.pushPlaneGuides();
+      this.renderStack();
+    });
+    toggle.querySelector('input')?.setAttribute('data-focus', 'guides');
+    box.appendChild(toggle);
     if (this.showPlaneGuides) {
       box.appendChild(
         el(
@@ -3004,7 +3036,8 @@ export class Panel {
         (cross.woven ? '' : ' loose') +
         (dim ? ' dim' : '');
       body +=
-        `<g class="pf-hit" data-cross="${escText(id)}" role="button" tabindex="0">` +
+        `<g class="pf-hit" data-cross="${escText(id)}" data-focus="tick|${escText(id)}" ` +
+        `data-x="${cx}" role="button" tabindex="-1" aria-pressed="${picked}">` +
         `<circle class="pf-halo" cx="${cx}" cy="${cy}" r="7" />` +
         `<circle class="${cls}" cx="${cx}" cy="${cy}" r="${picked ? 4.6 : 3.4}" />` +
         `<title>${escText(cross.ownId)} ${cross.over ? 'over' : 'under'} ${escText(cross.withId)}` +
@@ -3019,7 +3052,8 @@ export class Panel {
     const fig = el('figure', 'lace-fig');
     fig.innerHTML =
       `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${escText(fact.key)} in elevation">${body}</svg>`;
-    for (const hit of fig.querySelectorAll<SVGGElement>('.pf-hit')) {
+    const hits = [...fig.querySelectorAll<SVGGElement>('.pf-hit')];
+    for (const hit of hits) {
       const id = hit.dataset.cross;
       if (!id) continue;
       hit.addEventListener('click', () => this.pickCross(id));
@@ -3029,6 +3063,13 @@ export class Panel {
         this.pickCross(id);
       });
     }
+    // ONE Tab stop per figure, not one per tick: a box stitch of ten rounds
+    // draws hundreds of them, and tabbing through every one to reach the next
+    // card is not a way anyone gets anywhere. The arrows walk the ticks in the
+    // order they sit along the lace, left to right.
+    hits.sort((a, b) => Number(a.dataset.x) - Number(b.dataset.x));
+    const lit = hits.findIndex((h) => h.dataset.cross === this.pickedCross);
+    roving(hits, lit < 0 ? 0 : lit);
     return fig;
   }
 
@@ -3045,6 +3086,8 @@ export class Panel {
 
     const name = el('button', 'row-name') as HTMLButtonElement;
     name.type = 'button';
+    name.dataset.focus = `row|${member.id}`;
+    name.setAttribute('aria-pressed', String(selected));
     name.appendChild(el('span', 'row-id', member.id));
     // What there is of this member OUTSIDE its C's. A core between two folds can
     // own a quarter of the lace and have no straight run at all, and that is
@@ -3078,7 +3121,7 @@ export class Panel {
     });
     row.appendChild(name);
     row.appendChild(
-      this.planePick(this.planes.get(member.id) ?? null, member.id, (v) =>
+      this.planePick(this.planes.get(member.id) ?? null, member.id, `run|${member.id}`, (v) =>
         this.setPlane(member.id, v),
       ),
     );
@@ -3100,15 +3143,43 @@ export class Panel {
    *
    * The names live in the tooltips. There is no room for them at this size, and
    * a legend under every row would cost more than the list did.
+   *
+   * AUTO COMES FIRST, AND IT IS A CHOICE LIKE THE OTHERS. "Not placed" used to
+   * be reachable only by pressing the lit mark a second time — a gesture nothing
+   * on screen advertised, for the state every row opens in. Now the default is
+   * the lit `A` at the head of the row, so an untouched row reads as set to
+   * something, and going back to it is one press on a thing you can see. The
+   * press-again shortcut still works for anyone who already knows it.
+   *
+   * The whole picker is ONE Tab stop; the arrows walk it (see `roving`). Seven
+   * stops a row put 1,290 of them in the ten-round box stitch.
    */
   private planePick(
     current: number | null,
     label: string,
+    scope: string,
     onPick: (rung: number | null) => void,
   ): HTMLElement {
     const group = el('span', 'plane-pick');
-    group.setAttribute('role', 'group');
+    group.setAttribute('role', 'toolbar');
     group.setAttribute('aria-label', `Where ${label} rests`);
+    const buttons: HTMLButtonElement[] = [];
+
+    const auto = el('button', 'plane-btn auto' + (current === null ? ' on' : ''), 'A') as HTMLButtonElement;
+    auto.type = 'button';
+    auto.dataset.focus = `mark|${scope}|auto`;
+    auto.setAttribute('aria-pressed', String(current === null));
+    auto.setAttribute('aria-label', 'Auto');
+    auto.title =
+      current === null
+        ? `${label}: auto — the scene decides where it rests`
+        : `Back to auto — let the scene decide where ${label} rests`;
+    auto.addEventListener('click', () => {
+      if (current !== null) onPick(null);
+    });
+    group.appendChild(auto);
+    buttons.push(auto);
+
     for (const rung of PLANE_RUNGS) {
       const on = current === rung.rung;
       const b = el(
@@ -3117,14 +3188,19 @@ export class Panel {
       ) as HTMLButtonElement;
       b.type = 'button';
       b.innerHTML = PLANE_MARK(rung.rung);
+      b.dataset.focus = `mark|${scope}|${rung.rung}`;
       b.setAttribute('aria-pressed', String(on));
       const named = rung.also ? `${rung.name} · ${rung.also}` : rung.name;
+      b.setAttribute('aria-label', named);
       b.title = on
         ? `${label}: ${named} — press again to let the scene decide`
         : `Put ${label} at the ${named}`;
       b.addEventListener('click', () => onPick(on ? null : rung.rung));
       group.appendChild(b);
+      buttons.push(b);
     }
+    const lit = buttons.findIndex((b) => b.getAttribute('aria-pressed') === 'true');
+    roving(buttons, lit < 0 ? 0 : lit);
     return group;
   }
 
@@ -3154,6 +3230,7 @@ export class Panel {
     const tab = (id: string): HTMLButtonElement => {
       const b = el('button', 'side' + (id === side ? ' on' : ''), id) as HTMLButtonElement;
       b.type = 'button';
+      b.dataset.focus = `side|${id}`;
       b.setAttribute('aria-pressed', String(id === side));
       b.title =
         id === side ? `Placing ${id} at this crossing` : `Place ${id} at this crossing instead`;
@@ -3170,15 +3247,28 @@ export class Panel {
     name.appendChild(tab(cross.withId));
     row.appendChild(name);
 
+    // The way out of this detail, on the detail. Pressing the tick again (or
+    // Escape) still closes it, but neither of those is something you can see.
+    const close = iconBtn('✕', 'Close this crossing (Esc)', () => this.closeCross());
+    close.classList.add('cross-close');
+    close.dataset.focus = 'cross-close';
+
     if (!cross.woven) {
       // Nothing is woven between two storeys with no mask, so there is no anchor
       // here to override — saying so beats a control that does nothing.
       row.appendChild(el('span', 'cross-note', 'different storeys — nothing woven here'));
+      row.appendChild(close);
       return row;
     }
+    // Header first (the pair and its ✕), the picker on a line of its own under
+    // it: eight marks beside two ids, a tag and a close button do not fit in
+    // the card's width without clipping the very names you are choosing between.
+    row.appendChild(close);
     const id = `${cross.key}|${side}`;
     row.appendChild(
-      this.planePick(this.crossPlanes.get(id) ?? null, side, (v) => this.setCrossPlane(id, v)),
+      this.planePick(this.crossPlanes.get(id) ?? null, side, `cross|${id}`, (v) =>
+        this.setCrossPlane(id, v),
+      ),
     );
     return row;
   }
@@ -3295,6 +3385,18 @@ export class Panel {
     // A new tick means a new pair; the side follows the tick until told otherwise.
     this.pickedSide = null;
     this.renderStack();
+  }
+
+  /** Close the crossing detail and put focus back on the tick that opened it,
+   *  so a keyboard user lands where they were rather than at the top of the page. */
+  private closeCross(): void {
+    const was = this.pickedCross;
+    if (was === null) return;
+    this.pickCross(null);
+    const tick = [...(this.stackHost?.querySelectorAll<SVGGElement>('.pf-hit') ?? [])].find(
+      (h) => h.dataset.cross === was,
+    );
+    tick?.focus({ preventScroll: true });
   }
 
   /**
@@ -4670,6 +4772,43 @@ function iconBtn(glyph: string, title: string, onClick: () => void): HTMLButtonE
   b.title = title;
   b.addEventListener('click', onClick);
   return b;
+}
+
+/**
+ * A roving tab stop: the group is ONE stop on Tab, and the arrows walk it.
+ *
+ * The standard keyboard model for a row of related buttons (a toolbar, a
+ * segmented picker): `current` gets `tabindex=0` and the rest `-1`, ←/↑ and →/↓
+ * step, Home and End jump to either end. Whatever takes focus becomes the stop,
+ * so Tab out and back in returns to the last button you were on. Moving does
+ * not press anything — Enter or Space does — because a press here rebuilds the
+ * scene and records a step of history, and an arrow should not do either.
+ */
+function roving(items: Array<HTMLElement | SVGElement>, current: number): void {
+  const stop = (on: Element): void => {
+    for (const it of items) it.setAttribute('tabindex', it === on ? '0' : '-1');
+  };
+  const first = items[Math.max(0, Math.min(items.length - 1, current))];
+  if (first) stop(first);
+  items.forEach((it, i) => {
+    it.addEventListener('focus', () => stop(it));
+    it.addEventListener('keydown', (e) => {
+      const key = (e as KeyboardEvent).key;
+      const to =
+        key === 'ArrowLeft' || key === 'ArrowUp'
+          ? i - 1
+          : key === 'ArrowRight' || key === 'ArrowDown'
+            ? i + 1
+            : key === 'Home'
+              ? 0
+              : key === 'End'
+                ? items.length - 1
+                : null;
+      if (to === null) return;
+      e.preventDefault();
+      items[Math.max(0, Math.min(items.length - 1, to))]?.focus();
+    });
+  });
 }
 
 /** A checkbox as a small square with a tick — the page is geometric, and a

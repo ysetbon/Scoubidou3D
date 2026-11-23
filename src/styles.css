@@ -599,6 +599,15 @@ button {
   fill: var(--hover);
 }
 
+/* The ring the rest of the app draws round a focused control, drawn on the
+   halo instead — an outline on an SVG <g> lands on its bounding box, which is
+   a square round a round tick. Without it the arrow keys walk the ticks with
+   nothing on screen but a hover tint to say which one you are on. */
+.pf-hit:focus-visible .pf-halo {
+  stroke: var(--coral);
+  stroke-width: 1.6;
+}
+
 .pf-hit:focus-visible {
   outline: none;
 }
@@ -608,8 +617,9 @@ button {
    figure and the two should not be in different places. */
 .cross-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px 8px;
   margin: 0 0 7px;
   padding: 5px 7px;
   border: 1.5px solid var(--sel);
@@ -646,6 +656,19 @@ button {
   border-color: var(--edge2);
   background: var(--fill);
   color: var(--fill-ink);
+}
+
+/* The picker takes a line of its own under the pair, right-aligned so its
+   marks sit in the same column as every member row's below. */
+.cross-row .plane-pick {
+  flex: 1 0 100%;
+  justify-content: flex-end;
+}
+
+.cross-close {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
 }
 
 .cross-note {
@@ -696,9 +719,9 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* Seven of these have to sit beside the layer's id in a 297px row, which
-     leaves 139px for the control. 7 x 18 + six 1px gaps is 132px — the widest
-     that still fits with nothing in the row starting to ellipsise. The height
+  /* Eight of these (Auto and the seven rungs) have to sit beside the layer's id
+     in a 297px row. 8 x 18 + the gaps is about 153px, which still leaves the
+     longest sample id and its run tag room without ellipsising. The height
      comes down with the width: the lit one is a filled pill the size of the
      button, and at 18x24 that was a tall black slug next to its neighbours. */
   width: 18px;
@@ -728,6 +751,25 @@ button {
 .plane-btn.on {
   background: var(--fill);
   color: var(--fill-ink);
+}
+
+/* Auto: the state every row opens in, shown as a choice rather than as the
+   absence of one. A letter, not a mark — it is the one option that is not a
+   height — with a little air after it to set it apart from the seven.
+   Lit, it is an outlined tint rather than the solid fill: on a box stitch forty
+   rows open on Auto, and forty black squares would drown the two rows somebody
+   actually placed. Solid black keeps meaning "placed by hand". */
+.plane-btn.auto {
+  margin-right: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.plane-btn.auto.on {
+  background: var(--hover);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 /* A C, written between the two members it joins — a readout, because the step is
