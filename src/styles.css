@@ -9,7 +9,7 @@
  *
  *   #scene    the canvas, edge to edge
  *   #toolbar  the tool switch, a strip along the top of the canvas
- *   #dock     the settings — Ribbon / Weave / View / Scene — along the bottom.
+ *   #dock     the settings — Ribbon / Interlock / View / Scene — along the bottom.
  *             Wide: a pill opens a popover next to what it changes. Narrow: it
  *             swaps the PANEL to that card instead, because a floating card on a
  *             phone covers the very thing the slider is changing
@@ -822,6 +822,40 @@ button {
   color: #171713;
   font-family: Georgia, serif;
   font-size: 12px;
+}
+
+/* An empty scene's stack: where to begin. The panel's own paper card, so it
+   reads as part of the stack rather than as a notice laid over it. */
+.empty-start {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 16px 14px 14px;
+  border: 1.5px solid var(--edge2);
+  background: var(--paper);
+}
+
+.empty-start h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.empty-start p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.empty-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.empty-start .empty-note {
+  font-size: 11px;
 }
 
 .empty {

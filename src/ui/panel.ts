@@ -198,7 +198,11 @@ const DOCK_KEYS: DockKey[] = ['ribbon', 'weave', 'view', 'scene'];
 
 const DOCK_LABELS: Record<DockKey, string> = {
   ribbon: 'Ribbon',
-  weave: 'Weave',
+  // Not "Weave": the toolbar's Weave is the tool you click crossings with, and
+  // two buttons on one screen with one name for two different things is a
+  // guess every time. This card is how hard crossings interlock — and its pill
+  // already read "on" / "off" for exactly that switch.
+  weave: 'Interlock',
   view: 'View',
   scene: 'Scene',
 };
@@ -637,6 +641,10 @@ export class Panel {
    * four cards, in the one place there is room for them.
    */
   private renderPanelBody(): void {
+    this.keepFocus(() => this.buildPanelBody());
+  }
+
+  private buildPanelBody(): void {
     const bar = this.barHost;
     const host = this.stackHost;
     if (!bar || !host) return;
@@ -1128,7 +1136,31 @@ export class Panel {
   private resetAllTimer = 0;
 
   private openDock(key: DockKey | null): void {
+    const was = this.dockOpen;
     this.dockOpen = this.dockOpen === key ? null : key;
+    // Focus follows the card, the way it follows any popover: into it when it
+    // opens (it is drawn in its own layer, nowhere near its pill in the tab
+    // order, so Tab alone would never reach it), and back to the pill that
+    // opened it when it closes — but only if focus was on the dock or the card,
+    // or already lost. Escape pressed with focus on the canvas stays there.
+    const open = this.dockOpen;
+    if (open) {
+      this.pendingFocus = () =>
+        (this.popHost?.querySelector<HTMLElement>(FOCUSABLE) ??
+          this.stackHost?.querySelector<HTMLElement>(`.inline ${FOCUSABLE}`) ??
+          null);
+    } else if (was) {
+      const a = document.activeElement;
+      const ours =
+        a === document.body ||
+        a === null ||
+        !!(
+          this.popHost?.contains(a) ||
+          this.dockHost?.contains(a) ||
+          this.stackHost?.querySelector('.inline')?.contains(a)
+        );
+      if (ours) this.pendingFocus = `dock|${was}`;
+    }
     // On a phone the card is the panel's content, so a folded-away panel would
     // swallow it: the pill would light up and nothing would appear.
     if (this.dockOpen && isNarrow()) document.body.classList.remove('panel-collapsed');
@@ -1171,6 +1203,10 @@ export class Panel {
   }
 
   private renderDock(): void {
+    this.keepFocus(() => this.buildDock());
+  }
+
+  private buildDock(): void {
     const host = this.dockHost;
     if (!host) return;
     host.innerHTML = '';
@@ -1192,6 +1228,8 @@ export class Panel {
       const b = el('button', 'dock-btn' + (open ? ' on' : '')) as HTMLButtonElement;
       b.type = 'button';
       b.innerHTML = values[key] ? `${DOCK_LABELS[key]} <u>${values[key]}</u>` : DOCK_LABELS[key];
+      b.dataset.focus = `dock|${key}`;
+      b.dataset.dock = key;
       b.setAttribute('aria-expanded', String(open));
       b.addEventListener('click', () => this.openDock(key));
       host.appendChild(b);
@@ -1294,7 +1332,7 @@ export class Panel {
   }
 
   private weaveCard(): HTMLElement {
-    const pop = this.popover('Weave', 'over / under');
+    const pop = this.popover(DOCK_LABELS.weave, 'over / under');
     const p = this.view.getParams();
     const toggles = el('div', 'check-row');
     toggles.appendChild(
@@ -1634,8 +1672,8 @@ export class Panel {
     if (!host) return;
     const p = this.view.getParams();
     const values: Record<string, string> = {
-      Ribbon: String(p.thickness),
-      Weave: p.weave ? 'on' : 'off',
+      [DOCK_LABELS.ribbon]: String(p.thickness),
+      [DOCK_LABELS.weave]: p.weave ? 'on' : 'off',
     };
     for (const b of Array.from(host.querySelectorAll('.dock-btn'))) {
       const label = b.firstChild?.textContent?.trim() ?? '';
@@ -2345,29 +2383,70 @@ export class Panel {
    * moves or deletes it — level 0 is the ground and has no break, so its header
    * carries no controls.
    */
-  /**
-   * Redraw the stack, and keep keyboard focus where it was.
-   *
-   * Every press in this panel rebuilds the stack from scratch, and rebuilt
-   * nodes are new nodes: without this, pressing a plane mark with the keyboard
-   * dropped focus on <body> and the next Tab started again from the top of the
-   * page. A control that wants to survive its own redraw carries a `data-focus`
-   * key; the node that comes back under the same key takes the focus again.
-   * One that is gone (Clear all removes its own banner) simply lets it go.
-   */
+  /** Redraw the stack, keeping keyboard focus where it was (see keepFocus). */
   private renderStack(): void {
     const host = this.stackHost;
     if (!host) return;
-    const active = document.activeElement;
-    const keep =
-      active instanceof Element && host.contains(active) ? active.getAttribute('data-focus') : null;
-    this.buildStack(host);
-    if (!keep) return;
-    const back = [...host.querySelectorAll<HTMLElement | SVGElement>('[data-focus]')].find(
-      (n) => n.getAttribute('data-focus') === keep,
-    );
-    back?.focus({ preventScroll: true });
+    this.keepFocus(() => this.buildStack(host));
   }
+
+  /**
+   * Run a rebuild, and keep keyboard focus where it was.
+   *
+   * Every press in this panel rebuilds what it touched from scratch, and rebuilt
+   * nodes are new nodes: without this, pressing ●, ▲, a row's name, a dock pill
+   * or a plane mark with the keyboard dropped focus on <body>, and the next Tab
+   * started again from the top of the page. So the control that had focus is
+   * found again in the rebuilt DOM by its slot (see `focusSlot`) and focused.
+   *
+   * `pendingFocus` overrides that for the presses that remove their own control:
+   * Delete hands focus to the neighbouring row, ✕ back to the row it closed, a
+   * closing dock card back to the pill that opened it. A control that is simply
+   * gone, with nothing pending, lets focus go — there is nothing honest to move
+   * it to.
+   *
+   * Rebuilds nest (renderDock calls renderPanelBody, which calls buildStack), so
+   * only the outermost call captures and restores.
+   */
+  private keepFocus(rebuild: () => void): void {
+    if (this.focusDepth > 0) {
+      rebuild();
+      return;
+    }
+    const hosts = this.focusHosts();
+    const active = document.activeElement;
+    const was =
+      active instanceof Element && hosts.some((h) => h.contains(active))
+        ? focusSlot(active, hosts)
+        : null;
+    this.focusDepth++;
+    try {
+      rebuild();
+    } finally {
+      this.focusDepth--;
+    }
+    const pending = this.pendingFocus;
+    this.pendingFocus = null;
+    const target =
+      (typeof pending === 'function' ? pending() : pending ? findSlot(hosts, { key: pending, n: 0 }) : null) ??
+      (was ? findSlot(hosts, was) : null);
+    target?.focus({ preventScroll: true });
+  }
+
+  /** Where the panel's rebuilt controls live: the bar, the stack, the dock and
+   *  its floating card. */
+  private focusHosts(): HTMLElement[] {
+    return [this.barHost, this.stackHost, this.dockHost, this.popHost].filter(
+      (h): h is HTMLElement => h !== null && h !== undefined,
+    );
+  }
+
+  /** Nesting depth of keepFocus, so nested rebuilds restore once. */
+  private focusDepth = 0;
+
+  /** Where focus goes after the next rebuild, overriding "where it was": a slot
+   *  key, or a function that finds the element itself. */
+  private pendingFocus: string | (() => HTMLElement | null) | null = null;
 
   private buildStack(host: HTMLElement): void {
     host.innerHTML = '';
@@ -2383,6 +2462,17 @@ export class Panel {
     if (this.stackView === 'planes') {
       host.appendChild(this.planesList());
       return;
+    }
+
+    // THE FIRST THING ANYONE SEES. The app opens on an empty scene, and an empty
+    // canvas beside an empty stack said nothing at all about where to begin —
+    // the samples were two presses away behind Scene, and drawing a strand behind
+    // + New. So an empty stack says how to start, with the three ways to do it,
+    // and it sits at the top of the panel rather than hanging from the floor,
+    // because there is no stack yet for it to hang under.
+    if (this.scene.strands.length === 0) {
+      host.classList.remove('from-bottom');
+      host.appendChild(this.emptyStart());
     }
 
     const back = this.hiddenBanner();
@@ -2408,6 +2498,37 @@ export class Panel {
     }
   }
 
+  /** What an empty stack shows: how to get a first strand on screen. */
+  private emptyStart(): HTMLElement {
+    const box = el('section', 'empty-start');
+    box.dataset.focusScope = 'empty';
+    box.appendChild(el('h2', undefined, 'Nothing here yet'));
+    box.appendChild(
+      el(
+        'p',
+        undefined,
+        'Open one of the built-in stitches to look around, or start your own strand.',
+      ),
+    );
+    const acts = el('div', 'empty-acts');
+    const browse = pill('Browse samples', () => this.openBrowser(), 'Every built-in stitch, braid and weave');
+    browse.classList.add('coral');
+    acts.append(
+      browse,
+      pill('Quick strand', () => {
+        this.pendingFocus = () =>
+          this.stackHost?.querySelector<HTMLElement>('.row-name') ?? null;
+        this.addStrand();
+      }, 'Drop a straight strand in the middle of the scene'),
+      pill('Draw strand', () => this.armDraw(), 'Press and drag on the canvas to lay one down'),
+    );
+    box.appendChild(acts);
+    box.appendChild(
+      el('p', 'empty-note', 'A file from OpenStrand Studio opens from Scene → Import .json.'),
+    );
+    return box;
+  }
+
   /**
    * The storey marker: a bar of its own, above the layers resting on it.
    *
@@ -2417,6 +2538,7 @@ export class Panel {
    */
   private levelBar(level: number, count: number): HTMLElement {
     const bar = el('div', 'level-bar' + (level === 0 ? ' ground' : ''));
+    bar.dataset.focusScope = `level|${level}`;
 
     bar.appendChild(el('span', 'level-badge', String(level)));
     bar.appendChild(el('b', undefined, `Level ${level}`));
@@ -2553,6 +2675,7 @@ export class Panel {
    *  so the row states the relationship at a glance. */
   private maskRow(mask: MaskLink, index: number): HTMLElement {
     const row = el('div', 'row row-mask');
+    row.dataset.focusScope = `mask|${mask.overId}|${mask.underId}`;
 
     const over = this.scene.strands.find((s) => s.id === mask.overId);
     const under = this.scene.strands.find((s) => s.id === mask.underId);
@@ -3577,6 +3700,8 @@ export class Panel {
         (strand.isMask ? ' row-mask' : '') +
         (!strand.isMask && !strand.visible ? ' off' : ''),
     );
+    // Keyed by id, not position: ▲ and ▼ move the row, and focus moves with it.
+    row.dataset.focusScope = `layer|${strand.id}`;
 
     const swatch = el('span', 'swatch');
     swatch.style.background = hex(strand.color);
@@ -3587,6 +3712,7 @@ export class Panel {
     const name = el('button', 'row-name') as HTMLButtonElement;
     name.type = 'button';
     name.setAttribute('aria-expanded', String(selected));
+    name.dataset.focus = `layer|${strand.id}|name`;
     name.title = selected ? 'Close this strand’s controls' : 'Open this strand’s controls';
     name.appendChild(el('span', 'row-id', strand.id));
     if (strand.isMask) name.appendChild(el('span', 'tag', 'mask'));
@@ -3629,18 +3755,21 @@ export class Panel {
           ),
       );
       aim.classList.add('focus-aim');
+      aim.dataset.focus = `layer|${strand.id}|aim`;
       if (lit) {
         aim.classList.add('on');
         row.classList.add('focus-in');
       }
       controls.appendChild(aim);
     }
-    controls.appendChild(
-      iconBtn(strand.visible ? '●' : '○', 'Show / hide', () => {
-        strand.visible = !strand.visible;
-        this.apply(strand.visible ? 'show a strand' : 'hide a strand');
-      }),
-    );
+    const eye = iconBtn(strand.visible ? '●' : '○', 'Show / hide', () => {
+      strand.visible = !strand.visible;
+      this.apply(strand.visible ? 'show a strand' : 'hide a strand');
+    });
+    // The glyph flips with the state, so the slot cannot be read off the label.
+    eye.dataset.focus = `layer|${strand.id}|eye`;
+    eye.setAttribute('aria-pressed', String(strand.visible));
+    controls.appendChild(eye);
     const up = iconBtn('▲', 'Move up — over the row or the level above', () =>
       this.reorder(index, +1),
     );
@@ -3662,6 +3791,7 @@ export class Panel {
    */
   private inspector(strand: Strand3D, index: number): HTMLElement {
     const box = el('div', 'inspector');
+    box.dataset.focusScope = `insp|${strand.id}`;
 
     const colours = el('div', 'insp-row');
     colours.appendChild(el('span', 'insp-label', 'Colour'));
@@ -3722,14 +3852,21 @@ export class Panel {
     del.title = `Delete strand ${strand.id}`;
     del.setAttribute('aria-label', `Delete strand ${strand.id}`);
     del.addEventListener('click', () => {
+      // The bin takes its own row with it, so focus goes to the row that takes
+      // its place on screen — the one under it, or over it at the bottom of the
+      // stack — instead of falling to the top of the page.
+      const below = this.scene.strands[index - 1] ?? this.scene.strands[index + 1];
       removeStrandAt(this.scene, index);
       this.selectedId = null;
+      if (below) this.pendingFocus = `layer|${below.id}|name`;
       this.apply('delete a strand');
     });
     acts.appendChild(del);
 
     const close = pill('✕', () => {
       this.selectedId = null;
+      // Back to the row these controls belonged to.
+      this.pendingFocus = `layer|${strand.id}|name`;
       this.renderPanelBody();
     }, 'Close these controls — the strand stays');
     close.classList.add('ghost', 'square');
@@ -4383,7 +4520,8 @@ const ABOUT: Array<[string, string]> = [
   ],
   [
     'Depth and lift',
-    '<b>Depth</b> is how far a lace lifts over or dips under a crossing — the same either way, ' +
+    'Both live in <b>Interlock</b> on the bottom bar. ' +
+      '<b>Depth</b> is how far a lace lifts over or dips under a crossing — the same either way, ' +
       'however far apart the two layers are. <b>Layer lift</b> is the smaller step between ' +
       'consecutive layers, which is what separates strands that overlap without crossing.',
   ],
@@ -4772,6 +4910,59 @@ function iconBtn(glyph: string, title: string, onClick: () => void): HTMLButtonE
   b.title = title;
   b.addEventListener('click', onClick);
   return b;
+}
+
+/**
+ * Where a focusable control sits, in a form that survives a rebuild.
+ *
+ * `key` is the control's `data-focus` when it has one — given to the controls
+ * whose label changes with their state (● / ○, Open / Close) or that move (a
+ * row's buttons follow its strand id, not its position). Otherwise it is made
+ * from the nearest `data-focus-scope` and the control's own name, which is
+ * stable for most buttons. `n` tells apart controls with the same key in one
+ * scope — the inspector's five "This layer" chips, say.
+ */
+interface FocusSlot {
+  key: string;
+  n: number;
+}
+
+const FOCUSABLE =
+  'button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"]), [data-focus]';
+
+function focusKeyOf(e: Element): string {
+  const own = e.getAttribute('data-focus');
+  if (own) return own;
+  const scope = e.closest('[data-focus-scope]')?.getAttribute('data-focus-scope') ?? '';
+  const labelled =
+    e instanceof HTMLInputElement || e instanceof HTMLSelectElement || e instanceof HTMLTextAreaElement
+      ? e.labels?.[0]?.textContent ?? e.getAttribute('aria-label') ?? e.name ?? e.type
+      : e.getAttribute('aria-label') || e.textContent || e.getAttribute('title') || '';
+  return `${scope}::${e.tagName}::${labelled.trim()}`;
+}
+
+function focusSlot(e: Element, hosts: HTMLElement[]): FocusSlot {
+  const key = focusKeyOf(e);
+  let n = 0;
+  for (const h of hosts) {
+    for (const c of h.querySelectorAll(FOCUSABLE)) {
+      if (c === e) return { key, n };
+      if (focusKeyOf(c) === key) n++;
+    }
+  }
+  return { key, n: 0 };
+}
+
+function findSlot(hosts: HTMLElement[], slot: FocusSlot): HTMLElement | SVGElement | null {
+  let n = 0;
+  for (const h of hosts) {
+    for (const c of h.querySelectorAll<HTMLElement | SVGElement>(FOCUSABLE)) {
+      if (focusKeyOf(c) !== slot.key) continue;
+      if (n === slot.n) return c;
+      n++;
+    }
+  }
+  return null;
 }
 
 /**
