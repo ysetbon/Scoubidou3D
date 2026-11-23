@@ -7,8 +7,8 @@ import { MaskLink, Point, RGBA, Scene3D, Strand3D } from './types';
 import { BOX_COLUMN_SAMPLES, BOX_PLACED_SAMPLES, BOX_SAMPLES } from './boxmn';
 import { PLACED_LABELS, PLACED_SAMPLES } from './placedScenes';
 import { SWIRL_SAMPLES } from './swirl';
-import { TWOFAN_COLUMN_SAMPLES, TWOFAN_LABELS, TWOFAN_SAMPLES } from './twofan';
-import { TWIST_1X1_LABELS, TWIST_1X1_SAMPLES } from './twistplaced';
+import { TWOFAN_COLUMN_SAMPLES, TWOFAN_SAMPLES } from './twofan';
+import { TWIST_1X1_SAMPLES } from './twistplaced';
 
 const YELLOW: RGBA = { r: 245, g: 200, b: 55, a: 255 };
 const ORANGE: RGBA = { r: 226, g: 122, b: 38, a: 255 };
@@ -998,6 +998,12 @@ export const SAMPLES: Record<string, () => Scene3D> = {
  * The m×n box, swirl, box-placed and 1×n two-fan stitch faces are not listed by name
  * either; they open from the Browse grids and by `?sample=`. See TWOFAN_LABELS.
  *
+ * Fourteen more are off the list on the same terms (generators kept, `?sample=`
+ * still opens each): `two-crossing-attached`, `two-crossing-arms`,
+ * `box-stitch-10`, `box-stitch-15`, `woven-mat`, `curved-stack`, the four two-fan
+ * columns (2×2 and 1×6, each hand) and the four twist 1×1 columns (10 and 15
+ * levels, each hand). That empties the Twist group, so it no longer shows.
+ *
  * FOUR STITCHES ARE DELIBERATELY ABSENT, on the same terms as
  * `SHOW_ORIGINAL_TWIST_FAMILY` in panel.ts: nothing is deleted, the generators
  * still run and `?sample=` still opens every one of them — they are only off the
@@ -1019,23 +1025,11 @@ export const SAMPLES: Record<string, () => Scene3D> = {
  */
 export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }> = [
   { key: 'two-crossing', label: 'Two crossing strands', group: 'Basics' },
-  { key: 'two-crossing-attached', label: 'Two crossing strands — one attached', group: 'Basics' },
-  { key: 'two-crossing-arms', label: 'Two crossing strands — with arms', group: 'Basics' },
   { key: 'box-and-strand', label: 'box + strand', group: 'Basics' },
   { key: 'box-stitch', label: 'Box stitch — starting stitch', group: 'Stitches' },
-  { key: 'box-stitch-10', label: 'Box stitch — 10 levels', group: 'Stitches' },
-  { key: 'box-stitch-15', label: 'Box stitch — 15 levels', group: 'Stitches' },
   { key: 'braid-3', label: 'Three-strand braid', group: 'Braids' },
   { key: 'braid-4', label: 'Four-strand flat braid', group: 'Braids' },
   { key: 'diagonal', label: 'Diagonal basket', group: 'Weaves' },
-  { key: 'woven-mat', label: 'Woven mat', group: 'Weaves' },
-  { key: 'curved-stack', label: 'Curved ribbon weave', group: 'Weaves' },
-  // The 1xn reference's stitch, alongside the single-turn one rather than replacing
-  // it: two fans, two angles. See docs/twist-stitch/attempts/1xn-reference/.
-  // The 1×1 column is the one set level by level on the box's planes (twistplaced.ts), listed in
-  // the two-fan group in place of the two-fan 1×1 column it replaces.
-  ...TWOFAN_LABELS.filter((l) => !/^twofan-col-(lh|rh)-1x1-10$/.test(l.key)),
-  ...TWIST_1X1_LABELS,
   // Not generators but records: a ring somebody placed round by round and a
   // column somebody worked storey by storey, storeys and all. See
   // placedScenes.ts.
