@@ -3246,7 +3246,10 @@ export class Panel {
     // own a quarter of the lace and have no straight run at all, and that is
     // worth saying plainly rather than printing 0%.
     const share = member.run ? Math.round((member.run.u1 - member.run.u0) * 100) : 0;
-    name.appendChild(el('span', 'tag', member.run ? `${share}% run` : 'C to C'));
+    // Just the share: "26% RUN" did not fit beside the id once the picker gained
+    // Auto, and ran under it. The word lives in the tooltip below, and if even
+    // the number has no room, the tag drops out whole (see .plane-row .row-name).
+    name.appendChild(el('span', 'tag', member.run ? `${share}%` : 'C–C'));
 
     // The over/under count used to be a tag of its own here. Five marks need the
     // width more than it does, and squeezing them both left the LAYER'S ID
