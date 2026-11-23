@@ -59,7 +59,7 @@ masking, and the box + strand sample in this app's studio, where the over lace p
 the panel is the **layer stack and nothing else**. a bar per storey sits *under* the layers it
 carries, because that is what a storey is — the floor they rest on — so level 0's bar is the last
 thing in the list and the stack hangs off the ground. the settings live in a **dock** along the
-bottom (Ribbon / Weave / View / Scene), one card at a time, every pill printing its own value so a
+bottom (Ribbon / Interlock / View / Scene), one card at a time, every pill printing its own value so a
 scene's setup reads without opening anything. everything the panel used to explain is behind the
 **?**, and what's left over the canvas is one status line.
 
