@@ -253,10 +253,14 @@ export class Panel {
   // whatever main.ts actually put on screen, so a `?sample=` link opens with the
   // dropdown already pointing at the scene you asked for.
   private sceneSource: string;
-  // The strand whose inspector is open, by id. Panel-side only: the scene has no
-  // notion of a selection, and this one exists to put a row's own controls in
-  // the row rather than in a section of their own.
+  // The selected strand, by id: its row is lit in the stack and its ribbon is lit
+  // on the canvas. A press on the row's name sets it, and so does a press on the
+  // strand itself in the canvas.
   private selectedId: string | null = null;
+  // The strand whose inspector is open under its row, by id. Separate from the
+  // selection: the row's ≡ button opens and closes it, so picking a layer to look
+  // at does not also drop a column of controls into the stack.
+  private openId: string | null = null;
   // Which side of the stack bar's switch is down. Panel-side only, and kept
   // across redraws: adding a strand should not throw you back out of the masks.
   private stackView: StackView = 'layers';
@@ -289,6 +293,8 @@ export class Panel {
       this.syncToolbar();
       this.renderStack();
     };
+    // A tap on a strand selects its layer; a tap on bare stage lets it go.
+    this.view.onStrandPress = (id) => this.selectFromCanvas(id);
     initTheme(view);
     this.buildChrome();
     this.render();
@@ -423,6 +429,12 @@ export class Panel {
         this.view.setHandleFocus({ kind: 'all' });
         this.syncToolbar();
         this.renderStack();
+        return;
+      }
+      // And after all of those, the selection: the lit row and the lit ribbon.
+      if (this.selectedId && !isTypingIn(e.target)) {
+        this.selectedId = null;
+        this.renderStack();
       }
     });
 
@@ -520,6 +532,7 @@ export class Panel {
   setScene(scene: Scene3D, label = 'open a scene'): void {
     this.scene = scene;
     this.selectedId = null;
+    this.openId = null;
     // The incoming scene carries its OWN placements now, so they are not cleared
     // here — `loadPlanesFromScene` on the redraw below takes whatever it brought,
     // which for a scene with none is none.
@@ -572,6 +585,7 @@ export class Panel {
     this.sceneSource = step.source;
     // The row whose inspector was open need not exist in the state we land in.
     if (!this.scene.strands.some((s) => s.id === this.selectedId)) this.selectedId = null;
+    if (!this.scene.strands.some((s) => s.id === this.openId)) this.openId = null;
     this.view.setScene(this.scene, false);
     this.renderDock(); // -> renderPanelBody -> the brand line and the stack
     this.syncToolbar();
@@ -805,6 +819,7 @@ export class Panel {
       this.viewTabs[key]?.setAttribute('aria-selected', String(key === view));
     }
     this.selectedId = null;
+    this.openId = null;
     // The shelves belong to the Planes view: its toggle is the only way to turn
     // them off, so leaving the view has to take them with it or they are stuck on
     // with the switch nowhere in reach.
@@ -2296,6 +2311,7 @@ export class Panel {
           // Where the strand just landed, and picked, so Attach can take it on.
           this.stackView = 'layers';
           this.selectedId = drawn.id;
+          this.openId = drawn.id;
           this.renderPanelBody();
         }
         this.syncToolbar();
@@ -2320,6 +2336,7 @@ export class Panel {
     // New strand goes on top of the stack (highest layer).
     this.scene.strands.push(s);
     this.selectedId = s.id;
+    this.openId = s.id;
     this.apply('add a strand');
   }
 
@@ -2450,6 +2467,9 @@ export class Panel {
 
   private buildStack(host: HTMLElement): void {
     host.innerHTML = '';
+    // Every route to a new selection redraws the stack, so this is the one place
+    // the canvas is told which layer to light.
+    this.view.selectStrand(this.selectedId);
 
     // Masks are crossings rather than storeys: they have no ground and no order
     // worth reading, so their view is an ordinary list from the top down. The
@@ -2637,7 +2657,7 @@ export class Panel {
     group.setAttribute('aria-label', `Level ${level}`);
     for (const i of rows) {
       group.appendChild(this.layerRow(i));
-      if (this.scene.strands[i].id === this.selectedId) {
+      if (this.scene.strands[i].id === this.openId) {
         group.appendChild(this.inspector(this.scene.strands[i], i));
       }
     }
@@ -3740,27 +3760,19 @@ export class Panel {
     swatch.style.background = hex(strand.color);
     row.appendChild(swatch);
 
-    // The row itself is the select target: one press opens this strand's own
-    // controls under it, another puts them away.
+    // The row's name selects: it lights the row here and the ribbon on the
+    // canvas, and a second press lets it go. It opens nothing — the ≡ at the
+    // row's end does that.
     const name = el('button', 'row-name') as HTMLButtonElement;
     name.type = 'button';
-    name.setAttribute('aria-expanded', String(selected));
+    name.setAttribute('aria-pressed', String(selected));
     name.dataset.focus = `layer|${strand.id}|name`;
-    name.title = selected ? 'Close this strand’s controls' : 'Open this strand’s controls';
+    name.title = selected ? `${strand.id} is selected — press to let it go` : `Select ${strand.id}`;
     name.appendChild(el('span', 'row-id', strand.id));
     if (strand.isMask) name.appendChild(el('span', 'tag', 'mask'));
     // Show attach lineage — the OSS "this strand hangs off <parent>" relationship.
     if (strand.parentId) name.appendChild(el('span', 'tag', `↳ ${strand.parentId}`));
-    name.addEventListener('click', () => {
-      this.selectedId = selected ? null : strand.id;
-      // A narrowed Names follows the selection, the way the plane guides already
-      // follow it — you pick the layer, not the label. A row is ON a storey, so
-      // this aims both scopes at once. The strip carries the chip, so it is
-      // redrawn with the row.
-      if (this.selectedId) this.view.setNameLayer(this.selectedId);
-      if (this.view.getParams().nameScope !== 'all') this.syncToolbar();
-      this.renderStack();
-    });
+    name.addEventListener('click', () => this.select(selected ? null : strand.id));
     row.appendChild(name);
 
     const controls = el('span', 'row-acts');
@@ -3813,8 +3825,63 @@ export class Panel {
     );
     down.disabled = !this.canMove(index, -1);
     controls.appendChild(down);
+
+    // The accordion: this layer's own controls, opened under the row. Set off by
+    // a hairline because it does nothing TO the layer — it only opens a drawer.
+    controls.appendChild(el('span', 'acc-sep'));
+    const open = strand.id === this.openId;
+    const acc = el('button', 'acc-btn') as HTMLButtonElement;
+    acc.type = 'button';
+    acc.innerHTML = ACCORDION_ICON;
+    acc.dataset.focus = `layer|${strand.id}|open`;
+    acc.setAttribute('aria-expanded', String(open));
+    acc.setAttribute('aria-label', `${open ? 'Close' : 'Open'} ${strand.id}’s controls`);
+    acc.title = open ? 'Close this layer’s controls' : 'Open this layer’s controls';
+    acc.addEventListener('click', () => {
+      this.openId = open ? null : strand.id;
+      // The controls belong to the lit layer, so opening a row also selects it.
+      if (!open) this.select(strand.id);
+      else this.renderStack();
+    });
+    controls.appendChild(acc);
     row.appendChild(controls);
     return row;
+  }
+
+  /** Select a layer, or none, from the stack or the canvas. */
+  private select(id: string | null): void {
+    this.selectedId = id;
+    // A narrowed Names follows the selection, the way the plane guides already
+    // follow it — you pick the layer, not the label. A row is ON a storey, so
+    // this aims both scopes at once. The strip carries the chip, so it is
+    // redrawn with the row.
+    if (id) this.view.setNameLayer(id);
+    if (this.view.getParams().nameScope !== 'all') this.syncToolbar();
+    this.renderStack();
+  }
+
+  /**
+   * A tap on the canvas: select what it landed on, and bring that row into view.
+   * On a twist the row can be two hundred down the stack, and a lit ribbon whose
+   * row is off-screen is half an answer. The row says so once, with a pulse, so
+   * the eye finds it after the scroll.
+   */
+  private selectFromCanvas(id: string | null): void {
+    if (id === null && this.selectedId === null) return;
+    // The Masks list has no layer rows to light. The Planes view selects its
+    // members by the same id, so it takes the selection as it is.
+    if (this.stackView === 'masks') return;
+    this.select(id);
+    if (!id || !this.stackHost) return;
+    const row = this.stackHost.querySelector<HTMLElement>(
+      `[data-focus-scope="layer|${CSS.escape(id)}"]`,
+    );
+    if (!row) return;
+    const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    row.scrollIntoView({ block: 'nearest', behavior: calm ? 'auto' : 'smooth' });
+    row.classList.remove('flash');
+    void row.offsetWidth; // restart the pulse on a second tap of the same strand
+    row.classList.add('flash');
   }
 
   /**
@@ -3891,15 +3958,17 @@ export class Panel {
       const below = this.scene.strands[index - 1] ?? this.scene.strands[index + 1];
       removeStrandAt(this.scene, index);
       this.selectedId = null;
+      this.openId = null;
       if (below) this.pendingFocus = `layer|${below.id}|name`;
       this.apply('delete a strand');
     });
     acts.appendChild(del);
 
     const close = pill('✕', () => {
-      this.selectedId = null;
-      // Back to the row these controls belonged to.
-      this.pendingFocus = `layer|${strand.id}|name`;
+      // Closes the controls only: the layer stays selected, and lit.
+      this.openId = null;
+      // Back to the button that opened them.
+      this.pendingFocus = `layer|${strand.id}|open`;
       this.renderPanelBody();
     }, 'Close these controls — the strand stays');
     close.classList.add('ghost', 'square');
@@ -4695,6 +4764,15 @@ const MARK =
 // The stacked-layers mark used by the "Level" button and by the level badges: a
 // slab seen edge-on with a second one showing beneath it — one storey above
 // another, which is exactly what a level is.
+// The accordion mark on a layer row: three bars narrowing downward, a drawer's
+// worth of controls tapering to the one row they hang from. Turned over while
+// the drawer is open.
+const ACCORDION_ICON = svg(
+  '<rect x="3" y="5" width="18" height="2.6" rx="1.3" />' +
+    '<rect x="6.5" y="10.7" width="11" height="2.6" rx="1.3" />' +
+    '<rect x="10" y="16.4" width="4" height="2.6" rx="1.3" />',
+);
+
 const LAYERS_ICON = svg(
   '<path d="M12 3 22 9.2 12 15.4 2 9.2Z" />' +
     '<path d="M12 17.7 3.7 12.5 2 13.6 12 19.8 22 13.6 20.3 12.5Z" />',
