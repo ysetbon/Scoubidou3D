@@ -768,8 +768,19 @@ button {
   color: var(--muted);
 }
 
+/* When the id and its run tag do not both fit beside the picker, the TAG goes,
+   whole — never the id, and never spilling under the marks. It did spill: the
+   tag cannot shrink, the button did not clip, and since Auto widened the picker
+   most rows of a box stitch ran 7px or more under the A, with "RUN" showing
+   through it. So the name wraps and is clipped to its one line: a tag with no
+   room drops to a second line nobody sees, and the share it gave is still in
+   the row's tooltip. */
 .plane-row .row-name {
   gap: 5px;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  height: 20px;
+  overflow: hidden;
 }
 
 /* Over/under counts, which are a reading rather than a label — so they keep
@@ -795,8 +806,9 @@ button {
   align-items: center;
   justify-content: center;
   /* Eight of these (Auto and the seven rungs) have to sit beside the layer's id
-     in a 297px row. 8 x 18 + the gaps is about 153px, which still leaves the
-     longest sample id and its run tag room without ellipsising. The height
+     in a 297px row. 8 x 18 + the gaps is about 153px, which leaves room for the
+     id but not always for its run tag as well — see .plane-row .row-name for
+     what gives way when it does not. The height
      comes down with the width: the lit one is a filled pill the size of the
      button, and at 18x24 that was a tall black slug next to its neighbours. */
   width: 18px;
