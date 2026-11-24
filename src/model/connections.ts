@@ -5,15 +5,17 @@
 // one drags the other (attach_mode.py / attached_strand.py / move_mode.py). The
 // child inherits the parent's look and joins the same layer "set" (`1_1` → `1_2`).
 //
-// We reproduce that with two ideas, both keyed off the drawing-plane geometry we
-// already store per strand:
-//   1. Two endpoints are CONNECTED when they sit on the same point. That single
-//      rule powers "move connected strands together" (move_mode.py's
-//      points_are_close propagation) AND reconstructs the joints of an imported
-//      OSS file for free.
-//   2. An endpoint is OCCUPIED (OSS `has_circles`) when it shares its location
-//      with another strand's endpoint — a junction. Only FREE endpoints accept a
-//      new attachment.
+// Two ideas, and the first is what a drag and the attach tool both turn on:
+//   1. Two endpoints are one JOINT when an attachment says so — a child's start
+//      and the parent end it declares (`parentId` / `parentSide`), and through
+//      that parent end every other child hung off it. See `endpointJoints`.
+//      Sitting on the same point is NOT enough on its own: `x, y` is a
+//      projection, and in a stacked scene the end of one lace lands within a
+//      unit of a joint of another lace levels away without being part of it.
+//      Distance only decides for strands that carry no attachment at all, which
+//      is what an OSS file without `attached_to` gives you.
+//   2. An endpoint is OCCUPIED (OSS `has_circles`) when it is part of a joint
+//      with some other strand. Only FREE endpoints accept a new attachment.
 
 import { levelAt } from './levels';
 import { Point, Scene3D, Strand3D } from './types';
@@ -42,50 +44,126 @@ export interface EndpointRef {
 }
 
 /**
- * Every endpoint (this one included) that coincides with strand[index]'s `side`
- * point. This is the set that must move together when the point is dragged —
- * OSS's "connected strands" for a shared junction.
+ * Which joint every endpoint belongs to: `root[i * 2 + side]` is the same number
+ * for every endpoint that moves with strand `i`'s `side` point, and that number
+ * is no other joint's.
+ *
+ * The rule, in the order it is applied:
+ *
+ *   * **An attachment is a joint.** A strand whose declared parent still holds
+ *     its start is glued to that parent end. Two children of the same parent end
+ *     are therefore glued to each other through it, and a chain is glued link by
+ *     link. Whatever else happens to lie on that point is not.
+ *   * **Distance decides only between strands with no attachment at all** —
+ *     no declared parent holding them, and no child declaring them. That is an
+ *     OSS file saved without `attached_to`, where coincidence is the only record
+ *     of a joint there is, and it is why such a file still drags as OSS does.
+ *     Even then the two have to be on the same storey: across a level break a
+ *     shared `x, y` is the projection again (`collectJunctions` draws the same
+ *     line for the same reason).
+ *
+ * Before this, every endpoint within `ATTACH_EPS` of the pressed one was taken,
+ * attached or not. In the swirl column 1×2 the brown `2_13` (level 5, child of
+ * `2_11`) ends 0.8 units from the white `1_10` → `1_12` joint (levels 3 and 4),
+ * so dragging the brown end dragged both white strands with it — and dropped all
+ * three on one exact point, which made the weld permanent and saved it. 68 of
+ * the built-in samples carried 1,029 such joints, nearly all in the twist faces
+ * and two-fan columns.
+ */
+export function endpointJoints(scene: Scene3D): number[] {
+  const strands = scene.strands;
+  const root = strands.flatMap((_, i) => [i * 2, i * 2 + 1]);
+  const find = (a: number): number => {
+    while (root[a] !== a) {
+      root[a] = root[root[a]];
+      a = root[a];
+    }
+    return a;
+  };
+  const join = (a: number, b: number): void => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) root[Math.max(ra, rb)] = Math.min(ra, rb);
+  };
+
+  const indexOf = new Map<string, number>();
+  strands.forEach((s, i) => {
+    if (!s.isMask && !indexOf.has(s.id)) indexOf.set(s.id, i);
+  });
+
+  // The attachments that still hold: the parent end is under the child's start.
+  const attached = new Set<number>();
+  strands.forEach((child, ci) => {
+    if (child.isMask || child.parentId == null || child.parentSide == null) return;
+    const pi = indexOf.get(child.parentId);
+    if (pi === undefined || pi === ci) return;
+    if (!pointsClose(endpoint(strands[pi], child.parentSide), child.start)) return;
+    join(ci * 2, pi * 2 + child.parentSide);
+    attached.add(ci);
+    attached.add(pi);
+  });
+
+  // Strands with no attachment either way: coincidence, on one storey.
+  const loose = strands
+    .map((_, i) => i)
+    .filter((i) => !strands[i].isMask && !attached.has(i));
+  for (let a = 0; a < loose.length; a++) {
+    const i = loose[a];
+    const storey = levelAt(scene, i);
+    for (let b = a + 1; b < loose.length; b++) {
+      const j = loose[b];
+      if (levelAt(scene, j) !== storey) continue;
+      for (const t of [0, 1] as const) {
+        for (const u of [0, 1] as const) {
+          if (pointsClose(endpoint(strands[i], t), endpoint(strands[j], u))) join(i * 2 + t, j * 2 + u);
+        }
+      }
+    }
+  }
+  return root.map((_, k) => find(k));
+}
+
+/**
+ * Every endpoint (this one included) in the same joint as strand[index]'s `side`
+ * point — the set that moves together when that point is dragged, OSS's
+ * "connected strands" for a shared junction. See `endpointJoints` for what makes
+ * a joint.
  */
 export function connectedEndpoints(scene: Scene3D, index: number, side: 0 | 1): EndpointRef[] {
-  const anchor = endpoint(scene.strands[index], side);
+  const joint = endpointJoints(scene);
+  const mine = joint[index * 2 + side];
   const refs: EndpointRef[] = [];
   scene.strands.forEach((s, i) => {
     if (s.isMask) return;
     ([0, 1] as const).forEach((t) => {
-      if (pointsClose(endpoint(s, t), anchor)) refs.push({ index: i, side: t });
+      if (joint[i * 2 + t] === mine) refs.push({ index: i, side: t });
     });
   });
   return refs;
 }
 
 /**
- * Recompute every strand's `hasCircles` from the current geometry: an endpoint
- * is occupied when some OTHER strand's endpoint sits on the same point. Call
- * after any structural change (import, add, attach, delete) — never mid-move, so
- * that dragging an endpoint that merely grazes another doesn't silently glue
- * them (OSS only forms attachments through the attach tool, not by dropping).
+ * Recompute every strand's `hasCircles`: an endpoint is occupied when it shares
+ * a joint (`endpointJoints`) with another strand's endpoint. Call after any
+ * structural change (import, add, attach, delete) — never mid-move, so that
+ * dragging an endpoint that merely grazes another doesn't silently glue them
+ * (OSS only forms attachments through the attach tool, not by dropping).
  */
 export function recomputeOccupancy(scene: Scene3D): void {
   const strands = scene.strands;
+  const joint = endpointJoints(scene);
+  const size = new Map<number, number>();
+  strands.forEach((s, i) => {
+    if (s.isMask) return;
+    for (const t of [0, 1]) size.set(joint[i * 2 + t], (size.get(joint[i * 2 + t]) ?? 0) + 1);
+  });
   for (let i = 0; i < strands.length; i++) {
     const s = strands[i];
     if (s.isMask) continue;
-    s.hasCircles = [
-      isJunction(strands, i, 0),
-      isJunction(strands, i, 1),
-    ];
+    // More than this one endpoint in the joint. A strand's own two ends can only
+    // share one when it is zero-length, which no finished strand is.
+    s.hasCircles = [(size.get(joint[i * 2]) ?? 0) > 1, (size.get(joint[i * 2 + 1]) ?? 0) > 1];
   }
-}
-
-function isJunction(strands: Strand3D[], index: number, side: 0 | 1): boolean {
-  const anchor = endpoint(strands[index], side);
-  for (let j = 0; j < strands.length; j++) {
-    if (j === index) continue;
-    const o = strands[j];
-    if (o.isMask) continue;
-    if (pointsClose(o.start, anchor) || pointsClose(o.end, anchor)) return true;
-  }
-  return false;
 }
 
 /**
@@ -175,7 +253,7 @@ export function collectJunctions(scene: Scene3D): Junction[] {
  * convention: members of a set share the number N and count up — `1_1`, `1_2`,
  * `1_3`. If the parent's id isn't `N_M` (e.g. a hand-named sample), fall back to
  * a unique `<parent>_k` suffix so the connection still works — naming is only
- * cosmetic; movement follows the coincident-point graph regardless.
+ * cosmetic; movement follows the declared parent link (`endpointJoints`).
  */
 export function nextAttachedName(scene: Scene3D, parent: Strand3D): string {
   const m = /^(\d+)_(\d+)$/.exec(parent.id);
