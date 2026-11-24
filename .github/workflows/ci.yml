@@ -76,5 +76,11 @@ jobs:
       - name: The curve is OpenStrand Studio's
         run: npm run check:curve
 
+      # What a drag moves. Joints follow attachments, not proximity: on a stacked
+      # sample the end of one lace lands within a unit of another lace's joint
+      # levels away, and dragging it used to drag that lace too.
+      - name: A drag moves only what is attached
+        run: npm run check:joints
+
       - name: Type-check and build
         run: npm run build
