@@ -85,7 +85,7 @@ fingertip. one finger orbits, pinch zooms, two fingers pan.
   - the **Weave** tool: click the strand that goes over, then the one it crosses. hovering lights
     **one layer** and names it at the cursor, green for the over and blue for the under, so on a
     stitch drawn as one seamless lace you still see which strand a click takes.
-  - **masks are layers.** the stack bar switches **Layers | Masks | Planes**; the masks side is a
+  - **masks are layers.** the stack bar switches **Layers | Masks | Planes | Functions**; the masks side is a
     row per crossing reading `1_2` over `1_3` (OSS's `first_second`), with a two-tone disc and
     flip / delete. a mask changes only its own crossing.
   - **imported masks weave by themselves.** `MaskedStrand` records become over/under links, so an
@@ -95,6 +95,13 @@ fingertip. one finger orbits, pinch zooms, two fingers pan.
   used to float with a Z gap. now a **lofted bridge** morphs the parent's end cross-section into the
   child's start across that gap, banking gently — one continuous lace stepping between layers.
   derived from coincident endpoints, so imported files reconnect too.
+- **stretch: pull a level's knot tight.** the stack bar's fourth side, **Functions**, gives every
+  level a section and every section the things that level can do to itself. **Stretch** is the
+  first: it pulls a loosely drawn knot tight the way pulling its ends would — strands straighten
+  and give their handles back, folds close up to what they wrap, side-by-side arms settle one gap
+  apart, the slack comes out through the loose ends — without changing which strand crosses
+  which. a hand-drawn 1×1 starting stitch comes out as the family's own block, to a millionth of a
+  pixel. ([`docs/stretch.md`](docs/stretch.md), `npm run check:stretch`)
 - **colour a layer, or the whole lace.** a layer name is `set_length`, so `1_2` is the second
   length of lace `1`. a switch under the palette says where a colour lands — **This layer** paints
   `1_2`, **All layers** paints every length of that lace at once — and either way it's one undo. a

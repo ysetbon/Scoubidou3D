@@ -82,5 +82,12 @@ jobs:
       - name: A drag moves only what is attached
         run: npm run check:joints
 
+      # Stretch pulls a level tight without changing which strand crosses which.
+      # The solver is a numerical descent, so "it still looks right" is not a
+      # check: the clearances have to land on the families' own numbers, and a
+      # built block has to come back untouched.
+      - name: Stretch keeps the weave and lands on the gap
+        run: npm run check:stretch
+
       - name: Type-check and build
         run: npm run build
