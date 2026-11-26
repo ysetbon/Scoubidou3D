@@ -94,6 +94,8 @@ const END_R = 0.18;
 // strand's width as they are on the desktop canvas.
 const CP_R = 14.66 * SCALE;
 const OCC_R = 0.12;
+// How far a press may wander and still be a tap that selects, not a drag that orbits.
+const TAP_SLOP_PX = 5;
 const COLOR_END = 0x2f7bd6; // move-mode endpoint (blue)
 const COLOR_CP = 0x008000; // control points — OSS's green (strand_drawing_canvas.py)
 const COLOR_FREE = 0x2fb862; // attach-mode free endpoint (green — attachable)
@@ -510,6 +512,14 @@ export class StrandScene {
    * it, so both have to be told.
    */
   onFocusChange: ((focus: HandleFocus) => void) | null = null;
+  /**
+   * A press on the canvas that was a TAP — it did not travel far enough to be an
+   * orbit or a pan, and no tool claimed it (a handle grab, a weave pick, a Move
+   * aim and an armed Draw all stop the event before it gets here). Reports the
+   * layer under the pointer, or null for bare stage, so the panel can select it.
+   */
+  onStrandPress: ((id: string | null) => void) | null = null;
+  private tapStart: { x: number; y: number } | null = null;
 
   // The woven world-space centerline of each strand (indexed like scene.strands;
   // null for hidden strands), rebuilt every frame the scene changes. Handles and
@@ -641,6 +651,10 @@ export class StrandScene {
     // A cancelled pointer (OS gesture, focus loss, touch interruption) must not
     // strand an in-flight edit — abandon it and hand control back to the camera.
     window.addEventListener('pointercancel', this.onPointerCancel, true);
+    // Bubble phase, after the capture handler above: any press a tool claims
+    // there is stopped before it reaches this, so only a free press is a tap.
+    this.canvas.addEventListener('pointerdown', this.onTapDown);
+    window.addEventListener('pointerup', this.onTapUp);
 
     window.addEventListener('resize', () => this.resize());
     // The window is not the only thing that resizes the canvas: folding the panel
@@ -1104,10 +1118,24 @@ export class StrandScene {
    * fighting it for the same pixels.
    */
   private buildWeaveOverlays(): void {
+    for (const mesh of this.weaveOverlays.values()) {
+      this.weaveGroup.remove(mesh);
+      mesh.traverse((obj) => {
+        const m = obj as THREE.Mesh;
+        m.geometry?.dispose();
+        (m.material as THREE.Material | undefined)?.dispose();
+      });
+    }
     this.weaveOverlays.clear();
-    if (this.mode !== 'weave' && !this.layerPicking) return;
+    // Outside the weave tool and the fold lab only the SELECTED layer gets a
+    // coat — it is the highlight that says which row of the stack is lit. One
+    // ribbon, not one per layer: a twist has two hundred of them, and nothing
+    // but the selection needs lighting here.
+    const all = this.mode === 'weave' || this.layerPicking;
+    if (!all && this.selectedStrandId === null) return;
 
     this.current.strands.forEach((strand, i) => {
+      if (!all && strand.id !== this.selectedStrandId) return;
       const line = this.world3D[i];
       if (!line || line.length < 2) return;
       // A hair fatter than the body, and shaped like it: a coarser cross-section
@@ -1144,6 +1172,41 @@ export class StrandScene {
       );
       mesh.visible = false;
       mesh.userData.strandId = strand.id;
+      // The selection also gets a coral RIM: a fatter shell drawn by its far
+      // faces only, the way the black outline is, so it shows as a band around
+      // the ribbon's edge. A tint alone is easy to miss on a yellow or orange
+      // lace; a ring in the selection's colour is not. A child of the coat, so
+      // it lights with it and the non-recursive pick ray never meets it.
+      if (!all) {
+        const rim = Math.max(thickness * 0.6, width * 0.2);
+        const rimGeom = buildRibbonGeometry(line, {
+          width: width + rim * 2,
+          thickness: thickness + rim * 2,
+          cornerRadius: (thickness + rim * 2) * 0.48,
+          cornerSteps: 3,
+          roundCaps: false,
+          // Open-ended: a run's end is usually glued into a fold, and a cap
+          // there is a coral disc standing in the middle of the turn.
+          openStart: true,
+          openEnd: true,
+          // As the black outline does: through a fold a far face of the shell can
+          // land in front of the body, and the rim floods across it.
+          openFolds: true,
+          cullFoldThrough: true,
+        });
+        const rimMesh = new THREE.Mesh(
+          rimGeom,
+          new THREE.MeshBasicMaterial({
+            color: 0xff5c35,
+            side: THREE.BackSide,
+            polygonOffset: true,
+            polygonOffsetFactor: 4,
+            polygonOffsetUnits: 4,
+          }),
+        );
+        rimMesh.renderOrder = -1;
+        mesh.add(rimMesh);
+      }
       this.weaveGroup.add(mesh);
       this.weaveOverlays.set(strand.id, mesh);
     });
@@ -1165,8 +1228,10 @@ export class StrandScene {
       const mat = mesh.material as THREE.MeshBasicMaterial;
       if (picked) {
         // The studio's own "this one" colour, the coral every active control takes.
+        // Lighter where the rim carries the selection, so the lace keeps its own
+        // colour under the tint.
         mat.color.set(0xff5c35);
-        mat.opacity = 0.55;
+        mat.opacity = this.mode === 'weave' || this.layerPicking ? 0.55 : 0.3;
         continue;
       }
       // A hover while a strand is already held previews the UNDER half of the
@@ -3021,9 +3086,27 @@ export class StrandScene {
 
   /** Light one layer, or none. */
   selectStrand(id: string | null): void {
+    if (this.selectedStrandId === id) return;
     this.selectedStrandId = id;
-    this.applyWeaveHighlight();
+    // With every layer's coat already built, lighting one is a colour change;
+    // otherwise the one coat there is belongs to the old selection.
+    if (this.mode === 'weave' || this.layerPicking) this.applyWeaveHighlight();
+    else this.buildWeaveOverlays();
   }
+
+  private onTapDown = (e: PointerEvent): void => {
+    this.tapStart = e.button === 0 && !this.drawArm ? { x: e.clientX, y: e.clientY } : null;
+  };
+
+  private onTapUp = (e: PointerEvent): void => {
+    const start = this.tapStart;
+    this.tapStart = null;
+    if (!start || e.button !== 0 || !this.onStrandPress) return;
+    // A drag is the camera's, whatever it started on.
+    if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > TAP_SLOP_PX) return;
+    if (this.mode === 'weave') return; // the weave tool's presses are its picks
+    this.onStrandPress(this.pickStrandAt(e.clientX, e.clientY));
+  };
 
   getSelectedStrand(): string | null {
     return this.selectedStrandId;

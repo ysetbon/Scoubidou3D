@@ -996,7 +996,37 @@ button {
 }
 
 :root[data-theme='dark'] .row.sel {
-  background: color-mix(in srgb, var(--coral) 9%, transparent);
+  background: color-mix(in srgb, var(--coral) 13%, transparent);
+}
+
+/* The selected layer's name takes the coral its ribbon is lit in on the canvas,
+   so the row and the ribbon read as the same thing. */
+.row.sel .row-id {
+  color: var(--coral);
+}
+
+/* A selection that came from a tap on the canvas: the row it landed on pulses
+   once, so the eye finds it after the stack has scrolled to it. */
+.row.flash {
+  animation: row-flash 0.9s ease-out;
+}
+
+@keyframes row-flash {
+  0% {
+    outline: 0 solid transparent;
+  }
+  30% {
+    outline: 5px solid color-mix(in srgb, var(--coral) 45%, transparent);
+  }
+  100% {
+    outline: 5px solid transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row.flash {
+    animation: none;
+  }
 }
 
 .row-mask {
@@ -1012,8 +1042,8 @@ button {
   border-radius: 50%;
 }
 
-/* The row's name is the select target — one press opens that strand's own
-   controls under it, another puts them away. */
+/* The row's name is the select target — one press lights the layer here and on
+   the canvas, another lets it go. Its controls open from the ≡ at the row's end. */
 .row-name {
   flex: 1 1 auto;
   min-width: 0;
@@ -1062,8 +1092,61 @@ button {
 
 .row-acts {
   display: flex;
+  align-items: center;
   gap: 1px;
   flex: 0 0 auto;
+}
+
+/* The accordion: the one control on the row that opens a drawer rather than
+   doing something to the layer, so a hairline sets it apart from ● ▲ ▼. */
+.acc-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 3px 0 4px;
+  background: var(--line);
+}
+
+.acc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1.5px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.acc-btn .icon {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+  transition: transform 0.2s ease;
+}
+
+.acc-btn:hover {
+  border-color: var(--edge2);
+  color: var(--ink);
+}
+
+.acc-btn[aria-expanded='true'] {
+  border-color: var(--coral);
+  background: var(--coral);
+  color: var(--fill-ink);
+}
+
+/* Open, the bars turn over: narrow at the row, widening into the drawer. */
+.acc-btn[aria-expanded='true'] .icon {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .acc-btn .icon {
+    transition: none;
+  }
 }
 
 .icon-btn {
