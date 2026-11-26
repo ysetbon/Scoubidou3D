@@ -9,6 +9,10 @@ import { PLACED_LABELS, PLACED_SAMPLES } from './placedScenes';
 import { SWIRL_SAMPLES } from './swirl';
 import { TWOFAN_COLUMN_SAMPLES, TWOFAN_SAMPLES } from './twofan';
 import { TWIST_1X1_SAMPLES } from './twistplaced';
+import { sceneFromFile } from './sceneIO';
+// A record, not a generator: the box stitch worked a level at a time with
+// Stretch pulling each round tight. Built by scripts/make-stretched-box.ts.
+import BOX_1X1_STRETCHED_10 from './fitted/box-1x1-stretched-10.json';
 
 const YELLOW: RGBA = { r: 245, g: 200, b: 55, a: 255 };
 const ORANGE: RGBA = { r: 226, g: 122, b: 38, a: 255 };
@@ -983,6 +987,12 @@ export const SAMPLES: Record<string, () => Scene3D> = {
   'box-stitch': boxStitch,
   'box-stitch-10': () => boxStitchRounds(10, 'Box stitch — 10 levels'),
   'box-stitch-15': () => boxStitchRounds(15, 'Box stitch — 15 levels'),
+  // The same stitch, ten levels, worked from a loose hand-drawn start with the
+  // Functions view's Stretch run on every level as it was laid. Every fold stands
+  // the same distance past what it wraps, so the column keeps one width all the
+  // way up, where `box-stitch-10` spreads its folds and widens as it rises.
+  'box-stitch-10-stretched': () =>
+    sceneFromFile(BOX_1X1_STRETCHED_10, 'Box stitch — 10 levels, stretched'),
   'round-stitch-10': () => boxStitchRounds(10, 'Round stitch — 10 levels', true),
   'twist-stitch-10': () => twistStitch(10, 'Twist stitch — 10 twists'),
   'braid-3': () => flatBraid(3, 7, 'Three-strand braid'),
@@ -1027,6 +1037,7 @@ export const SAMPLE_LABELS: Array<{ key: string; label: string; group: string }>
   { key: 'two-crossing', label: 'Two crossing strands', group: 'Basics' },
   { key: 'box-and-strand', label: 'box + strand', group: 'Basics' },
   { key: 'box-stitch', label: 'Box stitch — starting stitch', group: 'Stitches' },
+  { key: 'box-stitch-10-stretched', label: 'Box stitch — 10 levels, stretched', group: 'Stitches' },
   { key: 'braid-3', label: 'Three-strand braid', group: 'Braids' },
   { key: 'braid-4', label: 'Four-strand flat braid', group: 'Braids' },
   { key: 'diagonal', label: 'Diagonal basket', group: 'Weaves' },
