@@ -1772,6 +1772,15 @@ export class StrandScene {
     const half = (this.levelStepSource() * SCALE) / 2;
     const plane = this.getStoreyPlane(level);
     const rest = plane - level * half;
+    // Where a free stretch relaxes to: `rest`, but never below this storey's own
+    // floor. On level 1 the two are the same plane, so nothing there moves. Above
+    // it they part company — `rest` is plane L in thicknesses and a storey is two,
+    // so on level 9 it is halfway down the column — and a tail that relaxed to it
+    // left the material at the top of the column and sank two thicknesses into
+    // the storey below on its way. The supported stretches were already clamped
+    // to the band; this holds the free ones to the same statement.
+    const floor = plane - half;
+    const tailRest = Math.max(rest, floor);
     const under: number[] = [];
     for (let j = 0; j < strands.length; j++) {
       if ((this.strandLevel[j] ?? 0) === level - 1 && built[j]) under.push(j);
@@ -1837,9 +1846,10 @@ export class StrandScene {
     // sampling doesn't skew anything. A gap BETWEEN two supported stretches is
     // bridged by its edge heights. A free TAIL leaves at the height it left the
     // material at and relaxes to the tight-stack plane over a couple of widths
-    // — so a cord that steps off its support right on a weave bump doesn't
-    // carry the bump's height forever, and a short tail (a column round's loose
-    // end, a lace-width long) barely moves from where it let go.
+    // — held to this storey's floor (`tailRest`) — so a cord that steps off its
+    // support right on a weave bump doesn't carry the bump's height forever, and
+    // a short tail (a column round's loose end, a lace-width long) barely moves
+    // from where it let go.
     const RELAX = 2 * wSelf;
     let prev = -1;
     for (let k = 0; k <= line.length; k++) {
@@ -1857,7 +1867,7 @@ export class StrandScene {
           } else {
             for (let m = 0; m < k; m++) {
               const t = Math.min(1, (cum[k] - cum[m]) / RELAX);
-              raw[m] = zb + (rest - zb) * t;
+              raw[m] = zb + (tailRest - zb) * t;
             }
           }
         }
@@ -1866,7 +1876,7 @@ export class StrandScene {
         const za = raw[prev];
         for (let m = prev + 1; m < line.length; m++) {
           const t = Math.min(1, (cum[m] - cum[prev]) / RELAX);
-          raw[m] = za + (rest - za) * t;
+          raw[m] = za + (tailRest - za) * t;
         }
       }
     }
