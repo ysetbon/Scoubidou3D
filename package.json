@@ -31,6 +31,7 @@
     "check:curve": "esbuild scripts/check-curve.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-curve.mjs --log-level=warning && node node_modules/.cache/check-curve.mjs",
     "check:joints": "esbuild scripts/check-joints.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-joints.mjs --log-level=warning && node node_modules/.cache/check-joints.mjs",
     "check:stretch": "esbuild scripts/check-stretch.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check-stretch.mjs --log-level=warning && node node_modules/.cache/check-stretch.mjs",
+    "make:stretched-box": "esbuild scripts/make-stretched-box.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/make-stretched-box.mjs --log-level=warning && node node_modules/.cache/make-stretched-box.mjs",
     "check:enginekey": "node scripts/engine-key.mjs --check",
     "pages:board": "node scripts/ks-board-pages.mjs",
     "dump:ks": "esbuild scripts/ks-dump.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/ks-dump.mjs --log-level=warning && node node_modules/.cache/ks-dump.mjs",

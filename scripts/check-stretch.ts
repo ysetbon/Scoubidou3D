@@ -242,6 +242,38 @@ console.log('\na second round over the first');
   ok(!stretchLevel(both, 0).report.changed && !stretchLevel(both, 1).report.changed, 'and neither level has anything left to do');
 }
 
+// ---- 3c. the stretched sample is still tight ------------------------------------
+// `box-stitch-10-stretched` is a record of what Stretch made, level by level
+// (scripts/make-stretched-box.ts). It is not regenerated on load, so if Stretch
+// is ever tuned this is what says the record and the function have parted —
+// rebuild it with `npm run make:stretched-box`.
+console.log('\nthe stretched 10-level sample');
+{
+  const sc = makeSample('box-stitch-10-stretched');
+  ok(sc.strands.length === 42 && sc.levelBreaks.length === 9, `ten levels, 42 strands (${sc.levelBreaks.length + 1} levels, ${sc.strands.length} strands)`);
+  const moved: number[] = [];
+  for (let level = 0; level <= sc.levelBreaks.length; level++) {
+    if (stretchLevel(sc, level).report.changed) moved.push(level);
+  }
+  ok(moved.length === 0, `every level is already tight: Stretch moves nothing on any of them${moved.length ? ` — moved: ${moved.join(', ')}` : ''}`);
+  // One width all the way up: every fold above the ground the same distance
+  // past the strand it wraps.
+  const w = sc.strands[0].width;
+  const stops: number[] = [];
+  for (let level = 1; level <= sc.levelBreaks.length; level++) {
+    const arms = sc.strands.filter((_, i) => levelAt(sc, i) === level);
+    for (const a of arms) {
+      const others = arms.filter((b) => b.id.split('_')[0] !== a.id.split('_')[0]);
+      stops.push(Math.min(...others.map((o) => off(a.start, o))));
+    }
+  }
+  const want = w / 2 + STRETCH_POKE;
+  ok(
+    stops.length === 36 && stops.every((d) => Math.abs(d - want) < 1e-3),
+    `all 36 folds above the ground stand ${want} past what they wrap (${Math.min(...stops).toFixed(4)}–${Math.max(...stops).toFixed(4)})`,
+  );
+}
+
 // ---- 4. a bend that is only slack comes out -------------------------------------
 console.log('\ncurves');
 {
