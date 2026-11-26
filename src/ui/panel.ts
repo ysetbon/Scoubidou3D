@@ -55,6 +55,7 @@ import {
 import { deleteCustom, getCustom, listCustom, saveCustom, storageAvailable } from '../model/customSamples';
 import { controlsAtDefault, resetControlPoints } from '../model/controlPoints';
 import { Scope, recolour, setMembers, setOf } from '../model/colour';
+import { LEVEL_FUNCTIONS, LevelFunction, strandsOnLevel } from '../model/levelFunctions';
 
 // Where the numbers in the reference folder come from. All three live outside the
 // studio bundle, so they are plain links rather than samples: relative ones so the
@@ -223,11 +224,15 @@ const DOCK_LABELS: Record<DockKey, string> = {
  * three labels, dropping all three, or printing the one that is actually saying
  * something. The switch still names what is on screen; the other two are marks,
  * which is what they are the moment you have pressed them once.
+ *
+ * Functions is the fourth, and the only one that DOES something rather than
+ * shows something: a section per storey, and in each the things that storey can
+ * be asked to do to itself — see functionsList and model/levelFunctions.ts.
  */
-type StackView = 'layers' | 'masks' | 'planes';
+type StackView = 'layers' | 'masks' | 'planes' | 'functions';
 
 /** Every side of the switch, in the order they sit in it. */
-const STACK_VIEWS: StackView[] = ['layers', 'masks', 'planes'];
+const STACK_VIEWS: StackView[] = ['layers', 'masks', 'planes', 'functions'];
 
 /** What each side is called out loud — the tab, and the collapse toggle on a
  *  narrow screen, which names whatever the sheet is holding. */
@@ -235,6 +240,7 @@ const STACK_LABELS: Record<StackView, string> = {
   layers: 'Layers',
   masks: 'Masks',
   planes: 'Planes',
+  functions: 'Functions',
 };
 
 /** The width at which the panel stops being a column beside the canvas and
@@ -538,6 +544,7 @@ export class Panel {
     // which for a scene with none is none.
     this.pickedCross = null;
     this.pickedSide = null;
+    this.fnNotes.clear();
     // A focus names a storey or a layer in the scene that is going away. Ids
     // repeat across samples (`box-stitch-10` and `-15` both have a `2_14`), so
     // the view's own fallback would not catch it — a new scene starts unfocused.
@@ -586,6 +593,9 @@ export class Panel {
     // The row whose inspector was open need not exist in the state we land in.
     if (!this.scene.strands.some((s) => s.id === this.selectedId)) this.selectedId = null;
     if (!this.scene.strands.some((s) => s.id === this.openId)) this.openId = null;
+    // What a function said about a level was said about a scene that is no
+    // longer the one on screen.
+    this.fnNotes.clear();
     this.view.setScene(this.scene, false);
     this.renderDock(); // -> renderPanelBody -> the brand line and the stack
     this.syncToolbar();
@@ -744,6 +754,8 @@ export class Panel {
     sw.setAttribute('role', 'tablist');
     sw.setAttribute('aria-label', 'What the panel is showing');
     sw.appendChild(el('span', 'viewswitch-thumb'));
+    // A rebuilt switch has not been measured yet; see syncSwitchThumb.
+    sw.dataset.fresh = '';
     this.switchHost = sw;
     this.viewTabs = {};
     sw.appendChild(
@@ -773,6 +785,14 @@ export class Panel {
         'Show where each part of a lace rests — its run, its C’s and its crossings',
       ),
     );
+    sw.appendChild(
+      this.viewTab(
+        'functions',
+        FUNCTIONS_ICON,
+        STACK_LABELS.functions,
+        'Show what each level can do to itself — Stretch pulls its knot tight',
+      ),
+    );
     return sw;
   }
 
@@ -796,6 +816,14 @@ export class Panel {
     if (!sw || !tab || !tab.offsetWidth) return;
     sw.style.setProperty('--thumb-x', `${tab.offsetLeft}px`);
     sw.style.setProperty('--thumb-w', `${tab.offsetWidth}px`);
+    // Measuring a switch that was only just built lays it out with the CSS
+    // fallbacks, so the first real numbers would ANIMATE in from them — a thumb
+    // growing under its word every time an edit redraws the bar. The slide is
+    // for a press; a fresh switch is put straight where it belongs.
+    if ('fresh' in sw.dataset) {
+      void sw.offsetWidth;
+      delete sw.dataset.fresh;
+    }
   }
 
   private viewTab(view: StackView, icon: string, label: string, title: string): HTMLButtonElement {
@@ -2483,6 +2511,10 @@ export class Panel {
       host.appendChild(this.planesList());
       return;
     }
+    if (this.stackView === 'functions') {
+      host.appendChild(this.functionsList());
+      return;
+    }
 
     // THE FIRST THING ANYONE SEES. The app opens on an empty scene, and an empty
     // canvas beside an empty stack said nothing at all about where to begin —
@@ -2726,6 +2758,152 @@ export class Panel {
   }
 
   // ---- Planes --------------------------------------------------------------
+  // ---- Functions -------------------------------------------------------------
+  // What a function last said about a level, by `${function}|${level}`, so the
+  // row goes on showing its result after the toast has gone. Dropped whenever
+  // the scene under it changes hands (a new scene, an undo).
+  private fnNotes = new Map<string, { text: string; warn: boolean }>();
+  // True while a function's motion is playing; its buttons wait for it.
+  private fnBusy = false;
+
+  /**
+   * The Functions view: a section per storey, and in each a row per function.
+   *
+   * Storeys run highest first, the same way round as the stack and the planes —
+   * the top of the panel is the front of the scene. Unlike the planes view a
+   * flat scene still gets its one section: there a lone storey "does not need
+   * saying", but here the section is the thing you press, and a function with
+   * no level to belong to would have nowhere to be.
+   *
+   * The rows come from `LEVEL_FUNCTIONS` and nothing here knows what any of
+   * them does — a new function is a new entry in that list, and turns up on
+   * every level.
+   */
+  private functionsList(): HTMLElement {
+    const list = el('section', 'functions');
+    list.setAttribute('aria-label', 'What each level can do');
+    let any = false;
+    for (let level = this.scene.levelBreaks.length; level >= 0; level--) {
+      const layers = strandsOnLevel(this.scene, level);
+      // A break parked at the top of the stack carries nothing yet, and nothing
+      // is what a function would be run on.
+      if (!layers) continue;
+      any = true;
+      list.appendChild(this.functionLevelSection(level, layers));
+    }
+    if (!any) {
+      list.appendChild(
+        el(
+          'p',
+          'empty',
+          'Nothing to work on yet. Add a strand and its level turns up here with ' +
+            'everything that can be done to it.',
+        ),
+      );
+    }
+    return list;
+  }
+
+  /** One storey's functions: the bar that names it, then a row each. */
+  private functionLevelSection(level: number, layers: number): HTMLElement {
+    const box = el('section', 'plane-level fn-level');
+    box.setAttribute('aria-label', `Level ${level}`);
+    const head = el('div', 'plane-level-head');
+    head.appendChild(el('span', 'level-badge', String(level)));
+    head.appendChild(el('b', undefined, `Level ${level}`));
+    head.appendChild(
+      el(
+        'small',
+        undefined,
+        level === 0
+          ? `ground · ${plural(layers, 'layer')}`
+          : `+${level} ${level === 1 ? 'storey' : 'storeys'} · ${plural(layers, 'layer')}`,
+      ),
+    );
+    box.appendChild(head);
+    for (const fn of LEVEL_FUNCTIONS) box.appendChild(this.functionRow(fn, level));
+    return box;
+  }
+
+  private functionRow(fn: LevelFunction, level: number): HTMLElement {
+    const row = el('div', 'fn-row');
+    row.dataset.focusScope = `fn|${fn.key}|${level}`;
+    const run = iconPill(FUNCTION_ICONS[fn.icon], fn.label, () => this.runFunction(fn, level));
+    run.classList.add('coral');
+    run.title = fn.title;
+    run.disabled = this.fnBusy;
+    run.setAttribute('aria-label', `${fn.label} level ${level}`);
+    row.appendChild(run);
+    row.appendChild(el('p', 'fn-note', fn.note));
+    const said = this.fnNotes.get(`${fn.key}|${level}`);
+    if (said) {
+      const result = el('p', 'fn-result' + (said.warn ? ' warn' : ''), said.text);
+      result.setAttribute('role', 'status');
+      row.appendChild(result);
+    }
+    return row;
+  }
+
+  /**
+   * Run a function on a level: work out the scene it would leave, play the way
+   * there when the function can show it, then land on the result as ONE edit —
+   * one undo step, named for what was pressed.
+   *
+   * The work is done before anything moves, so the motion is a replay and not a
+   * progress bar: by the time the first frame is drawn the answer is known, and
+   * a press that turns out to change nothing never flickers the canvas.
+   */
+  private runFunction(fn: LevelFunction, level: number): void {
+    if (this.fnBusy) return;
+    const params = this.view.getParams();
+    const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // A frame is a full rebuild of the scene, so the motion is for scenes small
+    // enough to rebuild inside a frame; a tall column just lands on the result.
+    const frames = calm || this.scene.strands.length > FUNCTION_MOTION_MAX ? 0 : FUNCTION_FRAMES;
+    let outcome;
+    try {
+      outcome = fn.run(this.scene, level, {
+        thirdEnabled: params.thirdControlPoint,
+        widthScale: params.widthScale,
+        frames,
+      });
+    } catch (err) {
+      this.flash(`${fn.label} could not run on level ${level}: ${(err as Error).message}`, true);
+      return;
+    }
+    this.fnNotes.set(`${fn.key}|${level}`, { text: outcome.summary, warn: outcome.warn });
+    if (!outcome.changed) {
+      this.flash(outcome.summary, outcome.warn);
+      this.renderStack();
+      return;
+    }
+    const land = (): void => {
+      this.fnBusy = false;
+      this.scene = outcome.scene;
+      this.apply(`${fn.verb} level ${level}`);
+      this.flash(outcome.summary, outcome.warn);
+    };
+    if (outcome.frames.length < 2) {
+      land();
+      return;
+    }
+    this.fnBusy = true;
+    this.renderStack();
+    let shown = 0;
+    let last = 0;
+    const tick = (now: number): void => {
+      // About thirty frames a second: enough to read as one pull, slow enough
+      // to see which way everything went.
+      if (now - last >= 30) {
+        last = now;
+        this.view.setScene(outcome.frames[shown++], false);
+      }
+      if (shown < outcome.frames.length) requestAnimationFrame(tick);
+      else land();
+    };
+    requestAnimationFrame(tick);
+  }
+
   /**
    * WHERE EACH PART OF A LACE RESTS — the third side of the switch.
    *
@@ -4598,6 +4776,17 @@ const ABOUT: Array<[string, string]> = [
       'is hidden the stack carries a <b>Show all</b> at the top, and undo reaches it too.',
   ],
   [
+    'Functions',
+    'The fourth side of the switch at the top of the panel. Each <b>level</b> gets a section, ' +
+      'and in it the things that level can be asked to do to itself. <b>Stretch</b> pulls the ' +
+      'level’s knot tight, the way pulling its loose ends would: every strand that can be ' +
+      'straight becomes straight and gives its handles back, each fold closes up to the strand ' +
+      'it wraps, arms lying side by side settle one gap apart, and the slack comes out through ' +
+      'the loose ends. Which strand crosses which never changes, so every mask means what it ' +
+      'meant. Only that level moves — a joint it shares with another level stays put — and it is ' +
+      'one press of undo.',
+  ],
+  [
     'Masks',
     'Click the strand that goes <b>over</b>, then the one it goes under: they interlock at their ' +
       'crossing, which is the 3D version of an OpenStrand mask. Hovering lights <b>one layer</b>, ' +
@@ -4888,6 +5077,28 @@ const MASK_ICON = svg(
     '<rect x="9.7" y="16.8" width="4.6" height="6.6" rx="2.3" />' +
     '<rect x="0.6" y="9.7" width="22.8" height="4.6" rx="2.3" />',
 );
+
+// The functions side of the switch: a spark, big and small — the one side of the
+// switch that does something to the scene instead of showing it.
+const FUNCTIONS_ICON = svg(
+  '<path d="M9.5 2.5 11.6 9l6.4 2.1-6.4 2.1-2.1 6.5-2.1-6.5L1 11.1 7.4 9Z" />' +
+    '<path d="M18.6 13.6 19.7 17l3.3 1.1-3.3 1.1-1.1 3.4-1.1-3.4-3.3-1.1 3.3-1.1Z" />',
+);
+
+// One mark per level function (model/levelFunctions.ts names which). Stretch is
+// the knot between two hands pulling apart.
+const FUNCTION_ICONS: Record<LevelFunction['icon'], string> = {
+  stretch: svg(
+    '<path d="M1 12 7 6.8v3.4h2.6v3.6H7v3.4Z" />' +
+      '<path d="M23 12 17 6.8v3.4h-2.6v3.6H17v3.4Z" />' +
+      '<rect x="10.4" y="8.4" width="3.2" height="7.2" rx="1.2" />',
+  ),
+};
+
+/** How many in-between scenes a function's motion is played in. */
+const FUNCTION_FRAMES = 22;
+/** Past this many strands a frame costs more than a frame's time; no motion. */
+const FUNCTION_MOTION_MAX = 60;
 
 // The toolbar's marks. Each one states what the tool acts on rather than naming
 // it twice: a hand that takes hold of the view, a four-way drag that takes hold
