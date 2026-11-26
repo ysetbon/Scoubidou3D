@@ -28,6 +28,7 @@ Three clearances push back, and they are the family's own numbers:
 | two strands that do not cross | a lace width + 10 between centre lines | `GAP = 56` in `twofan.ts` |
 | a fold, past the strand it wraps | half a gap from that strand's centre line | where the built block puts its slants' ends |
 | a loose end, past the last strand its arm crosses | half a width + 9 | `POKE = 32` in `twofan.ts` |
+| a fold between two levels, past the strand it wraps | the same | where the built columns put theirs |
 
 Plus one that only matters for real knots: three strands locked round each other
 — a over b over c over a — cannot all cover one point, so the triangle between
@@ -78,12 +79,17 @@ lace does.
   pair, so a strand that passes over another and comes back over it is not held
   by it; pulling takes that loop out. Three crossings may become one, two may
   become none. An odd crossing is an interlock and never goes.
-- **A strand drawn straight is never bent.** Where it cannot clear something —
-  which happens when the things in its way are pinned by another level — it is
-  left overlapping and the row says by how much.
-- **One level at a time.** Strands on other storeys are not woven with this one
-  and do not move; a joint shared with another storey is a pin. A level held at
-  both ends by its neighbours has nothing free, and the row says so.
+- **A strand drawn straight is never bent.** Where it cannot clear something
+  that is not free to move out of its way, it is left overlapping and the row
+  says by how much.
+- **One level at a time, as far as its folds.** The fold where an arm of one
+  level turns back as an arm of the next is one joint on two levels, and it is
+  what a second round is tightened by. So it moves: the strands glued to the
+  level from the levels either side come along — unbent, unstraightened, just
+  following the fold — and the lace in them is what pulls the fold in. An arm
+  that carries on from the level below is laid exactly on the line of the strand
+  it carries on from, folded back over it or run straight on, and held to that
+  line throughout. Nothing two levels away is touched.
 - **A drawing tighter than the rules opens.** A braid drawn with its runs closer
   than a width + 10 is pushed out to that, and the row reports the slack as
   negative.
@@ -108,6 +114,8 @@ was written against — and holds the result to its numbers: the nine crossings
 are the nine drawn, all six strands come out straight and untouched, arms 56.000
 apart, folds 28.000 past what they wrap, both laces the length they were drawn,
 and a second press moves nothing. Then the built blocks (already tight, left
-alone), a ten-level column (other levels do not move), a locked triangle, a loop
+alone), a ten-level column (nothing two levels away moves), a second round woven
+by hand over a tight block (`scripts/stretch-two-levels.json`: every fold pulled
+in to 36.0000, every arm on the line of the one below), a locked triangle, a loop
 with and without something caught in it, and thirteen of the built-in samples for
 the weave surviving. It runs in CI.

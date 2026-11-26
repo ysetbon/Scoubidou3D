@@ -64,8 +64,20 @@
 // of the knot comes out through the loose ends. So each lace keeps its drawn
 // length, and its arms grow by what its middle gave up.
 //
-// SCOPE. One level at a time: strands on other storeys are not woven with this
-// one (levels.ts) and do not move. A joint shared with another storey is a pin.
+// SCOPE. One level at a time — but a level does not end at its own strands. The
+// fold where an arm of one level turns back as an arm of the next is ONE joint
+// on two levels, and it is the very thing a second round is tightened by: pin
+// it, and the round can turn its arms and nothing else. So the strands glued to
+// the level from other levels come along (`Role`): they keep their shape, they
+// are never straightened or bent, but they follow the fold they are on, and the
+// lace in them is under the same tension — which is what pulls a fold in. An arm
+// that carries on from the level below is laid on the line of the strand it
+// carries on from, and held to it all the way through (`layArms`). The rest of
+// those other levels stands still, and nothing two levels away is touched.
+//
+// Clearances are kept where the level being stretched is involved, and a fold
+// between two storeys stops `poke` past what it wraps, like a loose end — which
+// is where the built columns put theirs. Other levels are held to their weave.
 
 import { CurveBias, sampleCenterline } from '../geometry/bezier';
 import { polylineCrossings } from '../geometry/weave';
@@ -207,18 +219,46 @@ function wrap(a: number): number {
 
 // ---- the problem --------------------------------------------------------------
 
+/**
+ * How much of the solve a strand is part of.
+ *
+ *   active   — on the level being stretched. Straightened, tightened, kept clear.
+ *   follower — on another level, but glued to an active strand: the lace carries
+ *              on through the joint, so it comes along. It keeps its shape and is
+ *              never bent or straightened; it only follows the joint it is on.
+ *   fixed    — the rest of a follower's level. Does not move; it is there so the
+ *              followers cannot be dragged through what they are woven with.
+ */
+type Role = 'active' | 'follower' | 'fixed';
+
 interface SNode {
-  kind: 'joint' | 'pinned' | 'free';
+  /**
+   * joint  — two or more strands meet here and the point is an unknown.
+   * pinned — something that is not moving is on it.
+   * free   — one strand's loose end.
+   * hung   — the fold where ONE active strand carries on onto another level.
+   *          Not an unknown: it is the far end of that strand, which is held by
+   *          a direction and a length like an arm, and whatever continues from
+   *          it on the other level hangs off it.
+   */
+  kind: 'joint' | 'pinned' | 'free' | 'hung';
   p: Vec2;
   /** Offset of this joint's (x, y) in the unknowns, or -1. */
   v: number;
   strands: number[];
+  /** For a hung node: the strand whose end it is, and which end. */
+  owner: number;
+  ownerSide: 0 | 1;
+  /** Strands of more than one level meet here: a fold between storeys. */
+  cross: boolean;
 }
 
 interface SStrand {
   /** Index into `scene.strands`. */
   i: number;
   src: Strand3D;
+  role: Role;
+  level: number;
   n0: number;
   n1: number;
   half: number;
@@ -233,17 +273,30 @@ interface SStrand {
   centre: boolean;
   attached: boolean;
   bias: CurveBias | null;
-  /** Which end is loose: -1 neither, 0 the start, 1 the end, 2 both. */
+  /** Which end is placed by direction and length rather than by a node's own
+   *  position: -1 neither, 0 the start, 1 the end, 2 both. */
   free: -1 | 0 | 1 | 2;
+  /** Which of its ends are really loose — nothing attached at all. */
+  loose: [boolean, boolean];
+  /** A follower hanging by one end: it keeps its length as well as its direction. */
+  rigid: boolean;
   /** An arm's drawn chord length. */
   len: number;
   /** Offset of an arm's chord length in the unknowns, or -1. */
   lv: number;
-  /** Direction the loose end lies in from the held one (start → end for both). */
+  /** Direction the placed end lies in from the held one (start → end for both). */
   ang: number;
+  /**
+   * LAID ON the strand it carries on from, a level down: `lay.on` is that strand,
+   * and this arm's direction is not `ang` but the line of that strand — reversed
+   * when the lace folds back over it (`lay.turn = π`), kept when it runs straight
+   * on (`0`) — plus `lay.off`, which starts as however far off that line the arm
+   * was drawn and is walked to zero. Null for every other strand.
+   */
+  lay: { on: number; turn: number; off: number } | null;
   /** Dead-load weight on the arm's pull. */
   pull: number;
-  /** Offset of a both-ends-loose strand's centre in the unknowns, or -1. */
+  /** Offset of a both-ends-placed strand's centre in the unknowns, or -1. */
   cv: number;
   movable: boolean;
 }
@@ -278,6 +331,8 @@ class Problem {
   pairs: Array<[number, number]> = [];
   ref: number[] = [];
   polys: Vec2[][] = [];
+  /** The polyline of a strand nothing can move, worked out once. */
+  private still: Array<Vec2[] | null> = [];
   iterations = 0;
   /** `performance.now()` past which the descent stops where it is. */
   deadline = Infinity;
@@ -301,49 +356,95 @@ class Problem {
   private build(active: number[]): void {
     const S = this.scene.strands;
     const joint = endpointJoints(this.scene);
-    const isActive = new Set(active);
+    const real = (i: number): boolean =>
+      !S[i].isMask && Math.hypot(S[i].end.x - S[i].start.x, S[i].end.y - S[i].start.y) >= 1e-6;
 
-    // Nodes: one per joint an active strand's end belongs to.
-    const nodeOf = new Map<number, number>();
-    const outside = new Set<number>(); // joints something off the level is on
-    const count = new Map<number, number>();
+    // Who is in it. The level itself; whatever is glued to it from another
+    // level; and the rest of those other levels, standing still.
+    const role = new Map<number, Role>(active.map((i) => [i, 'active']));
+    const onLevel = new Set<number>();
+    for (const i of active) for (const side of [0, 1]) onLevel.add(joint[i * 2 + side]);
+    const beside = new Set<number>();
+    S.forEach((_, i) => {
+      if (role.has(i) || !real(i)) return;
+      if (!onLevel.has(joint[i * 2]) && !onLevel.has(joint[i * 2 + 1])) return;
+      role.set(i, 'follower');
+      beside.add(levelAt(this.scene, i));
+    });
+    S.forEach((_, i) => {
+      if (!role.has(i) && real(i) && beside.has(levelAt(this.scene, i))) role.set(i, 'fixed');
+    });
+
+    // Every endpoint on each joint, in the problem or not.
+    const members = new Map<number, number[]>();
     S.forEach((s, i) => {
       if (s.isMask) return;
       for (const side of [0, 1]) {
         const j = joint[i * 2 + side];
-        if (!isActive.has(i)) outside.add(j);
-        else count.set(j, (count.get(j) ?? 0) + 1);
+        members.set(j, [...(members.get(j) ?? []), i]);
       }
     });
+
+    const index = new Map<number, number>(); // scene index → problem index
+    [...role.keys()].sort((a, b) => a - b).forEach((i, k) => index.set(i, k));
+
+    const nodeOf = new Map<number, number>();
     const nodeFor = (i: number, side: 0 | 1): number => {
       const j = joint[i * 2 + side];
       let n = nodeOf.get(j);
-      if (n === undefined) {
-        const p = side === 0 ? S[i].start : S[i].end;
-        const kind = outside.has(j) ? 'pinned' : (count.get(j) ?? 0) > 1 ? 'joint' : 'free';
-        n = this.nodes.length;
-        this.nodes.push({ kind, p: { x: p.x, y: p.y }, v: -1, strands: [] });
-        nodeOf.set(j, n);
-      }
+      if (n !== undefined) return n;
+      const on = members.get(j) ?? [];
+      const acts = on.filter((m) => role.get(m) === 'active');
+      const still = on.some((m) => role.get(m) === undefined || role.get(m) === 'fixed');
+      let kind: SNode['kind'];
+      if (still) kind = 'pinned';
+      else if (on.length === 1) kind = 'free';
+      else if (acts.length === 0) kind = 'pinned';
+      else if (acts.length === 1 && on.length > 1 && on.every((m) => m === acts[0] || role.get(m) === 'follower')) kind = 'hung';
+      else kind = 'joint';
+      // A strand glued to itself end to end has no far end to be hung by.
+      if (kind === 'hung' && joint[acts[0] * 2] === joint[acts[0] * 2 + 1]) kind = 'joint';
+      const p = side === 0 ? S[i].start : S[i].end;
+      const levels = new Set(on.map((m) => levelAt(this.scene, m)));
+      n = this.nodes.length;
+      this.nodes.push({
+        kind,
+        p: { x: p.x, y: p.y },
+        v: -1,
+        strands: [],
+        owner: kind === 'hung' ? (index.get(acts[0]) as number) : -1,
+        ownerSide: kind === 'hung' && joint[acts[0] * 2] !== j ? 1 : 0,
+        cross: levels.size > 1,
+      });
+      nodeOf.set(j, n);
       return n;
     };
 
     let nvar = 0;
-    for (const i of active) {
+    for (const [i, k] of index) {
       const src = S[i];
+      const mine = role.get(i) as Role;
       const n0 = nodeFor(i, 0);
       const n1 = nodeFor(i, 1);
-      const k = this.strands.length;
       this.nodes[n0].strands.push(k);
       if (n1 !== n0) this.nodes[n1].strands.push(k);
-      const f0 = this.nodes[n0].kind === 'free';
-      const f1 = this.nodes[n1].kind === 'free';
+      // An end is placed by direction and length when it is loose, or when it
+      // is the fold this strand carries on from onto another level.
+      const placed = (n: number): boolean => {
+        const node = this.nodes[n];
+        if (mine === 'fixed') return false;
+        return node.kind === 'free' || (node.kind === 'hung' && node.owner === k);
+      };
+      const f0 = placed(n0);
+      const f1 = placed(n1);
       const chord = dist(src.start, src.end);
       const shape = sampleCenterline(this.input(src, src.start, src.end), STEPS);
       const line = shape.length <= 2;
-      this.strands.push({
+      this.strands[k] = {
         i,
         src,
+        role: mine,
+        level: levelAt(this.scene, i),
         n0,
         n1,
         half: (src.width * this.opts.widthScale) / 2,
@@ -356,17 +457,21 @@ class Problem {
         attached: src.parentId !== null,
         bias: src.bias ?? null,
         free: f0 && f1 ? 2 : f0 ? 0 : f1 ? 1 : -1,
+        loose: [this.nodes[n0].kind === 'free', this.nodes[n1].kind === 'free'],
+        rigid: mine === 'follower',
         len: chord,
         ang: f0 && !f1 ? Math.atan2(src.start.y - src.end.y, src.start.x - src.end.x) : Math.atan2(src.end.y - src.start.y, src.end.x - src.start.x),
-        pull: 1,
+        lay: null,
+        pull: 0,
         lv: -1,
         cv: -1,
         movable: false,
-      });
+      };
     }
+    if (this.opts.square) this.layArms();
 
     // Unknowns: joints, then six handle slots a strand, then for an arm its
-    // length and for a strand loose at both ends its centre.
+    // length and for a strand placed at both ends its centre.
     for (const n of this.nodes) {
       if (n.kind === 'joint') {
         n.v = nvar;
@@ -384,42 +489,70 @@ class Problem {
     }
     this.x = new Float64Array(nvar);
     this.live = new Uint8Array(nvar);
-    this.varStrands = Array.from({ length: nvar }, () => []);
     for (const n of this.nodes) {
       if (n.v < 0) continue;
       this.x[n.v] = n.p.x;
       this.x[n.v + 1] = n.p.y;
       this.live[n.v] = this.live[n.v + 1] = 1;
-      this.varStrands[n.v] = this.varStrands[n.v + 1] = n.strands;
     }
-    this.strands.forEach((s, k) => {
-      for (let q = 0; q < 6; q++) this.varStrands[s.v + q] = [k];
+    for (const s of this.strands) {
       if (s.lv >= 0) {
-        // An arm's length costs nothing either way — the lace it would take is
-        // the slack — so only a clearance ever moves it: an end that stops
-        // short of what its arm crosses is let out until it pokes past.
+        // An arm's length costs nothing either way while it has a loose end —
+        // the lace it would take is the slack — so only a clearance moves it:
+        // an end that stops short of what its arm crosses is let out until it
+        // pokes past. An arm with no loose end is lace under tension like any
+        // other, and its length is what the solve shortens.
         this.x[s.lv] = s.len;
-        this.live[s.lv] = 1;
-        this.varStrands[s.lv] = [k];
+        this.live[s.lv] = s.rigid ? 0 : 1;
       }
       if (s.cv >= 0) {
         this.x[s.cv] = (s.src.start.x + s.src.end.x) / 2;
         this.x[s.cv + 1] = (s.src.start.y + s.src.end.y) / 2;
         this.live[s.cv] = this.live[s.cv + 1] = 1;
-        this.varStrands[s.cv] = this.varStrands[s.cv + 1] = [k];
       }
-      if (!s.line) this.measureHandles(s);
-      s.movable = this.nodes[s.n0].kind === 'joint' || this.nodes[s.n1].kind === 'joint' || s.free >= 0 || !s.line;
+      if (!s.line) this.measureHandles(s, s.role === 'active');
+    }
+
+    // Which unknowns each strand's shape hangs on — its own, its joints', and
+    // through a fold the ones of the strand it is hung from.
+    const deps: Array<Set<number> | null> = this.strands.map(() => null);
+    const depsOf = (k: number, seen: Set<number>): Set<number> => {
+      const done = deps[k];
+      if (done) return done;
+      const s = this.strands[k];
+      const out = new Set<number>();
+      if (seen.has(k)) return out;
+      seen.add(k);
+      for (let q = 0; q < 6; q++) out.add(s.v + q);
+      if (s.lv >= 0) out.add(s.lv);
+      if (s.cv >= 0) out.add(s.cv), out.add(s.cv + 1);
+      if (s.lay) for (const v of depsOf(s.lay.on, seen)) out.add(v);
+      const held: number[] = s.free === 2 ? [] : s.free === 1 ? [s.n0] : s.free === 0 ? [s.n1] : [s.n0, s.n1];
+      for (const n of held) {
+        const node = this.nodes[n];
+        if (node.kind === 'joint') out.add(node.v), out.add(node.v + 1);
+        else if (node.kind === 'hung' && node.owner !== k) for (const v of depsOf(node.owner, seen)) out.add(v);
+      }
+      deps[k] = out;
+      return out;
+    };
+    this.varStrands = Array.from({ length: nvar }, () => []);
+    this.strands.forEach((s, k) => {
+      const on = depsOf(k, new Set());
+      for (const v of on) this.varStrands[v].push(k);
+      s.movable = s.role !== 'fixed' && [...on].some((v) => this.live[v] === 1);
     });
 
+    this.still = this.strands.map(() => null);
     this.polys = this.strands.map((_, k) => this.poly(k, this.x));
     this.aim();
-    this.polys = this.strands.map((_, k) => this.poly(k, this.x));
+    this.still = this.strands.map((s, k) => (s.movable ? null : this.poly(k, this.x)));
+    this.polys = this.allPolys(this.x);
     this.constrain();
   }
 
   /** Read a bent strand's handles into chord coordinates and switch them on. */
-  private measureHandles(s: SStrand): void {
+  private measureHandles(s: SStrand, live: boolean): void {
     const a = s.src.start;
     const b = s.src.end;
     const cx = b.x - a.x;
@@ -434,7 +567,7 @@ class Problem {
       const dy = p.y - a.y;
       this.x[s.v + slot] = ((dx * cx + dy * cy) / L2) * s.L0;
       this.x[s.v + slot + 1] = ((-dx * cy + dy * cx) / L2) * s.L0;
-      this.live[s.v + slot] = this.live[s.v + slot + 1] = 1;
+      this.live[s.v + slot] = this.live[s.v + slot + 1] = live ? 1 : 0;
     };
     put(0, s.src.control_points[0]);
     if (s.cp2Free) put(2, s.src.control_points[1]);
@@ -457,15 +590,77 @@ class Problem {
 
   private nodePos(n: number, x: Float64Array): Vec2 {
     const node = this.nodes[n];
-    return node.v >= 0 ? { x: x[node.v], y: x[node.v + 1] } : node.p;
+    if (node.v >= 0) return { x: x[node.v], y: x[node.v + 1] };
+    if (node.kind === 'hung') return this.ends(node.owner, x)[node.ownerSide];
+    return node.p;
+  }
+
+  /** The direction a placed end lies in from the held one. */
+  heading(k: number, x: Float64Array): number {
+    const s = this.strands[k];
+    if (!s.lay) return s.ang;
+    // The way the lace arrives at the fold along the strand below.
+    const below = this.strands[s.lay.on];
+    const fold = s.free === 1 ? s.n0 : s.n1;
+    const [a, b] = this.ends(s.lay.on, x);
+    const arrives = below.n1 === fold ? Math.atan2(b.y - a.y, b.x - a.x) : Math.atan2(a.y - b.y, a.x - b.x);
+    return arrives + s.lay.turn + s.lay.off;
+  }
+
+  /**
+   * An arm that carries on from the level below is laid ON the strand it carries
+   * on from: folded straight back over it, or run straight on, whichever it was
+   * drawn nearer (and within twenty degrees of). That is what a round worked
+   * over a round is — the same lines again, a storey up — and it is why the
+   * arm's own drawn angle is the wrong thing to keep: a second round drawn six
+   * degrees off the first is not a round six degrees off, it is the first
+   * round's lines, drawn by hand.
+   *
+   * A laid arm's fold stops being its own far end and becomes an ordinary
+   * joint, an unknown: the strand below runs to it, and the arm leaves it along
+   * that strand's line — whatever that line turns out to be once the fold has
+   * moved. So the two stay one line all the way through the solve, not just at
+   * its start. Here the arm is only tied on, still at the angle it was drawn;
+   * `aim` walks it onto the line.
+   */
+  private layArms(): void {
+    this.strands.forEach((s, k) => {
+      if (s.role !== 'active' || s.free < 0) return;
+      for (const side of [0, 1] as const) {
+        const n = side === 0 ? s.n0 : s.n1;
+        const node = this.nodes[n];
+        if (node.kind !== 'hung' || node.owner !== k) continue;
+        // The other end has to stay placed, or there is no direction to give.
+        if (s.free !== 2) continue;
+        const on = node.strands.find((f) => f !== k && this.strands[f].level < s.level);
+        if (on === undefined) continue;
+        const below = this.strands[on];
+        const a = below.src.start;
+        const b = below.src.end;
+        const arrives = below.n1 === n ? Math.atan2(b.y - a.y, b.x - a.x) : Math.atan2(a.y - b.y, a.x - b.x);
+        // `ang` runs start → end while both ends are placed.
+        const leaves = s.ang + (side === 1 ? Math.PI : 0);
+        const back = wrap(leaves - (arrives + Math.PI));
+        const straight = wrap(leaves - arrives);
+        const folded = Math.abs(back) <= Math.abs(straight);
+        const off = folded ? back : straight;
+        if (Math.abs(off) > (20 * Math.PI) / 180) continue;
+        node.kind = 'joint';
+        node.owner = -1;
+        s.free = side === 0 ? 1 : 0;
+        s.lay = { on, turn: folded ? Math.PI : 0, off };
+        break;
+      }
+    });
   }
 
   ends(k: number, x: Float64Array): [Vec2, Vec2] {
     const s = this.strands[k];
     if (s.free < 0) return [this.nodePos(s.n0, x), this.nodePos(s.n1, x)];
     const len = Math.max(x[s.lv], 1);
-    const ux = Math.cos(s.ang) * len;
-    const uy = Math.sin(s.ang) * len;
+    const ang = this.heading(k, x);
+    const ux = Math.cos(ang) * len;
+    const uy = Math.sin(ang) * len;
     if (s.free === 2) {
       return [
         { x: x[s.cv] - ux / 2, y: x[s.cv + 1] - uy / 2 },
@@ -522,34 +717,56 @@ class Problem {
    * would have to sweep through something to get there stops where it is.
    */
   private aim(): void {
-    const arms = this.strands.map((s, k) => (s.free >= 0 ? k : -1)).filter((k) => k >= 0);
+    // The arms are the level's own strands with an end placed by direction.
+    const arms = this.strands
+      .map((s, k) => (s.role === 'active' && s.free >= 0 ? k : -1))
+      .filter((k) => k >= 0);
     if (!arms.length) return;
     const target = new Map<number, number>(arms.map((k) => [k, this.strands[k].ang]));
+    const DEG = Math.PI / 180;
 
     // Laces: strands joined through nodes.
     const comp = this.components();
+    // Arms whose line is already settled by the level below.
+    const laid = new Set<number>();
 
     if (this.opts.square) {
+      // 0. Arms laid on the level below (`layArms`) take that level's lines, so
+      //    theirs are settled: all that is left is to walk them onto it.
+      for (const k of arms) {
+        const lay = this.strands[k].lay;
+        if (!lay) continue;
+        target.set(k, this.heading(k, this.x) - lay.off);
+        laid.add(k);
+      }
       // 1. The two ends of one lace, made exactly opposite when they nearly are.
+      //    `out` is the way an arm's loose end points.
+      const out = (k: number): number | null => {
+        const s = this.strands[k];
+        if (s.free !== 2) return 0;
+        if (s.loose[0] === s.loose[1]) return null;
+        return s.loose[1] ? 0 : Math.PI;
+      };
       const byComp = new Map<number, number[]>();
       for (const k of arms) {
-        if (this.strands[k].free === 2) continue;
+        if (out(k) === null) continue;
         const c = comp[k];
         byComp.set(c, [...(byComp.get(c) ?? []), k]);
       }
       for (const pair of byComp.values()) {
-        if (pair.length !== 2) continue;
-        const a = target.get(pair[0]) as number;
-        const b = target.get(pair[1]) as number;
+        if (pair.length !== 2 || laid.has(pair[0]) || laid.has(pair[1])) continue;
+        const a = (target.get(pair[0]) as number) + (out(pair[0]) as number);
+        const b = (target.get(pair[1]) as number) + (out(pair[1]) as number);
         const off = wrap(a - (b + Math.PI));
-        if (Math.abs(off) > (20 * Math.PI) / 180) continue;
-        target.set(pair[0], a - off / 2);
-        target.set(pair[1], b + off / 2);
+        if (Math.abs(off) > 20 * DEG) continue;
+        target.set(pair[0], (target.get(pair[0]) as number) - off / 2);
+        target.set(pair[1], (target.get(pair[1]) as number) + off / 2);
       }
       // 2. Arms nearly parallel or square to one another, made exactly so: the
       //    shared axis is the mean taken four times round, and whatever lies
-      //    within eight degrees of it is put on it.
-      const TOL = (8 * Math.PI) / 180;
+      //    within eight degrees of it is put on it. Arms laid on the level below
+      //    ARE the axis when there are any, and are not themselves moved.
+      const TOL = 8 * DEG;
       const quarter = (v: number): number => {
         const q = Math.PI / 2;
         let d = v % q;
@@ -557,55 +774,79 @@ class Problem {
         if (d < -q / 2) d += q;
         return d;
       };
-      let pool = arms;
-      let axis = 0;
-      for (let round = 0; round < 4 && pool.length >= 2; round++) {
+      const mean = (pool: number[]): number => {
         let sx = 0;
         let sy = 0;
         for (const k of pool) {
           sx += Math.cos(4 * (target.get(k) as number));
           sy += Math.sin(4 * (target.get(k) as number));
         }
-        axis = Math.atan2(sy, sx) / 4;
-        pool = arms.filter((k) => Math.abs(quarter((target.get(k) as number) - axis)) <= TOL);
-      }
-      if (pool.length >= 2) {
-        for (const k of pool) {
-          const t = target.get(k) as number;
-          target.set(k, t - quarter(t - axis));
+        return Math.atan2(sy, sx) / 4;
+      };
+      const near = (axis: number): number[] =>
+        arms.filter((k) => !laid.has(k) && Math.abs(quarter((target.get(k) as number) - axis)) <= TOL);
+      let axis = 0;
+      let pool: number[] = [];
+      if (laid.size) {
+        axis = mean([...laid]);
+        pool = near(axis);
+      } else {
+        pool = arms;
+        for (let round = 0; round < 4 && pool.length >= 2; round++) {
+          axis = mean(pool);
+          pool = near(axis);
         }
+        if (pool.length < 2) pool = [];
+      }
+      for (const k of pool) {
+        const t = target.get(k) as number;
+        target.set(k, t - quarter(t - axis));
       }
     }
 
     // Turn the arms there, never through a crossing.
     this.pairsAndCounts();
-    const turn = new Map<number, number>(arms.map((k) => [k, wrap((target.get(k) as number) - this.strands[k].ang)]));
+    const at = (k: number): number => this.heading(k, this.x);
+    const set = (k: number, value: number): void => {
+      const s = this.strands[k];
+      if (s.lay) s.lay.off += value - at(k);
+      else s.ang = value;
+    };
+    const from = new Map<number, number>(arms.map((k) => [k, at(k)]));
+    const turn = new Map<number, number>(arms.map((k) => [k, wrap((target.get(k) as number) - at(k))]));
     const most = Math.max(...arms.map((k) => Math.abs(turn.get(k) as number)));
-    const steps = Math.ceil(most / ((0.5 * Math.PI) / 180));
-    const from = new Map<number, number>(arms.map((k) => [k, this.strands[k].ang]));
+    const steps = Math.ceil(most / (0.5 * DEG));
     for (let step = 1; step <= steps; step++) {
-      const before = arms.map((k) => this.strands[k].ang);
-      for (const k of arms) this.strands[k].ang = (from.get(k) as number) + ((turn.get(k) as number) * step) / steps;
+      const before = arms.map(at);
+      for (const k of arms) set(k, (from.get(k) as number) + ((turn.get(k) as number) * step) / steps);
       const polys = this.strands.map((_, k) => this.poly(k, this.x));
       if (!this.sameWeave(polys, false)) {
-        arms.forEach((k, n) => (this.strands[k].ang = before[n]));
+        arms.forEach((k, n) => set(k, before[n]));
         break;
       }
+      // Landed: a laid arm is exactly on its line, not a rounding off it.
+      if (step === steps) for (const k of arms) if (this.strands[k].lay) (this.strands[k].lay as { off: number }).off = 0;
     }
 
-    // A lace nothing holds would be dragged off by any pull that does not
-    // cancel, so its pulls are scaled until they do (and dropped if they cannot).
+    // The pull. An arm with one loose end and a held one is pulled by that end,
+    // from infinitely far away along its own line. (An arm with no loose end is
+    // lace under tension and shortens by itself; one placed at both ends has
+    // nothing to be pulled against.) A lace nothing holds would be dragged off
+    // by any pull that does not cancel, so its pulls are scaled until they do,
+    // and dropped if they cannot.
+    const pulled = arms.filter((k) => {
+      const s = this.strands[k];
+      // (Not a laid arm: its line is the strand below's, which turns as the fold
+      // moves, and the strand below is what pulls its fold in.)
+      return !s.lay && ((s.free === 0 && s.loose[0]) || (s.free === 1 && s.loose[1]));
+    });
+    for (const k of pulled) this.strands[k].pull = 1;
     const held = new Set<number>();
     this.strands.forEach((s, k) => {
       if (this.nodes[s.n0].kind === 'pinned' || this.nodes[s.n1].kind === 'pinned') held.add(comp[k]);
     });
     const loose = new Map<number, number[]>();
-    for (const k of arms) {
-      const s = this.strands[k];
-      if (s.free === 2) {
-        s.pull = 0;
-        continue;
-      }
+    for (const k of pulled) {
       if (held.has(comp[k])) continue;
       loose.set(comp[k], [...(loose.get(comp[k]) ?? []), k]);
     }
@@ -654,11 +895,11 @@ class Problem {
   private pairsAndCounts(): void {
     this.pairs = [];
     this.ref = [];
-    const level = this.strands.map((s) => levelAt(this.scene, s.i));
     const boxes = this.polys.map(boxOf);
     for (let a = 0; a < this.strands.length; a++) {
       for (let b = a + 1; b < this.strands.length; b++) {
-        if (level[a] !== level[b]) continue; // other storeys are not woven with this one
+        if (this.strands[a].level !== this.strands[b].level) continue; // storeys are not woven with each other
+        if (!this.strands[a].movable && !this.strands[b].movable) continue; // nothing can change between them
         if (this.adjacent(a, b)) continue;
         this.pairs.push([a, b]);
         this.ref.push(boxesWithin(boxes[a], boxes[b], 0) ? polylineCrossings(this.polys[a], this.polys[b]).length : 0);
@@ -712,7 +953,14 @@ class Problem {
 
   private constrain(): void {
     this.pairsAndCounts();
-    this.terms = this.strands.map((_, k) => ({ t: 'len', s: k }) as Term);
+    // Clearances are kept where the level being stretched is involved. Strands
+    // of other levels that come along are held to their weave (`sameWeave`) and
+    // to nothing else: how far apart THEY sit is their own level's business.
+    const mine = (k: number): boolean => this.strands[k].role === 'active';
+    this.terms = [];
+    this.strands.forEach((s, k) => {
+      if (s.role !== 'fixed') this.terms.push({ t: 'len', s: k });
+    });
     const crosses = new Map<string, number>();
     this.pairs.forEach(([a, b], n) => {
       crosses.set(`${a}:${b}`, this.ref[n]);
@@ -722,24 +970,25 @@ class Problem {
       const [a, b] = this.pairs[n];
       const sa = this.strands[a];
       const sb = this.strands[b];
-      if (!sa.movable && !sb.movable) continue;
+      if (!mine(a) && !mine(b)) continue;
       if (this.ref[n] === 0) {
         const d = sa.half + sb.half + this.air;
         this.terms.push({ t: 'clear', a, b, d }, { t: 'clear', a: b, b: a, d });
       }
     }
-    // A fold stops short of what its strands cross, and a loose end runs a
-    // little further. Where NONE of a node's strands crosses `b`, each of them
-    // is already held clear of it side by side.
+    // A fold stops short of what its strands cross; a loose end runs a little
+    // further, and so does a fold between two storeys, which is where the built
+    // columns put theirs. Where NONE of a node's strands crosses `b`, each of
+    // them is already held clear of it side by side.
     this.nodes.forEach((node) => {
       for (let b = 0; b < this.strands.length; b++) {
         if (node.strands.includes(b)) continue;
         const through = node.strands.filter((a) => (crosses.get(`${a}:${b}`) ?? 0) > 0);
         if (!through.length) continue;
-        const a = through[0];
-        if (!this.strands[a].movable && !this.strands[b].movable) continue;
+        const a = through.find(mine) ?? through[0];
+        if (!mine(a) && !mine(b)) continue;
         const side: 0 | 1 = this.nodes[this.strands[a].n0] === node ? 0 : 1;
-        const past = node.kind === 'free' ? this.poke : this.air / 2;
+        const past = node.kind === 'free' || node.cross ? this.poke : this.air / 2;
         this.terms.push({ t: 'poke', a, side, b, d: this.strands[b].half + past });
       }
     });
@@ -751,6 +1000,7 @@ class Problem {
         if (!once(a, b)) continue;
         for (let c = b + 1; c < n; c++) {
           if (!once(a, c) || !once(b, c)) continue;
+          if (!mine(a) && !mine(b) && !mine(c)) continue;
           const ab = this.over(a, b);
           const bc = this.over(b, c);
           const ca = this.over(c, a);
@@ -820,14 +1070,14 @@ class Problem {
       const s = this.strands[term.s];
       const p = polys[term.s];
       let e = polyLength(p);
-      if (s.free >= 0) {
+      if (s.free >= 0 && (s.loose[0] || s.loose[1])) {
         const held = Math.max(x[s.lv], 1);
         e -= held;
         // Barely held to its drawn length — enough that a clearance moves it and
         // nothing else does. Without this a bent arm can lower its own bending
         // by simply growing: the same bulge on a longer chord is a flatter one.
         e += (HOLD * (held - s.len) ** 2) / Math.max(s.len, 1);
-        if (s.free !== 2 && s.pull > 0) {
+        if (s.pull > 0) {
           const hold = s.free === 1 ? p[0] : p[p.length - 1];
           e -= s.pull * (Math.cos(s.ang) * hold.x + Math.sin(s.ang) * hold.y);
         }
@@ -870,7 +1120,7 @@ class Problem {
   }
 
   allPolys(x: Float64Array): Vec2[][] {
-    return this.strands.map((_, k) => this.poly(k, x));
+    return this.strands.map((_, k) => this.still[k] ?? this.poly(k, x));
   }
 
   /** Gradient by central differences, each unknown re-evaluating only the terms
@@ -1020,7 +1270,7 @@ class Problem {
    * step off.
    */
   unbend(onStep?: () => void): void {
-    const bent = this.strands.map((s, k) => (s.line ? -1 : k)).filter((k) => k >= 0);
+    const bent = this.strands.map((s, k) => (s.line || s.role !== 'active' ? -1 : k)).filter((k) => k >= 0);
     if (!bent.length) return;
     const goal = (s: SStrand): number[] => [s.L0 / 3, 0, (2 * s.L0) / 3, 0, s.L0 / 2, 0];
     const from = new Map<number, number[]>(bent.map((k) => [k, Array.from(this.x.subarray(this.strands[k].v, this.strands[k].v + 6))]));
@@ -1080,7 +1330,7 @@ class Problem {
   straighten(): void {
     for (let k = 0; k < this.strands.length; k++) {
       const s = this.strands[k];
-      if (s.line) continue;
+      if (s.line || s.role !== 'active') continue;
       const p = this.polys[k];
       const a = p[0];
       const b = p[p.length - 1];
@@ -1118,7 +1368,7 @@ class Problem {
       const on = term.t === 'tri' ? [term.a, term.b, term.c] : [term.a, term.b];
       for (const k of on) {
         const s = this.strands[k];
-        if (s.line && !s.wasLine && s.L0 > 1e-6) stuck.add(k);
+        if (s.role === 'active' && s.line && !s.wasLine && s.L0 > 1e-6) stuck.add(k);
       }
     }
     for (const k of stuck) {
@@ -1134,6 +1384,7 @@ class Problem {
         this.live[s.v + q] = 1;
       });
       s.movable = true;
+      this.still[k] = null;
     }
     if (stuck.size) this.polys = this.allPolys(this.x);
     return stuck.size > 0;
@@ -1145,8 +1396,12 @@ class Problem {
     return w;
   }
 
+  /** Crossings between two strands of the level being stretched. */
   crossings(): number {
-    return this.ref.reduce((n, c) => n + c, 0);
+    return this.ref.reduce(
+      (n, c, q) => n + (this.pairs[q].every((k) => this.strands[k].role === 'active') ? c : 0),
+      0,
+    );
   }
 
   // ---- back onto the scene -------------------------------------------------------
@@ -1155,8 +1410,19 @@ class Problem {
   write(): void {
     for (let k = 0; k < this.strands.length; k++) {
       const s = this.strands[k];
+      if (!s.movable) continue;
       const [a, b] = this.ends(k, this.x);
       const src = s.src;
+      if (s.role === 'follower') {
+        // It only followed its joint: carry its handles along with its chord,
+        // and leave everything else about it exactly as it was.
+        const carry = similarity(src.start, src.end, a, b);
+        src.control_points = [carry(src.control_points[0]), carry(src.control_points[1])];
+        if (src.control_point_center) src.control_point_center = carry(src.control_point_center);
+        src.start = { x: a.x, y: a.y };
+        src.end = { x: b.x, y: b.y };
+        continue;
+      }
       src.start = { x: a.x, y: a.y };
       src.end = { x: b.x, y: b.y };
       if (s.line || s.L0 < 1e-9) {
@@ -1178,6 +1444,21 @@ class Problem {
       updateControlCenter(src);
     }
   }
+}
+
+/** The move, turn and scale that takes chord `a0 → b0` onto `a → b`. */
+function similarity(a0: Vec2, b0: Vec2, a: Vec2, b: Vec2): (p: Vec2) => Vec2 {
+  const cx = b0.x - a0.x;
+  const cy = b0.y - a0.y;
+  const L2 = cx * cx + cy * cy;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  return (p) => {
+    if (L2 < 1e-12) return { x: p.x + a.x - a0.x, y: p.y + a.y - a0.y };
+    const along = ((p.x - a0.x) * cx + (p.y - a0.y) * cy) / L2;
+    const across = (-(p.x - a0.x) * cy + (p.y - a0.y) * cx) / L2;
+    return { x: a.x + along * dx - across * dy, y: a.y + along * dy + across * dx };
+  };
 }
 
 // ---- the function -----------------------------------------------------------------
@@ -1227,12 +1508,11 @@ export function stretchLevel(scene: Scene3D, level: number | null, options: Stre
   };
   if (!active.length) return { scene: out, report, frames: [] };
 
-  // The "before" is measured on the drawing itself, ahead of any tidying.
-  const lengthBefore = active.map((i) => polyLength(drawn(out.strands[i], opts.thirdEnabled)));
-
   const p = new Problem(out, active, opts);
   p.deadline = performance.now() + (options.budget ?? 2500);
-  report.movable = p.strands.filter((s) => s.movable).length;
+  // The "before" is measured on the drawing itself, ahead of any tidying.
+  const lengthBefore = p.strands.map((s) => polyLength(drawn(s.src, opts.thirdEnabled)));
+  report.movable = p.strands.filter((s) => s.role === 'active' && s.movable).length;
   report.overlapBefore = p.worst();
 
   const wantFrames = Math.max(0, Math.floor(options.frames ?? 0));
@@ -1252,7 +1532,10 @@ export function stretchLevel(scene: Scene3D, level: number | null, options: Stre
     };
     p.unbend(shoot);
     p.reconstrain();
-    for (const k of [1, 10, 100]) stage(k);
+    // A drawing with things overlapping is eased apart from soft. One that
+    // already clears itself has nothing to ease — a built block, say — and
+    // going soft first would only let it sag three pixels and pull it back.
+    for (const k of report.overlapBefore > 0.5 ? [1, 10, 100] : [100]) stage(k);
     // What would not straighten where it was drawn may do now the knot has moved.
     p.unbend(shoot);
     p.straighten();
@@ -1290,17 +1573,19 @@ export function stretchLevel(scene: Scene3D, level: number | null, options: Stre
   const lengthAfter = p.polys.map(polyLength);
   const given = new Map<number, number>();
   p.strands.forEach((_, k) => given.set(comp[k], (given.get(comp[k]) ?? 0) + lengthBefore[k] - lengthAfter[k]));
+  // How many loose ends a strand can let slack out through.
+  const lets = (s: SStrand): number =>
+    s.role === 'active' && s.free >= 0 && s.line ? Number(s.loose[0]) + Number(s.loose[1]) : 0;
   const ends = new Map<number, number>();
   p.strands.forEach((s, k) => {
-    if (s.free >= 0 && s.line) ends.set(comp[k], (ends.get(comp[k]) ?? 0) + (s.free === 2 ? 2 : 1));
+    if (lets(s)) ends.set(comp[k], (ends.get(comp[k]) ?? 0) + lets(s));
   });
   const solved = p.x.slice();
   const heldAt = p.worst();
   p.strands.forEach((s, k) => {
     const n = ends.get(comp[k]);
-    if (!n || s.free < 0 || !s.line) return;
-    const grow = ((given.get(comp[k]) ?? 0) / n) * (s.free === 2 ? 2 : 1);
-    p.x[s.lv] = Math.max(p.x[s.lv] + grow, 1);
+    if (!n || !lets(s)) return;
+    p.x[s.lv] = Math.max(p.x[s.lv] + ((given.get(comp[k]) ?? 0) / n) * lets(s), 1);
   });
   const grown = p.allPolys(p.x);
   const keeps = p.sameWeave(grown, false);
@@ -1309,7 +1594,7 @@ export function stretchLevel(scene: Scene3D, level: number | null, options: Stre
     p.x = solved;
     p.polys = p.allPolys(solved);
   }
-  report.slack = p.strands.reduce((n, s) => n + (s.lv >= 0 ? p.x[s.lv] - s.len : 0), 0);
+  report.slack = p.strands.reduce((n, s) => n + (lets(s) ? p.x[s.lv] - s.len : 0), 0);
   shoot();
 
   report.overlapAfter = p.worst();
@@ -1317,8 +1602,8 @@ export function stretchLevel(scene: Scene3D, level: number | null, options: Stre
   report.crossings = p.crossings();
   report.iterations = p.iterations;
   report.cutShort = performance.now() > p.deadline;
-  report.straightened = p.strands.filter((s) => s.line && !s.wasLine).length;
-  report.bent = p.strands.filter((s) => !s.line).length;
+  report.straightened = p.strands.filter((s) => s.role === 'active' && s.line && !s.wasLine).length;
+  report.bent = p.strands.filter((s) => s.role === 'active' && !s.line).length;
 
   // Frames first (they rewrite the same records), the final state last.
   const frames: Scene3D[] = [];
@@ -1338,7 +1623,7 @@ export function stretchLevel(scene: Scene3D, level: number | null, options: Stre
   p.write();
   recomputeOccupancy(out);
 
-  report.changed = active.some((i) => {
+  report.changed = p.strands.some(({ i }) => {
     const a = scene.strands[i];
     const b = out.strands[i];
     const moved = (u: Vec2, v: Vec2): boolean => Math.hypot(u.x - v.x, u.y - v.y) > 0.01;
