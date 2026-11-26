@@ -29,6 +29,7 @@ import { STRETCH_AIR, STRETCH_POKE, stretchLevel } from '../src/model/stretch';
 import { GAP, POKE, W, WEFT, mk } from '../src/model/twofan';
 import { Point, Scene3D, Strand3D } from '../src/model/types';
 import knot from './stretch-knot.json';
+import twoLevels from './stretch-two-levels.json';
 
 let bad = 0;
 const ok = (cond: boolean, what: string): void => {
@@ -45,6 +46,8 @@ const len = (p: Point[]): number => p.slice(1).reduce((n, q, i) => n + Math.hypo
 const strand = (sc: Scene3D, id: string): Strand3D => sc.strands.find((s) => s.id === id) as Strand3D;
 const angle = (s: Strand3D): number => Math.atan2(s.end.y - s.start.y, s.end.x - s.start.x);
 const deg = (r: number): number => (r * 180) / Math.PI;
+/** An angle's distance from zero, in degrees, whichever way round it is written. */
+const fold = (r: number): number => Math.abs(((deg(r) % 360) + 540) % 360 - 180);
 /** Distance from `p` to the infinite line through a straight strand. */
 const off = (p: Point, s: Strand3D): number => {
   const dx = s.end.x - s.start.x;
@@ -97,7 +100,6 @@ console.log('the hand-drawn 1×1 starting stitch');
   const a13 = angle(strand(tight, '1_3'));
   const a22 = angle(strand(tight, '2_2'));
   const a23 = angle(strand(tight, '2_3'));
-  const fold = (r: number): number => Math.abs(((deg(r) % 360) + 540) % 360 - 180);
   ok(fold(a12 - a13 - Math.PI) < 1e-9 && fold(a22 - a23 - Math.PI) < 1e-9, 'the two arms of each lace point exactly opposite ways');
   ok(fold(a12 - a22 - Math.PI / 2) < 1e-9 || fold(a12 - a22 + Math.PI / 2) < 1e-9, 'and the two laces lie exactly square');
   const turned = Math.max(...['1_2', '1_3', '2_2', '2_3'].map((id) => fold(angle(strand(tight, id)) - angle(strand(drawn, id)))));
@@ -168,19 +170,76 @@ for (const key of ['box-lh-1x1', 'box-rh-2x3', 'box-lh-3x3', 'twofan-lh-1x1']) {
   ok(!report.changed && report.overlapBefore < 1e-6, `${key}: level 0 is already tight, and is left exactly as built`);
 }
 
-// ---- 3. other levels do not move -------------------------------------------------
+// ---- 3. a level reaches as far as the folds it is joined by, and no further -------
 console.log('\nscope');
 {
   const sc = makeSample('box-stitch-10');
-  const { scene: out } = stretchLevel(sc, 0);
-  const still = sc.strands.every((s, i) => {
-    if (i < 6) return true; // level 0's own six
-    const t = out.strands[i];
-    return s.start.x === t.start.x && s.start.y === t.start.y && s.end.x === t.end.x && s.end.y === t.end.y;
-  });
-  ok(still, 'stretching level 0 of a ten-level column moves nothing on the nine above');
-  const top = stretchLevel(sc, 5);
-  ok(top.report.movable === 0 && !top.report.changed, 'and a level pinned at both ends by its neighbours has nothing free to pull');
+  const same = (s: Strand3D, t: Strand3D): boolean =>
+    s.start.x === t.start.x && s.start.y === t.start.y && s.end.x === t.end.x && s.end.y === t.end.y;
+  const { scene: low } = stretchLevel(sc, 0);
+  ok(
+    sc.strands.every((s, i) => levelAt(sc, i) <= 1 || same(s, low.strands[i])),
+    'stretching level 0 of a ten-level column moves nothing above level 1',
+  );
+  const { scene: mid } = stretchLevel(sc, 5);
+  ok(
+    sc.strands.every((s, i) => Math.abs(levelAt(sc, i) - 5) <= 1 || same(s, mid.strands[i])),
+    'and stretching level 5 moves nothing but levels 4, 5 and 6',
+  );
+  ok(sameWeave(weave(sc), weave(low)) && sameWeave(weave(sc), weave(mid)), 'with every level\'s weave as it was, the neighbours\' included');
+}
+
+// ---- 3b. a second round closes over the first --------------------------------------
+// `stretch-two-levels.json` is a tight starting stitch with a second round woven
+// over it by hand: each arm folded back across the block, drawn six degrees off
+// the arm it carries on from, its fold standing well out from the weave. The
+// folds are joints BETWEEN the levels, so a stretch that pinned everything it
+// shared with level 0 could turn the four arms and do nothing else.
+console.log('\na second round over the first');
+{
+  const drawn = parseSceneText(JSON.stringify(twoLevels));
+  const before = weave(drawn);
+  const { scene: out, report } = stretchLevel(drawn, 1);
+  ok(report.changed && sameWeave(before, weave(out)), 'level 1 moves, and both levels keep their weave');
+  const half = drawn.strands[0].width / 2;
+  const reach = half + STRETCH_POKE;
+  // Each level-1 arm, the level-0 arm it carries on from, and the two level-1
+  // strands it crosses.
+  const rounds: Array<[string, string, string, string]> = [
+    ['1_4', '1_2', '2_4', '2_5'],
+    ['1_5', '1_3', '2_4', '2_5'],
+    ['2_4', '2_3', '1_4', '1_5'],
+    ['2_5', '2_2', '1_4', '1_5'],
+  ];
+  const laid = rounds.map(([up, down]) => fold(angle(strand(out, up)) - angle(strand(out, down)) - Math.PI));
+  ok(laid.every((d) => d < 1e-6), `each arm is folded straight back over the arm it carries on from (off by ${Math.max(...laid).toExponential(1)}°)`);
+  const stops = rounds.map(([up, , a, b]) => Math.min(off(strand(out, up).start, strand(out, a)), off(strand(out, up).start, strand(out, b))));
+  const drawnStops = rounds.map(([up, , a, b]) => Math.min(off(strand(drawn, up).start, strand(drawn, a)), off(strand(drawn, up).start, strand(drawn, b))));
+  ok(
+    stops.every((d) => Math.abs(d - reach) < 1e-4),
+    `each fold is pulled in to ${reach} past the strand it wraps: ${stops.map((d) => d.toFixed(4)).join(', ')} (drawn ${drawnStops.map((d) => d.toFixed(0)).join(', ')})`,
+  );
+  ok(
+    rounds.every(([up, down]) => {
+      const a = strand(out, up).start;
+      const b = strand(out, down).end;
+      return a.x === b.x && a.y === b.y;
+    }),
+    'and the arm below still ends exactly on it — it is one fold, on two levels',
+  );
+  ok(
+    ['1_1', '2_1'].every((id) => JSON.stringify(strand(out, id)) === JSON.stringify(strand(drawn, id))),
+    'the block\'s two middles are not touched',
+  );
+  ok(!stretchLevel(out, 1).report.changed, 'a second press moves nothing');
+
+  // Both levels, one after the other, settle into the built column's numbers:
+  // every level-0 arm is a fold, a gap and a poke long.
+  const both = stretchLevel(stretchLevel(drawn, 0).scene, 1).scene;
+  const want = half + STRETCH_AIR / 2 + (2 * half + STRETCH_AIR) + reach;
+  const arms = ['1_2', '1_3', '2_2', '2_3'].map((id) => len(line(strand(both, id))));
+  ok(arms.every((l) => Math.abs(l - want) < 1e-3), `level 0 then level 1: all four arms below come out ${want} long (${arms.map((l) => l.toFixed(4)).join(', ')})`);
+  ok(!stretchLevel(both, 0).report.changed && !stretchLevel(both, 1).report.changed, 'and neither level has anything left to do');
 }
 
 // ---- 4. a bend that is only slack comes out -------------------------------------

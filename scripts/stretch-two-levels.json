@@ -1,0 +1,500 @@
+{
+ "format": "scoubidou3d-scene",
+ "version": 3,
+ "name": "Box stitch \u2014 starting stitch",
+ "strands": [
+  {
+   "id": "1_1",
+   "start": {
+    "x": 358.90978898940955,
+    "y": 315.32881408929165
+   },
+   "end": {
+    "x": 460.2149584519306,
+    "y": 214.24833802805648
+   },
+   "control_points": [
+    {
+     "x": 358.90978898940955,
+     "y": 315.32881408929165
+    },
+    {
+     "x": 358.90978898940955,
+     "y": 315.32881408929165
+    }
+   ],
+   "control_point_center": null,
+   "control_point_center_locked": false,
+   "triangleHasMoved": false,
+   "cp2Activated": false,
+   "width": 54,
+   "stroke_width": 4,
+   "color": {
+    "r": 226,
+    "g": 122,
+    "b": 38,
+    "a": 255
+   },
+   "stroke_color": {
+    "r": 30,
+    "g": 30,
+    "b": 30,
+    "a": 255
+   },
+   "thickness": null,
+   "visible": true,
+   "isMask": false,
+   "hasCircles": [
+    true,
+    true
+   ],
+   "parentId": null,
+   "parentSide": null
+  },
+  {
+   "id": "2_1",
+   "start": {
+    "x": 359.02213569108704,
+    "y": 214.13599132957037
+   },
+   "end": {
+    "x": 456.2790089911022,
+    "y": 319.6441922624911
+   },
+   "control_points": [
+    {
+     "x": 359.02213569108704,
+     "y": 214.13599132957037
+    },
+    {
+     "x": 359.02213569108704,
+     "y": 214.13599132957037
+    }
+   ],
+   "control_point_center": null,
+   "control_point_center_locked": false,
+   "triangleHasMoved": false,
+   "cp2Activated": false,
+   "width": 54,
+   "stroke_width": 4,
+   "color": {
+    "r": 245,
+    "g": 200,
+    "b": 55,
+    "a": 255
+   },
+   "stroke_color": {
+    "r": 30,
+    "g": 30,
+    "b": 30,
+    "a": 255
+   },
+   "thickness": null,
+   "visible": true,
+   "isMask": false,
+   "hasCircles": [
+    true,
+    true
+   ],
+   "parentId": null,
+   "parentSide": null
+  },
+  {
+   "id": "1_2",
+   "start": {
+    "x": 358.90978898940955,
+    "y": 315.32881408929165
+   },
+   "end": {
+    "x": 540.2921663786294,
+    "y": 255.09168892688146
+   },
+   "control_points": [
+    {
+     "x": 358.90978898940955,
+     "y": 315.32881408929165
+    },
+    {
+     "x": 358.90978898940955,
+     "y": 315.32881408929165
+    }
+   ],
+   "control_point_center": null,
+   "control_point_center_locked": false,
+   "triangleHasMoved": false,
+   "cp2Activated": false,
+   "width": 54,
+   "stroke_width": 4,
+   "color": {
+    "r": 226,
+    "g": 122,
+    "b": 38,
+    "a": 255
+   },
+   "stroke_color": {
+    "r": 30,
+    "g": 30,
+    "b": 30,
+    "a": 255
+   },
+   "thickness": null,
+   "visible": true,
+   "isMask": false,
+   "hasCircles": [
+    true,
+    true
+   ],
+   "parentId": "1_1",
+   "parentSide": 0
+  },
+  {
+   "id": "2_2",
+   "start": {
+    "x": 456.2790089911022,
+    "y": 319.6441922624911
+   },
+   "end": {
+    "x": 408.7216434639875,
+    "y": 160.72590577553134
+   },
+   "control_points": [
+    {
+     "x": 456.2790089911022,
+     "y": 319.6441922624911
+    },
+    {
+     "x": 456.2790089911022,
+     "y": 319.6441922624911
+    }
+   ],
+   "control_point_center": null,
+   "control_point_center_locked": false,
+   "triangleHasMoved": false,
+   "cp2Activated": false,
+   "width": 54,
+   "stroke_width": 4,
+   "color": {
+    "r": 245,
+    "g": 200,
+    "b": 55,
+    "a": 255
+   },
+   "stroke_color": {
+    "r": 30,
+    "g": 30,
+    "b": 30,
+    "a": 255
+   },
+   "thickness": null,
+   "visible": true,
+   "isMask": false,
+   "hasCircles": [
+    true,
+    true
+   ],
+   "parentId": "2_1",
+   "parentSide": 1
+  },
+  {
+   "id": "1_3",
+   "start": {
+    "x": 460.2149584519306,
+    "y": 214.24833802805648
+   },
+   "end": {
+    "x": 308.9612977158502,
+    "y": 264.47971013914616
+   },
+   "control_points": [
+    {
+     "x": 460.2149584519306,
+     "y": 214.24833802805648
+    },
+    {
+     "x": 460.2149584519306,
+     "y": 214.24833802805648
+    }
+   ],
+   "control_point_center": null,
+   "control_point_center_locked": false,
+   "triangleHasMoved": false,
+   "cp2Activated": false,
+   "width": 54,
+   "stroke_width": 4,
+   "color": {
+    "r": 226,
+    "g": 122,
+    "b": 38,
+    "a": 255
+   },
+   "stroke_color": {
+    "r": 30,
+    "g": 30,
+    "b": 30,
+    "a": 255
+   },
+   "thickness": null,
+   "visible": true,
+   "isMask": false,
+   "hasCircles": [
+    true,
+    true
+   ],
+   "parentId": "1_1",
+   "parentSide": 1
+  },
+  {
+   "id": "2_3",
+   "start": {
+    "x": 359.02213569108704,
+    "y": 214.13599132957037
+   },
+   "end": {
+    "x": 412.4894305093595,
+    "y": 375.13346623497057
+   },
+   "control_points": [
+    {
+     "x": 359.02213569108704,
+     "y": 214.13599132957037
+    },
+    {
+     "x": 359.02213569108704,
+     "y": 214.13599132957037
+    }
+   ],
+   "control_point_center": null,
+   "control_point_center_locked": false,
+   "triangleHasMoved": false,
+   "cp2Activated": false,
+   "width": 54,
+   "stroke_width": 4,
+   "color": {
+    "r": 245,
+    "g": 200,
+    "b": 55,
+    "a": 255
+   },
+   "stroke_color": {
+    "r": 30,
+    "g": 30,
+    "b": 30,
+    "a": 255
+   },
+   "thickness": null,
+   "visible": true,
+   "isMask": false,
+   "hasCircles": [
+    true,
+    true
+   ],
+   "parentId": "2_1",
+   "parentSide": 0
+  },
+  {
+   "id": "1_4",
+   "start": {
+    "x": 540.2921663786294,
+    "y": 255.09168892688146
+   },
+   "end": {
+    "x": 303.71333777275504,
+    "y": 364.71026379303896
+   },
+   "control_points": [
+    {
+     "x": 540.2921663786294,
+     "y": 255.09168892688146
+    },
+    {
+     "x": 540.2921663786294,
+     "y": 255.09168892688146
+    }
+   ],
+   "control_point_center": null,
+   "control_point_center_locked": false,
+   "triangleHasMoved": false,
+   "cp2Activated": false,
+   "width": 54,
+   "stroke_width": 4,
+   "color": {
+    "r": 226,
+    "g": 122,
+    "b": 38,
+    "a": 255
+   },
+   "stroke_color": {
+    "r": 30,
+    "g": 30,
+    "b": 30,
+    "a": 255
+   },
+   "thickness": null,
+   "visible": true,
+   "isMask": false,
+   "hasCircles": [
+    true,
+    true
+   ],
+   "parentId": "1_2",
+   "parentSide": 1
+  },
+  {
+   "id": "2_4",
+   "start": {
+    "x": 412.4894305093595,
+    "y": 375.13346623497057
+   },
+   "end": {
+    "x": 306.90087551523663,
+    "y": 147.25222726432398
+   },
+   "control_points": [
+    {
+     "x": 412.4894305093595,
+     "y": 375.13346623497057
+    },
+    {
+     "x": 412.4894305093595,
+     "y": 375.13346623497057
+    }
+   ],
+   "control_point_center": null,
+   "control_point_center_locked": false,
+   "triangleHasMoved": false,
+   "cp2Activated": false,
+   "width": 54,
+   "stroke_width": 4,
+   "color": {
+    "r": 245,
+    "g": 200,
+    "b": 55,
+    "a": 255
+   },
+   "stroke_color": {
+    "r": 30,
+    "g": 30,
+    "b": 30,
+    "a": 255
+   },
+   "thickness": null,
+   "visible": true,
+   "isMask": false,
+   "hasCircles": [
+    true,
+    true
+   ],
+   "parentId": "2_3",
+   "parentSide": 1
+  },
+  {
+   "id": "1_5",
+   "start": {
+    "x": 308.9612977158502,
+    "y": 264.47971013914616
+   },
+   "end": {
+    "x": 539.3314363737404,
+    "y": 157.73792584590035
+   },
+   "control_points": [
+    {
+     "x": 308.9612977158502,
+     "y": 264.47971013914616
+    },
+    {
+     "x": 308.9612977158502,
+     "y": 264.47971013914616
+    }
+   ],
+   "control_point_center": null,
+   "control_point_center_locked": false,
+   "triangleHasMoved": false,
+   "cp2Activated": false,
+   "width": 54,
+   "stroke_width": 4,
+   "color": {
+    "r": 226,
+    "g": 122,
+    "b": 38,
+    "a": 255
+   },
+   "stroke_color": {
+    "r": 30,
+    "g": 30,
+    "b": 30,
+    "a": 255
+   },
+   "thickness": null,
+   "visible": true,
+   "isMask": false,
+   "hasCircles": [
+    true,
+    true
+   ],
+   "parentId": "1_3",
+   "parentSide": 1
+  },
+  {
+   "id": "2_5",
+   "start": {
+    "x": 408.7216434639875,
+    "y": 160.72590577553134
+   },
+   "end": {
+    "x": 506.28606421095105,
+    "y": 371.289456725812
+   },
+   "control_points": [
+    {
+     "x": 408.7216434639875,
+     "y": 160.72590577553134
+    },
+    {
+     "x": 408.7216434639875,
+     "y": 160.72590577553134
+    }
+   ],
+   "control_point_center": null,
+   "control_point_center_locked": false,
+   "triangleHasMoved": false,
+   "cp2Activated": false,
+   "width": 54,
+   "stroke_width": 4,
+   "color": {
+    "r": 245,
+    "g": 200,
+    "b": 55,
+    "a": 255
+   },
+   "stroke_color": {
+    "r": 30,
+    "g": 30,
+    "b": 30,
+    "a": 255
+   },
+   "thickness": null,
+   "visible": true,
+   "isMask": false,
+   "hasCircles": [
+    true,
+    true
+   ],
+   "parentId": "2_2",
+   "parentSide": 1
+  }
+ ],
+ "masks": [
+  {
+   "overId": "1_2",
+   "underId": "2_3"
+  },
+  {
+   "overId": "1_4",
+   "underId": "2_5"
+  }
+ ],
+ "levelBreaks": [
+  6
+ ]
+}

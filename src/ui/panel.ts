@@ -4783,8 +4783,10 @@ const ABOUT: Array<[string, string]> = [
       'straight becomes straight and gives its handles back, each fold closes up to the strand ' +
       'it wraps, arms lying side by side settle one gap apart, and the slack comes out through ' +
       'the loose ends. Which strand crosses which never changes, so every mask means what it ' +
-      'meant. Only that level moves — a joint it shares with another level stays put — and it is ' +
-      'one press of undo.',
+      'meant. A level reaches as far as its folds: where an arm turns back onto the next level, ' +
+      'that fold is pulled in too and the arm it belongs to on the other level follows it, so a ' +
+      'second round closes over the first and lies on its lines. Nothing further away moves, ' +
+      'and it is one press of undo.',
   ],
   [
     'Masks',

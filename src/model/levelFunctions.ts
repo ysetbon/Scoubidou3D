@@ -83,7 +83,8 @@ const STRETCH: LevelFunction = {
   title:
     'Pull this level tight. Every strand that can be straight becomes straight, each fold ' +
     'closes up to the strand it wraps, side-by-side arms settle one gap apart, and the slack ' +
-    'comes out through the loose ends. The crossings stay exactly as drawn.',
+    'comes out through the loose ends. An arm that carries on from the level below is laid ' +
+    'on its line, and the fold between them is pulled in. The crossings stay exactly as drawn.',
   icon: 'stretch',
   run(scene, level, ctx) {
     const { scene: out, report, frames } = stretchLevel(scene, level, {
@@ -94,7 +95,7 @@ const STRETCH: LevelFunction = {
     if (!report.changed) {
       const summary =
         report.movable === 0
-          ? 'Nothing here is free to move — every end is held by another level.'
+          ? 'Nothing here is free to move.'
           : report.overlapBefore > 0.05
             ? `As tight as it goes: ${px(report.overlapBefore)} of overlap is held by what pins it.`
             : 'Already fully stretched.';
